@@ -493,14 +493,14 @@ ServerCallbackHelper::ServerCallbackHelper(
     ServerRequestCallback request_callback,
     ServerAcceptCallback accept_callback, ServerCloseCallback close_callback) {
   if (request_callback) {
-    request_callback_ = [this, request_callback](
+    instrumented_request_callback_ = [this](
                             ServerConnection &connection, ServerStream &stream,
                             Envoy::Http::HeaderMapPtr request_headers) {
       ++requests_received_;
-      request_callback(connection, stream, std::move(request_headers));
+      request_callback_(connection, stream, std::move(request_headers));
     };
   } else {
-    request_callback_ = [this](ServerConnection &, ServerStream &stream,
+    instrumented_request_callback_ = [this](ServerConnection &, ServerStream &stream,
                                Envoy::Http::HeaderMapPtr &&) {
       ++requests_received_;
       Envoy::Http::TestHeaderMapImpl response{{":status", "200"}};
@@ -509,22 +509,22 @@ ServerCallbackHelper::ServerCallbackHelper(
   }
 
   if (accept_callback) {
-    accept_callback_ =
-        [this, accept_callback](
+    instrumented_accept_callback_ =
+        [this](
             ServerConnection &connection) -> ServerCallbackResult {
       ++accepts_;
-      return accept_callback(connection);
+      return accept_callback_(connection);
     };
   } else {
-    accept_callback_ = [this](ServerConnection &) -> ServerCallbackResult {
+    instrumented_accept_callback_ = [this](ServerConnection &) -> ServerCallbackResult {
       ++accepts_;
       return ServerCallbackResult::CONTINUE;
     };
   }
 
   if (close_callback) {
-    close_callback_ = [this, close_callback](ServerConnection &connection,
-                                             ServerCloseReason reason) {
+    instrumented_close_callback_ = [this](ServerConnection &connection,
+                                              ServerCloseReason reason) {
       absl::MutexLock lock(&mutex_);
 
       switch (reason) {
@@ -536,10 +536,10 @@ ServerCallbackHelper::ServerCallbackHelper(
           break;
       }
 
-      close_callback(connection, reason);
+      close_callback_(connection, reason);
     };
   } else {
-    close_callback_ = [this](ServerConnection &, ServerCloseReason reason) {
+    instrumented_close_callback_ = [this](ServerConnection &, ServerCloseReason reason) {
       absl::MutexLock lock(&mutex_);
 
       switch (reason) {
@@ -573,15 +573,15 @@ uint32_t ServerCallbackHelper::remoteCloses() const {
 }
 
 ServerAcceptCallback ServerCallbackHelper::acceptCallback() const {
-  return accept_callback_;
+  return instrumented_accept_callback_;
 }
 
 ServerRequestCallback ServerCallbackHelper::requestCallback() const {
-  return request_callback_;
+  return instrumented_request_callback_;
 }
 
 ServerCloseCallback ServerCallbackHelper::closeCallback() const {
-  return close_callback_;
+  return instrumented_close_callback_;
 }
 
 void ServerCallbackHelper::wait(uint32_t connections_closed) {
