@@ -29,9 +29,10 @@ googletest_repositories()
 
 istioapi_dependencies()
 
-bind(
-    name = "boringssl_crypto",
-    actual = "//external:ssl",
+new_local_repository(
+    name = "openssl",
+    path = "/usr/lib64/",
+    build_file = "openssl.BUILD"
 )
 
 # 1. Determine SHA256 `wget https://github.com/envoyproxy/envoy/archive/$COMMIT.tar.gz && sha256sum $COMMIT.tar.gz`
@@ -43,7 +44,7 @@ ENVOY_SHA = "5a5f131fc2e13c0ebdf77bbc064e503f248ff5d2"
 
 ENVOY_SHA256 = "662a3acdf00419c3f2a71a79adae68b404f39bdbd2bb7ac59cef3522b914bb1a"
 
-ENVOY_ORG = "istio"
+ENVOY_ORG = "maistra"
 
 ENVOY_REPO = "envoy"
 
@@ -76,21 +77,6 @@ load("@envoy//bazel:dependency_imports.bzl", "envoy_dependency_imports")
 
 envoy_dependency_imports()
 
-# Bazel @rules_pkg
-
-http_archive(
-    name = "rules_pkg",
-    sha256 = "aeca78988341a2ee1ba097641056d168320ecc51372ef7ff8e64b139516a4937",
-    urls = [
-        "https://github.com/bazelbuild/rules_pkg/releases/download/0.2.6/rules_pkg-0.2.6.tar.gz",
-        "https://mirror.bazel.build/github.com/bazelbuild/rules_pkg/releases/download/0.2.6/rules_pkg-0.2.6.tar.gz",
-    ],
-)
-
-load("@rules_pkg//:deps.bzl", "rules_pkg_dependencies")
-
-rules_pkg_dependencies()
-
 # Docker dependencies
 
 docker_dependencies()
@@ -113,23 +99,6 @@ pip_deps()
 load(
     "@io_bazel_rules_docker//container:container.bzl",
     "container_pull",
-)
-
-container_pull(
-    name = "distroless_cc",
-    # Latest as of 10/21/2019. To update, remove this line, re-build, and copy the suggested digest.
-    digest = "sha256:86f16733f25964c40dcd34edf14339ddbb2287af2f7c9dfad88f0366723c00d7",
-    registry = "gcr.io",
-    repository = "distroless/cc",
-)
-
-container_pull(
-    name = "bionic",
-    # Latest as of 10/21/2019. To update, remove this line, re-build, and copy the suggested digest.
-    digest = "sha256:3e83eca7870ee14a03b8026660e71ba761e6919b6982fb920d10254688a363d4",
-    registry = "index.docker.io",
-    repository = "library/ubuntu",
-    tag = "bionic",
 )
 
 # End of docker dependencies
