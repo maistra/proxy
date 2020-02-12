@@ -38,9 +38,9 @@ bind(
 # 2. Update .bazelrc and .bazelversion files.
 #
 # envoy commit date: 01/03/2020
-ENVOY_SHA = "487d30c7b7e8492a9079779d6ff8d8e9884a6f39"
+ENVOY_SHA = "72c81ba8cedd19de44ca9d40b79d7a3750247214"
 
-ENVOY_SHA256 = "5959e1968a7fefa05c077b70cb7f9db0606d19c3a14edb0cb6ea5fed550dada4"
+ENVOY_SHA256 = "9e3fffd04521a08654898352bebc7c75f217d1f44dba6025c43aab47cfcd24a3"
 
 LOCAL_ENVOY_PROJECT = "/PATH/TO/ENVOY"
 
