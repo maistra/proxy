@@ -41,6 +41,7 @@ envoy_cc_library(
     external_deps = ["ssl"],
     repository = "@envoy",
     deps = [
+        ":openssl_impl_lib",
         "@envoy//source/exe:envoy_common_lib",
     ],
 )
@@ -67,3 +68,19 @@ proto_library(
     name = "config_proto",
     srcs = ["config.proto"],
 )
+
+envoy_cc_library(
+    name = "openssl_impl_lib",
+    srcs = [
+        "openssl_impl.cc",
+    ],
+    hdrs = [
+        "openssl_impl.h",
+    ],
+    external_deps = [
+        "ssl",
+        "bssl_wrapper_lib",
+    ],
+    repository = "@envoy",
+)
+
