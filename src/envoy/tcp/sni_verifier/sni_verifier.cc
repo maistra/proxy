@@ -16,6 +16,7 @@
 // the implementation (extracting the SNI) is based on the TLS inspector
 // listener filter of Envoy
 
+#include "src/envoy/tcp/sni_verifier/openssl_impl.h"
 #include "src/envoy/tcp/sni_verifier/sni_verifier.h"
 
 #include "common/common/assert.h"
@@ -32,7 +33,7 @@ namespace SniVerifier {
 
 Config::Config(Stats::Scope& scope, size_t max_client_hello_size)
     : stats_{SNI_VERIFIER_STATS(POOL_COUNTER_PREFIX(scope, "sni_verifier."))},
-      ssl_ctx_(SSL_CTX_new(TLS_with_buffers_method())),
+      ssl_ctx_(SSL_CTX_new(TLS_method())),
       max_client_hello_size_(max_client_hello_size) {
   if (max_client_hello_size_ > TLS_MAX_CLIENT_HELLO) {
     throw EnvoyException(fmt::format(
@@ -42,20 +43,21 @@ Config::Config(Stats::Scope& scope, size_t max_client_hello_size)
 
   SSL_CTX_set_options(ssl_ctx_.get(), SSL_OP_NO_TICKET);
   SSL_CTX_set_session_cache_mode(ssl_ctx_.get(), SSL_SESS_CACHE_OFF);
-  SSL_CTX_set_tlsext_servername_callback(
-      ssl_ctx_.get(), [](SSL* ssl, int* out_alert, void*) -> int {
-        Filter* filter = static_cast<Filter*>(SSL_get_app_data(ssl));
 
-        if (filter != nullptr) {
-          filter->onServername(
-              SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name));
-        }
+  auto tlsext_servername_cb = +[](SSL* ssl, int* out_alert, void* arg) -> int {
+    Filter* filter = static_cast<Filter*>(SSL_get_app_data(ssl));
+    
+    if (filter != nullptr) {
+      absl::string_view servername = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
+      filter->onServername(servername);
+    }
 
-        // Return an error to stop the handshake; we have what we wanted
-        // already.
-        *out_alert = SSL_AD_USER_CANCELLED;
-        return SSL_TLSEXT_ERR_ALERT_FATAL;
-      });
+    int result = Envoy::Tcp::SniVerifier::getServernameCallbackReturn(out_alert);
+    return result;
+  };
+
+  SSL_CTX_set_tlsext_servername_callback(ssl_ctx_.get(), tlsext_servername_cb);
+
 }
 
 bssl::UniquePtr<SSL> Config::newSsl() {

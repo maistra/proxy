@@ -29,9 +29,10 @@ googletest_repositories()
 
 mixerapi_dependencies()
 
-bind(
-    name = "boringssl_crypto",
-    actual = "//external:ssl",
+new_local_repository(
+    name = "openssl",
+    path = "/usr/lib64/",
+    build_file = "openssl.BUILD"
 )
 
 # 1. Determine SHA256 `wget https://github.com/istio/envoy/archive/$COMMIT.tar.gz && sha256sum $COMMIT.tar.gz`
