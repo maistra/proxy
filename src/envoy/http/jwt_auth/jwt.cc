@@ -163,12 +163,17 @@ class EvpPkeyGetter : public WithStatus {
       UpdateStatus(Status::PEM_PUBKEY_BAD_BASE64);
       return nullptr;
     }
-    auto rsa = bssl::UniquePtr<RSA>(
-        RSA_public_key_from_bytes(CastToUChar(pkey_der), pkey_der.length()));
+    RSA* rsa(RSA_new());
+    const unsigned char *pp = (const unsigned char *)pkey_der.c_str();
+    d2i_RSAPublicKey(&rsa, &pp, pkey_der.length());
     if (!rsa) {
       UpdateStatus(Status::PEM_PUBKEY_PARSE_ERROR);
     }
-    return EvpPkeyFromRsa(rsa.get());
+    bssl::UniquePtr<EVP_PKEY> result = EvpPkeyFromRsa(rsa);
+
+    RSA_free(rsa);
+
+    return result;
   }
 
   bssl::UniquePtr<EVP_PKEY> EvpPkeyFromJwkRSA(const std::string &n,
@@ -184,19 +189,26 @@ class EvpPkeyGetter : public WithStatus {
       UpdateStatus(Status::FAILED_CREATE_EC_KEY);
       return nullptr;
     }
-    bssl::UniquePtr<BIGNUM> bn_x = BigNumFromBase64UrlString(x);
-    bssl::UniquePtr<BIGNUM> bn_y = BigNumFromBase64UrlString(y);
+    BIGNUM* bn_x = BigNumFromBase64UrlString(x);
+    BIGNUM* bn_y = BigNumFromBase64UrlString(y);
     if (!bn_x || !bn_y) {
       // EC public key field is missing or has parse error.
       UpdateStatus(Status::JWK_EC_PUBKEY_PARSE_ERROR);
       return nullptr;
     }
 
-    if (EC_KEY_set_public_key_affine_coordinates(ec_key.get(), bn_x.get(),
-                                                 bn_y.get()) == 0) {
+    if (EC_KEY_set_public_key_affine_coordinates(ec_key.get(), bn_x,
+                                                 bn_y) == 0) {
+      BN_free(bn_x);
+      BN_free(bn_y);
+
       UpdateStatus(Status::JWK_EC_PUBKEY_PARSE_ERROR);
       return nullptr;
     }
+
+    BN_free(bn_x);
+    BN_free(bn_y);
+
     return ec_key;
   }
 
@@ -212,13 +224,12 @@ class EvpPkeyGetter : public WithStatus {
     return key;
   }
 
-  bssl::UniquePtr<BIGNUM> BigNumFromBase64UrlString(const std::string &s) {
+  BIGNUM* BigNumFromBase64UrlString(const std::string &s) {
     std::string s_decoded = Base64UrlDecode(s);
     if (s_decoded == "") {
       return nullptr;
     }
-    return bssl::UniquePtr<BIGNUM>(
-        BN_bin2bn(CastToUChar(s_decoded), s_decoded.length(), NULL));
+    return BN_bin2bn(CastToUChar(s_decoded), s_decoded.length(), NULL);
   };
 
   bssl::UniquePtr<RSA> RsaFromJwk(const std::string &n, const std::string &e) {
@@ -226,13 +237,15 @@ class EvpPkeyGetter : public WithStatus {
     // It crash if RSA object couldn't be created.
     assert(rsa);
 
-    rsa->n = BigNumFromBase64UrlString(n).release();
-    rsa->e = BigNumFromBase64UrlString(e).release();
-    if (!rsa->n || !rsa->e) {
+    BIGNUM* rsa_n = BigNumFromBase64UrlString(n);
+    BIGNUM* rsa_e = BigNumFromBase64UrlString(e);
+if (!rsa_n || !rsa_e) {
       // RSA public key field is missing or has parse error.
       UpdateStatus(Status::JWK_RSA_PUBKEY_PARSE_ERROR);
       return nullptr;
     }
+    int result = RSA_set0_key(rsa.get(), rsa_n, rsa_e, nullptr);
+
     return rsa;
   }
 };
@@ -368,8 +381,12 @@ bool Verifier::VerifySignatureEC(EC_KEY *key, const uint8_t *signature,
     return false;
   }
 
-  BN_bin2bn(signature, 32, ecdsa_sig->r);
-  BN_bin2bn(signature + 32, 32, ecdsa_sig->s);
+  BIGNUM* pr(BN_new());
+  BIGNUM* ps(BN_new());
+  BN_bin2bn(signature, 32, pr);
+  BN_bin2bn(signature + 32, 32, ps);
+  ECDSA_SIG_set0(ecdsa_sig.get(), pr, ps);
+
   return (ECDSA_do_verify(digest, SHA256_DIGEST_LENGTH, ecdsa_sig.get(), key) ==
           1);
 }
