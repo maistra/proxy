@@ -32,7 +32,7 @@ namespace SniVerifier {
 
 Config::Config(Stats::Scope& scope, size_t max_client_hello_size)
     : stats_{SNI_VERIFIER_STATS(POOL_COUNTER_PREFIX(scope, "sni_verifier."))},
-      ssl_ctx_(SSL_CTX_new(TLS_with_buffers_method())),
+      ssl_ctx_(SSL_CTX_new(TLS_method())),
       max_client_hello_size_(max_client_hello_size) {
   if (max_client_hello_size_ > TLS_MAX_CLIENT_HELLO) {
     throw EnvoyException(fmt::format(
@@ -42,20 +42,29 @@ Config::Config(Stats::Scope& scope, size_t max_client_hello_size)
 
   SSL_CTX_set_options(ssl_ctx_.get(), SSL_OP_NO_TICKET);
   SSL_CTX_set_session_cache_mode(ssl_ctx_.get(), SSL_SESS_CACHE_OFF);
-  SSL_CTX_set_tlsext_servername_callback(
-      ssl_ctx_.get(), [](SSL* ssl, int* out_alert, void*) -> int {
-        Filter* filter = static_cast<Filter*>(SSL_get_app_data(ssl));
 
-        if (filter != nullptr) {
-          filter->onServername(absl::NullSafeStringView(
-              SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name)));
-        }
+  auto tlsext_servername_cb = +[](SSL* ssl, int* out_alert, void* arg) -> int {
+    Filter* filter = static_cast<Filter*>(SSL_get_app_data(ssl));
+ 
+    if (filter != nullptr) {
+      filter->onServername(absl::NullSafeStringView(
+          SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name)));
+    }
 
-        // Return an error to stop the handshake; we have what we wanted
-        // already.
-        *out_alert = SSL_AD_USER_CANCELLED;
-        return SSL_TLSEXT_ERR_ALERT_FATAL;
-      });
+    // TODO (dmitri-d) I don't think we need to set out_alert; it looks like it's only
+    // checked when the callback returns an error, which we don't
+    // *out_alert = SSL_AD_USER_CANCELLED;
+    return 1; //SSL_TLSEXT_ERR_OK
+  };
+
+  SSL_CTX_set_tlsext_servername_callback(ssl_ctx_.get(), tlsext_servername_cb);
+
+  // During TLS1.3 handshake OpenSSL expects for server-side to have either a valid certificate or
+  // a certificate callback, otherwise the connection is not considered as tls1.3-capable (see
+  // ssl/statem/statem_lib.c:1496 - is_tls13_capable() function in openssl v1.1.1d).
+  // We use a dummy certificate callback to get through  the handshake.
+  auto cert_cb = [](SSL* ssl, void* arg) -> int { return 0; };
+  SSL_CTX_set_cert_cb(ssl_ctx_.get(), cert_cb, nullptr);
 }
 
 bssl::UniquePtr<SSL> Config::newSsl() {
