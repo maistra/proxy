@@ -1,0 +1,4 @@
+test/common/stats
+test/extensions/filters/network/thrift_proxy
+test/extensions/tracers/dynamic_ot
+test/exe
