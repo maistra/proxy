@@ -38,10 +38,9 @@ new_local_repository(
 # 1. Determine SHA256 `wget https://github.com/maistra/envoy/archive/$COMMIT.tar.gz && sha256sum $COMMIT.tar.gz`
 # 2. Update .bazelrc and .bazelversion files.
 #
-# envoy commit date: 01/03/2020
-ENVOY_SHA = "72c81ba8cedd19de44ca9d40b79d7a3750247214"
+ENVOY_SHA = "2c5d27e1c04b1edfdded204a7cd847ca94f35a8f"
 
-ENVOY_SHA256 = "9e3fffd04521a08654898352bebc7c75f217d1f44dba6025c43aab47cfcd24a3"
+ENVOY_SHA256 = "f73f631b361c9c37b56a2ab4949253f0007bc7723d32a321b730540d764167fa"
 
 LOCAL_ENVOY_PROJECT = "/PATH/TO/ENVOY"
 
