@@ -45,18 +45,18 @@ TEST(IstioDimensions, Hash) {
   IstioDimensions d2{.request_protocol = "grpc"};
   IstioDimensions d3{.request_protocol = "grpc", .response_code = "200"};
   IstioDimensions d4{.request_protocol = "grpc", .response_code = "400"};
-  IstioDimensions d5{.request_protocol = "grpc", .source_app = "app_source"};
-  IstioDimensions d6{.request_protocol = "grpc",
-                     .source_app = "app_source",
-                     .source_version = "v2"};
-  IstioDimensions d7{.outbound = true,
+  IstioDimensions d5{.source_app = "app_source", .request_protocol = "grpc"};
+  IstioDimensions d6{.source_app = "app_source",
+	             .source_version = "v2", 
+	             .request_protocol = "grpc"};
+  IstioDimensions d7{.source_app = "app_source", 
+                     .source_version = "v2",
                      .request_protocol = "grpc",
-                     .source_app = "app_source",
-                     .source_version = "v2"};
-  IstioDimensions d8{.outbound = true,
+                     .outbound = true};
+  IstioDimensions d8{.source_app = "app_source", 
+                     .source_version = "v2",
                      .request_protocol = "grpc",
-                     .source_app = "app_source",
-                     .source_version = "v2"};
+                     .outbound = true};
   // Must be unique except for d7 and d8.
   std::set<size_t> hashes;
   hashes.insert(IstioDimensions::HashIstioDimensions()(d1));
