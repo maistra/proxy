@@ -20,7 +20,6 @@ workspace(name = "io_istio_proxy")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive", "http_file")
 load(
     "//bazel:repositories.bzl",
-    "docker_dependencies",
     "googletest_repositories",
     "istioapi_dependencies",
 )
@@ -77,31 +76,12 @@ load("@envoy//bazel:dependency_imports.bzl", "envoy_dependency_imports")
 
 envoy_dependency_imports()
 
-# Docker dependencies
 
-docker_dependencies()
+load("@rules_antlr//antlr:deps.bzl", "antlr_dependencies")
 
-load(
-    "@io_bazel_rules_docker//repositories:repositories.bzl",
-    container_repositories = "repositories",
-)
+antlr_dependencies(471)
 
-container_repositories()
-
-load("@io_bazel_rules_docker//repositories:deps.bzl", container_deps = "deps")
-
-container_deps()
-
-load("@io_bazel_rules_docker//repositories:pip_repositories.bzl", "pip_deps")
-
-pip_deps()
-
-load(
-    "@io_bazel_rules_docker//container:container.bzl",
-    "container_pull",
-)
-
-# End of docker dependencies
+FLAT_BUFFERS_SHA = "a83caf5910644ba1c421c002ef68e42f21c15f9f"
 
 load("//bazel:wasm.bzl", "wasm_dependencies")
 
