@@ -18,7 +18,7 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 # Jun 23, 2017 (no releases)
 TOOLS_SHA = "e6cb469339aef5b7be0c89de730d5f3cc8e47e50"
-TOOLS_SHA256 = "fe9489eabcb598e13137d0641525ff3813d8af151e1418e6940e611850d90136"
+TOOLS_SHA256 = "840f59bbc76b1268d11764096ceace289aa3d1d497d1249cf516bc8350936eca"
 
 def go_x_tools_imports_repositories():
     BUILD_FILE = """
