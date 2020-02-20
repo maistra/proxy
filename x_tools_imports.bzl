@@ -55,6 +55,6 @@ go_binary(
         name = "org_golang_x_tools_imports",
         build_file_content = BUILD_FILE,
         strip_prefix = "tools-" + TOOLS_SHA,
-        url = "https://github.com/golang/tools/archives/" + TOOLS_SHA + ".tar.gz",
+        url = "https://github.com/golang/tools/archive/" + TOOLS_SHA + ".tar.gz",
         sha256 = TOOLS_SHA256,
     )
