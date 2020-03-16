@@ -38,9 +38,9 @@ new_local_repository(
 # 2. Update .bazelrc and .bazelversion files.
 #
 # envoy commit date: 02/20/2020
-ENVOY_SHA = "61101255b67b70b89fe4b3dd229cecd047bd5620"
+ENVOY_SHA = "09d777a2afa493e844b48cc61362c928e4ea1685"
 
-ENVOY_SHA256 = "b0cac84291528edcd50224c094d9edbb3e978160c61516da5c2fee95af739eaf"
+ENVOY_SHA256 = "f4ada7caf124e705d7a0a5acd43bb343b4d86c6337d3249060d7042552aba639"
 
 # To override with local envoy, just pass `--override_repository=envoy=/PATH/TO/ENVOY` to Bazel or
 # persist the option in `user.bazelrc`.
