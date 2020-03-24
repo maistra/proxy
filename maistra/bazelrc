@@ -18,6 +18,7 @@ build --copt -Wno-error=implicit-function-declaration
 build --copt -Wno-error=old-style-cast
 build --copt -Wno-error=conversion-null
 build --copt -Wno-error=implicit-fallthrough
+build --copt -Wno-error=unused-parameter # for sni_verifier.cc
 build --copt -ldl
 build --host_force_python=PY3
 build --host_javabase=@bazel_tools//tools/jdk:absolute_javabase --define=ABSOLUTE_JAVABASE=/etc/alternatives/java_sdk/
