@@ -35,9 +35,8 @@ namespace Envoy {
 namespace Tcp {
 namespace SniVerifier {
 
-// TODO (dmitri-d) Investigate disabled tests
 // Test that a SniVerifier filter config works.
-TEST(SniVerifierTest, DISABLED_ConfigTest) {
+TEST(SniVerifierTest, ConfigTest) {
   NiceMock<Server::Configuration::MockFactoryContext> context;
   SniVerifierConfigFactory factory;
 
@@ -48,7 +47,7 @@ TEST(SniVerifierTest, DISABLED_ConfigTest) {
   cb(connection);
 }
 
-TEST(SniVerifierTest, DISABLED_MaxClientHelloSize) {
+TEST(SniVerifierTest, MaxClientHelloSize) {
   Stats::IsolatedStoreImpl store;
   EXPECT_THROW_WITH_MESSAGE(
       Config(store, Config::TLS_MAX_CLIENT_HELLO + 1), EnvoyException,
@@ -57,9 +56,9 @@ TEST(SniVerifierTest, DISABLED_MaxClientHelloSize) {
 
 class SniVerifierFilterTest : public testing::Test {
  protected:
-  // TODO (dmitri-d) upstream limit is 200, investigate the difference	 
-  static constexpr size_t TLS_MAX_CLIENT_HELLO = 400;
-  static constexpr size_t TOO_LARGE_SERVER_NAME_SIZE = 200;
+  // The value of TLS_MAX_CLIENT_HELLO should be greater than the maximum size of clienthello in all tests
+  // (with the exception of SniTooLarge) for all tls versions
+  static constexpr size_t TLS_MAX_CLIENT_HELLO = 372;
 
   void SetUp() override {
     store_ = std::make_unique<Stats::IsolatedStoreImpl>();
@@ -179,7 +178,8 @@ TEST_F(SniVerifierFilterTest, BothSnisEmpty) {
 }
 
 TEST_F(SniVerifierFilterTest, SniTooLarge) {
-  runTestForClientHello("example.com", std::string(TOO_LARGE_SERVER_NAME_SIZE, 'a'),
+  // Inner sni hostname length is such that the total length of clienthello exceeds the TLS_MAX_CLIENT_HELLO bytes
+  runTestForClientHello("example.com", std::string(252, 'a'),
                         Network::FilterStatus::StopIteration);
   EXPECT_EQ(1, cfg_->stats().client_hello_too_large_.value());
   EXPECT_EQ(0, cfg_->stats().tls_found_.value());

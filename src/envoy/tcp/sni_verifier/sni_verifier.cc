@@ -58,6 +58,12 @@ Config::Config(Stats::Scope& scope, size_t max_client_hello_size)
 
   SSL_CTX_set_tlsext_servername_callback(ssl_ctx_.get(), tlsext_servername_cb);
 
+  // During TLS1.3 handshake OpenSSL expects for server-side to have either a valid certificate or
+  // a certificate callback, otherwise the connection is not considered as tls1.3-capable (see
+  // ssl/statem/statem_lib.c:1496 - is_tls13_capable() function in openssl v1.1.1d).
+  // We use a dummy certificate callback to get through  the handshake.
+  auto cert_cb = [](SSL* ssl, void* arg) -> int { return 0; };
+  SSL_CTX_set_cert_cb(ssl_ctx_.get(), cert_cb, nullptr);
 }
 
 bssl::UniquePtr<SSL> Config::newSsl() {
