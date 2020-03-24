@@ -6,10 +6,6 @@ build --host_javabase=@bazel_tools//tools/jdk:absolute_javabase --define=ABSOLUT
 build --verbose_failures
 build --config=clang
 
-# FIXME(jwendell)
-# build --cxxopt -D_FORTIFY_SOURCE=2
-
-
 # Test flags
 build --test_env=ENVOY_IP_TEST_VERSIONS=v4only
 build --test_env=HEAPCHECK=minimal
