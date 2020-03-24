@@ -8,10 +8,6 @@ build --verbose_failures
 build --config=clang
 build --define=crypto=system
 
-# FIXME(jwendell)
-# build --cxxopt -D_FORTIFY_SOURCE=2
-
-
 # Test flags
 build --test_env=ENVOY_IP_TEST_VERSIONS=v4only
 build --test_env=HEAPCHECK=minimal
