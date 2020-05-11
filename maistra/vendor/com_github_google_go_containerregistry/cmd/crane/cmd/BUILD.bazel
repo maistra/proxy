@@ -1,0 +1,34 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "append.go",
+        "config.go",
+        "copy.go",
+        "delete.go",
+        "digest.go",
+        "export.go",
+        "list.go",
+        "manifest.go",
+        "pull.go",
+        "push.go",
+        "rebase.go",
+        "root.go",
+        "validate.go",
+        "version.go",
+    ],
+    importpath = "github.com/google/go-containerregistry/cmd/crane/cmd",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/crane:go_default_library",
+        "//pkg/name:go_default_library",
+        "//pkg/v1:go_default_library",
+        "//pkg/v1/cache:go_default_library",
+        "//pkg/v1/daemon:go_default_library",
+        "//pkg/v1/mutate:go_default_library",
+        "//pkg/v1/tarball:go_default_library",
+        "//pkg/v1/validate:go_default_library",
+        "//vendor/github.com/spf13/cobra:go_default_library",
+    ],
+)

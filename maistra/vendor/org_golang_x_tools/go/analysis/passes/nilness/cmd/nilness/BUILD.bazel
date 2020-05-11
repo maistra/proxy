@@ -1,0 +1,18 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["main.go"],
+    importpath = "golang.org/x/tools/go/analysis/passes/nilness/cmd/nilness",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//go/analysis/passes/nilness:go_default_library",
+        "//go/analysis/singlechecker:go_default_library",
+    ],
+)
+
+go_binary(
+    name = "nilness",
+    embed = [":go_default_library"],
+    visibility = ["//visibility:public"],
+)

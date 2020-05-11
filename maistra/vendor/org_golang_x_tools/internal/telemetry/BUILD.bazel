@@ -1,0 +1,16 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "context.go",
+        "doc.go",
+        "event.go",
+        "id.go",
+        "metric.go",
+        "tag.go",
+        "trace.go",
+    ],
+    importpath = "golang.org/x/tools/internal/telemetry",
+    visibility = ["//:__subpackages__"],
+)

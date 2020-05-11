@@ -1,0 +1,13 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["telemetry.go"],
+    importpath = "golang.org/x/tools/internal/lsp/telemetry",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//internal/telemetry/stats:go_default_library",
+        "//internal/telemetry/tag:go_default_library",
+        "//internal/telemetry/unit:go_default_library",
+    ],
+)

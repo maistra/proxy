@@ -1,0 +1,226 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
+
+go_test(
+    name = "opts_test",
+    srcs = ["adder_test.go"],
+    embed = [":opts"],
+)
+
+go_library(
+    name = "opts",
+    srcs = [
+        "add.c",
+        "add.cpp",
+        "add.h",
+        "adder.go",
+    ] + select({
+        "@io_bazel_rules_go//go/platform:darwin": [
+            "add.m",
+            "add.mm",
+        ],
+        "//conditions:default": [],
+    }),
+    cgo = True,
+    copts = ["-DRULES_GO_C"],
+    cppopts = ["-DRULES_GO_CPP"],
+    cxxopts = ["-DRULES_GO_CXX"],
+    importpath = "github.com/bazelbuild/rules_go/tests/core/cxx",
+)
+
+go_test(
+    name = "dylib_test",
+    srcs = ["dylib_test.go"],
+    embed = [":dylib_client"],
+    rundir = ".",
+)
+
+go_library(
+    name = "dylib_client",
+    srcs = ["dylib_client.go"],
+    cdeps = select({
+        "@io_bazel_rules_go//go/platform:darwin": [":darwin_imported_dylib"],
+        "//conditions:default": [":linux_imported_dylib"],
+        # TODO(jayconrod): Support windows, skip others.
+    }),
+    cgo = True,
+    importpath = "github.com/bazelbuild/rules_go/tests/core/cgo/dylib",
+)
+
+cc_import(
+    name = "darwin_imported_dylib",
+    shared_library = "libimported.dylib",
+    tags = ["manual"],
+)
+
+cc_binary(
+    name = "libimported.dylib",
+    srcs = ["imported.c"],
+    linkopts = ["-install_name @rpath/libimported.dylib"],
+    linkshared = True,
+    tags = ["manual"],
+)
+
+cc_import(
+    name = "linux_imported_dylib",
+    shared_library = ":libimported.so",
+    tags = ["manual"],
+)
+
+cc_binary(
+    name = "libimported.so",
+    srcs = ["imported.c"],
+    linkshared = True,
+    tags = ["manual"],
+)
+
+go_test(
+    name = "versioned_dylib_test",
+    srcs = ["dylib_test.go"],
+    embed = [":versioned_dylib_client"],
+    rundir = ".",
+)
+
+go_library(
+    name = "versioned_dylib_client",
+    srcs = ["dylib_client.go"],
+    cdeps = select({
+        # This test exists just for versioned `.so`s on Linux,
+        # but we can reuse the above test's dylib so it passes on darwin,
+        # where filename suffixes are not used for library version.
+        "@io_bazel_rules_go//go/platform:darwin": [":darwin_imported_dylib"],
+        "//conditions:default": [":linux_imported_versioned_dylib"],
+        # TODO(jayconrod): Support windows, skip others.
+    }),
+    cgo = True,
+    importpath = "github.com/bazelbuild/rules_go/tests/core/cgo/dylib",
+)
+
+cc_library(
+    name = "linux_imported_versioned_dylib",
+    srcs = [":libimported.so.2"],
+    linkstatic = False,
+    tags = ["manual"],
+)
+
+cc_binary(
+    name = "libimported.so.2",
+    srcs = ["imported.c"],
+    linkshared = True,
+    tags = ["manual"],
+)
+
+go_test(
+    name = "cc_libs_test",
+    srcs = [
+        "cc_libs_darwin_test.go",
+        "cc_libs_linux_test.go",
+    ],
+    data = [
+        ":c_srcs",
+        ":cc_deps",
+        ":cc_srcs",
+        ":pure",
+    ],
+    deps = ["//go/tools/bazel:go_default_library"],
+)
+
+go_binary(
+    name = "pure",
+    srcs = ["pure.go"],
+    out = "pure_bin",
+    cgo = True,
+    pure = "on",
+)
+
+go_binary(
+    name = "c_srcs",
+    srcs = [
+        "foo.c",
+        "foo.go",
+    ],
+    out = "c_srcs_bin",
+    cgo = True,
+)
+
+go_binary(
+    name = "cc_srcs",
+    srcs = [
+        "bar.cc",
+        "bar.go",
+    ],
+    out = "cc_srcs_bin",
+    cgo = True,
+)
+
+go_binary(
+    name = "cc_deps",
+    srcs = ["bar.go"],
+    out = "cc_deps_bin",
+    cdeps = [":bar_dep"],
+    cgo = True,
+)
+
+cc_library(
+    name = "bar_dep",
+    srcs = ["bar.cc"],
+)
+
+go_test(
+    name = "race_test",
+    srcs = [
+        "race_off.c",
+        "race_off.go",
+        "race_on.c",
+        "race_on.go",
+        "race_test.go",
+    ],
+    cgo = True,
+    race = "on",
+)
+
+go_test(
+    name = "tag_test",
+    srcs = ["tag_test.go"],
+    data = [
+        ":tag_cgo_bin",
+        ":tag_pure_bin",
+    ],
+    rundir = ".",
+    deps = ["//go/tools/bazel:go_default_library"],
+)
+
+go_binary(
+    name = "tag_pure_bin",
+    srcs = [
+        "tag_pure.go",
+        "tag_pure_err.c",
+        "tag_pure_err.go",
+    ],
+    cgo = True,
+    pure = "on",
+)
+
+go_binary(
+    name = "tag_cgo_bin",
+    srcs = [
+        "tag_cgo.go",
+        "tag_cgo_err.go",
+    ],
+    cgo = True,
+    pure = "off",
+)
+
+go_test(
+    name = "cgo_link_test",
+    srcs = [
+        "cgo_link_test.go",
+        "cgo_ref.go",
+    ],
+    cgo = True,
+    cdeps = [":cgo_link_dep"],
+)
+
+cc_library(
+    name = "cgo_link_dep",
+    srcs = ["cgo_link_dep.c"],
+)

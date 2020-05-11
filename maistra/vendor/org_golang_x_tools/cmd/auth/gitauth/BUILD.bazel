@@ -1,0 +1,14 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["gitauth.go"],
+    importpath = "golang.org/x/tools/cmd/auth/gitauth",
+    visibility = ["//visibility:private"],
+)
+
+go_binary(
+    name = "gitauth",
+    embed = [":go_default_library"],
+    visibility = ["//visibility:public"],
+)

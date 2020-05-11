@@ -1,0 +1,49 @@
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Python 2 bytecode files
+*.pyc
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Emacs garbage
+*~
+
+# Vim garbage
+*.swp
+
+# Bazel directories
+bazel-*
+bazel-bin
+bazel-genfiles
+bazel-out
+bazel-testlogs
+
+# Eclipse and PyDev
+.project
+.pydevproject
