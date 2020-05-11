@@ -20,6 +20,7 @@ workspace(name = "io_istio_proxy")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load(
     "//:repositories.bzl",
+    "docker_dependencies",
     "googletest_repositories",
     "mixerapi_dependencies",
 )
