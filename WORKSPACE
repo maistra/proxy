@@ -39,11 +39,11 @@ new_local_repository(
 #
 # Commit time: 4/24/20
 # Used by scripts/generate-wasm.sh
-ENVOY_SHA = "611b831a61c8da58334d24a0f1e20398df011e88"
+ENVOY_SHA = "e9bf8c5db92892b843f315b1cc180a1931bec46e"
 
-ENVOY_SHA256 = "ddb1790000962e37e07de8927a97033060959ab213d2b2107463fdbaba99aa83"
+ENVOY_SHA256 = "89fc886207d946b8b1aa4435150e015b7de8733b39a924880e1ecf251ac68c35"
 
-ENVOY_ORG = "istio"
+ENVOY_ORG = "maistra"
 
 ENVOY_REPO = "envoy"
 
