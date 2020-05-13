@@ -1,2 +1,0 @@
-# DO NOT EDIT: automatically generated WORKSPACE file for _go_download_sdk rule
-workspace(name = "go_sdk")

@@ -52,7 +52,6 @@ build --override_repository=envoy_build_tools=/work/maistra/vendor/envoy_build_t
 build --override_repository=foreign_cc_platform_utils=/work/maistra/vendor/foreign_cc_platform_utils
 build --override_repository=go_puller_darwin=/work/maistra/vendor/go_puller_darwin
 build --override_repository=go_puller_linux=/work/maistra/vendor/go_puller_linux
-build --override_repository=go_sdk=/work/maistra/vendor/go_sdk
 build --override_repository=googletest_git=/work/maistra/vendor/googletest_git
 build --override_repository=grpc_httpjson_transcoding=/work/maistra/vendor/grpc_httpjson_transcoding
 build --override_repository=gzip=/work/maistra/vendor/gzip
