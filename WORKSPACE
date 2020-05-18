@@ -38,10 +38,10 @@ new_local_repository(
 # 1. Determine SHA256 `wget https://github.com/maistra/envoy/archive/$COMMIT.tar.gz && sha256sum $COMMIT.tar.gz`
 # 2. Update .bazelrc and .bazelversion files.
 #
-# envoy commit date: 02/20/2020
-ENVOY_SHA = "8f2ed867ba0c1e457f533c1a1e62869045befa9d"
+# envoy commit date: 05/18/2020
+ENVOY_SHA = "2d1a0fe0c42df68fe02ad56aab928e7d9093be4d"
 
-ENVOY_SHA256 = "21bcfe786680bae3c60f09ce1ccebbc800a886f26287364add7c3900c220eea5"
+ENVOY_SHA256 = "e3e0c200fdede7bba0ea2f5db26747b2d8b5ece00cefab4f16b94d9946bef5ac"
 
 # To override with local envoy, just pass `--override_repository=envoy=/PATH/TO/ENVOY` to Bazel or
 # persist the option in `user.bazelrc`.
