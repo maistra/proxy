@@ -1,3 +1,4 @@
+# Common build flags
 build --cxxopt -fPIE
 build --cxxopt -fPIC
 build --cxxopt -fstack-clash-protection
@@ -14,7 +15,16 @@ build --cxxopt -Wno-error=deprecated-declarations
 build --cxxopt -Wno-error=unused-variable
 build --cxxopt -w
 build --cxxopt -ldl
+build --host_force_python=PY3
+build --force_pic=true
+build --sandbox_debug
+build --verbose_failures
 
+
+# Arch-specific build flags, triggered with --config=$ARCH in bazel build command
 build:x86_64 --cxxopt -fcf-protection=full
+build:s390x --define=DUMMY=dummy
+build:ppc --define=DUMMY=dummy
 
+# Import vendor flags
 import %workspace%/maistra/bazelrc-vendor
