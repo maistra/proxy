@@ -18,8 +18,6 @@ build --experimental_remap_main_repo
 build --experimental_local_memory_estimate
 build --experimental_strict_action_env=true
 build --host_force_python=PY2
-build --action_env=BAZEL_LINKLIBS=-l%:libstdc++.a
-build --action_env=BAZEL_LINKOPTS=-lm
 build --host_javabase=@bazel_tools//tools/jdk:remote_jdk11
 build --javabase=@bazel_tools//tools/jdk:remote_jdk11
 build --copt=-fPIC
