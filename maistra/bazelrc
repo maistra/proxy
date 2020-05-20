@@ -30,6 +30,7 @@ build --test_output=all
 build:x86_64 --copt -fcf-protection=full
 build:s390x --define=DUMMY=dummy
 build:ppc --define=DUMMY=dummy
+build:aarch64 --define=DUMMY=dummy
 
 # Import vendor flags
 import %workspace%/maistra/bazelrc-vendor
