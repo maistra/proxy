@@ -14,7 +14,7 @@ RUN  dnf -y upgrade --refresh && \
             patch lld libatomic libstdc++-static && \
      dnf -y clean all
 
-RUN ln -s /usr/bin/python2 /usr/bin/python
+#RUN ln -s /usr/bin/python2 /usr/bin/python
 
 ENV CC=clang CXX=clang++ USER=user HOME=/home/user
 RUN mkdir -p /home/user && chmod 777 /home/user
