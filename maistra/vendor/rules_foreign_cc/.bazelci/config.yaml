@@ -1,0 +1,48 @@
+---
+tasks:
+  ubuntu1804:
+    platform: ubuntu1804
+    working_directory: examples
+    build_targets:
+      - "//cmake_android:app"
+    test_targets:
+    - "//:tests"
+  ubuntu1604:
+    platform: ubuntu1604
+    working_directory: examples
+    build_targets:
+      - "//cmake_android:app"
+    test_targets:
+      - "//:tests_no_synthetic"
+  macos:
+    platform: macos
+    working_directory: examples
+    build_targets:
+      - "//cmake_android:app"
+    test_targets:
+      - "//:cmake_tests"
+  windows:
+    platform: windows
+    working_directory: examples
+    test_targets:
+      - "//:win_tests"
+  ubuntu1804_flags:
+    platform: ubuntu1804
+    working_directory: test/standard_cxx_flags_test
+    test_targets:
+      - "//:flags_test"
+  ubuntu1604_flags:
+    platform: ubuntu1604
+    working_directory: test/standard_cxx_flags_test
+    test_targets:
+      - "//:flags_test"
+  macos_flags:
+    platform: macos
+    working_directory: test/standard_cxx_flags_test
+    test_targets:
+      - "//:flags_test"
+  windows_flags:
+    platform: windows
+    working_directory: test/standard_cxx_flags_test
+    test_targets:
+      - "//:flags_test"

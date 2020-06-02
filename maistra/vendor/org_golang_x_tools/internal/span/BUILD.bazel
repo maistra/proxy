@@ -1,0 +1,27 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "parse.go",
+        "span.go",
+        "token.go",
+        "token111.go",
+        "token112.go",
+        "uri.go",
+        "utf16.go",
+    ],
+    importpath = "golang.org/x/tools/internal/span",
+    visibility = ["//:__subpackages__"],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = [
+        "span_test.go",
+        "token_test.go",
+        "uri_test.go",
+        "utf16_test.go",
+    ],
+    embed = [":go_default_library"],
+)

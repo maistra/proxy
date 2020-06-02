@@ -1,0 +1,2 @@
+# DO NOT EDIT: automatically generated WORKSPACE file for container_pull rule
+workspace(name = "bionic")

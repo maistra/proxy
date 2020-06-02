@@ -1,0 +1,62 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "cover.go",
+        "doc.go",
+        "func.go",
+        "html.go",
+    ],
+    importpath = "golang.org/x/tools/cmd/cover",
+    visibility = ["//visibility:private"],
+    deps = ["//cover:go_default_library"],
+)
+
+go_binary(
+    name = "cover",
+    embed = [":go_default_library"],
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = ["cover_test.go"],
+    embed = [":go_default_library"],
+    deps = select({
+        "@io_bazel_rules_go//go/platform:darwin": [
+            "//internal/testenv:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:dragonfly": [
+            "//internal/testenv:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:freebsd": [
+            "//internal/testenv:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:ios": [
+            "//internal/testenv:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:linux": [
+            "//internal/testenv:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:nacl": [
+            "//internal/testenv:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:netbsd": [
+            "//internal/testenv:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:openbsd": [
+            "//internal/testenv:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:plan9": [
+            "//internal/testenv:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:solaris": [
+            "//internal/testenv:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:windows": [
+            "//internal/testenv:go_default_library",
+        ],
+        "//conditions:default": [],
+    }),
+)

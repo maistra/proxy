@@ -20,6 +20,7 @@ workspace(name = "io_istio_proxy")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load(
     "//:repositories.bzl",
+    "docker_dependencies",
     "googletest_repositories",
     "mixerapi_dependencies",
 )
@@ -37,10 +38,10 @@ new_local_repository(
 # 1. Determine SHA256 `wget https://github.com/maistra/envoy/archive/$COMMIT.tar.gz && sha256sum $COMMIT.tar.gz`
 # 2. Update .bazelrc and .bazelversion files.
 #
-# envoy commit date: 02/20/2020
-ENVOY_SHA = "8f2ed867ba0c1e457f533c1a1e62869045befa9d"
+# envoy commit date: 05/18/2020
+ENVOY_SHA = "2d1a0fe0c42df68fe02ad56aab928e7d9093be4d"
 
-ENVOY_SHA256 = "21bcfe786680bae3c60f09ce1ccebbc800a886f26287364add7c3900c220eea5"
+ENVOY_SHA256 = "e3e0c200fdede7bba0ea2f5db26747b2d8b5ece00cefab4f16b94d9946bef5ac"
 
 # To override with local envoy, just pass `--override_repository=envoy=/PATH/TO/ENVOY` to Bazel or
 # persist the option in `user.bazelrc`.
@@ -66,3 +67,42 @@ envoy_dependencies()
 load("@envoy//bazel:dependency_imports.bzl", "envoy_dependency_imports")
 
 envoy_dependency_imports()
+
+# Docker dependencies
+
+docker_dependencies()
+
+load(
+    "@io_bazel_rules_docker//repositories:repositories.bzl",
+    container_repositories = "repositories",
+)
+
+container_repositories()
+
+load("@io_bazel_rules_docker//repositories:deps.bzl", container_deps = "deps")
+
+container_deps()
+
+load(
+    "@io_bazel_rules_docker//container:container.bzl",
+    "container_pull",
+)
+
+container_pull(
+    name = "distroless_cc",
+    # Latest as of 10/21/2019. To update, remove this line, re-build, and copy the suggested digest.
+    digest = "sha256:86f16733f25964c40dcd34edf14339ddbb2287af2f7c9dfad88f0366723c00d7",
+    registry = "gcr.io",
+    repository = "distroless/cc",
+)
+
+container_pull(
+    name = "bionic",
+    # Latest as of 10/21/2019. To update, remove this line, re-build, and copy the suggested digest.
+    digest = "sha256:3e83eca7870ee14a03b8026660e71ba761e6919b6982fb920d10254688a363d4",
+    registry = "index.docker.io",
+    repository = "library/ubuntu",
+    tag = "bionic",
+)
+
+# End of docker dependencies

@@ -1,0 +1,31 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "blobs.go",
+        "error.go",
+        "manifest.go",
+        "registry.go",
+        "tls.go",
+    ],
+    importpath = "github.com/google/go-containerregistry/pkg/registry",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = [
+        "compatibility_test.go",
+        "example_test.go",
+        "registry_test.go",
+        "tls_test.go",
+    ],
+    embed = [":go_default_library"],
+    deps = [
+        "//pkg/name:go_default_library",
+        "//pkg/v1/random:go_default_library",
+        "//pkg/v1/remote:go_default_library",
+        "//pkg/v1/tarball:go_default_library",
+    ],
+)

@@ -1,0 +1,56 @@
+[
+  [
+    {
+      "error": 0,
+      "meta": {
+        "component": "nginx",
+        "http.method": "GET",
+        "http.status_code": "200",
+        "http.status_line": "",
+        "http.url": "http://localhost/",
+        "operation": "GET /index.html"
+      },
+      "metrics": {},
+      "name": "nginx.handle",
+      "resource": "/",
+      "service": "nginx",
+      "type": "web"
+    }
+  ],
+  [
+    {
+      "error": 0,
+      "meta": {
+        "component": "nginx",
+        "http.method": "GET",
+        "http.status_code": "200",
+        "http.status_line": "",
+        "http.url": "http://localhost/",
+        "operation": "GET /index.html"
+      },
+      "metrics": {},
+      "name": "nginx.handle",
+      "resource": "/",
+      "service": "nginx",
+      "type": "web"
+    }
+  ],
+  [
+    {
+      "error": 0,
+      "meta": {
+        "component": "nginx",
+        "http.method": "GET",
+        "http.status_code": "200",
+        "http.status_line": "",
+        "http.url": "http://localhost/",
+        "operation": "GET /index.html"
+      },
+      "metrics": {},
+      "name": "nginx.handle",
+      "resource": "/",
+      "service": "nginx",
+      "type": "web"
+    }
+  ]
+]

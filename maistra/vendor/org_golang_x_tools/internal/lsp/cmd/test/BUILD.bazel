@@ -1,0 +1,23 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "check.go",
+        "cmdtest.go",
+        "definition.go",
+        "format.go",
+        "rename.go",
+    ],
+    importpath = "golang.org/x/tools/internal/lsp/cmd/test",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//go/packages/packagestest:go_default_library",
+        "//internal/lsp/cmd:go_default_library",
+        "//internal/lsp/protocol:go_default_library",
+        "//internal/lsp/source:go_default_library",
+        "//internal/lsp/tests:go_default_library",
+        "//internal/span:go_default_library",
+        "//internal/tool:go_default_library",
+    ],
+)
