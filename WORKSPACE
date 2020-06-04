@@ -106,3 +106,11 @@ container_pull(
 )
 
 # End of docker dependencies
+
+load("//maistra:dependencies.bzl", "maistra_chromium_v8")
+new_local_repository(
+    name = "maistra_chromium_v8",
+    path = "/usr/lib64/",
+    build_file = "//maistra:maistra_chromium_v8.BUILD"
+)
+maistra_chromium_v8()

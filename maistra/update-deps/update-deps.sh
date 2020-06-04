@@ -44,6 +44,7 @@ function init(){
         "bazel_gazelle_go_repository_tools"
         "openssl"
         "go_sdk"
+        "maistra_chromium_v8"
   )
 }
 
@@ -84,7 +85,6 @@ done
 }
 
 function apply_local_patches() {
-  sed -i 's/fatal_linker_warnings = true/fatal_linker_warnings = false/g' ${VENDOR_DIR}/com_googlesource_chromium_v8/wee8/build/config/compiler/BUILD.gn
   sed -i 's/GO_VERSION[ ]*=.*/GO_VERSION = "host"/g' ${VENDOR_DIR}/envoy/bazel/dependency_imports.bzl
 
   pushd "${VENDOR_DIR}/com_github_gperftools_gperftools"
