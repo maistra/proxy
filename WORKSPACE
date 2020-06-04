@@ -107,10 +107,31 @@ container_pull(
 
 # End of docker dependencies
 
-load("//maistra:dependencies.bzl", "maistra_chromium_v8")
+### Maistra dependencies
 new_local_repository(
-    name = "maistra_chromium_v8",
-    path = "/usr/lib64/",
-    build_file = "//maistra:maistra_chromium_v8.BUILD"
+    name = "maistra_wee8_headers",
+    path = "/usr/include/wasm-api",
+    build_file_content = """
+cc_library(
+    name = "headers",
+    hdrs = glob(["**/*.h"]),
+    visibility = ["//visibility:public"],
 )
-maistra_chromium_v8()
+"""
+)
+new_local_repository(
+    name = "maistra_wee8_libs",
+    path = "/usr/lib64/",
+    build_file_content = """
+cc_library(
+    name = "wee8",
+    srcs = ["libwee8.a"],
+    deps = ["@maistra_wee8_headers//:headers"],
+    visibility = ["//visibility:public"],
+)
+"""
+)
+bind(
+    name = "wee8",
+    actual = "@maistra_wee8_libs//:wee8",
+)
