@@ -110,7 +110,7 @@ container_pull(
 ### Maistra dependencies
 new_local_repository(
     name = "maistra_wee8_headers",
-    path = "/usr/include/wasm-api",
+    path = "/usr/include/wasm-api/",
     build_file_content = """
 cc_library(
     name = "headers",
@@ -127,6 +127,7 @@ cc_library(
     name = "wee8",
     srcs = ["libwee8.a"],
     deps = ["@maistra_wee8_headers//:headers"],
+    copts = ["-Iexternal/maistra_wee8_headers"],
     visibility = ["//visibility:public"],
 )
 """

@@ -44,7 +44,8 @@ function init(){
         "bazel_gazelle_go_repository_tools"
         "openssl"
         "go_sdk"
-        "maistra_chromium_v8"
+        "maistra_wee8_libs"
+        "maistra_wee8_headers"
   )
 }
 
