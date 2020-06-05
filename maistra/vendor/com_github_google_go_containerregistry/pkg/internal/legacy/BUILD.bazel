@@ -1,0 +1,30 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["copy.go"],
+    importpath = "github.com/google/go-containerregistry/pkg/internal/legacy",
+    visibility = ["//pkg:__subpackages__"],
+    deps = [
+        "//pkg/authn:go_default_library",
+        "//pkg/logs:go_default_library",
+        "//pkg/name:go_default_library",
+        "//pkg/v1/remote:go_default_library",
+        "//pkg/v1/remote/transport:go_default_library",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = ["copy_test.go"],
+    embed = [":go_default_library"],
+    deps = [
+        "//pkg/authn:go_default_library",
+        "//pkg/name:go_default_library",
+        "//pkg/registry:go_default_library",
+        "//pkg/v1:go_default_library",
+        "//pkg/v1/random:go_default_library",
+        "//pkg/v1/remote:go_default_library",
+        "//pkg/v1/types:go_default_library",
+    ],
+)

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+  <Type Name="WAVM::IR::TypeTuple">
+    <DisplayString>{impl->numElems} types</DisplayString>
+    <Expand>
+      <ArrayItems>
+        <Size>impl->numElems</Size>
+        <ValuePointer>impl->elems</ValuePointer>
+      </ArrayItems>
+    </Expand>
+  </Type>
+  <Type Name="WAVM::IR::FunctionType">
+    <DisplayString>{impl->params} -> {impl->results}</DisplayString>
+    <Expand>
+      <Item Name="params">impl->params</Item>
+      <Item Name="results">impl->results</Item>
+    </Expand>
+  </Type>
+</AutoVisualizer>

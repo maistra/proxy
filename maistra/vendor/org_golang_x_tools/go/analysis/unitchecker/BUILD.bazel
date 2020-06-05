@@ -1,0 +1,27 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "unitchecker.go",
+        "unitchecker112.go",
+    ],
+    importpath = "golang.org/x/tools/go/analysis/unitchecker",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/analysis:go_default_library",
+        "//go/analysis/internal/analysisflags:go_default_library",
+        "//go/analysis/internal/facts:go_default_library",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = ["unitchecker_test.go"],
+    embed = [":go_default_library"],
+    deps = [
+        "//go/analysis/passes/findcall:go_default_library",
+        "//go/analysis/passes/printf:go_default_library",
+        "//go/packages/packagestest:go_default_library",
+    ],
+)

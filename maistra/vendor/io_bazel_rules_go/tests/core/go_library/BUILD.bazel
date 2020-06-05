@@ -1,0 +1,97 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "empty",
+    srcs = [
+        # foo and bar have different package names
+        "empty_foo.go",
+        "empty_bar.go",
+        "empty_baz.s",
+    ],
+    importpath = "empty",
+)
+
+go_library(
+    name = "asm_include",
+    srcs = [
+        "inc.go",
+        "inc_bar.s",
+        "inc_foo.s",
+    ],
+    importpath = "asm_include",
+)
+
+go_library(
+    name = "asm_header",
+    srcs = [
+        "inc.go",
+        "inc_asmhdr.s",
+    ],
+    importpath = "asm_header",
+)
+
+go_library(
+    name = "package_height",
+    srcs = ["package_height.go"],
+    importpath = "package_height",
+    deps = [
+        ":package_height_dep_deep",
+        ":package_height_embedder",
+    ],
+)
+
+go_library(
+    name = "package_height_embedder",
+    srcs = ["package_height_embedder.go"],
+    embed = [":package_height_embeddee"],
+    importpath = "package_height/embed",
+    deps = [":package_height_dep_deep"],
+)
+
+go_library(
+    name = "package_height_embeddee",
+    srcs = ["package_height_embeddee.go"],
+    importpath = "package_height/embed",
+    deps = [":package_height_dep_shallow"],
+)
+
+go_library(
+    name = "package_height_dep_deep",
+    srcs = ["package_height_dep_deep.go"],
+    importpath = "package_height/dep",
+)
+
+go_library(
+    name = "package_height_dep_shallow",
+    srcs = ["package_height_dep_shallow.go"],
+    importpath = "package_height/dep",
+)
+
+go_test(
+    name = "import_alias_test",
+    srcs = ["import_alias_test.go"],
+    deps = [
+        ":import_alias_a_v2",
+        ":import_alias_b",
+        ":import_alias_b_v2",
+    ],
+)
+
+go_library(
+    name = "import_alias_a_v2",
+    srcs = ["import_alias_a_v2.go"],
+    importpath = "import_alias/a/v2",
+    importpath_aliases = ["import_alias/a"],
+)
+
+go_library(
+    name = "import_alias_b",
+    srcs = ["import_alias_b.go"],
+    importpath = "import_alias/b",
+)
+
+go_library(
+    name = "import_alias_b_v2",
+    importpath = "import_alias/b/v2",
+    importpath_aliases = ["import_alias/b"],
+)

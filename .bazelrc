@@ -17,9 +17,6 @@ build --workspace_status_command=tools/bazel_get_workspace_status
 build --experimental_remap_main_repo
 build --experimental_local_memory_estimate
 build --experimental_strict_action_env=true
-build --host_force_python=PY2
-build --action_env=BAZEL_LINKLIBS=-l%:libstdc++.a
-build --action_env=BAZEL_LINKOPTS=-lm
 build --host_javabase=@bazel_tools//tools/jdk:remote_jdk11
 build --javabase=@bazel_tools//tools/jdk:remote_jdk11
 build --copt=-fPIC
@@ -189,11 +186,4 @@ build --cxxopt -Wnon-virtual-dtor
 build --cxxopt -Wformat
 build --cxxopt -Wformat-security
 
-build --cxxopt -D_GLIBCXX_USE_CXX11_ABI=1
-build --cxxopt -DENVOY_IGNORE_GLIBCXX_USE_CXX11_ABI_ERROR=1
-build --cxxopt -D_FORTIFY_SOURCE=2
-build --cxxopt -Wno-error=deprecated-declarations
-build --cxxopt -Wno-error=unused-variable
-build --cxxopt -w
-build --cxxopt -ldl
-
+import %workspace%/maistra/bazelrc

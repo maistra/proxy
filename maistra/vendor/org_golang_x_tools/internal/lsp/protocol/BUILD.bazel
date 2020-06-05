@@ -1,0 +1,28 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "context.go",
+        "doc.go",
+        "enums.go",
+        "log.go",
+        "protocol.go",
+        "span.go",
+        "tsclient.go",
+        "tsprotocol.go",
+        "tsserver.go",
+    ],
+    importpath = "golang.org/x/tools/internal/lsp/protocol",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//internal/jsonrpc2:go_default_library",
+        "//internal/span:go_default_library",
+        "//internal/telemetry:go_default_library",
+        "//internal/telemetry/export:go_default_library",
+        "//internal/telemetry/log:go_default_library",
+        "//internal/telemetry/trace:go_default_library",
+        "//internal/xcontext:go_default_library",
+        "@org_golang_x_xerrors//:go_default_library",
+    ],
+)

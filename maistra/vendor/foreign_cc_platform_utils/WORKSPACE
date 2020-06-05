@@ -1,0 +1,2 @@
+# DO NOT EDIT: automatically generated WORKSPACE file for _read_build_options rule
+workspace(name = "foreign_cc_platform_utils")
