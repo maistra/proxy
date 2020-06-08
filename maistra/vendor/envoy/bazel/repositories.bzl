@@ -783,17 +783,33 @@ def _com_github_wavm_wavm():
     )
 
 def _com_googlesource_chromium_v8():
-    location = REPOSITORY_LOCATIONS["com_googlesource_chromium_v8"]
-    genrule_repository(
-        name = "com_googlesource_chromium_v8",
-        genrule_cmd_file = "@envoy//bazel/external:wee8.genrule_cmd",
-        build_file = "@envoy//bazel/external:wee8.BUILD",
-        patches = ["@envoy//bazel/external:wee8.patch"],
-        **location
+    native.new_local_repository(
+        name = "maistra_wee8_headers",
+        path = "/usr/include/wasm-api/",
+        build_file_content = """
+cc_library(
+    name = "headers",
+    hdrs = glob(["**/*.h"]),
+    visibility = ["//visibility:public"],
+)
+"""
+    )
+    native.new_local_repository(
+        name = "maistra_wee8_libs",
+        path = "/usr/lib64/",
+        build_file_content = """
+cc_library(
+    name = "wee8",
+    srcs = ["libwee8.a"],
+    deps = ["@maistra_wee8_headers//:headers"],
+    copts = ["-Iexternal/maistra_wee8_headers"],
+    visibility = ["//visibility:public"],
+)
+"""
     )
     native.bind(
         name = "wee8",
-        actual = "@com_googlesource_chromium_v8//:wee8",
+        actual = "@maistra_wee8_libs//:wee8",
     )
 
 def _foreign_cc_dependencies():
