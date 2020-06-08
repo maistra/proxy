@@ -1,0 +1,26 @@
+FROM centos:8
+
+ARG BAZEL_VERSION=1.1.0
+RUN curl -o /usr/local/bin/bazel -Ls https://github.com/bazelbuild/bazel/releases/download/${BAZEL_VERSION}/bazel-${BAZEL_VERSION}-linux-x86_64 && \
+    chmod +x /usr/local/bin/bazel
+
+# FIXME: Point to maistra repo
+RUN curl -o /etc/yum.repos.d/wee8.repo -Ls https://copr.fedorainfracloud.org/coprs/jwendell/libwee8/repo/epel-8/jwendell-libwee8-epel-8.repo
+
+RUN dnf -y upgrade --refresh && \
+    dnf -y install dnf-plugins-core https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm && \
+    dnf -y config-manager --set-enabled PowerTools && \
+    dnf -y install git make libtool patch libatomic which \
+                   autoconf automake libtool cmake python3 \
+                   gcc gcc-c++ ninja-build golang annobin \
+                   libwee8 libcurl-devel && \
+    dnf -y clean all
+
+
+ENV CC=gcc CXX=g++ USER=user HOME=/home/user
+RUN mkdir -p /home/user && chmod 777 /home/user
+
+WORKDIR /work
+
+RUN ln -s /usr/bin/python3 /usr/bin/python
+
