@@ -44,6 +44,8 @@ function init(){
         "bazel_gazelle_go_repository_tools"
         "openssl"
         "go_sdk"
+        "maistra_wee8_libs"
+        "maistra_wee8_headers"
   )
 }
 
@@ -84,18 +86,18 @@ done
 }
 
 function apply_local_patches() {
-  sed -i 's/fatal_linker_warnings = true/fatal_linker_warnings = false/g' ${VENDOR_DIR}/com_googlesource_chromium_v8/wee8/build/config/compiler/BUILD.gn
+  echo "Applying local patches"
   sed -i 's/GO_VERSION[ ]*=.*/GO_VERSION = "host"/g' ${VENDOR_DIR}/envoy/bazel/dependency_imports.bzl
 
-  pushd "${VENDOR_DIR}/com_github_gperftools_gperftools"
-    patch -p1 -i ${PATCHES_DIR}/gperftools-s390x.patch
-  popd
+  pushd "${VENDOR_DIR}/com_github_gperftools_gperftools" >/dev/null
+    patch -p1 -i "${PATCHES_DIR}/gperftools-s390x.patch"
+  popd >/dev/null
 
-  pushd "${VENDOR_DIR}/com_github_luajit_luajit"
+  pushd "${VENDOR_DIR}/com_github_luajit_luajit" >/dev/null
     patch -p1 -i "${PATCHES_DIR}/luajit-s390x.patch"
     patch -p1 -i "${PATCHES_DIR}/luajit-ppc64.patch"
     patch -p1 -i "${PATCHES_DIR}/luajit-build-flags.patch"
-  popd
+  popd >/dev/null
 }
 
 function run_bazel() {
