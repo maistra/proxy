@@ -1,0 +1,81 @@
+load(
+    "//bazel:lightstep_build_system.bzl",
+    "lightstep_package",
+    "lightstep_cc_library",
+    "lightstep_portable_cc_binary",
+)
+
+lightstep_package()
+
+genrule(
+    name = "generate_version_h",
+    srcs = glob([
+        "*",
+        "cmake/**/*",
+        "example/**/*",
+        "src/*",
+        "3rd_party/**/*",
+    ]),
+    outs = [
+        "gen-config/lightstep/version.h",
+    ],
+    cmd = """
+    TEMP_DIR=$$(mktemp -d)
+    VERSION_H_OUT=$${PWD}/$(location :gen-config/lightstep/version.h)
+    LIGHTSTEP_ROOT=$$(dirname $${PWD}/$(location :CMakeLists.txt))
+    cd $$TEMP_DIR
+    cmake \\
+        -DWITH_GRPC=OFF \\
+        -DHEADERS_ONLY=ON \\
+        -L \\
+        $$LIGHTSTEP_ROOT
+    mv include/lightstep/version.h $$VERSION_H_OUT
+    rm -rf $$TEMP_DIR
+    """,
+)
+
+lightstep_cc_library(
+  name = "config_lib",
+  hdrs = [
+    ":gen-config/lightstep/version.h",
+  ],
+  strip_include_prefix = "gen-config",
+)
+
+lightstep_cc_library(
+  name = "manual_tracer_lib",
+  deps = [
+    "//src/tracer:tracer_lib",
+    "//src/tracer:binary_carrier_lib",
+    "//src/recorder:transporter_lib",
+    "//src/tracer:no_default_ssl_roots_pem_lib",
+    "//src/recorder:no_grpc_transporter_lib",
+    "//src/recorder:no_stream_recorder_lib",
+  ],
+)
+
+lightstep_cc_library(
+  name = "tracer_lib",  
+  deps = [
+    "//src/tracer:tracer_lib",
+    "//src/tracer:binary_carrier_lib",
+    "//src/tracer:dynamic_load_lib",
+    "//src/tracer:no_default_ssl_roots_pem_lib",
+    "//src/recorder:transporter_lib",
+    "//src/recorder/grpc_transporter:grpc_transporter_lib",
+    "//src/recorder/stream_recorder:stream_recorder_lib",
+    "//src/network/ares_dns_resolver:ares_dns_resolver_lib",
+  ],
+)
+
+lightstep_portable_cc_binary(
+    name = "liblightstep_tracer_plugin.so",
+    linkshared = 1,
+    linkopts = [
+        "-Wl,--version-script=$(location :tracer-export-map.ld)",
+    ],
+    deps = [
+        ":tracer-export-map.ld",
+        ":tracer_lib",
+    ],
+)

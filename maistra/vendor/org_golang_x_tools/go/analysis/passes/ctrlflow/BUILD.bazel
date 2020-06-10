@@ -1,0 +1,36 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test", "go_tool_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["ctrlflow.go"],
+    importpath = "golang.org/x/tools/go/analysis/passes/ctrlflow",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/analysis:go_default_library",
+        "//go/analysis/passes/inspect:go_default_library",
+        "//go/ast/inspector:go_default_library",
+        "//go/cfg:go_default_library",
+        "//go/types/typeutil:go_default_library",
+    ],
+)
+
+go_tool_library(
+    name = "go_tool_library",
+    srcs = ["ctrlflow.go"],
+    importpath = "golang.org/x/tools/go/analysis/passes/ctrlflow",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/analysis:go_tool_library",
+        "//go/analysis/passes/inspect:go_tool_library",
+        "//go/ast/inspector:go_tool_library",
+        "//go/cfg:go_tool_library",
+        "//go/types/typeutil:go_tool_library",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = ["ctrlflow_test.go"],
+    embed = [":go_default_library"],
+    deps = ["//go/analysis/analysistest:go_default_library"],
+)
