@@ -1,0 +1,65 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "autogazelle.go",
+        "client_unix.go",
+        "server_unix.go",
+    ],
+    importpath = "github.com/bazelbuild/bazel-gazelle/cmd/autogazelle",
+    visibility = ["//visibility:private"],
+    deps = select({
+        "@io_bazel_rules_go//go/platform:android": [
+            "@com_github_fsnotify_fsnotify//:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:darwin": [
+            "@com_github_fsnotify_fsnotify//:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:dragonfly": [
+            "@com_github_fsnotify_fsnotify//:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:freebsd": [
+            "@com_github_fsnotify_fsnotify//:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:ios": [
+            "@com_github_fsnotify_fsnotify//:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:linux": [
+            "@com_github_fsnotify_fsnotify//:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:nacl": [
+            "@com_github_fsnotify_fsnotify//:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:netbsd": [
+            "@com_github_fsnotify_fsnotify//:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:openbsd": [
+            "@com_github_fsnotify_fsnotify//:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:solaris": [
+            "@com_github_fsnotify_fsnotify//:go_default_library",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+go_binary(
+    name = "autogazelle",
+    embed = [":go_default_library"],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "all_files",
+    testonly = True,
+    srcs = [
+        "BUILD.bazel",
+        "README.rst",
+        "autogazelle.bash",
+        "autogazelle.go",
+        "client_unix.go",
+        "server_unix.go",
+    ],
+    visibility = ["//visibility:public"],
+)

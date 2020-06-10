@@ -1,0 +1,51 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["graph.go"],
+    importpath = "golang.org/x/tools/refactor/importgraph",
+    visibility = ["//visibility:public"],
+    deps = ["//go/buildutil:go_default_library"],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = ["graph_test.go"],
+    embed = [":go_default_library"],
+    deps = select({
+        "@io_bazel_rules_go//go/platform:darwin": [
+            "//go/packages/packagestest:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:dragonfly": [
+            "//go/packages/packagestest:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:freebsd": [
+            "//go/packages/packagestest:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:ios": [
+            "//go/packages/packagestest:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:linux": [
+            "//go/packages/packagestest:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:nacl": [
+            "//go/packages/packagestest:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:netbsd": [
+            "//go/packages/packagestest:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:openbsd": [
+            "//go/packages/packagestest:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:plan9": [
+            "//go/packages/packagestest:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:solaris": [
+            "//go/packages/packagestest:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:windows": [
+            "//go/packages/packagestest:go_default_library",
+        ],
+        "//conditions:default": [],
+    }),
+)

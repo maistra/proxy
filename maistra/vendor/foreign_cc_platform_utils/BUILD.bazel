@@ -1,0 +1,16 @@
+
+load("//:compilation_mode.bzl", "compilation_mode")
+
+config_setting(
+  name = "is_debug",
+  values = {"compilation_mode": "dbg"}
+)
+
+compilation_mode(
+  name = "compilation_mode",
+  is_debug = select({
+    ":is_debug": True,
+    "//conditions:default": False,
+}),
+  visibility = ["//visibility:public"],
+)
