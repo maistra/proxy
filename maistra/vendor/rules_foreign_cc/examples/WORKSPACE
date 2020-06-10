@@ -1,0 +1,57 @@
+workspace(name = "rules_foreign_cc_tests")
+
+local_repository(
+    name = "rules_foreign_cc",
+    path = "..",
+)
+
+load("@rules_foreign_cc//:workspace_definitions.bzl", "rules_foreign_cc_dependencies")
+
+rules_foreign_cc_dependencies([
+    "//:built_cmake_toolchain",
+    "//:built_ninja_toolchain_osx",
+    "//:built_ninja_toolchain_linux",
+])
+
+load("@bazel_skylib//:workspace.bzl", "bazel_skylib_workspace")
+
+bazel_skylib_workspace()
+
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+android_sdk_repository(
+    name = "androidsdk",
+)
+
+android_ndk_repository(
+    name = "androidndk",
+)
+
+RULES_JVM_EXTERNAL_TAG = "2.3"
+
+RULES_JVM_EXTERNAL_SHA = "375b1592e3f4e0a46e6236e19fc30c8020c438803d4d49b13b40aaacd2703c30"
+
+http_archive(
+    name = "rules_jvm_external",
+    sha256 = RULES_JVM_EXTERNAL_SHA,
+    strip_prefix = "rules_jvm_external-%s" % RULES_JVM_EXTERNAL_TAG,
+    url = "https://github.com/bazelbuild/rules_jvm_external/archive/%s.zip" % RULES_JVM_EXTERNAL_TAG,
+)
+
+load("@rules_jvm_external//:defs.bzl", "maven_install")
+
+maven_install(
+    artifacts = [
+        "com.android.support.constraint:constraint-layout:aar:1.1.2",
+        "com.android.support:appcompat-v7:aar:26.1.0",
+    ],
+    repositories = [
+        "https://jcenter.bintray.com/",
+        "https://maven.google.com",
+        "https://repo1.maven.org/maven2",
+    ],
+)
+
+load(":examples_repositories.bzl", "include_examples_repositories")
+
+include_examples_repositories()

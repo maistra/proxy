@@ -1,0 +1,2 @@
+# DO NOT EDIT: automatically generated WORKSPACE file for _go_rules_compat rule
+workspace(name = "io_bazel_rules_go_compat")
