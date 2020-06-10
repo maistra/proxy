@@ -56,4 +56,4 @@ build --cxxopt -Wno-error=unused-variable
 build --cxxopt -w
 build --cxxopt -ldl
 
-try-import %workspace%/maistra/bazelrc
+import %workspace%/maistra/bazelrc
