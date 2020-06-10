@@ -1,0 +1,26 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "info.1.11.go",
+        "info.1.12.go",
+        "info.go",
+        "metrics.go",
+        "rpc.go",
+        "serve.go",
+        "trace.go",
+    ],
+    importpath = "golang.org/x/tools/internal/lsp/debug",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//internal/lsp/telemetry:go_default_library",
+        "//internal/span:go_default_library",
+        "//internal/telemetry:go_default_library",
+        "//internal/telemetry/export:go_default_library",
+        "//internal/telemetry/export/prometheus:go_default_library",
+        "//internal/telemetry/log:go_default_library",
+        "//internal/telemetry/metric:go_default_library",
+        "//internal/telemetry/tag:go_default_library",
+    ],
+)

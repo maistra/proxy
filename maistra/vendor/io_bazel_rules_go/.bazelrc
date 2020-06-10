@@ -1,0 +1,12 @@
+build:windows --cpu=x64_windows
+build:windows --compiler=mingw-gcc
+
+build:check --all_incompatible_changes
+
+common:ci --color=no
+build:ci --verbose_failures
+build:ci --sandbox_debug
+build:ci --spawn_strategy=standalone
+build:ci --genrule_strategy=standalone
+test:ci --test_strategy=standalone
+test:ci --test_output=errors
