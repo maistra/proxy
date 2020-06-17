@@ -213,7 +213,6 @@ class JwtVerificationFilterIntegrationTest
       }
     }
 
-    codec_client->close();
     if (!issuer_response_body.empty()) {
       ASSERT_TRUE(fake_upstream_connection_issuer->close());
       ASSERT_TRUE(fake_upstream_connection_issuer->waitForDisconnect());
@@ -222,6 +221,7 @@ class JwtVerificationFilterIntegrationTest
       ASSERT_TRUE(fake_upstream_connection_backend->close());
       ASSERT_TRUE(fake_upstream_connection_backend->waitForDisconnect());
     }
+    codec_client->close();
   }
 
  private:
