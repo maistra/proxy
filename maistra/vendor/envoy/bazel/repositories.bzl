@@ -357,8 +357,6 @@ def _com_github_nghttp2_nghttp2():
     http_archive(
         name = "com_github_nghttp2_nghttp2",
         build_file_content = BUILD_ALL_CONTENT,
-        patch_args = ["-p1"],
-        patches = ["@envoy//bazel/foreign_cc:nghttp2.patch"],
         **location
     )
     native.bind(
