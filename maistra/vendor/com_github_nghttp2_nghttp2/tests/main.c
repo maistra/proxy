@@ -307,6 +307,8 @@ int main() {
       !CU_add_test(pSuite, "session_flooding", test_nghttp2_session_flooding) ||
       !CU_add_test(pSuite, "session_change_stream_priority",
                    test_nghttp2_session_change_stream_priority) ||
+      !CU_add_test(pSuite, "session_create_idle_stream",
+                   test_nghttp2_session_create_idle_stream) ||
       !CU_add_test(pSuite, "session_repeated_priority_change",
                    test_nghttp2_session_repeated_priority_change) ||
       !CU_add_test(pSuite, "session_repeated_priority_submission",
@@ -315,6 +317,8 @@ int main() {
                    test_nghttp2_session_set_local_window_size) ||
       !CU_add_test(pSuite, "session_cancel_from_before_frame_send",
                    test_nghttp2_session_cancel_from_before_frame_send) ||
+      !CU_add_test(pSuite, "session_too_many_settings",
+                   test_nghttp2_session_too_many_settings) ||
       !CU_add_test(pSuite, "session_removed_closed_stream",
                    test_nghttp2_session_removed_closed_stream) ||
       !CU_add_test(pSuite, "session_pause_data",
@@ -402,6 +406,7 @@ int main() {
                    test_nghttp2_hd_deflate_hd_vec) ||
       !CU_add_test(pSuite, "hd_decode_length", test_nghttp2_hd_decode_length) ||
       !CU_add_test(pSuite, "hd_huff_encode", test_nghttp2_hd_huff_encode) ||
+      !CU_add_test(pSuite, "hd_huff_decode", test_nghttp2_hd_huff_decode) ||
       !CU_add_test(pSuite, "adjust_local_window_size",
                    test_nghttp2_adjust_local_window_size) ||
       !CU_add_test(pSuite, "check_header_name",

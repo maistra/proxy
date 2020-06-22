@@ -24,13 +24,13 @@
 
 cmake_minimum_required(VERSION 3.0)
 # XXX using 1.8.90 instead of 1.9.0-DEV
-project(nghttp2 VERSION 1.39.1)
+project(nghttp2 VERSION 1.41.0)
 
 # See versioning rule:
 #  http://www.gnu.org/software/libtool/manual/html_node/Updating-version-info.html
-set(LT_CURRENT  31)
-set(LT_REVISION 4)
-set(LT_AGE      17)
+set(LT_CURRENT  34)
+set(LT_REVISION 0)
+set(LT_AGE      20)
 
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
 include(Version)
@@ -66,6 +66,7 @@ if(OPENSSL_FOUND AND LIBEV_FOUND AND ZLIB_FOUND)
 else()
   set(ENABLE_APP_DEFAULT OFF)
 endif()
+find_package(Systemd 209)
 find_package(Jansson  2.5)
 set(ENABLE_HPACK_TOOLS_DEFAULT ${JANSSON_FOUND})
 # 2.0.8 is required because we use evconnlistener_set_error_cb()
@@ -193,6 +194,7 @@ endif()
 # libev (for src)
 set(HAVE_LIBEV      ${LIBEV_FOUND})
 set(HAVE_ZLIB       ${ZLIB_FOUND})
+set(HAVE_SYSTEMD    ${SYSTEMD_FOUND})
 set(HAVE_LIBEVENT_OPENSSL ${LIBEVENT_FOUND})
 if(LIBEVENT_FOUND)
   # Must both link the core and openssl libraries.
@@ -273,11 +275,7 @@ check_type_size("ssize_t" SIZEOF_SSIZE_T)
 if(SIZEOF_SSIZE_T STREQUAL "")
   # ssize_t is a signed type in POSIX storing at least -1.
   # Set it to "int" to match the behavior of AC_TYPE_SSIZE_T (autotools).
-  if(WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
-    set(ssize_t int64_t)
-  else()
-    set(ssize_t int)
-  endif()
+  set(ssize_t int)
 endif()
 # AC_TYPE_UINT8_T
 # AC_TYPE_UINT16_T
@@ -387,6 +385,15 @@ else()
     -Wall
     -Wformat-security
   )
+endif()
+
+if(ENABLE_STATIC_CRT)
+  foreach(lang C CXX)
+    foreach(suffix "" _DEBUG _MINSIZEREL _RELEASE _RELWITHDEBINFO)
+      set(var "CMAKE_${lang}_FLAGS${suffix}")
+      string(REPLACE "/MD" "/MT" ${var} "${${var}}")
+    endforeach()
+  endforeach()
 endif()
 
 if(ENABLE_DEBUG)
@@ -501,6 +508,7 @@ message(STATUS "summary of build options:
       Jansson:        ${HAVE_JANSSON} (LIBS='${JANSSON_LIBRARIES}')
       Jemalloc:       ${HAVE_JEMALLOC} (LIBS='${JEMALLOC_LIBRARIES}')
       Zlib:           ${HAVE_ZLIB} (LIBS='${ZLIB_LIBRARIES}')
+      Systemd:        ${HAVE_SYSTEMD} (LIBS='${SYSTEMD_LIBRARIES}')
       Boost::System:  ${Boost_SYSTEM_LIBRARY}
       Boost::Thread:  ${Boost_THREAD_LIBRARY}
     Third-party:
