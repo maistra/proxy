@@ -1,0 +1,19 @@
+# github.com/bazelbuild/buildtools v0.0.0-20190731111112-f720930ceb60
+github.com/bazelbuild/buildtools/build
+github.com/bazelbuild/buildtools/tables
+# github.com/bazelbuild/rules_go v0.0.0-20190719190356-6dae44dc5cab
+github.com/bazelbuild/rules_go/go/tools/bazel
+github.com/bazelbuild/rules_go/go/tools/bazel_testing
+github.com/bazelbuild/rules_go/go/tools/internal/txtar
+# github.com/fsnotify/fsnotify v1.4.7
+github.com/fsnotify/fsnotify
+# github.com/pelletier/go-toml v1.2.0
+github.com/pelletier/go-toml
+# github.com/pmezard/go-difflib v1.0.0
+github.com/pmezard/go-difflib/difflib
+# golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
+golang.org/x/sync/errgroup
+# golang.org/x/sys v0.0.0-20190122071731-054c452bb702
+golang.org/x/sys/unix
+# golang.org/x/tools v0.0.0-20190122202912-9c309ee22fab
+golang.org/x/tools/go/vcs

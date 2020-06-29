@@ -1,0 +1,43 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test", "go_tool_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "facts.go",
+        "imports.go",
+    ],
+    importpath = "golang.org/x/tools/go/analysis/internal/facts",
+    visibility = ["//go/analysis:__subpackages__"],
+    deps = [
+        "//go/analysis:go_default_library",
+        "//go/types/objectpath:go_default_library",
+    ],
+)
+
+go_tool_library(
+    name = "go_tool_library",
+    srcs = [
+        "facts.go",
+        "imports.go",
+    ],
+    importpath = "golang.org/x/tools/go/analysis/internal/facts",
+    visibility = [
+        "//go/analysis:__subpackages__",
+        "@io_bazel_rules_go//go/tools/builders:__pkg__",
+    ],
+    deps = [
+        "//go/analysis:go_tool_library",
+        "//go/types/objectpath:go_tool_library",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = ["facts_test.go"],
+    embed = [":go_default_library"],
+    deps = [
+        "//go/analysis/analysistest:go_default_library",
+        "//go/packages:go_default_library",
+        "//internal/testenv:go_default_library",
+    ],
+)

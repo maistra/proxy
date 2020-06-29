@@ -1,0 +1,8 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["ef.go"],
+    importpath = "golang.org/x/tools/internal/apidiff/testdata/exported_fields",
+    visibility = ["//:__subpackages__"],
+)
