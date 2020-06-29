@@ -34,14 +34,14 @@ new_local_repository(
     build_file = "openssl.BUILD"
 )
 
-# 1. Determine SHA256 `wget https://github.com/istio/envoy/archive/$COMMIT.tar.gz && sha256sum $COMMIT.tar.gz`
+# 1. Determine SHA256 `wget https://github.com/maistra/envoy/archive/$COMMIT.tar.gz && sha256sum $COMMIT.tar.gz`
 # 2. Update .bazelversion, envoy.bazelrc and .bazelrc if needed.
 #
 # Commit time: 4/24/20
 # Used by scripts/generate-wasm.sh
-ENVOY_SHA = "e9bf8c5db92892b843f315b1cc180a1931bec46e"
+ENVOY_SHA = "eaa4999e24f9018fe0d1833c438eafc2da4b8de6"
 
-ENVOY_SHA256 = "89fc886207d946b8b1aa4435150e015b7de8733b39a924880e1ecf251ac68c35"
+ENVOY_SHA256 = "626484d9724d6b12594275b4c2538ce1493ffbb900be53284d6c6cabf11cb3a0"
 
 ENVOY_ORG = "maistra"
 

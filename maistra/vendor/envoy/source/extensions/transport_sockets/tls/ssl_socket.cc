@@ -203,7 +203,7 @@ PostIoAction SslSocket::doHandshake() {
   }
 }
 
-void SslSocket::drainErrorQueue() {
+void SslSocket::drainErrorQueue(const bool show_errno) {
   bool saw_error = false;
   bool saw_counted_error = false;
   while (uint64_t err = ERR_get_error()) {
@@ -223,6 +223,9 @@ void SslSocket::drainErrorQueue() {
     failure_reason_.append(absl::StrCat(" ", err, ":", ERR_lib_error_string(err), ":",
                                         ERR_func_error_string(err), ":",
                                         ERR_reason_error_string(err)));
+  }
+  if (show_errno) {
+    ENVOY_CONN_LOG(debug, "errno:{}:{}", callbacks_->connection(), errno, strerror(errno), failure_reason_);
   }
   ENVOY_CONN_LOG(debug, "{}", callbacks_->connection(), failure_reason_);
   if (saw_error && !saw_counted_error) {
@@ -272,7 +275,7 @@ Network::IoResult SslSocket::doWrite(Buffer::Instance& write_buffer, bool end_st
       case SSL_ERROR_WANT_READ:
       // Renegotiation has started. We don't handle renegotiation so just fall through.
       default:
-        drainErrorQueue();
+        drainErrorQueue(err == SSL_ERROR_SYSCALL);
         return {PostIoAction::Close, total_bytes_written, false};
       }
 
