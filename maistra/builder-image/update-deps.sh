@@ -32,6 +32,7 @@ function init(){
 
   IGNORE_LIST=(
         "bazel_tools"
+        "envoy_api"
         "envoy_build_config"
         "local_config_cc"
         "local_jdk"

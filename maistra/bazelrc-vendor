@@ -51,7 +51,6 @@ build --override_repository=com_googlesource_chromium_v8=/work/maistra/vendor/co
 build --override_repository=com_googlesource_code_re2=/work/maistra/vendor/com_googlesource_code_re2
 build --override_repository=com_lightstep_tracer_cpp=/work/maistra/vendor/com_lightstep_tracer_cpp
 build --override_repository=envoy=/work/maistra/vendor/envoy
-build --override_repository=envoy_api=/work/maistra/vendor/envoy_api
 build --override_repository=envoy_build_tools=/work/maistra/vendor/envoy_build_tools
 build --override_repository=foreign_cc_platform_utils=/work/maistra/vendor/foreign_cc_platform_utils
 build --override_repository=googletest_git=/work/maistra/vendor/googletest_git

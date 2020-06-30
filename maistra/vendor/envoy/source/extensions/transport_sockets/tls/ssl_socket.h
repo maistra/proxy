@@ -129,7 +129,7 @@ private:
   ReadResult sslReadIntoSlice(Buffer::RawSlice& slice);
 
   Network::PostIoAction doHandshake();
-  void drainErrorQueue();
+  void drainErrorQueue(const bool show_errno = false);
   void shutdownSsl();
   bool isThreadSafe() const {
     return callbacks_ != nullptr && callbacks_->connection().dispatcher().isThreadSafe();
