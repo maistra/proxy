@@ -2,6 +2,7 @@ trigger:
   branches:
     include:
       - "master"
+      - "release/v*"
   tags:
     include:
       - "v*"
@@ -92,13 +93,11 @@ jobs:
       - bash: |
           set -e
           tar zxf $(Build.StagingDirectory)/bazel.release/envoy_binary.tar.gz
-          ci/docker_build.sh
-          ci/docker_push.sh
-          ci/docker_tag.sh
+          ci/docker_ci.sh
         workingDirectory: $(Build.SourcesDirectory)
         env:
           AZP_BRANCH: $(Build.SourceBranch)
-          CIRCLE_SHA1: $(Build.SourceVersion)
+          AZP_SHA1: $(Build.SourceVersion)
           DOCKERHUB_USERNAME: $(DockerUsername)
           DOCKERHUB_PASSWORD: $(DockerPassword)
 
@@ -123,23 +122,3 @@ jobs:
           testResultsFiles: "**/bazel-testlogs/**/test.xml"
           testRunTitle: "macOS"
         condition: always()
-
-  - job: Windows
-    dependsOn: ["format"]
-    timeoutInMinutes: 360
-    pool:
-      vmImage: "windows-latest"
-    steps:
-      - powershell: |
-          .\ci\windows_ci_setup.ps1
-          Write-Host "##vso[task.prependpath]$env:TOOLS_BIN_DIR"
-        displayName: "Install dependencies"
-        env:
-          TOOLS_BIN_DIR: $(Pipeline.Workspace)\bin
-
-      - bash: ci/windows_ci_steps.sh
-        displayName: "Run Windows CI"
-        env:
-          TMPDIR: $(Agent.TempDirectory)
-          BAZEL_VC: "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC"
-          BAZEL_SH: "C:\\Program Files\\Git\\bin\\bash.exe"
