@@ -404,6 +404,8 @@ ConnectionImpl::ConnectionImpl(Network::Connection& connection, Stats::Scope& st
 void ConnectionImpl::completeLastHeader() {
   ENVOY_CONN_LOG(trace, "completed header: key={} value={}", connection_,
                  current_header_field_.getStringView(), current_header_value_.getStringView());
+
+  checkHeaderNameForUnderscores();
   if (!current_header_field_.empty()) {
     toLowerTable().toLowerCase(current_header_field_.buffer(), current_header_field_.size());
     current_header_map_->addViaMove(std::move(current_header_field_),
@@ -419,6 +421,20 @@ void ConnectionImpl::completeLastHeader() {
   header_parsing_state_ = HeaderParsingState::Field;
   ASSERT(current_header_field_.empty());
   ASSERT(current_header_value_.empty());
+}
+
+uint32_t ConnectionImpl::getHeadersSize() {
+  return current_header_field_.size() + current_header_value_.size() +
+         (current_header_map_->byteSize() ? *current_header_map_->byteSize() : 0);
+}
+
+void ConnectionImpl::checkMaxHeadersSize() {
+  const uint32_t total = getHeadersSize();
+  if (total > (max_headers_kb_ * 1024)) {
+    error_code_ = Http::Code::RequestHeaderFieldsTooLarge;
+    sendProtocolError();
+    throw CodecProtocolException("headers size exceeds limit");
+  }
 }
 
 bool ConnectionImpl::maybeDirectDispatch(Buffer::Instance& data) {
@@ -492,6 +508,8 @@ void ConnectionImpl::onHeaderField(const char* data, size_t length) {
   }
 
   current_header_field_.append(data, length);
+
+  checkMaxHeadersSize();
 }
 
 void ConnectionImpl::onHeaderValue(const char* data, size_t length) {
@@ -505,7 +523,7 @@ void ConnectionImpl::onHeaderValue(const char* data, size_t length) {
   const absl::string_view header_value = StringUtil::trim(absl::string_view(data, length));
 
   if (strict_header_validation_) {
-    if (!Http::HeaderUtility::headerIsValid(header_value)) {
+    if (!Http::HeaderUtility::headerValueIsValid(header_value)) {
       ENVOY_CONN_LOG(debug, "invalid header value: {}", connection_, header_value);
       error_code_ = Http::Code::BadRequest;
       sendProtocolError();
@@ -522,16 +540,7 @@ void ConnectionImpl::onHeaderValue(const char* data, size_t length) {
   header_parsing_state_ = HeaderParsingState::Value;
   current_header_value_.append(header_value.data(), header_value.length());
 
-  // Verify that the cached value in byte size exists.
-  ASSERT(current_header_map_->byteSize().has_value());
-  const uint32_t total = current_header_field_.size() + current_header_value_.size() +
-                         current_header_map_->byteSize().value();
-  if (total > (max_headers_kb_ * 1024)) {
-
-    error_code_ = Http::Code::RequestHeaderFieldsTooLarge;
-    sendProtocolError();
-    throw CodecProtocolException("headers size exceeds limit");
-  }
+  checkMaxHeadersSize();
 }
 
 int ConnectionImpl::onHeadersCompleteBase() {
@@ -610,10 +619,12 @@ void ConnectionImpl::onResetStreamBase(StreamResetReason reason) {
   onResetStream(reason);
 }
 
-ServerConnectionImpl::ServerConnectionImpl(Network::Connection& connection, Stats::Scope& stats,
-                                           ServerConnectionCallbacks& callbacks,
-                                           Http1Settings settings, uint32_t max_request_headers_kb,
-                                           const uint32_t max_request_headers_count)
+ServerConnectionImpl::ServerConnectionImpl(
+    Network::Connection& connection, Stats::Scope& stats, ServerConnectionCallbacks& callbacks,
+    Http1Settings settings, uint32_t max_request_headers_kb,
+    const uint32_t max_request_headers_count,
+    envoy::api::v2::core::HttpProtocolOptions::HeadersWithUnderscoresAction
+        headers_with_underscores_action)
     : ConnectionImpl(connection, stats, HTTP_REQUEST, max_request_headers_kb,
                      max_request_headers_count, formatter(settings)),
       callbacks_(callbacks), codec_settings_(settings),
@@ -627,7 +638,14 @@ ServerConnectionImpl::ServerConnectionImpl(Network::Connection& connection, Stat
       max_outbound_responses_(
           Runtime::getInteger("envoy.do_not_use_going_away_max_http2_outbound_responses", 2)),
       flood_protection_(
-          Runtime::runtimeFeatureEnabled("envoy.reloadable_features.http1_flood_protection")) {}
+          Runtime::runtimeFeatureEnabled("envoy.reloadable_features.http1_flood_protection")),
+      headers_with_underscores_action_(headers_with_underscores_action) {}
+
+uint32_t ServerConnectionImpl::getHeadersSize() {
+  // Add in the the size of the request URL if processing request headers.
+  const uint32_t url_size = active_request_ ? active_request_->request_url_.size() : 0;
+  return url_size + ConnectionImpl::getHeadersSize();
+}
 
 void ServerConnectionImpl::onEncodeComplete() {
   ASSERT(active_request_);
@@ -736,6 +754,8 @@ void ServerConnectionImpl::onMessageBegin() {
 void ServerConnectionImpl::onUrl(const char* data, size_t length) {
   if (active_request_) {
     active_request_->request_url_.append(data, length);
+
+    checkMaxHeadersSize();
   }
 }
 
@@ -804,6 +824,27 @@ void ServerConnectionImpl::releaseOutboundResponse(
   ASSERT(outbound_responses_ >= 1);
   --outbound_responses_;
   delete fragment;
+}
+
+void ServerConnectionImpl::checkHeaderNameForUnderscores() {
+  if (headers_with_underscores_action_ != envoy::api::v2::core::HttpProtocolOptions::ALLOW &&
+      Http::HeaderUtility::headerNameContainsUnderscore(current_header_field_.getStringView())) {
+    if (headers_with_underscores_action_ ==
+        envoy::api::v2::core::HttpProtocolOptions::DROP_HEADER) {
+      ENVOY_CONN_LOG(debug, "Dropping header with invalid characters in its name: {}", connection_,
+                     current_header_field_.getStringView());
+      stats_.dropped_headers_with_underscores_.inc();
+      current_header_field_.clear();
+      current_header_value_.clear();
+    } else {
+      ENVOY_CONN_LOG(debug, "Rejecting request due to header name with underscores: {}",
+                     connection_, current_header_field_.getStringView());
+      error_code_ = Http::Code::BadRequest;
+      sendProtocolError();
+      stats_.requests_rejected_with_underscores_in_headers_.inc();
+      throw CodecProtocolException("http/1.1 protocol error: header name contains underscores");
+    }
+  }
 }
 
 ClientConnectionImpl::ClientConnectionImpl(Network::Connection& connection, Stats::Scope& stats,

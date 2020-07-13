@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "envoy/api/v2/core/protocol.pb.h"
 #include "envoy/event/deferred_deletable.h"
 #include "envoy/http/codec.h"
 #include "envoy/network/connection.h"
@@ -39,7 +40,8 @@ const std::string CLIENT_MAGIC_PREFIX = "PRI * HTTP/2";
 /**
  * All stats for the HTTP/2 codec. @see stats_macros.h
  */
-#define ALL_HTTP2_CODEC_STATS(COUNTER)                                                             \
+#define ALL_HTTP2_CODEC_STATS(COUNTER, GAUGE)                                                      \
+  COUNTER(dropped_headers_with_underscores)                                                        \
   COUNTER(header_overflow)                                                                         \
   COUNTER(headers_cb_no_stream)                                                                    \
   COUNTER(inbound_empty_frames_flood)                                                              \
@@ -47,17 +49,21 @@ const std::string CLIENT_MAGIC_PREFIX = "PRI * HTTP/2";
   COUNTER(inbound_window_update_frames_flood)                                                      \
   COUNTER(outbound_control_flood)                                                                  \
   COUNTER(outbound_flood)                                                                          \
+  COUNTER(requests_rejected_with_underscores_in_headers)                                           \
   COUNTER(rx_messaging_error)                                                                      \
   COUNTER(rx_reset)                                                                                \
   COUNTER(too_many_header_frames)                                                                  \
   COUNTER(trailers)                                                                                \
-  COUNTER(tx_reset)
+  COUNTER(tx_flush_timeout)                                                                        \
+  COUNTER(tx_reset)                                                                                \
+  GAUGE(streams_active, Accumulate)                                                                \
+  GAUGE(pending_send_bytes, Accumulate)
 
 /**
  * Wrapper struct for the HTTP/2 codec stats. @see stats_macros.h
  */
 struct CodecStats {
-  ALL_HTTP2_CODEC_STATS(GENERATE_COUNTER_STRUCT)
+  ALL_HTTP2_CODEC_STATS(GENERATE_COUNTER_STRUCT, GENERATE_GAUGE_STRUCT)
 };
 
 class Utility {
@@ -147,6 +153,18 @@ protected:
                       public StreamCallbackHelper {
 
     StreamImpl(ConnectionImpl& parent, uint32_t buffer_limit);
+    ~StreamImpl() override;
+    // TODO(mattklein123): Optimally this would be done in the destructor but there are currently
+    // deferred delete lifetime issues that need sorting out if the destructor of the stream is
+    // going to be able to refer to the parent connection.
+    void destroy();
+    void disarmStreamIdleTimer() {
+      if (stream_idle_timer_ != nullptr) {
+        // To ease testing and the destructor assertion.
+        stream_idle_timer_->disableTimer();
+        stream_idle_timer_.reset();
+      }
+    }
 
     StreamImpl* base() { return this; }
     ssize_t onDataSourceRead(uint64_t length, uint32_t* data_flags);
@@ -158,6 +176,8 @@ protected:
                                nghttp2_data_provider* provider) PURE;
     void submitTrailers(const HeaderMap& trailers);
     void submitMetadata();
+    virtual void createPendingFlushTimer() PURE;
+    void onPendingFlushTimer();
 
     // Http::StreamEncoder
     void encode100ContinueHeaders(const HeaderMap& headers) override;
@@ -173,6 +193,9 @@ protected:
     void resetStream(StreamResetReason reason) override;
     void readDisable(bool disable) override;
     uint32_t bufferLimit() override { return pending_recv_data_.highWatermark(); }
+    void setFlushTimeout(std::chrono::milliseconds timeout) override {
+      stream_idle_timeout_ = timeout;
+    }
 
     void setWriteBufferWatermarks(uint32_t low_watermark, uint32_t high_watermark) {
       pending_recv_data_.setWatermarks(low_watermark, high_watermark);
@@ -228,6 +251,9 @@ protected:
     bool pending_receive_buffer_high_watermark_called_ : 1;
     bool pending_send_buffer_high_watermark_called_ : 1;
     bool reset_due_to_messaging_error_ : 1;
+    // See HttpConnectionManager.stream_idle_timeout.
+    std::chrono::milliseconds stream_idle_timeout_{};
+    Event::TimerPtr stream_idle_timer_;
   };
 
   using StreamImplPtr = std::unique_ptr<StreamImpl>;
@@ -249,6 +275,10 @@ protected:
       if (!upgrade_type_.empty() && headers_->Status()) {
         Http::Utility::transformUpgradeResponseFromH2toH1(*headers_, upgrade_type_);
       }
+    }
+    void createPendingFlushTimer() override {
+      // Client streams do not create a flush timer because we currently assume that any failure
+      // to flush would be covered by a request/stream/etc. timeout.
     }
     std::string upgrade_type_;
   };
@@ -275,6 +305,7 @@ protected:
         Http::Utility::transformUpgradeRequestFromH2toH1(*headers_);
       }
     }
+    void createPendingFlushTimer() override;
   };
 
   ConnectionImpl* base() { return this; }
@@ -282,6 +313,18 @@ protected:
   int saveHeader(const nghttp2_frame* frame, HeaderString&& name, HeaderString&& value);
   void sendPendingFrames();
   void sendSettings(const Http2Settings& http2_settings, bool disable_push);
+
+  /**
+   * Check if header name contains underscore character.
+   * Underscore character is allowed in header names by the RFC-7230 and this check is implemented
+   * as a security measure due to systems that treat '_' and '-' as interchangeable.
+   * The ServerConnectionImpl may drop header or reject request based on the
+   * `common_http_protocol_options.headers_with_underscores_action` configuration option in the
+   * HttpConnectionManager.
+   */
+  virtual absl::optional<int> checkHeaderNameForUnderscores(absl::string_view /* header_name */) {
+    return absl::nullopt;
+  }
 
   static Http2Callbacks http2_callbacks_;
 
@@ -306,7 +349,7 @@ protected:
   // Maximum number of outbound frames. Initialized from corresponding http2_protocol_options.
   // Default value is 10000.
   const uint32_t max_outbound_frames_;
-  const Buffer::OwnedBufferFragmentImpl::Releasor frame_buffer_releasor_;
+  const std::function<void()> frame_buffer_releasor_;
   // This counter keeps track of the number of outbound frames of types PING, SETTINGS and
   // RST_STREAM (these that were buffered in the underlying connection but not yet written into the
   // socket). If this counter exceeds the `max_outbound_control_frames_' value the connection is
@@ -315,7 +358,7 @@ protected:
   // Maximum number of outbound frames of types PING, SETTINGS and RST_STREAM. Initialized from
   // corresponding http2_protocol_options. Default value is 1000.
   const uint32_t max_outbound_control_frames_;
-  const Buffer::OwnedBufferFragmentImpl::Releasor control_frame_buffer_releasor_;
+  const std::function<void()> control_frame_buffer_releasor_;
   // This counter keeps track of the number of consecutive inbound frames of types HEADERS,
   // CONTINUATION and DATA with an empty payload and no end stream flag. If this counter exceeds
   // the `max_consecutive_inbound_frames_with_empty_payload_` value the connection is terminated.
@@ -380,9 +423,8 @@ private:
   void incrementOutboundFrameCount(bool is_outbound_flood_monitored_control_frame);
   virtual bool trackInboundFrames(const nghttp2_frame_hd* hd, uint32_t padding_length) PURE;
   virtual bool checkInboundFrameLimits() PURE;
-
-  void releaseOutboundFrame(const Buffer::OwnedBufferFragmentImpl* fragment);
-  void releaseOutboundControlFrame(const Buffer::OwnedBufferFragmentImpl* fragment);
+  void releaseOutboundFrame();
+  void releaseOutboundControlFrame();
 
   bool dispatching_ : 1;
   bool raised_goaway_ : 1;
@@ -430,7 +472,9 @@ public:
   ServerConnectionImpl(Network::Connection& connection, ServerConnectionCallbacks& callbacks,
                        Stats::Scope& scope, const Http2Settings& http2_settings,
                        const uint32_t max_request_headers_kb,
-                       const uint32_t max_request_headers_count);
+                       const uint32_t max_request_headers_count,
+                       envoy::api::v2::core::HttpProtocolOptions::HeadersWithUnderscoresAction
+                           headers_with_underscores_action);
 
 private:
   // ConnectionImpl
@@ -440,6 +484,7 @@ private:
   void checkOutboundQueueLimits() override;
   bool trackInboundFrames(const nghttp2_frame_hd* hd, uint32_t padding_length) override;
   bool checkInboundFrameLimits() override;
+  absl::optional<int> checkHeaderNameForUnderscores(absl::string_view header_name) override;
 
   // Http::Connection
   // The reason for overriding the dispatch method is to do flood mitigation only when
@@ -455,6 +500,10 @@ private:
   // This flag indicates that downstream data is being dispatched and turns on flood mitigation
   // in the checkMaxOutbound*Framed methods.
   bool dispatching_downstream_data_{false};
+
+  // The action to take when a request header name contains underscore characters.
+  envoy::api::v2::core::HttpProtocolOptions::HeadersWithUnderscoresAction
+      headers_with_underscores_action_;
 };
 
 } // namespace Http2
