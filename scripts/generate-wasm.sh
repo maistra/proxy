@@ -64,16 +64,23 @@ if [[ "$(docker images -q ${WASM_SDK_IMAGE}:${WASM_SDK_TAG} 2> /dev/null)" == ""
   TMP_DIR=$(mktemp -d -t ${ENVOY_REPO}-XXXXXXXXXX)
   trap "rm -rf ${TMP_DIR}" EXIT
 
+  if [[ -z "${ENVOY_DIR}" ]]; then
+    cd ${TMP_DIR}
+    git clone https://github.com/${ENVOY_ORG}/${ENVOY_REPO}
+    cd ${ENVOY_REPO}
+  else
+    # ENVOY_DIR is absolute path of local envoy dir used for Wasm build.
+    cp -r ${ENVOY_DIR} ${TMP_DIR}
+    cd ${TMP_DIR}/$(basename "${ENVOY_DIR}")
+  fi
+
   # Check out to envoy SHA
-  cd ${TMP_DIR}
-  git clone https://github.com/${ENVOY_ORG}/${ENVOY_REPO}
-  cd ${ENVOY_REPO}
   git checkout ${ENVOY_SHA}
 
   # Rebuild and push
   cd api/wasm/cpp && docker build -t ${WASM_SDK_IMAGE}:${WASM_SDK_TAG} -f Dockerfile-sdk .
   if [[ ${PUSH_DOCKER_IMAGE} == 1 ]]; then
-    docker push ${WASM_SDK_IMAGE}:${WASM_SDK_TAG} || "fail to push to ${WASM_SDK_IMAGE} hub"
+    docker push ${WASM_SDK_IMAGE}:${WASM_SDK_TAG} || echo "fail to push to ${WASM_SDK_IMAGE} hub"
   fi
 fi
 
