@@ -18,6 +18,7 @@
 #include "common/common/utility.h"
 #include "common/http/codes.h"
 #include "common/http/exception.h"
+#include "common/http/header_utility.h"
 #include "common/http/headers.h"
 
 namespace Envoy {
@@ -55,9 +56,18 @@ ConnectionImpl::StreamImpl::StreamImpl(ConnectionImpl& parent, uint32_t buffer_l
       waiting_for_non_informational_headers_(false),
       pending_receive_buffer_high_watermark_called_(false),
       pending_send_buffer_high_watermark_called_(false), reset_due_to_messaging_error_(false) {
+  parent_.stats_.streams_active_.inc();
   if (buffer_limit > 0) {
     setWriteBufferWatermarks(buffer_limit / 2, buffer_limit);
   }
+}
+
+ConnectionImpl::StreamImpl::~StreamImpl() { ASSERT(stream_idle_timer_ == nullptr); }
+
+void ConnectionImpl::StreamImpl::destroy() {
+  disarmStreamIdleTimer();
+  parent_.stats_.streams_active_.dec();
+  parent_.stats_.pending_send_bytes_.sub(pending_send_data_.length());
 }
 
 static void insertHeader(std::vector<nghttp2_nv>& headers, const HeaderEntry& header) {
@@ -129,6 +139,7 @@ void ConnectionImpl::StreamImpl::encodeTrailers(const HeaderMap& trailers) {
     // waiting on window updates. We need to save the trailers so that we can emit them later.
     ASSERT(!pending_trailers_);
     pending_trailers_ = std::make_unique<HeaderMapImpl>(trailers);
+    createPendingFlushTimer();
   } else {
     submitTrailers(trailers);
     parent_.sendPendingFrames();
@@ -261,6 +272,7 @@ int ConnectionImpl::StreamImpl::onDataSourceSend(const uint8_t* framehd, size_t 
     return NGHTTP2_ERR_FLOODED;
   }
 
+  parent_.stats_.pending_send_bytes_.sub(length);
   output.move(pending_send_data_, length);
   parent_.connection_.write(output, false);
   return 0;
@@ -282,9 +294,30 @@ void ConnectionImpl::ServerStreamImpl::submitHeaders(const std::vector<nghttp2_n
   ASSERT(rc == 0);
 }
 
+void ConnectionImpl::ServerStreamImpl::createPendingFlushTimer() {
+  ASSERT(stream_idle_timer_ == nullptr);
+  if (stream_idle_timeout_.count() > 0) {
+    stream_idle_timer_ =
+        parent_.connection_.dispatcher().createTimer([this] { onPendingFlushTimer(); });
+    stream_idle_timer_->enableTimer(stream_idle_timeout_);
+  }
+}
+
+void ConnectionImpl::StreamImpl::onPendingFlushTimer() {
+  ENVOY_CONN_LOG(debug, "pending stream flush timeout", parent_.connection_);
+  stream_idle_timer_.reset();
+  parent_.stats_.tx_flush_timeout_.inc();
+  ASSERT(local_end_stream_ && !local_end_stream_sent_);
+  // This will emit a reset frame for this stream and close the stream locally. No reset callbacks
+  // will be run because higher layers think the stream is already finished.
+  resetStreamWorker(StreamResetReason::LocalReset);
+  parent_.sendPendingFrames();
+}
+
 void ConnectionImpl::StreamImpl::encodeData(Buffer::Instance& data, bool end_stream) {
   ASSERT(!local_end_stream_);
   local_end_stream_ = end_stream;
+  parent_.stats_.pending_send_bytes_.add(data.length());
   pending_send_data_.move(data);
   if (data_deferred_) {
     int rc = nghttp2_session_resume_data(parent_.session_, stream_id_);
@@ -294,6 +327,9 @@ void ConnectionImpl::StreamImpl::encodeData(Buffer::Instance& data, bool end_str
   }
 
   parent_.sendPendingFrames();
+  if (local_end_stream_ && pending_send_data_.length() > 0) {
+    createPendingFlushTimer();
+  }
 }
 
 void ConnectionImpl::StreamImpl::resetStream(StreamResetReason reason) {
@@ -372,22 +408,20 @@ bool checkRuntimeOverride(bool config_value, const char* override_key) {
 ConnectionImpl::ConnectionImpl(Network::Connection& connection, Stats::Scope& stats,
                                const Http2Settings& http2_settings, const uint32_t max_headers_kb,
                                const uint32_t max_headers_count)
-    : stats_{ALL_HTTP2_CODEC_STATS(POOL_COUNTER_PREFIX(stats, "http2."))}, connection_(connection),
-      max_headers_kb_(max_headers_kb), max_headers_count_(max_headers_count),
+    : stats_{ALL_HTTP2_CODEC_STATS(POOL_COUNTER_PREFIX(stats, "http2."),
+                                   POOL_GAUGE_PREFIX(stats, "http2."))},
+      connection_(connection), max_headers_kb_(max_headers_kb),
+      max_headers_count_(max_headers_count),
       per_stream_buffer_limit_(http2_settings.initial_stream_window_size_),
       stream_error_on_invalid_http_messaging_(checkRuntimeOverride(
           http2_settings.stream_error_on_invalid_http_messaging_, InvalidHttpMessagingOverrideKey)),
       flood_detected_(false),
       max_outbound_frames_(
           Runtime::getInteger(MaxOutboundFramesOverrideKey, http2_settings.max_outbound_frames_)),
-      frame_buffer_releasor_([this](const Buffer::OwnedBufferFragmentImpl* fragment) {
-        releaseOutboundFrame(fragment);
-      }),
+      frame_buffer_releasor_([this]() { releaseOutboundFrame(); }),
       max_outbound_control_frames_(Runtime::getInteger(
           MaxOutboundControlFramesOverrideKey, http2_settings.max_outbound_control_frames_)),
-      control_frame_buffer_releasor_([this](const Buffer::OwnedBufferFragmentImpl* fragment) {
-        releaseOutboundControlFrame(fragment);
-      }),
+      control_frame_buffer_releasor_([this]() { releaseOutboundControlFrame(); }),
       max_consecutive_inbound_frames_with_empty_payload_(
           Runtime::getInteger(MaxConsecutiveInboundFramesWithEmptyPayloadOverrideKey,
                               http2_settings.max_consecutive_inbound_frames_with_empty_payload_)),
@@ -399,7 +433,12 @@ ConnectionImpl::ConnectionImpl(Network::Connection& connection, Stats::Scope& st
           http2_settings.max_inbound_window_update_frames_per_data_frame_sent_)),
       dispatching_(false), raised_goaway_(false), pending_deferred_reset_(false) {}
 
-ConnectionImpl::~ConnectionImpl() { nghttp2_session_del(session_); }
+ConnectionImpl::~ConnectionImpl() {
+  for (const auto& stream : active_streams_) {
+    stream->destroy();
+  }
+  nghttp2_session_del(session_);
+}
 
 void ConnectionImpl::dispatch(Buffer::Instance& data) {
   ENVOY_CONN_LOG(trace, "dispatching {} bytes", connection_, data.length());
@@ -610,6 +649,15 @@ int ConnectionImpl::onFrameSend(const nghttp2_frame* frame) {
   case NGHTTP2_GOAWAY: {
     ENVOY_CONN_LOG(debug, "sent goaway code={}", connection_, frame->goaway.error_code);
     if (frame->goaway.error_code != NGHTTP2_NO_ERROR) {
+      // TODO(mattklein123): Returning this error code abandons standard nghttp2 frame accounting.
+      // As such, it is not reliable to call sendPendingFrames() again after this and we assume
+      // that the connection is going to get torn down immediately. One byproduct of this is that
+      // we need to cancel all pending flush stream timeouts since they can race with connection
+      // teardown. As part of the work to remove exceptions we should aim to clean up all of this
+      // error handling logic and only handle this type of case at the end of dispatch.
+      for (auto& stream : active_streams_) {
+        stream->disarmStreamIdleTimer();
+      }
       return NGHTTP2_ERR_CALLBACK_FAILURE;
     }
     break;
@@ -693,27 +741,21 @@ bool ConnectionImpl::addOutboundFrameFragment(Buffer::OwnedImpl& output, const u
     return false;
   }
 
-  auto fragment = Buffer::OwnedBufferFragmentImpl::create(
-      absl::string_view(reinterpret_cast<const char*>(data), length),
-      is_outbound_flood_monitored_control_frame ? control_frame_buffer_releasor_
-                                                : frame_buffer_releasor_);
-
-  // The Buffer::OwnedBufferFragmentImpl object will be deleted in the *frame_buffer_releasor_
-  // callback.
-  output.addBufferFragment(*fragment.release());
+  output.add(data, length);
+  output.addDrainTracker(is_outbound_flood_monitored_control_frame ? control_frame_buffer_releasor_
+                                                                   : frame_buffer_releasor_);
   return true;
 }
 
-void ConnectionImpl::releaseOutboundFrame(const Buffer::OwnedBufferFragmentImpl* fragment) {
+void ConnectionImpl::releaseOutboundFrame() {
   ASSERT(outbound_frames_ >= 1);
   --outbound_frames_;
-  delete fragment;
 }
 
-void ConnectionImpl::releaseOutboundControlFrame(const Buffer::OwnedBufferFragmentImpl* fragment) {
+void ConnectionImpl::releaseOutboundControlFrame() {
   ASSERT(outbound_control_frames_ >= 1);
   --outbound_control_frames_;
-  releaseOutboundFrame(fragment);
+  releaseOutboundFrame();
 }
 
 ssize_t ConnectionImpl::onSend(const uint8_t* data, size_t length) {
@@ -759,6 +801,7 @@ int ConnectionImpl::onStreamClose(int32_t stream_id, uint32_t error_code) {
       stream->runResetCallbacks(reason);
     }
 
+    stream->destroy();
     connection_.dispatcher().deferredDelete(stream->removeFromList(active_streams_));
     // Any unconsumed data must be consumed before the stream is deleted.
     // nghttp2 does not appear to track this internally, and any stream deleted
@@ -818,6 +861,14 @@ int ConnectionImpl::saveHeader(const nghttp2_frame* frame, HeaderString&& name,
     stats_.headers_cb_no_stream_.inc();
     return 0;
   }
+
+  auto should_return = checkHeaderNameForUnderscores(name.getStringView());
+  if (should_return) {
+    name.clear();
+    value.clear();
+    return should_return.value();
+  }
+
   stream->saveHeader(std::move(name), std::move(value));
 
   // Verify that the cached value in byte size exists.
@@ -1066,6 +1117,13 @@ ConnectionImpl::Http2Options::Http2Options(const Http2Settings& http2_settings) 
   if (http2_settings.allow_metadata_) {
     nghttp2_option_set_user_recv_extension_type(options_, METADATA_FRAME_TYPE);
   }
+
+  // nghttp2 v1.39.2 lowered the internal flood protection limit from 10K to 1K of ACK frames. This
+  // new limit may cause the internal nghttp2 mitigation to trigger more often (as it requires just
+  // 9K of incoming bytes for smallest 9 byte SETTINGS frame), bypassing the same mitigation and its
+  // associated behavior in the envoy HTTP/2 codec. Since envoy does not rely on this mitigation,
+  // set back to the old 10K number to avoid any changes in the HTTP/2 codec behavior.
+  nghttp2_option_set_max_outbound_ack(options_, 10000);
 }
 
 ConnectionImpl::Http2Options::~Http2Options() { nghttp2_option_del(options_); }
@@ -1131,14 +1189,15 @@ int ClientConnectionImpl::onHeader(const nghttp2_frame* frame, HeaderString&& na
   return saveHeader(frame, std::move(name), std::move(value));
 }
 
-ServerConnectionImpl::ServerConnectionImpl(Network::Connection& connection,
-                                           Http::ServerConnectionCallbacks& callbacks,
-                                           Stats::Scope& scope, const Http2Settings& http2_settings,
-                                           const uint32_t max_request_headers_kb,
-                                           const uint32_t max_request_headers_count)
+ServerConnectionImpl::ServerConnectionImpl(
+    Network::Connection& connection, Http::ServerConnectionCallbacks& callbacks,
+    Stats::Scope& scope, const Http2Settings& http2_settings, const uint32_t max_request_headers_kb,
+    const uint32_t max_request_headers_count,
+    envoy::api::v2::core::HttpProtocolOptions::HeadersWithUnderscoresAction
+        headers_with_underscores_action)
     : ConnectionImpl(connection, scope, http2_settings, max_request_headers_kb,
                      max_request_headers_count),
-      callbacks_(callbacks) {
+      callbacks_(callbacks), headers_with_underscores_action_(headers_with_underscores_action) {
   Http2Options http2_options(http2_settings);
   nghttp2_session_server_new2(&session_, http2_callbacks_.callbacks(), base(),
                               http2_options.options());
@@ -1283,6 +1342,25 @@ void ServerConnectionImpl::dispatch(Buffer::Instance& data) {
   checkOutboundQueueLimits();
 
   ConnectionImpl::dispatch(data);
+}
+
+absl::optional<int>
+ServerConnectionImpl::checkHeaderNameForUnderscores(absl::string_view header_name) {
+  if (headers_with_underscores_action_ != envoy::api::v2::core::HttpProtocolOptions::ALLOW &&
+      Http::HeaderUtility::headerNameContainsUnderscore(header_name)) {
+    if (headers_with_underscores_action_ ==
+        envoy::api::v2::core::HttpProtocolOptions::DROP_HEADER) {
+      ENVOY_CONN_LOG(debug, "Dropping header with invalid characters in its name: {}", connection_,
+                     header_name);
+      stats_.dropped_headers_with_underscores_.inc();
+      return 0;
+    }
+    ENVOY_CONN_LOG(debug, "Rejecting request due to header name with underscores: {}", connection_,
+                   header_name);
+    stats_.requests_rejected_with_underscores_in_headers_.inc();
+    return NGHTTP2_ERR_TEMPORAL_CALLBACK_FAILURE;
+  }
+  return absl::nullopt;
 }
 
 } // namespace Http2

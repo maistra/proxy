@@ -189,11 +189,16 @@ IntegrationCodecClientPtr HttpIntegrationTest::makeHttpConnection(uint32_t port)
 }
 
 IntegrationCodecClientPtr
-HttpIntegrationTest::makeRawHttpConnection(Network::ClientConnectionPtr&& conn) {
+HttpIntegrationTest::makeRawHttpConnection(Network::ClientConnectionPtr&& conn,
+                                           absl::optional<Http::Http2Settings> http2_options) {
   std::shared_ptr<Upstream::MockClusterInfo> cluster{new NiceMock<Upstream::MockClusterInfo>()};
   cluster->max_response_headers_count_ = 200;
-  cluster->http2_settings_.allow_connect_ = true;
-  cluster->http2_settings_.allow_metadata_ = true;
+  if (http2_options.has_value()) {
+    cluster->http2_settings_ = http2_options.value();
+  } else {
+    cluster->http2_settings_.allow_connect_ = true;
+    cluster->http2_settings_.allow_metadata_ = true;
+  }
   Upstream::HostDescriptionConstSharedPtr host_description{Upstream::makeTestHostDescription(
       cluster, fmt::format("tcp://{}:80", Network::Test::getLoopbackAddressUrlString(version_)))};
   return std::make_unique<IntegrationCodecClient>(*dispatcher_, std::move(conn), host_description,
@@ -202,7 +207,7 @@ HttpIntegrationTest::makeRawHttpConnection(Network::ClientConnectionPtr&& conn) 
 
 IntegrationCodecClientPtr
 HttpIntegrationTest::makeHttpConnection(Network::ClientConnectionPtr&& conn) {
-  auto codec = makeRawHttpConnection(std::move(conn));
+  auto codec = makeRawHttpConnection(std::move(conn), absl::nullopt);
   EXPECT_TRUE(codec->connected());
   return codec;
 }
@@ -882,6 +887,44 @@ void HttpIntegrationTest::testTwoRequests(bool network_backup) {
   EXPECT_TRUE(response->complete());
   EXPECT_EQ("200", response->headers().Status()->value().getStringView());
   EXPECT_EQ(1024U, response->body().size());
+}
+
+void HttpIntegrationTest::testLargeRequestUrl(uint32_t url_size, uint32_t max_headers_size) {
+  // `size` parameter dictates the size of each header that will be added to the request and `count`
+  // parameter is the number of headers to be added. The actual request byte size will exceed `size`
+  // due to the keys and other headers. The actual request header count will exceed `count` by four
+  // due to default headers.
+
+  config_helper_.addConfigModifier(
+      [&](envoy::config::filter::network::http_connection_manager::v2::HttpConnectionManager& hcm)
+          -> void { hcm.mutable_max_request_headers_kb()->set_value(max_headers_size); });
+  max_request_headers_kb_ = max_headers_size;
+
+  Http::TestHeaderMapImpl big_headers{{":method", "GET"},
+                                      {":path", "/" + std::string(url_size * 1024, 'a')},
+                                      {":scheme", "http"},
+                                      {":authority", "host"}};
+
+  initialize();
+  codec_client_ = makeHttpConnection(lookupPort("http"));
+  if (url_size >= max_headers_size) {
+    // header size includes keys too, so expect rejection when equal
+    auto encoder_decoder = codec_client_->startRequest(big_headers);
+    auto response = std::move(encoder_decoder.second);
+
+    if (downstream_protocol_ == Http::CodecClient::Type::HTTP1) {
+      codec_client_->waitForDisconnect();
+      EXPECT_TRUE(response->complete());
+      EXPECT_EQ("431", response->headers().Status()->value().getStringView());
+    } else {
+      response->waitForReset();
+      codec_client_->close();
+    }
+  } else {
+    auto response = sendRequestAndWaitForResponse(big_headers, 0, default_response_headers_, 0);
+    EXPECT_TRUE(response->complete());
+    EXPECT_EQ("200", response->headers().Status()->value().getStringView());
+  }
 }
 
 void HttpIntegrationTest::testLargeRequestHeaders(uint32_t size, uint32_t count, uint32_t max_size,

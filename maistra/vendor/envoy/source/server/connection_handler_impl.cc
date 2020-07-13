@@ -264,6 +264,8 @@ void ConnectionHandlerImpl::ActiveTcpSocket::newConnection() {
       socket_->setDetectedTransportProtocol(
           Extensions::TransportSockets::TransportProtocolNames::get().RawBuffer);
     }
+    // TODO(lambdai): add integration test
+    // TODO: Address issues in wider scope. See https://github.com/envoyproxy/envoy/issues/8925
     // Erase accept filter states because accept filters may not get the opportunity to clean up.
     // Particularly the assigned events need to reset before assigning new events in the follow up.
     accept_filters_.clear();
@@ -273,6 +275,14 @@ void ConnectionHandlerImpl::ActiveTcpSocket::newConnection() {
 }
 
 void ConnectionHandlerImpl::ActiveTcpListener::onAccept(Network::ConnectionSocketPtr&& socket) {
+  if (listenerConnectionLimitReached()) {
+    ENVOY_LOG(trace, "closing connection: listener connection limit reached for {}",
+              config_.name());
+    socket->close();
+    stats_.downstream_cx_overflow_.inc();
+    return;
+  }
+
   onAcceptWorker(std::move(socket), config_.handOffRestoredDestinationConnections(), false);
 }
 

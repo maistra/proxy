@@ -128,7 +128,8 @@ public:
 
   void onAccept(ConnectionSocketPtr&& socket) override { onAccept_(socket); }
 
-  MOCK_METHOD1(onAccept_, void(ConnectionSocketPtr& socket));
+  MOCK_METHOD(void, onAccept_, (ConnectionSocketPtr & socket));
+  MOCK_METHOD(void, onReject, ());
 };
 
 class MockUdpListenerCallbacks : public UdpListenerCallbacks {
@@ -164,6 +165,7 @@ public:
   MockListenerFilter();
   ~MockListenerFilter() override;
 
+  MOCK_METHOD0(destroy_, void());
   MOCK_METHOD1(onAccept, Network::FilterStatus(ListenerFilterCallbacks&));
 };
 
@@ -313,6 +315,7 @@ public:
   MOCK_CONST_METHOD0(name, const std::string&());
   MOCK_METHOD0(udpListenerFactory, const Network::ActiveUdpListenerFactory*());
   MOCK_METHOD0(connectionBalancer, ConnectionBalancer&());
+  MOCK_METHOD0(openConnections, ResourceLimit&());
 
   envoy::api::v2::core::TrafficDirection direction() const override {
     return envoy::api::v2::core::TrafficDirection::UNSPECIFIED;

@@ -66,6 +66,28 @@ TEST_P(Http2IntegrationTest, RetryAttemptCount) { testRetryAttemptCountHeader();
 
 TEST_P(Http2IntegrationTest, LargeRequestTrailersRejected) { testLargeRequestTrailers(66, 60); }
 
+// Verify downstream codec stream flush timeout.
+TEST_P(Http2IntegrationTest, CodecStreamIdleTimeout) {
+  config_helper_.setBufferLimits(1024, 1024);
+  config_helper_.addConfigModifier(
+      [&](envoy::config::filter::network::http_connection_manager::v2::HttpConnectionManager& hcm)
+          -> void {
+        hcm.mutable_stream_idle_timeout()->set_seconds(0);
+        constexpr uint64_t IdleTimeoutMs = 400;
+        hcm.mutable_stream_idle_timeout()->set_nanos(IdleTimeoutMs * 1000 * 1000);
+      });
+  initialize();
+  Http::Http2Settings http2_options;
+  http2_options.initial_stream_window_size_ = 65535;
+  codec_client_ = makeRawHttpConnection(makeClientConnection(lookupPort("http")), http2_options);
+  auto response = codec_client_->makeHeaderOnlyRequest(default_request_headers_);
+  waitForNextUpstreamRequest();
+  upstream_request_->encodeHeaders(default_response_headers_, false);
+  upstream_request_->encodeData(70000, true);
+  test_server_->waitForCounterEq("http2.tx_flush_timeout", 1);
+  response->waitForReset();
+}
+
 static std::string response_metadata_filter = R"EOF(
 name: response-metadata-filter
 typed_config:
@@ -1440,16 +1462,19 @@ const int64_t TransmitThreshold = 100 * 1024 * 1024;
 } // namespace
 
 void Http2FloodMitigationTest::setNetworkConnectionBufferSize() {
-  // nghttp2 library has its own internal mitigation for outbound control frames. The mitigation is
-  // triggered when there are more than 10000 PING or SETTINGS frames with ACK flag in the nghttp2
-  // internal outbound queue. It is possible to trigger this mitigation in nghttp2 before triggering
-  // Envoy's own flood mitigation. This can happen when a buffer larger enough to contain over 10K
-  // PING or SETTINGS frames is dispatched to the nghttp2 library. To prevent this from happening
-  // the network connection receive buffer needs to be smaller than 90Kb (which is 10K SETTINGS
-  // frames). Set it to the arbitrarily chosen value of 32K.
+  // nghttp2 library has its own internal mitigation for outbound control frames (see
+  // NGHTTP2_DEFAULT_MAX_OBQ_FLOOD_ITEM). The default nghttp2 mitigation threshold of 1K is modified
+  // to 10K in the ConnectionImpl::Http2Options::Http2Options. The mitigation is triggered when
+  // there are more than 10000 PING or SETTINGS frames with ACK flag in the nghttp2 internal
+  // outbound queue. It is possible to trigger this mitigation in nghttp2 before triggering Envoy's
+  // own flood mitigation. This can happen when a buffer large enough to contain over 10K PING or
+  // SETTINGS frames is dispatched to the nghttp2 library. To prevent this from happening the
+  // network connection receive buffer needs to be smaller than 90Kb (which is 10K SETTINGS frames).
+  // Set it to the arbitrarily chosen value of 32K. Note that this buffer has 16K lower bound.
   config_helper_.addConfigModifier([](envoy::config::bootstrap::v2::Bootstrap& bootstrap) -> void {
     RELEASE_ASSERT(bootstrap.mutable_static_resources()->listeners_size() >= 1, "");
     auto* listener = bootstrap.mutable_static_resources()->mutable_listeners(0);
+
     listener->mutable_per_connection_buffer_limit_bytes()->set_value(32 * 1024);
   });
 }
