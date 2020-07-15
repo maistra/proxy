@@ -202,12 +202,18 @@ IntegrationCodecClientPtr HttpIntegrationTest::makeHttpConnection(uint32_t port)
   return makeHttpConnection(makeClientConnection(port));
 }
 
-IntegrationCodecClientPtr
-HttpIntegrationTest::makeRawHttpConnection(Network::ClientConnectionPtr&& conn) {
+IntegrationCodecClientPtr HttpIntegrationTest::makeRawHttpConnection(
+    Network::ClientConnectionPtr&& conn,
+    absl::optional<envoy::config::core::v3::Http2ProtocolOptions> http2_options) {
   std::shared_ptr<Upstream::MockClusterInfo> cluster{new NiceMock<Upstream::MockClusterInfo>()};
   cluster->max_response_headers_count_ = 200;
-  cluster->http2_options_.set_allow_connect(true);
-  cluster->http2_options_.set_allow_metadata(true);
+  if (!http2_options.has_value()) {
+    http2_options = Http2::Utility::initializeAndValidateOptions(
+        envoy::config::core::v3::Http2ProtocolOptions());
+    http2_options.value().set_allow_connect(true);
+    http2_options.value().set_allow_metadata(true);
+  }
+  cluster->http2_options_ = http2_options.value();
   cluster->http1_settings_.enable_trailers_ = true;
   Upstream::HostDescriptionConstSharedPtr host_description{Upstream::makeTestHostDescription(
       cluster, fmt::format("tcp://{}:80", Network::Test::getLoopbackAddressUrlString(version_)))};
@@ -217,7 +223,7 @@ HttpIntegrationTest::makeRawHttpConnection(Network::ClientConnectionPtr&& conn) 
 
 IntegrationCodecClientPtr
 HttpIntegrationTest::makeHttpConnection(Network::ClientConnectionPtr&& conn) {
-  auto codec = makeRawHttpConnection(std::move(conn));
+  auto codec = makeRawHttpConnection(std::move(conn), absl::nullopt);
   EXPECT_TRUE(codec->connected()) << codec->connection()->transportFailureReason();
   return codec;
 }
@@ -357,16 +363,24 @@ HttpIntegrationTest::waitForNextUpstreamRequest(const std::vector<uint64_t>& ups
   absl::optional<uint64_t> upstream_with_request;
   // If there is no upstream connection, wait for it to be established.
   if (!fake_upstream_connection_) {
-
     AssertionResult result = AssertionFailure();
-    for (auto upstream_index : upstream_indices) {
-      result = fake_upstreams_[upstream_index]->waitForHttpConnection(
-          *dispatcher_, fake_upstream_connection_, connection_wait_timeout, max_request_headers_kb_,
-          max_request_headers_count_);
+    int upstream_index = 0;
+    Event::TestTimeSystem& time_system = timeSystem();
+    auto end_time = time_system.monotonicTime() + connection_wait_timeout;
+    // Loop over the upstreams until the call times out or an upstream request is received.
+    while (!result) {
+      upstream_index = upstream_index % upstream_indices.size();
+      result = fake_upstreams_[upstream_indices[upstream_index]]->waitForHttpConnection(
+          *dispatcher_, fake_upstream_connection_, std::chrono::milliseconds(5),
+          max_request_headers_kb_, max_request_headers_count_);
       if (result) {
         upstream_with_request = upstream_index;
         break;
+      } else if (time_system.monotonicTime() >= end_time) {
+        result = (AssertionFailure() << "Timed out waiting for new connection.");
+        break;
       }
+      ++upstream_index;
     }
     RELEASE_ASSERT(result, result.message());
   }
@@ -957,6 +971,44 @@ void HttpIntegrationTest::testTwoRequests(bool network_backup) {
   EXPECT_TRUE(response->complete());
   EXPECT_EQ("200", response->headers().Status()->value().getStringView());
   EXPECT_EQ(1024U, response->body().size());
+}
+
+void HttpIntegrationTest::testLargeRequestUrl(uint32_t url_size, uint32_t max_headers_size) {
+  // `size` parameter dictates the size of each header that will be added to the request and `count`
+  // parameter is the number of headers to be added. The actual request byte size will exceed `size`
+  // due to the keys and other headers. The actual request header count will exceed `count` by four
+  // due to default headers.
+
+  config_helper_.addConfigModifier(
+      [&](envoy::extensions::filters::network::http_connection_manager::v3::HttpConnectionManager&
+              hcm) -> void { hcm.mutable_max_request_headers_kb()->set_value(max_headers_size); });
+  max_request_headers_kb_ = max_headers_size;
+
+  Http::TestRequestHeaderMapImpl big_headers{{":method", "GET"},
+                                             {":path", "/" + std::string(url_size * 1024, 'a')},
+                                             {":scheme", "http"},
+                                             {":authority", "host"}};
+
+  initialize();
+  codec_client_ = makeHttpConnection(lookupPort("http"));
+  if (url_size >= max_headers_size) {
+    // header size includes keys too, so expect rejection when equal
+    auto encoder_decoder = codec_client_->startRequest(big_headers);
+    auto response = std::move(encoder_decoder.second);
+
+    if (downstream_protocol_ == Http::CodecClient::Type::HTTP1) {
+      codec_client_->waitForDisconnect();
+      EXPECT_TRUE(response->complete());
+      EXPECT_EQ("431", response->headers().Status()->value().getStringView());
+    } else {
+      response->waitForReset();
+      codec_client_->close();
+    }
+  } else {
+    auto response = sendRequestAndWaitForResponse(big_headers, 0, default_response_headers_, 0);
+    EXPECT_TRUE(response->complete());
+    EXPECT_EQ("200", response->headers().Status()->value().getStringView());
+  }
 }
 
 void HttpIntegrationTest::testLargeRequestHeaders(uint32_t size, uint32_t count, uint32_t max_size,

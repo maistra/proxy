@@ -1,1 +1,1 @@
-BAZEL_VERSION='2.2.0'
+BAZEL_VERSION='2.2.0- (@non-git)'

@@ -105,7 +105,9 @@ protected:
 
   IntegrationCodecClientPtr makeHttpConnection(uint32_t port);
   // Makes a http connection object without checking its connected state.
-  virtual IntegrationCodecClientPtr makeRawHttpConnection(Network::ClientConnectionPtr&& conn);
+  virtual IntegrationCodecClientPtr makeRawHttpConnection(
+      Network::ClientConnectionPtr&& conn,
+      absl::optional<envoy::config::core::v3::Http2ProtocolOptions> http2_options);
   // Makes a http connection object with asserting a connected state.
   IntegrationCodecClientPtr makeHttpConnection(Network::ClientConnectionPtr&& conn);
 
@@ -195,6 +197,7 @@ protected:
   void testLargeHeaders(Http::TestRequestHeaderMapImpl request_headers,
                         Http::TestRequestTrailerMapImpl request_trailers, uint32_t size,
                         uint32_t max_size);
+  void testLargeRequestUrl(uint32_t url_size, uint32_t max_headers_size);
   void testLargeRequestHeaders(uint32_t size, uint32_t count, uint32_t max_size = 60,
                                uint32_t max_count = 100);
   void testLargeRequestTrailers(uint32_t size, uint32_t max_size = 60);
