@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+set -x
 set -e
 set -u
 set -o pipefail
@@ -21,7 +22,7 @@ function init(){
   ROOT_DIR="$(pwd)"
 
   OUTPUT_BASE="$(mktemp -d)"
-  VENDOR_DIR="/work/maistra/vendor"
+  VENDOR_DIR="${ROOT_DIR}/maistra/vendor"
   BAZELRC="${ROOT_DIR}/maistra/bazelrc-vendor"
   PATCHES_DIR="${ROOT_DIR}/maistra/patches"
 
@@ -76,7 +77,7 @@ function copy_files() {
       fi
 
       cp -rL "${f}" "${VENDOR_DIR}" || echo "Copy of ${f} failed. Ignoring..."
-      echo "build --override_repository=${repo_name}=${VENDOR_DIR}/${repo_name}" >> "${BAZELRC}"
+      echo "build --override_repository=${repo_name}=/work/maistra/vendor/${repo_name}" >> "${BAZELRC}"
     fi
 
   find "${VENDOR_DIR}" -name .git -type d -print0 | xargs -0 -r rm -rf
