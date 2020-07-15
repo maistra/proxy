@@ -37,12 +37,12 @@ new_local_repository(
 # 1. Determine SHA256 `wget https://github.com/maistra/envoy/archive/$COMMIT.tar.gz && sha256sum $COMMIT.tar.gz`
 # 2. Update .bazelversion, envoy.bazelrc and .bazelrc if needed.
 #
-# Commit time: 4/24/20
+# commit date: 06/30/2020
 # Used by scripts/generate-wasm.sh
-ENVOY_SHA = "eaa4999e24f9018fe0d1833c438eafc2da4b8de6"
-
-ENVOY_SHA256 = "626484d9724d6b12594275b4c2538ce1493ffbb900be53284d6c6cabf11cb3a0"
-
+ENVOY_SHA = "2ba1ee165f654d202dee2b0edc08b4fa08bc89b8"
+ 
+ENVOY_SHA256 = "66c903f56daa624ba264bdde0fda385856da174e3840166f5dd47d5204ce4a44"
+ 
 ENVOY_ORG = "maistra"
 
 ENVOY_REPO = "envoy"
