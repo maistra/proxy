@@ -77,8 +77,7 @@ public:
   std::string ciphersuiteString() const override;
   const std::string& tlsVersion() const override;
   absl::optional<std::string> x509Extension(absl::string_view extension_name) const override;
-
-  SSL* rawSslForTest() const { return ssl_.get(); }
+  SSL* ssl() const { return ssl_.get(); }
 
   bssl::UniquePtr<SSL> ssl_;
 
@@ -98,6 +97,8 @@ private:
   mutable std::string cached_tls_version_;
   mutable SslExtendedSocketInfoImpl extended_socket_info_;
 };
+
+using SslSocketInfoConstSharedPtr = std::shared_ptr<const SslSocketInfo>;
 
 class SslSocket : public Network::TransportSocket,
                   public Envoy::Ssl::PrivateKeyConnectionCallbacks,
@@ -119,7 +120,10 @@ public:
   // Ssl::PrivateKeyConnectionCallbacks
   void onPrivateKeyMethodComplete() override;
 
-  SSL* rawSslForTest() const { return ssl_; }
+  SSL* rawSslForTest() const { return rawSsl(); }
+
+protected:
+  SSL* rawSsl() const { return info_->ssl_.get(); }
 
 private:
   struct ReadResult {
@@ -129,7 +133,7 @@ private:
   ReadResult sslReadIntoSlice(Buffer::RawSlice& slice);
 
   Network::PostIoAction doHandshake();
-  void drainErrorQueue();
+  void drainErrorQueue(const bool show_errno = false);
   void shutdownSsl();
   bool isThreadSafe() const {
     return callbacks_ != nullptr && callbacks_->connection().dispatcher().isThreadSafe();
@@ -142,8 +146,7 @@ private:
   std::string failure_reason_;
   SocketState state_;
 
-  SSL* ssl_;
-  Ssl::ConnectionInfoConstSharedPtr info_;
+  SslSocketInfoConstSharedPtr info_;
 };
 
 class ClientSslSocketFactory : public Network::TransportSocketFactory,

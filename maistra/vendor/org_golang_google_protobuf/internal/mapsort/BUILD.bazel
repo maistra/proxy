@@ -1,0 +1,19 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["mapsort.go"],
+    importpath = "google.golang.org/protobuf/internal/mapsort",
+    visibility = ["//:__subpackages__"],
+    deps = ["//reflect/protoreflect:go_default_library"],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = ["mapsort_test.go"],
+    embed = [":go_default_library"],
+    deps = [
+        "//internal/testprotos/test:go_default_library",
+        "//reflect/protoreflect:go_default_library",
+    ],
+)

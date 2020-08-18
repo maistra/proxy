@@ -76,3 +76,16 @@ test_filter_test
 ----------------
 
 Checks that ``--test_filter`` actually filters out test cases.
+
+testmain_import_test
+----------------
+
+Check if all packages in all source files are imported to test main, to ensure
+a consistent test behaviour. This ensures a consistent behaviour when thinking
+about global indirect depencencies.
+
+tags_test
+---------
+
+Checks that setting ``gotags`` affects source filtering. The test will fail
+unless a specific tag is set.

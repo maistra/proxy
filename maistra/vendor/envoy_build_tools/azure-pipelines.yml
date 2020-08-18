@@ -2,62 +2,93 @@ trigger:
 - master
 
 jobs:
-- job: build_container
+- job: build_container_linux
   strategy:
     matrix:
       ubuntu:
-        LINUX_DISTRO: ubuntu
+        OS_DISTRO: ubuntu
+        PUSH_GCR_IMAGE: true
+        GCR_IMAGE_NAME: envoy-build
       centos:
-        LINUX_DISTRO: centos
+        OS_DISTRO: centos
+        PUSH_GCR_IMAGE: false
   dependsOn: []
+  timeoutInMinutes: 120
   pool:
-    vmImage: 'ubuntu-16.04'
-  container: google/cloud-sdk:latest
+    vmImage: 'ubuntu-18.04'
   steps:
   - task: DockerInstaller@0
     displayName: Docker Installer
     inputs:
       dockerVersion: 19.03.5
       releaseType: stable
+
+  - bash: .azure-pipelines/cleanup.sh
+    displayName: "Removing tools from agent"
+
   - bash: |
       ./docker_push.sh
     workingDirectory: build_container
     env:
+      OS_FAMILY: linux
+      IMAGE_ARCH: "amd64 arm64"
       SOURCE_BRANCH: $(Build.SourceBranch)
       DOCKERHUB_USERNAME: $(DockerUsername)
       DOCKERHUB_PASSWORD: $(DockerPassword)
       GCP_SERVICE_ACCOUNT_KEY: $(GcpServiceAccountKey)
 
-- job: generate_toolchains
-  dependsOn: "build_container"
+- job: generate_toolchains_linux
+  dependsOn: "build_container_linux"
   pool:
-    vmImage: 'ubuntu-16.04'
+    vmImage: 'ubuntu-18.04'
+  steps:
+  - template: .azure-pipelines/generate_toolchains.yml
+    parameters:
+      bazeliskInstallCommandPrefix: "sudo"
+      bazeliskInstallPath: "/usr/local/bin/bazel"
+      bazeliskReleaseFilename: bazelisk-linux-amd64
+      gcrImageName: "envoy-build"
+      osFamily: "linux"
+
+- job: build_container_windows
+  strategy:
+    matrix:
+      windows2019:
+        OS_DISTRO: windows2019
+        PUSH_GCR_IMAGE: true
+        GCR_IMAGE_NAME: envoy-build-windows
+  dependsOn: []
+  pool:
+    vmImage: 'windows-latest'
   steps:
   - bash: |
-      sudo curl -sSL -o /usr/local/bin/bazel https://github.com/bazelbuild/bazelisk/releases/download/v1.0/bazelisk-linux-amd64
-      sudo chmod +x /usr/local/bin/bazel
-    displayName: Install Bazelisk
-
-  - task: InstallSSHKey@0
-    inputs:
-      hostName: "github.com ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEAq2A7hRGmdnm9tUDbO9IDSwBK6TbQa+PXYPCPy6rbTrTtw7PHkccKrpp0yVhp5HdEIcKr6pLlVDBfOLX9QUsyCOV0wzfjIJNlGEYsdlLJizHhbn2mUjvSAHQqZETYP81eFzLQNnPHt4EVVUh7VfDESU84KezmD5QlWpXLmvU31/yMf+Se8xhHTvKSCZIFImWwoG6mbUoWf9nzpIoaSjB+weqqUUmpaaasXVal72J+UX2B+2RPW3RcT0eOzQgqlJL3RKrTJvdsjE3JEAvGq3lGHSZXy28G3skua2SmVi/w4yCE6gbODqnTWlg7+wC604ydGXA8VJiS5ap43JXiUFFAaQ=="
-      sshPublicKey: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCns5kFJ6w7c/zH/FYBNvSpqhpSL147fizsru+PYwaw36RMCkJ4wqHVqusq6zF6K8SPloA4AlzPWx50i2NhRj8NEKgg3IkO35uFciEBcTwqr5+o+e96CvryNwGDZfavgUfrMwTQBYWdM7aaBoWUk31zmUixtlalgBEC1JGdEFxYpN3AmqN50mbu9ZvV8IEv8/AInqvqkS+dIzE9EcZQZQ98uDRU99S1YDCcvZO6xidGZz42AbS8CJ6idrreBoqy/eXmgio4YjGGFRnqr1tdXG5GKWSxfcrSC/gE8OzpFTJ1WOWH+SdZCptev8er6MBoFgRNkDhRckzpsAjhIYxSIAaL"
-      sshPassphrase: "$(SshKeyPassphrase)"
-      sshKeySecureFile: id_rsa_envoy_ci
-    condition: ne(variables['Build.Reason'], 'PullRequest')
-
-  - bash: |
-      toolchains/regenerate.sh
+      curl -fsSL --output "$TEMP/gcloud-sdk.zip" "$GCLOUD_SDK_ARCHIVE_URL"
+      echo "$GCLOUD_SDK_ARCHIVE_CHECKSUM $TEMP/gcloud-sdk.zip" | sha256sum --check
+      unzip "$TEMP/gcloud-sdk.zip" -d "$PROGRAMFILES"
+      echo "##vso[task.prependpath]$PROGRAMFILES/google-cloud-sdk/bin"
     env:
-      COMMIT_TOOLCHAINS: "true"
-      SOURCE_BRANCH: $(Build.SourceBranch)
-    displayName: Generate toolchains
-
+      GCLOUD_SDK_ARCHIVE_URL: https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-sdk-289.0.0-windows-x86_64.zip
+      GCLOUD_SDK_ARCHIVE_CHECKSUM: c81e80040f7f609dbc50c42cd0cd402988a5c47f467372d40b5aaca0733f46f4
   - bash: |
-      git archive HEAD | gzip > $(Build.ArtifactStagingDirectory)/envoy-build-tools.tar.gz
-    displayName: Create artifacts
+      ./docker_push.sh
+    workingDirectory: build_container
+    env:
+      OS_FAMILY: windows
+      IMAGE_ARCH: "amd64"
+      SOURCE_BRANCH: $(Build.SourceBranch)
+      DOCKERHUB_USERNAME: $(DockerUsername)
+      DOCKERHUB_PASSWORD: $(DockerPassword)
+      GCP_SERVICE_ACCOUNT_KEY: $(GcpServiceAccountKey)
 
-  - task: PublishBuildArtifacts@1
-    inputs:
-      artifactName: 'envoy-build-tools'
-
+- job: generate_toolchains_windows
+  dependsOn: ["build_container_windows", "generate_toolchains_linux"]
+  pool:
+    vmImage: 'windows-latest'
+  steps:
+  - template: .azure-pipelines/generate_toolchains.yml
+    parameters:
+      bazeliskInstallCommandPrefix: ""
+      bazeliskInstallPath: "/usr/bin/bazel.exe"
+      bazeliskReleaseFilename: bazelisk-windows-amd64.exe
+      gcrImageName: "envoy-build-windows"
+      osFamily: "windows"

@@ -5,6 +5,7 @@
 
 #include "envoy/event/dispatcher.h"
 #include "envoy/event/timer.h"
+#include "envoy/network/exception.h"
 #include "envoy/server/configuration.h"
 #include "envoy/thread_local/thread_local.h"
 
@@ -15,19 +16,18 @@ namespace Server {
 
 WorkerPtr ProdWorkerFactory::createWorker(OverloadManager& overload_manager,
                                           const std::string& worker_name) {
-  Event::DispatcherPtr dispatcher(api_.allocateDispatcher());
-  return WorkerPtr{new WorkerImpl(
-      tls_, hooks_, std::move(dispatcher),
-      Network::ConnectionHandlerPtr{new ConnectionHandlerImpl(*dispatcher, worker_name)},
-      overload_manager, api_, worker_name)};
+  Event::DispatcherPtr dispatcher(api_.allocateDispatcher(worker_name));
+  return WorkerPtr{
+      new WorkerImpl(tls_, hooks_, std::move(dispatcher),
+                     Network::ConnectionHandlerPtr{new ConnectionHandlerImpl(*dispatcher)},
+                     overload_manager, api_)};
 }
 
 WorkerImpl::WorkerImpl(ThreadLocal::Instance& tls, ListenerHooks& hooks,
                        Event::DispatcherPtr&& dispatcher, Network::ConnectionHandlerPtr handler,
-                       OverloadManager& overload_manager, Api::Api& api,
-                       const std::string& worker_name)
+                       OverloadManager& overload_manager, Api::Api& api)
     : tls_(tls), hooks_(hooks), dispatcher_(std::move(dispatcher)), handler_(std::move(handler)),
-      api_(api), worker_name_(worker_name) {
+      api_(api) {
   tls_.registerThread(*dispatcher_, false);
   overload_manager.registerForAction(
       OverloadActionNames::get().StopAcceptingConnections, *dispatcher_,
@@ -46,6 +46,7 @@ void WorkerImpl::addListener(absl::optional<uint64_t> overridden_listener,
       hooks_.onWorkerListenerAdded();
       completion(true);
     } catch (const Network::CreateListenerException& e) {
+      ENVOY_LOG(error, "failed to add listener on worker: {}", e.what());
       completion(false);
     }
   });
@@ -82,13 +83,23 @@ void WorkerImpl::removeFilterChains(uint64_t listener_tag,
 
 void WorkerImpl::start(GuardDog& guard_dog) {
   ASSERT(!thread_);
-  thread_ =
-      api_.threadFactory().createThread([this, &guard_dog]() -> void { threadRoutine(guard_dog); });
+
+  // In posix, thread names are limited to 15 characters, so contrive to make
+  // sure all interesting data fits there. The naming occurs in
+  // ListenerManagerImpl's constructor: absl::StrCat("worker_", i). Let's say we
+  // have 9999 threads. We'd need, so we need 7 bytes for "worker_", 4 bytes
+  // for the thread index, leaving us 4 bytes left to distinguish between the
+  // two threads used per dispatcher. We'll call this one "dsp:" and the
+  // one allocated in guarddog_impl.cc "dog:".
+  //
+  // TODO(jmarantz): consider refactoring how this naming works so this naming
+  // architecture is centralized, resulting in clearer names.
+  Thread::Options options{absl::StrCat("wrk:", dispatcher_->name())};
+  thread_ = api_.threadFactory().createThread(
+      [this, &guard_dog]() -> void { threadRoutine(guard_dog); }, options);
 }
 
-void WorkerImpl::initializeStats(Stats::Scope& scope, const std::string& prefix) {
-  dispatcher_->initializeStats(scope, prefix);
-}
+void WorkerImpl::initializeStats(Stats::Scope& scope) { dispatcher_->initializeStats(scope); }
 
 void WorkerImpl::stop() {
   // It's possible for the server to cleanly shut down while cluster initialization during startup
@@ -115,7 +126,8 @@ void WorkerImpl::threadRoutine(GuardDog& guard_dog) {
   // The watch dog must be created after the dispatcher starts running and has post events flushed,
   // as this is when TLS stat scopes start working.
   dispatcher_->post([this, &guard_dog]() {
-    watch_dog_ = guard_dog.createWatchDog(api_.threadFactory().currentThreadId(), worker_name_);
+    watch_dog_ =
+        guard_dog.createWatchDog(api_.threadFactory().currentThreadId(), dispatcher_->name());
     watch_dog_->startWatchdog(*dispatcher_);
   });
   dispatcher_->run(Event::Dispatcher::RunType::Block);

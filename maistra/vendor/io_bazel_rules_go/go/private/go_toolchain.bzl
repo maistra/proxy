@@ -16,7 +16,7 @@ Toolchain rules used by go.
 """
 
 load("@io_bazel_rules_go//go/private:platforms.bzl", "PLATFORMS")
-load("@io_bazel_rules_go//go/private:providers.bzl", "CgoContextData", "GoSDK")
+load("@io_bazel_rules_go//go/private:providers.bzl", "GoSDK")
 load("@io_bazel_rules_go//go/private:actions/archive.bzl", "emit_archive")
 load("@io_bazel_rules_go//go/private:actions/asm.bzl", "emit_asm")
 load("@io_bazel_rules_go//go/private:actions/binary.bzl", "emit_binary")
@@ -62,7 +62,7 @@ go_toolchain = rule(
         # Minimum requirements to specify a toolchain
         "builder": attr.label(
             mandatory = True,
-            cfg = "host",
+            cfg = "exec",
             executable = True,
             doc = "Tool used to execute most Go actions",
         ),
@@ -77,6 +77,7 @@ go_toolchain = rule(
         "sdk": attr.label(
             mandatory = True,
             providers = [GoSDK],
+            cfg = "exec",
             doc = "The SDK this toolchain is based on",
         ),
         # Optional extras to a toolchain
@@ -92,6 +93,8 @@ go_toolchain = rule(
 )
 
 def declare_toolchains(host, sdk, builder):
+    """Declares go_toolchain and toolchain targets for each platform."""
+
     # keep in sync with generate_toolchain_names
     host_goos, _, host_goarch = host.partition("_")
     for p in PLATFORMS:

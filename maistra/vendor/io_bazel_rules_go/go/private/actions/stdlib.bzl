@@ -21,12 +21,13 @@ load(
     "LINKMODE_NORMAL",
     "extldflags_from_cc_toolchain",
     "link_mode_args",
-    "mode_string",
 )
 
 def emit_stdlib(go):
-    """emit_stdlib builds the standard library for the target configuration
-    or uses the precompiled standard library if it is suitable.
+    """Returns a standard library for the target configuration.
+
+    If the precompiled standard library is suitable, it will be returned.
+    Otherwise, the standard library will be compiled for the target.
 
     Returns:
         A list of providers containing GoLibrary and GoSource. GoSource.stdlib
@@ -57,9 +58,9 @@ def _sdk_stdlib(go):
     )
 
 def _build_stdlib(go):
-    pkg = go.declare_directory(go, "pkg")
-    src = go.declare_directory(go, "src")
-    root_file = go.declare_file(go, "ROOT")
+    pkg = go.declare_directory(go, path = "pkg")
+    src = go.declare_directory(go, path = "src")
+    root_file = go.declare_file(go, path = "ROOT")
     args = go.builder_args(go, "stdlib")
     args.add("-out", root_file.dirname)
     if go.mode.race:

@@ -1,0 +1,25 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["pack.go"],
+    importpath = "google.golang.org/protobuf/testing/protopack",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//encoding/protowire:go_default_library",
+        "//reflect/protoreflect:go_default_library",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = ["pack_test.go"],
+    embed = [":go_default_library"],
+    deps = [
+        "//encoding/prototext:go_default_library",
+        "//reflect/protodesc:go_default_library",
+        "//reflect/protoreflect:go_default_library",
+        "//types/descriptorpb:go_default_library",
+        "@com_github_google_go_cmp//cmp:go_default_library",
+    ],
+)

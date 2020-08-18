@@ -1,4 +1,4 @@
-load("@io_bazel_rules_go//go:def.bzl", "go_library")
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "go_default_library",
@@ -14,13 +14,24 @@ go_library(
     importpath = "golang.org/x/tools/internal/lsp/debug",
     visibility = ["//:__subpackages__"],
     deps = [
-        "//internal/lsp/telemetry:go_default_library",
+        "//internal/event:go_default_library",
+        "//internal/event/core:go_default_library",
+        "//internal/event/export:go_default_library",
+        "//internal/event/export/metric:go_default_library",
+        "//internal/event/export/ocagent:go_default_library",
+        "//internal/event/export/prometheus:go_default_library",
+        "//internal/event/keys:go_default_library",
+        "//internal/event/label:go_default_library",
+        "//internal/gocommand:go_default_library",
+        "//internal/lsp/debug/tag:go_default_library",
+        "//internal/lsp/protocol:go_default_library",
         "//internal/span:go_default_library",
-        "//internal/telemetry:go_default_library",
-        "//internal/telemetry/export:go_default_library",
-        "//internal/telemetry/export/prometheus:go_default_library",
-        "//internal/telemetry/log:go_default_library",
-        "//internal/telemetry/metric:go_default_library",
-        "//internal/telemetry/tag:go_default_library",
+        "@org_golang_x_xerrors//:go_default_library",
     ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = ["serve_test.go"],
+    embed = [":go_default_library"],
 )

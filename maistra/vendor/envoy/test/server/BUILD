@@ -1,5 +1,3 @@
-licenses(["notice"])  # Apache 2
-
 load(
     "//bazel:envoy_build_system.bzl",
     "envoy_benchmark_test",
@@ -10,10 +8,10 @@ load(
     "envoy_package",
     "envoy_select_hot_restart",
 )
-load(
-    "//source/extensions:all_extensions.bzl",
-    "envoy_all_extensions",
-)
+load("//source/extensions:all_extensions.bzl", "envoy_all_extensions")
+load("//bazel:repositories.bzl", "PPC_SKIP_TARGETS", "WINDOWS_SKIP_TARGETS")
+
+licenses(["notice"])  # Apache 2
 
 envoy_package()
 
@@ -22,8 +20,7 @@ envoy_cc_test(
     srcs = ["api_listener_test.cc"],
     deps = [
         ":utility_lib",
-        "//source/server:api_listener_lib",
-        "//source/server:listener_lib",
+        "//source/server:listener_manager_lib",
         "//test/mocks/network:network_mocks",
         "//test/mocks/server:server_mocks",
         "//test/test_common:utility_lib",
@@ -153,6 +150,7 @@ envoy_cc_test(
         "//test/mocks/api:api_mocks",
         "//test/test_common:environment_lib",
         "//test/test_common:logging_lib",
+        "//test/test_common:registry_lib",
         "//test/test_common:threadsafe_singleton_injector_lib",
         "//test/test_common:utility_lib",
         "@envoy_api//envoy/admin/v3:pkg_cc_proto",
@@ -205,8 +203,7 @@ envoy_cc_test_library(
     data = ["//test/extensions/transport_sockets/tls/test_data:certs"],
     deps = [
         "//source/common/init:manager_lib",
-        "//source/server:api_listener_lib",
-        "//source/server:listener_lib",
+        "//source/server:listener_manager_lib",
         "//test/mocks/init:init_mocks",
         "//test/mocks/network:network_mocks",
         "//test/mocks/server:server_mocks",
@@ -224,6 +221,7 @@ envoy_cc_test_library(
 envoy_cc_test(
     name = "listener_manager_impl_test",
     srcs = ["listener_manager_impl_test.cc"],
+    tags = ["fails_on_windows"],
     deps = [
         ":listener_manager_impl_test_lib",
         ":utility_lib",
@@ -268,9 +266,8 @@ envoy_cc_test(
         "//source/extensions/transport_sockets/raw_buffer:config",
         "//source/extensions/transport_sockets/tls:config",
         "//source/extensions/transport_sockets/tls:ssl_socket_lib",
-        "//source/server:api_listener_lib",
         "//source/server:filter_chain_manager_lib",
-        "//source/server:listener_lib",
+        "//source/server:listener_manager_lib",
         "//test/mocks/network:network_mocks",
         "//test/mocks/server:server_mocks",
         "//test/test_common:environment_lib",
@@ -295,7 +292,11 @@ envoy_cc_fuzz_test(
         "//test/mocks/stats:stats_mocks",
         "//test/test_common:environment_lib",
         "//test/test_common:test_time_lib",
-    ] + envoy_all_extensions(),
+    ] + select({
+        "//bazel:windows_x86_64": envoy_all_extensions(WINDOWS_SKIP_TARGETS),
+        "//bazel:linux_ppc": envoy_all_extensions(PPC_SKIP_TARGETS),
+        "//conditions:default": envoy_all_extensions(),
+    }),
 )
 
 filegroup(
@@ -321,24 +322,27 @@ envoy_cc_test(
         ":server_test_data",
         ":static_validation_test_data",
     ],
+    # Fails on windows with cr/lf yaml file checkouts
+    tags = ["fails_on_windows"],
     deps = [
         "//source/common/common:version_lib",
         "//source/extensions/access_loggers/file:config",
         "//source/extensions/filters/http/buffer:config",
-        "//source/extensions/filters/http/dynamo:config",
         "//source/extensions/filters/http/grpc_http1_bridge:config",
         "//source/extensions/filters/http/health_check:config",
-        "//source/extensions/filters/http/ratelimit:config",
         "//source/extensions/filters/http/router:config",
         "//source/extensions/filters/network/http_connection_manager:config",
         "//source/extensions/filters/network/redis_proxy:config",
         "//source/extensions/stat_sinks/statsd:config",
         "//source/extensions/tracers/zipkin:config",
+        "//source/server:process_context_lib",
         "//source/server:server_lib",
+        "//test/common/config:dummy_config_proto_cc_proto",
         "//test/common/stats:stat_test_utility_lib",
         "//test/integration:integration_lib",
         "//test/mocks/server:server_mocks",
         "//test/mocks/stats:stats_mocks",
+        "//test/test_common:registry_lib",
         "//test/test_common:simulated_time_system_lib",
         "//test/test_common:test_time_lib",
         "//test/test_common:utility_lib",

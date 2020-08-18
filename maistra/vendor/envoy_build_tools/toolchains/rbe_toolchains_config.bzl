@@ -1,11 +1,19 @@
 load("@bazel_skylib//lib:dicts.bzl", "dicts")
 load("@bazel_toolchains//rules:rbe_repo.bzl", "rbe_autoconfig")
-load("@envoy_build_tools//toolchains:configs/versions.bzl", _generated_toolchain_config_suite_autogen_spec = "TOOLCHAIN_CONFIG_AUTOGEN_SPEC")
+load("@envoy_build_tools//toolchains:configs/linux/versions.bzl", _generated_toolchain_config_suite_autogen_spec_linux = "TOOLCHAIN_CONFIG_AUTOGEN_SPEC")
+load("@envoy_build_tools//toolchains:configs/windows/versions.bzl", _generated_toolchain_config_suite_autogen_spec_windows = "TOOLCHAIN_CONFIG_AUTOGEN_SPEC")
 
 _ENVOY_BUILD_IMAGE_REGISTRY = "gcr.io"
-_ENVOY_BUILD_IMAGE_REPOSITORY = "envoy-ci/envoy-build"
-_ENVOY_BUILD_IMAGE_DIGEST = "sha256:ebf534b8aa505e8ff5663a31eed782942a742ae4d656b54f4236b00399f17911"
-_CONFIGS_OUTPUT_BASE = "toolchains/configs"
+
+_ENVOY_BUILD_IMAGE_TAG = "f21773ab398a879f976936f72c78c9dd3718ca1e"
+
+_ENVOY_BUILD_IMAGE_REPOSITORY_LINUX = "envoy-ci/envoy-build"
+_ENVOY_BUILD_IMAGE_DIGEST_LINUX = "sha256:09a7c4a4e337d0497d6abbddba91dedfff14b340ade01a9654486c48acf11972"
+_CONFIGS_OUTPUT_BASE_LINUX = "toolchains/configs/linux"
+
+_ENVOY_BUILD_IMAGE_REPOSITORY_WINDOWS = "envoy-ci/envoy-build-windows"
+_ENVOY_BUILD_IMAGE_DIGEST_WINDOWS = "sha256:02d4ff5c2e4c703944e4ec3770c5fa51cdfc6781f95607e91648e19c14b38346"
+_CONFIGS_OUTPUT_BASE_WINDOWS = "toolchains/configs/windows"
 
 _CLANG_ENV = {
     "BAZEL_COMPILER": "clang",
@@ -15,7 +23,7 @@ _CLANG_ENV = {
     "GCOV": "llvm-profdata",
     "CC": "clang",
     "CXX": "clang++",
-    "PATH": "/usr/sbin:/usr/bin:/sbin:/bin:/opt/llvm/bin",
+    "PATH": "/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/llvm/bin",
 }
 
 _CLANG_LIBCXX_ENV = dicts.add(_CLANG_ENV, {
@@ -31,45 +39,56 @@ _GCC_ENV = {
     "BAZEL_LINKOPTS": "-lm",
     "CC": "gcc",
     "CXX": "g++",
-    "PATH": "/usr/sbin:/usr/bin:/sbin:/bin:/opt/llvm/bin",
+    "PATH": "/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/llvm/bin",
 }
 
-_TOOLCHAIN_CONFIG_SUITE_SPEC = {
+_MSVC_CL_ENV = {}
+
+_TOOLCHAIN_CONFIG_SUITE_SPEC_LINUX = {
     "container_registry": _ENVOY_BUILD_IMAGE_REGISTRY,
-    "container_repo": _ENVOY_BUILD_IMAGE_REPOSITORY,
-    "output_base": _CONFIGS_OUTPUT_BASE,
+    "container_repo": _ENVOY_BUILD_IMAGE_REPOSITORY_LINUX,
+    "output_base": _CONFIGS_OUTPUT_BASE_LINUX,
     "repo_name": "envoy_build_tools",
-    "toolchain_config_suite_autogen_spec": _generated_toolchain_config_suite_autogen_spec,
+    "toolchain_config_suite_autogen_spec": _generated_toolchain_config_suite_autogen_spec_linux,
 }
 
-def _envoy_rbe_toolchain(name, env, toolchain_config_spec_name, generator, force):
+_TOOLCHAIN_CONFIG_SUITE_SPEC_WINDOWS = {
+    "container_registry": _ENVOY_BUILD_IMAGE_REGISTRY,
+    "container_repo": _ENVOY_BUILD_IMAGE_REPOSITORY_WINDOWS,
+    "output_base": _CONFIGS_OUTPUT_BASE_WINDOWS,
+    "repo_name": "envoy_build_tools",
+    "toolchain_config_suite_autogen_spec": _generated_toolchain_config_suite_autogen_spec_windows,
+}
+
+def _envoy_rbe_toolchain(name, env, toolchain_config_spec_name, toolchain_config_suite_spec, container_image_digest, generator, force):
     if generator:
         rbe_autoconfig(
             name = name + "_gen",
             create_java_configs = False,
-            digest = _ENVOY_BUILD_IMAGE_DIGEST,
+            digest = container_image_digest,
             env = env,
             export_configs = True,
-            registry = _ENVOY_BUILD_IMAGE_REGISTRY,
-            repository = _ENVOY_BUILD_IMAGE_REPOSITORY,
+            registry = toolchain_config_suite_spec["container_registry"],
+            repository = toolchain_config_suite_spec["container_repo"],
             toolchain_config_spec_name = toolchain_config_spec_name,
-            toolchain_config_suite_spec = _TOOLCHAIN_CONFIG_SUITE_SPEC,
+            toolchain_config_suite_spec = toolchain_config_suite_spec,
             use_checked_in_confs = "False",
         )
 
     rbe_autoconfig(
         name = name,
         create_java_configs = False,
-        digest = _ENVOY_BUILD_IMAGE_DIGEST,
+        digest = container_image_digest,
         env = env,
-        registry = _ENVOY_BUILD_IMAGE_REGISTRY,
-        repository = _ENVOY_BUILD_IMAGE_REPOSITORY,
+        registry = toolchain_config_suite_spec["container_registry"],
+        repository = toolchain_config_suite_spec["container_repo"],
         toolchain_config_spec_name = toolchain_config_spec_name,
-        toolchain_config_suite_spec = _TOOLCHAIN_CONFIG_SUITE_SPEC,
+        toolchain_config_suite_spec = toolchain_config_suite_spec,
         use_checked_in_confs = "Force" if force else "Try",
     )
 
 def rbe_toolchains_config(generator = False, force = False):
-    _envoy_rbe_toolchain("rbe_ubuntu_clang", _CLANG_ENV, "clang", generator, force)
-    _envoy_rbe_toolchain("rbe_ubuntu_clang_libcxx", _CLANG_LIBCXX_ENV, "clang_libcxx", generator, force)
-    _envoy_rbe_toolchain("rbe_ubuntu_gcc", _GCC_ENV, "gcc", generator, force)
+    _envoy_rbe_toolchain("rbe_ubuntu_clang", _CLANG_ENV, "clang", _TOOLCHAIN_CONFIG_SUITE_SPEC_LINUX, _ENVOY_BUILD_IMAGE_DIGEST_LINUX, generator, force)
+    _envoy_rbe_toolchain("rbe_ubuntu_clang_libcxx", _CLANG_LIBCXX_ENV, "clang_libcxx", _TOOLCHAIN_CONFIG_SUITE_SPEC_LINUX, _ENVOY_BUILD_IMAGE_DIGEST_LINUX, generator, force)
+    _envoy_rbe_toolchain("rbe_ubuntu_gcc", _GCC_ENV, "gcc", _TOOLCHAIN_CONFIG_SUITE_SPEC_LINUX, _ENVOY_BUILD_IMAGE_DIGEST_LINUX, generator, force)
+    _envoy_rbe_toolchain("rbe_windows_msvc_cl", _MSVC_CL_ENV, "msvc-cl", _TOOLCHAIN_CONFIG_SUITE_SPEC_WINDOWS, _ENVOY_BUILD_IMAGE_DIGEST_WINDOWS, generator, force)

@@ -36,7 +36,7 @@ class UdpListenerImplTest : public ListenerImplTestBase {
 public:
   UdpListenerImplTest()
       : server_socket_(createServerSocket(true)), send_to_addr_(getServerLoopbackAddress()) {
-    time_system_.sleep(std::chrono::milliseconds(100));
+    time_system_.advanceTimeWait(std::chrono::milliseconds(100));
   }
 
   void SetUp() override {
@@ -92,7 +92,7 @@ protected:
                   std::chrono::milliseconds(
                       (num_packets_received_by_listener_ % num_packet_per_recv) * 100));
     // Advance time so that next onData() should have different received time.
-    time_system_.sleep(std::chrono::milliseconds(100));
+    time_system_.advanceTimeWait(std::chrono::milliseconds(100));
     ++num_packets_received_by_listener_;
   }
 
@@ -123,10 +123,9 @@ TEST_P(UdpListenerImplTest, UdpSetListeningSocketOptionsSuccess) {
 #ifdef SO_RXQ_OVFL
   // Verify that overflow detection is enabled.
   int get_overflow = 0;
-  auto& os_syscalls = Api::OsSysCallsSingleton::get();
   socklen_t int_size = static_cast<socklen_t>(sizeof(get_overflow));
-  const Api::SysCallIntResult result = os_syscalls.getsockopt(
-      server_socket_->ioHandle().fd(), SOL_SOCKET, SO_RXQ_OVFL, &get_overflow, &int_size);
+  const Api::SysCallIntResult result =
+      server_socket_->getSocketOption(SOL_SOCKET, SO_RXQ_OVFL, &get_overflow, &int_size);
   EXPECT_EQ(0, result.rc_);
   EXPECT_EQ(1, get_overflow);
 #endif
@@ -316,7 +315,8 @@ TEST_P(UdpListenerImplTest, UdpListenerRecvMsgError) {
   Api::MockOsSysCalls os_sys_calls;
   TestThreadsafeSingletonInjector<Api::OsSysCallsImpl> os_calls(&os_sys_calls);
   EXPECT_CALL(os_sys_calls, supportsMmsg());
-  EXPECT_CALL(os_sys_calls, recvmsg(_, _, _)).WillOnce(Return(Api::SysCallSizeResult{-1, ENOTSUP}));
+  EXPECT_CALL(os_sys_calls, recvmsg(_, _, _))
+      .WillOnce(Return(Api::SysCallSizeResult{-1, SOCKET_ERROR_NOT_SUP}));
 
   dispatcher_->run(Event::Dispatcher::RunType::Block);
 }
@@ -386,14 +386,16 @@ TEST_P(UdpListenerImplTest, SendDataError) {
   // Inject mocked OsSysCalls implementation to mock a write failure.
   Api::MockOsSysCalls os_sys_calls;
   TestThreadsafeSingletonInjector<Api::OsSysCallsImpl> os_calls(&os_sys_calls);
-  EXPECT_CALL(os_sys_calls, sendmsg(_, _, _)).WillOnce(Return(Api::SysCallSizeResult{-1, ENOTSUP}));
+  EXPECT_CALL(os_sys_calls, sendmsg(_, _, _))
+      .WillOnce(Return(Api::SysCallSizeResult{-1, SOCKET_ERROR_NOT_SUP}));
   auto send_result = listener_->send(send_data);
   EXPECT_FALSE(send_result.ok());
   EXPECT_EQ(send_result.err_->getErrorCode(), Api::IoError::IoErrorCode::NoSupport);
   // Failed write shouldn't drain the data.
   EXPECT_EQ(payload.length(), buffer->length());
 
-  ON_CALL(os_sys_calls, sendmsg(_, _, _)).WillByDefault(Return(Api::SysCallSizeResult{-1, EINVAL}));
+  ON_CALL(os_sys_calls, sendmsg(_, _, _))
+      .WillByDefault(Return(Api::SysCallSizeResult{-1, SOCKET_ERROR_INVAL}));
   // EINVAL should cause RELEASE_ASSERT.
   EXPECT_DEATH(listener_->send(send_data), "Invalid argument passed in");
 }

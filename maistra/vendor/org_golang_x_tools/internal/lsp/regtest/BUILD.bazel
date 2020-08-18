@@ -1,0 +1,53 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "doc.go",
+        "env.go",
+        "runner.go",
+        "wrappers.go",
+    ],
+    importpath = "golang.org/x/tools/internal/lsp/regtest",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//internal/jsonrpc2:go_default_library",
+        "//internal/jsonrpc2/servertest:go_default_library",
+        "//internal/lsp:go_default_library",
+        "//internal/lsp/cache:go_default_library",
+        "//internal/lsp/debug:go_default_library",
+        "//internal/lsp/fake:go_default_library",
+        "//internal/lsp/lsprpc:go_default_library",
+        "//internal/lsp/protocol:go_default_library",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = [
+        "codelens_test.go",
+        "definition_test.go",
+        "diagnostics_114_test.go",
+        "diagnostics_test.go",
+        "env_test.go",
+        "formatting_test.go",
+        "generate_test.go",
+        "reg_test.go",
+        "serialization_test.go",
+        "shared_test.go",
+        "symbol_helper_test.go",
+        "symbol_test.go",
+        "unix_test.go",
+    ],
+    embed = [":go_default_library"],
+    deps = [
+        "//internal/lsp:go_default_library",
+        "//internal/lsp/cmd:go_default_library",
+        "//internal/lsp/fake:go_default_library",
+        "//internal/lsp/lsprpc:go_default_library",
+        "//internal/lsp/protocol:go_default_library",
+        "//internal/lsp/source:go_default_library",
+        "//internal/lsp/tests:go_default_library",
+        "//internal/tool:go_default_library",
+    ],
+)

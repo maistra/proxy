@@ -85,6 +85,10 @@ go_test(
         "//go/packages:go_default_library",
         "//go/ssa/ssautil:go_default_library",
     ] + select({
+        "@io_bazel_rules_go//go/platform:aix": [
+            "//go/buildutil:go_default_library",
+            "//internal/testenv:go_default_library",
+        ],
         "@io_bazel_rules_go//go/platform:darwin": [
             "//go/buildutil:go_default_library",
             "//internal/testenv:go_default_library",
@@ -97,7 +101,15 @@ go_test(
             "//go/buildutil:go_default_library",
             "//internal/testenv:go_default_library",
         ],
+        "@io_bazel_rules_go//go/platform:illumos": [
+            "//go/buildutil:go_default_library",
+            "//internal/testenv:go_default_library",
+        ],
         "@io_bazel_rules_go//go/platform:ios": [
+            "//go/buildutil:go_default_library",
+            "//internal/testenv:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:js": [
             "//go/buildutil:go_default_library",
             "//internal/testenv:go_default_library",
         ],

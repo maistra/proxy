@@ -9,7 +9,11 @@ go_library(
         "//go/analysis:go_default_library",
         "//go/analysis/internal/checker:go_default_library",
         "//go/packages:go_default_library",
+        "//internal/lsp/diff:go_default_library",
+        "//internal/lsp/diff/myers:go_default_library",
+        "//internal/span:go_default_library",
         "//internal/testenv:go_default_library",
+        "//txtar:go_default_library",
     ],
 )
 

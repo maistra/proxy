@@ -103,6 +103,26 @@ sh_test(
     ],
 )
 
+# TODO: Enable in CI
+sh_test(
+    name = "rbe_autoconf_generate_windows_test",
+    srcs = [":rbe_autoconf_checks.sh"],
+    args = [
+        "$(location @rbe_autoconf_generate_windows//test:empty)",
+        "assert_basic_cofig",
+        "assert_no_checked_in_confs",
+        "assert_cc_confs_windows",
+        "assert_java_confs",
+        "assert_image_pulled",
+        "assert_configs_tar",
+    ],
+    data = [
+        "@rbe_autoconf_generate_windows//test:empty",
+        "@rbe_autoconf_generate_windows//test:exported_testdata",
+    ],
+    tags = ["windows"],
+)
+
 sh_test(
     name = "rbe_autoconf_generate_no_java_test",
     srcs = [":rbe_autoconf_checks.sh"],
@@ -203,19 +223,44 @@ file_test(
 file_test(
     name = "rbe_autoconf_generate_cc_toolchain_test",
     file = "@rbe_autoconf_generate//test:cc/test.BUILD",
-    regexp = "cc_toolchain",
+    regexp = "cc_toolchain(",
 )
 
+# TODO: Enable in CI
+file_test(
+    name = "rbe_autoconf_generate_cc_toolchain_windows_test",
+    file = "@rbe_autoconf_generate_windows//test:cc/test.BUILD",
+    regexp = "cc_toolchain(",
+    tags = ["windows"],
+)
+
+# TODO: Enable in CI
 file_test(
     name = "rbe_autoconf_generate_cc_toolchain_config_test",
     file = "@rbe_autoconf_generate//test:cc/test.BUILD",
-    regexp = "cc_toolchain_config",
+    regexp = "cc_toolchain_config(",
+)
+
+# TODO: Enable in CI
+file_test(
+    name = "rbe_autoconf_generate_cc_toolchain_config_windows_test",
+    file = "@rbe_autoconf_generate_windows//test:cc/test.BUILD",
+    regexp = "cc_toolchain_config(",
+    tags = ["windows"],
 )
 
 file_test(
     name = "rbe_autoconf_generate_cc_compiler_test",
     file = "@rbe_autoconf_generate//test:cc/test.BUILD",
     regexp = "cc-compiler-k8",
+)
+
+# TODO: Enable in CI
+file_test(
+    name = "rbe_autoconf_generate_cc_compiler_windows_test",
+    file = "@rbe_autoconf_generate_windows//test:cc/test.BUILD",
+    regexp = "cc-compiler-x64_windows",
+    tags = ["windows"],
 )
 
 file_test(
@@ -281,16 +326,49 @@ file_test(
     regexp = "platform",
 )
 
+# TODO: make rbe_repo automatically choose the correct constraint as default on Windows, no :linux constraints
+# right now this passes b/c we're setting exec_compatible_with etc.
+file_test(
+    name = "rbe_autoconf_generate_platform_windows_test",
+    file = "@rbe_autoconf_generate_windows//test:config/test.BUILD",
+    regexp = "platforms:windows",
+    tags = ["windows"],
+)
+
+# TODO: Enable in CI
+file_test(
+    name = "rbe_autoconf_generate_config_toolchain_windows_test",
+    file = "@rbe_autoconf_generate_windows//test:config/test.BUILD",
+    regexp = "toolchain.*=.*\".*:cc-compiler-x64_windows\"",
+    tags = ["windows"],
+)
+
 file_test(
     name = "rbe_autoconf_checked_generate_container_sha_test",
     file = "@rbe_autoconf_generate//test:config/test.BUILD",
     regexp = RBE_UBUNTU16_04_LATEST,
 )
 
+# TODO: Enable in CI
+file_test(
+    name = "rbe_autoconf_checked_generate_container_sha_windows_test",
+    file = "@rbe_autoconf_generate_windows//test:config/test.BUILD",
+    regexp = "sha256:776f241c2693f3f2187d998dcc98d2b339dcb80c99ef59bccefad0eea6e61284",
+    tags = ["windows"],
+)
+
 file_test(
     name = "rbe_autoconf_checked_generate_os_family_test",
     file = "@rbe_autoconf_generate//test:config/test.BUILD",
     regexp = "OSFamily",
+)
+
+# TODO: Enable in CI
+file_test(
+    name = "rbe_autoconf_checked_generate_os_family_windows_test",
+    file = "@rbe_autoconf_generate_windows//test:config/test.BUILD",
+    regexp = "value:.*\"Windows\"",
+    tags = ["windows"],
 )
 
 file_test(
@@ -490,7 +568,7 @@ sh_test(
     name = "rbe_autoconf_output_base_test",
     srcs = [":rbe_autoconf_output_base_config_dir_checks.sh"],
     args = [
-        "$(location @rbe_autoconfig_root//:AUTOCONF_ROOT)",
+        "$(location @rbe_autoconf_output_base//test:empty)",
         "rbe-test-output/config/rbe_autoconf_output_base",
         "9.0.0",
         _ubuntu1604_bazel,
@@ -500,9 +578,29 @@ sh_test(
     ],
     data = [
         ":rbe_autoconf_checks.sh",
+        "@rbe_autoconf_output_base//test:empty",
         "@rbe_autoconf_output_base//test:exported_testdata",
-        "@rbe_autoconfig_root//:AUTOCONF_ROOT",
     ],
+)
+
+# TODO: Enable in CI and remove hardcoded Bazel version
+sh_test(
+    name = "rbe_autoconf_output_base_windows_test",
+    srcs = [":rbe_autoconf_output_base_config_dir_checks.sh"],
+    args = [
+        "$(location @rbe_autoconf_output_base_windows//test:empty)",
+        "rbe-test-output/config/rbe_autoconf_output_base_windows",
+        "test_config_dir",
+        "3.1.0",
+        "assert_output_base_cc_confs_windows",
+        "assert_output_base_platform_confs",
+    ],
+    data = [
+        ":rbe_autoconf_checks.sh",
+        "@rbe_autoconf_output_base_windows//test:empty",
+        "@rbe_autoconf_output_base_windows//test:exported_testdata",
+    ],
+    tags = ["windows"],
 )
 
 file_test(
@@ -538,7 +636,7 @@ sh_test(
     name = "rbe_autoconf_output_base_no_java_test",
     srcs = [":rbe_autoconf_output_base_config_dir_checks.sh"],
     args = [
-        "$(location @rbe_autoconfig_root//:AUTOCONF_ROOT)",
+        "$(location @rbe_autoconf_output_base_no_java//test:empty)",
         "rbe-test-output/config/rbe_autoconf_output_base_no_java",
         _ubuntu1604_bazel,
         "assert_output_base_cc_confs",
@@ -547,8 +645,8 @@ sh_test(
     ],
     data = [
         ":rbe_autoconf_checks.sh",
+        "@rbe_autoconf_output_base_no_java//test:empty",
         "@rbe_autoconf_output_base_no_java//test:exported_testdata",
-        "@rbe_autoconfig_root//:AUTOCONF_ROOT",
     ],
 )
 
@@ -556,7 +654,7 @@ sh_test(
     name = "rbe_autoconf_output_base_no_cc_test",
     srcs = [":rbe_autoconf_output_base_config_dir_checks.sh"],
     args = [
-        "$(location @rbe_autoconfig_root//:AUTOCONF_ROOT)",
+        "$(location @rbe_autoconf_output_base_no_cc//test:empty)",
         "rbe-test-output/config/rbe_autoconf_output_base_no_cc",
         "9.0.0",
         _ubuntu1604_bazel,
@@ -566,8 +664,8 @@ sh_test(
     ],
     data = [
         ":rbe_autoconf_checks.sh",
+        "@rbe_autoconf_output_base_no_cc//test:empty",
         "@rbe_autoconf_output_base_no_cc//test:exported_testdata",
-        "@rbe_autoconfig_root//:AUTOCONF_ROOT",
     ],
 )
 
@@ -575,7 +673,7 @@ sh_test(
     name = "rbe_autoconf_config_repos_output_base_test",
     srcs = [":rbe_autoconf_output_base_config_dir_checks.sh"],
     args = [
-        "$(location @rbe_autoconfig_root//:AUTOCONF_ROOT)",
+        "$(location @rbe_autoconf_config_repos_output_base//test:empty)",
         "rbe-test-output/config/rbe_autoconf_config_repos_output_base",
         "9.0.0",
         _ubuntu1604_bazel,
@@ -586,8 +684,8 @@ sh_test(
     ],
     data = [
         ":rbe_autoconf_checks.sh",
+        "@rbe_autoconf_config_repos_output_base//test:empty",
         "@rbe_autoconf_config_repos_output_base//test:exported_testdata",
-        "@rbe_autoconfig_root//:AUTOCONF_ROOT",
     ],
 )
 
@@ -603,7 +701,7 @@ sh_test(
     name = "rbe_autoconf_output_base_config_dir_test",
     srcs = [":rbe_autoconf_output_base_config_dir_checks.sh"],
     args = [
-        "$(location @rbe_autoconfig_root//:AUTOCONF_ROOT)",
+        "$(location @rbe_autoconf_output_base_config_dir//test:empty)",
         "rbe-test-output/config/rbe_autoconf_output_base",
         "test_config_dir",
         _ubuntu1604_bazel,
@@ -613,8 +711,8 @@ sh_test(
     ],
     data = [
         ":rbe_autoconf_checks.sh",
+        "@rbe_autoconf_output_base_config_dir//test:empty",
         "@rbe_autoconf_output_base_config_dir//test:exported_testdata",
-        "@rbe_autoconfig_root//:AUTOCONF_ROOT",
     ],
 )
 
@@ -696,19 +794,18 @@ sh_test(
     name = "rbe_autoconf_custom_toolchain_config_suite_spec_export_test",
     srcs = [":rbe_autoconf_output_base_config_dir_checks.sh"],
     args = [
-        "$(location @rbe_autoconfig_root//:AUTOCONF_ROOT)",
+        "$(location @rbe_autoconf_custom_toolchain_config_suite_spec_export//test:empty)",
         "rbe-test-output/config/rbe_autoconf_custom_toolchain_config_suite_spec_export",
         "test_config_dir",
         _ubuntu1604_bazel,
         "assert_output_base_cc_confs",
         "assert_output_base_java_confs",
         "assert_output_base_platform_confs",
-        "assert_java_home",
     ],
     data = [
         ":rbe_autoconf_checks.sh",
+        "@rbe_autoconf_custom_toolchain_config_suite_spec_export//test:empty",
         "@rbe_autoconf_custom_toolchain_config_suite_spec_export//test:exported_testdata",
-        "@rbe_autoconfig_root//:AUTOCONF_ROOT",
     ],
 )
 
@@ -736,7 +833,7 @@ sh_test(
     name = "rbe_autoconf_custom_toolchain_config_suite_spec_blank_versions_test",
     srcs = [":rbe_autoconf_output_base_config_dir_checks.sh"],
     args = [
-        "$(location @rbe_autoconfig_root//:AUTOCONF_ROOT)",
+        "$(location @rbe_autoconf_custom_toolchain_config_suite_spec_blank_versions//test:empty)",
         "rbe-test-output/config/rbe_autoconf_custom_toolchain_config_suite_spec_blank_versions",
         "default_toolchain_config_spec_name",
         _ubuntu1604_bazel,
@@ -746,8 +843,8 @@ sh_test(
     ],
     data = [
         ":rbe_autoconf_checks.sh",
+        "@rbe_autoconf_custom_toolchain_config_suite_spec_blank_versions//test:empty",
         "@rbe_autoconf_custom_toolchain_config_suite_spec_blank_versions//test:exported_testdata",
-        "@rbe_autoconfig_root//:AUTOCONF_ROOT",
     ],
 )
 

@@ -2,12 +2,12 @@
 
 set -e
 
-# This works only on Linux-{x86_64,s390x,aarch64} and macOS-x86_64.
+# This works only on Linux-{x86_64,ppc64le,s390x,aarch64} and macOS-x86_64.
 case "$$(uname -s)-$$(uname -m)" in
-Linux-x86_64|Linux-s390x|Linux-aarch64|Darwin-x86_64)
+Linux-x86_64|Linux-ppc64le|Linux-s390x|Linux-aarch64|Darwin-x86_64)
   ;;
 *)
-  echo "ERROR: wee8 is currently supported only on Linux-{x86_64,s390x,aarch64} and macOS-x86_64." >&2
+  echo "ERROR: wee8 is currently supported only on Linux-{x86_64,ppc64le,s390x,aarch64} and macOS-x86_64." >&2
   exit 1
 esac
 
@@ -19,10 +19,12 @@ pushd $$ROOT/wee8
 rm -rf out/wee8
 
 # Export compiler configuration.
+export CXXFLAGS="$${CXXFLAGS-} -Wno-deprecated-copy -Wno-unknown-warning-option"
 if [[ ( `uname` == "Darwin" && $${CXX-} == "" ) || $${CXX-} == *"clang"* ]]; then
   export IS_CLANG=true
   export CC=$${CC:-clang}
   export CXX=$${CXX:-clang++}
+  export CXXFLAGS="$${CXXFLAGS} -Wno-implicit-int-float-conversion -Wno-builtin-assume-aligned-alignment -Wno-final-dtor-non-final-class"
 else
   export IS_CLANG=false
   export CC=$${CC:-gcc}
@@ -49,8 +51,17 @@ if [[ $${ENVOY_TSAN-} == "1" ]]; then
   WEE8_BUILD_ARGS+=" is_tsan=true"
 fi
 
-# Release build.
-WEE8_BUILD_ARGS+=" is_debug=false"
+# Debug/release build.
+if [[ $(COMPILATION_MODE) == "dbg" && $${ENVOY_UBSAN_VPTR-} != "1" && $${ENVOY_MSAN-} != "1" && $${ENVOY_TSAN-} != "1" ]]; then
+  WEE8_BUILD_ARGS+=" is_debug=true"
+  WEE8_BUILD_ARGS+=" v8_symbol_level=2"
+  WEE8_BUILD_ARGS+=" v8_optimized_debug=false"
+else
+  WEE8_BUILD_ARGS+=" is_debug=false"
+  WEE8_BUILD_ARGS+=" v8_symbol_level=1"
+  WEE8_BUILD_ARGS+=" v8_enable_handle_zapping=false"
+fi
+
 # Clang or not Clang, that is the question.
 WEE8_BUILD_ARGS+=" is_clang=$$IS_CLANG"
 # Hack to disable bleeding-edge compiler flags.
@@ -79,19 +90,8 @@ if [[ `uname -m` == "aarch64" ]]; then
 fi
 
 # Build wee8.
-if [[ "$$(uname -s)" == "Darwin" ]]; then
-  gn=buildtools/mac/gn
-  ninja=third_party/depot_tools/ninja
-elif [[ "$$(uname -s)-$$(uname -m)" == "Linux-x86_64" ]]; then
-  gn=buildtools/linux64/gn
-  ninja=third_party/depot_tools/ninja
-else
-  # Using system default ninja & gn tools
-  gn=$$(command -v gn)
-  ninja=$$(command -v ninja)
-fi
-"$$gn" gen out/wee8 --args="$$WEE8_BUILD_ARGS"
-"$$ninja" -C out/wee8 wee8
+third_party/depot_tools/gn gen out/wee8 --args="$$WEE8_BUILD_ARGS"
+ninja -C out/wee8 wee8
 
 # Move compiled library to the expected destinations.
 popd

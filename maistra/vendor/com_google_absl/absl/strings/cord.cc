@@ -15,10 +15,12 @@
 #include "absl/strings/cord.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <iomanip>
+#include <iostream>
 #include <limits>
 #include <ostream>
 #include <sstream>
@@ -28,6 +30,7 @@
 
 #include "absl/base/casts.h"
 #include "absl/base/internal/raw_logging.h"
+#include "absl/base/macros.h"
 #include "absl/base/port.h"
 #include "absl/container/fixed_array.h"
 #include "absl/container/inlined_vector.h"
@@ -193,52 +196,18 @@ static_assert(Fibonacci(63) == 6557470319842,
 // The root node depth is allowed to become twice as large to reduce rebalancing
 // for larger strings (see IsRootBalanced).
 static constexpr uint64_t min_length[] = {
-    Fibonacci(2),
-    Fibonacci(3),
-    Fibonacci(4),
-    Fibonacci(5),
-    Fibonacci(6),
-    Fibonacci(7),
-    Fibonacci(8),
-    Fibonacci(9),
-    Fibonacci(10),
-    Fibonacci(11),
-    Fibonacci(12),
-    Fibonacci(13),
-    Fibonacci(14),
-    Fibonacci(15),
-    Fibonacci(16),
-    Fibonacci(17),
-    Fibonacci(18),
-    Fibonacci(19),
-    Fibonacci(20),
-    Fibonacci(21),
-    Fibonacci(22),
-    Fibonacci(23),
-    Fibonacci(24),
-    Fibonacci(25),
-    Fibonacci(26),
-    Fibonacci(27),
-    Fibonacci(28),
-    Fibonacci(29),
-    Fibonacci(30),
-    Fibonacci(31),
-    Fibonacci(32),
-    Fibonacci(33),
-    Fibonacci(34),
-    Fibonacci(35),
-    Fibonacci(36),
-    Fibonacci(37),
-    Fibonacci(38),
-    Fibonacci(39),
-    Fibonacci(40),
-    Fibonacci(41),
-    Fibonacci(42),
-    Fibonacci(43),
-    Fibonacci(44),
-    Fibonacci(45),
-    Fibonacci(46),
-    Fibonacci(47),
+    Fibonacci(2),          Fibonacci(3),  Fibonacci(4),  Fibonacci(5),
+    Fibonacci(6),          Fibonacci(7),  Fibonacci(8),  Fibonacci(9),
+    Fibonacci(10),         Fibonacci(11), Fibonacci(12), Fibonacci(13),
+    Fibonacci(14),         Fibonacci(15), Fibonacci(16), Fibonacci(17),
+    Fibonacci(18),         Fibonacci(19), Fibonacci(20), Fibonacci(21),
+    Fibonacci(22),         Fibonacci(23), Fibonacci(24), Fibonacci(25),
+    Fibonacci(26),         Fibonacci(27), Fibonacci(28), Fibonacci(29),
+    Fibonacci(30),         Fibonacci(31), Fibonacci(32), Fibonacci(33),
+    Fibonacci(34),         Fibonacci(35), Fibonacci(36), Fibonacci(37),
+    Fibonacci(38),         Fibonacci(39), Fibonacci(40), Fibonacci(41),
+    Fibonacci(42),         Fibonacci(43), Fibonacci(44), Fibonacci(45),
+    Fibonacci(46),         Fibonacci(47),
     0xffffffffffffffffull,  // Avoid overflow
 };
 
@@ -524,10 +493,7 @@ static CordRep* NewSubstring(CordRep* child, size_t offset, size_t length) {
 // --------------------------------------------------------------------
 // Cord::InlineRep functions
 
-// This will trigger LNK2005 in MSVC.
-#ifndef COMPILER_MSVC
-const unsigned char Cord::InlineRep::kMaxInline;
-#endif  // COMPILER_MSVC
+constexpr unsigned char Cord::InlineRep::kMaxInline;
 
 inline void Cord::InlineRep::set_data(const char* data, size_t n,
                                       bool nullify_tail) {
@@ -736,6 +702,37 @@ Cord::Cord(absl::string_view src) {
   }
 }
 
+template <typename T, Cord::EnableIfString<T>>
+Cord::Cord(T&& src) {
+  if (
+      // String is short: copy data to avoid external block overhead.
+      src.size() <= kMaxBytesToCopy ||
+      // String is wasteful: copy data to avoid pinning too much unused memory.
+      src.size() < src.capacity() / 2
+  ) {
+    if (src.size() <= InlineRep::kMaxInline) {
+      contents_.set_data(src.data(), src.size(), false);
+    } else {
+      contents_.set_tree(NewTree(src.data(), src.size(), 0));
+    }
+  } else {
+    struct StringReleaser {
+      void operator()(absl::string_view /* data */) {}
+      std::string data;
+    };
+    const absl::string_view original_data = src;
+    CordRepExternal* rep =
+        static_cast<CordRepExternal*>(absl::cord_internal::NewExternalRep(
+            original_data, StringReleaser{std::move(src)}));
+    // Moving src may have invalidated its data pointer, so adjust it.
+    rep->base =
+        static_cast<StringReleaser*>(GetExternalReleaser(rep))->data.data();
+    contents_.set_tree(rep);
+  }
+}
+
+template Cord::Cord(std::string&& src);
+
 // The destruction code is separate so that the compiler can determine
 // that it does not need to call the destructor on a moved-from Cord.
 void Cord::DestroyCordSlow() {
@@ -772,6 +769,18 @@ Cord& Cord::operator=(absl::string_view src) {
   Unref(tree);
   return *this;
 }
+
+template <typename T, Cord::EnableIfString<T>>
+Cord& Cord::operator=(T&& src) {
+  if (src.size() <= kMaxBytesToCopy) {
+    *this = absl::string_view(src);
+  } else {
+    *this = Cord(std::move(src));
+  }
+  return *this;
+}
+
+template Cord& Cord::operator=(std::string&& src);
 
 // TODO(sanjay): Move to Cord::InlineRep section of file.  For now,
 // we keep it here to make diffs easier.
@@ -884,6 +893,17 @@ void Cord::Append(const Cord& src) { AppendImpl(src); }
 
 void Cord::Append(Cord&& src) { AppendImpl(std::move(src)); }
 
+template <typename T, Cord::EnableIfString<T>>
+void Cord::Append(T&& src) {
+  if (src.size() <= kMaxBytesToCopy) {
+    Append(absl::string_view(src));
+  } else {
+    Append(Cord(std::move(src)));
+  }
+}
+
+template void Cord::Append(std::string&& src);
+
 void Cord::Prepend(const Cord& src) {
   CordRep* src_tree = src.contents_.tree();
   if (src_tree != nullptr) {
@@ -912,6 +932,17 @@ void Cord::Prepend(absl::string_view src) {
     contents_.PrependTree(NewTree(src.data(), src.size(), 0));
   }
 }
+
+template <typename T, Cord::EnableIfString<T>>
+inline void Cord::Prepend(T&& src) {
+  if (src.size() <= kMaxBytesToCopy) {
+    Prepend(absl::string_view(src));
+  } else {
+    Prepend(Cord(std::move(src)));
+  }
+}
+
+template void Cord::Prepend(std::string&& src);
 
 static CordRep* RemovePrefixFrom(CordRep* node, size_t n) {
   if (n >= node->length) return nullptr;
@@ -1173,7 +1204,7 @@ class CordForest {
   void AddNode(CordRep* node) {
     CordRep* sum = nullptr;
 
-    // Collect together everything with which we will merge node
+    // Collect together everything with which we will merge with node
     int i = 0;
     for (; node->length > min_length[i + 1]; ++i) {
       auto& tree_at_i = trees_[i];
@@ -1504,7 +1535,8 @@ void Cord::CopyToArraySlowPath(char* dst) const {
 }
 
 Cord::ChunkIterator& Cord::ChunkIterator::operator++() {
-  assert(bytes_remaining_ > 0 && "Attempted to iterate past `end()`");
+  ABSL_HARDENING_ASSERT(bytes_remaining_ > 0 &&
+                        "Attempted to iterate past `end()`");
   assert(bytes_remaining_ >= current_chunk_.size());
   bytes_remaining_ -= current_chunk_.size();
 
@@ -1543,7 +1575,8 @@ Cord::ChunkIterator& Cord::ChunkIterator::operator++() {
 }
 
 Cord Cord::ChunkIterator::AdvanceAndReadBytes(size_t n) {
-  assert(bytes_remaining_ >= n && "Attempted to iterate past `end()`");
+  ABSL_HARDENING_ASSERT(bytes_remaining_ >= n &&
+                        "Attempted to iterate past `end()`");
   Cord subcord;
 
   if (n <= InlineRep::kMaxInline) {
@@ -1714,7 +1747,7 @@ void Cord::ChunkIterator::AdvanceBytesSlowPath(size_t n) {
 }
 
 char Cord::operator[](size_t i) const {
-  assert(i < size());
+  ABSL_HARDENING_ASSERT(i < size());
   size_t offset = i;
   const CordRep* rep = contents_.tree();
   if (rep == nullptr) {

@@ -8,6 +8,7 @@ go_library(
     deps = [
         "//go/analysis:go_default_library",
         "//go/analysis/passes/inspect:go_default_library",
+        "//go/analysis/passes/internal/analysisutil:go_default_library",
         "//go/ast/inspector:go_default_library",
     ],
 )
@@ -20,6 +21,7 @@ go_tool_library(
     deps = [
         "//go/analysis:go_tool_library",
         "//go/analysis/passes/inspect:go_tool_library",
+        "//go/analysis/passes/internal/analysisutil:go_tool_library",
         "//go/ast/inspector:go_tool_library",
     ],
 )

@@ -137,15 +137,22 @@ def update_site(env):
         if not os.path.exists(contents):
             os.rename(os.path.join(target_doc_dir, 'index.rst'), contents)
         # Fix issues in reference.rst/api.rst.
-        for filename in ['reference.rst', 'api.rst']:
+        for filename in ['reference.rst', 'api.rst', 'index.rst']:
             pattern = re.compile('doxygenfunction.. (bin|oct|hexu|hex)$', re.M)
             with rewrite(os.path.join(target_doc_dir, filename)) as b:
                 b.data = b.data.replace('std::ostream &', 'std::ostream&')
                 b.data = re.sub(pattern, r'doxygenfunction:: \1(int)', b.data)
                 b.data = b.data.replace('std::FILE*', 'std::FILE *')
                 b.data = b.data.replace('unsigned int', 'unsigned')
-                b.data = b.data.replace('operator""_', 'operator"" _')
+                #b.data = b.data.replace('operator""_', 'operator"" _')
                 b.data = b.data.replace(', size_t', ', std::size_t')
+                b.data = b.data.replace('aa long', 'a long')
+                if version == '6.2.0':
+                    b.data = b.data.replace(
+                        'vformat(const S&, basic_format_args<' +
+                        'buffer_context<Char>>)',
+                        'vformat(const S&, basic_format_args<' +
+                        'buffer_context<type_identity_t<Char>>>)')
         # Fix a broken link in index.rst.
         index = os.path.join(target_doc_dir, 'index.rst')
         with rewrite(index) as b:

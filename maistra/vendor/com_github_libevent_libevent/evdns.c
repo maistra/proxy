@@ -77,6 +77,7 @@
 #include <stdarg.h>
 #ifdef _WIN32
 #include <winsock2.h>
+#include <winerror.h>
 #include <ws2tcpip.h>
 #ifndef _WIN32_IE
 #define _WIN32_IE 0x400
@@ -4031,7 +4032,7 @@ evdns_base_new(struct event_base *event_base, int flags)
 #else
 		r = evdns_base_resolv_conf_parse(base, opts, "/etc/resolv.conf");
 #endif
-		if (r == -1) {
+		if (r) {
 			evdns_base_free_and_unlock(base, 0);
 			return NULL;
 		}
@@ -4105,17 +4106,17 @@ evdns_base_free_and_unlock(struct evdns_base *base, int fail_requests)
 
 	/* TODO(nickm) we might need to refcount here. */
 
+	while (base->req_waiting_head) {
+		if (fail_requests)
+			reply_schedule_callback(base->req_waiting_head, 0, DNS_ERR_SHUTDOWN, NULL);
+		request_finished(base->req_waiting_head, &base->req_waiting_head, 1);
+	}
 	for (i = 0; i < base->n_req_heads; ++i) {
 		while (base->req_heads[i]) {
 			if (fail_requests)
 				reply_schedule_callback(base->req_heads[i], 0, DNS_ERR_SHUTDOWN, NULL);
 			request_finished(base->req_heads[i], &REQ_HEAD(base, base->req_heads[i]->trans_id), 1);
 		}
-	}
-	while (base->req_waiting_head) {
-		if (fail_requests)
-			reply_schedule_callback(base->req_waiting_head, 0, DNS_ERR_SHUTDOWN, NULL);
-		request_finished(base->req_waiting_head, &base->req_waiting_head, 1);
 	}
 	base->global_requests_inflight = base->global_requests_waiting = 0;
 

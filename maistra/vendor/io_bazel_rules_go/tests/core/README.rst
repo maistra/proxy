@@ -8,6 +8,7 @@ Contents
 
 .. Child list start
 
+* `Misc configuration transition tests <transition/README.rst>`_
 * `Basic go_library functionality <go_library/README.rst>`_
 * `output_groups functionality <output_groups/README.rst>`_
 * `Basic -buildmode=plugin functionality <go_plugin/README.rst>`_
@@ -21,6 +22,7 @@ Contents
 * `.. _#2067: https://github.com/bazelbuild/rules_go/issues/2067 <cgo/README.rst>`_
 * `Runfiles functionality <runfiles/README.rst>`_
 * `go_download_sdk <go_download_sdk/README.rst>`_
+* `go_embed_data <go_embed_data/README.rst>`_
 * `race instrumentation <race/README.rst>`_
 * `stdlib functionality <stdlib/README.rst>`_
 * `Basic go_binary functionality <go_binary/README.rst>`_

@@ -19,7 +19,7 @@ Scanner::Scanner(std::istream& in)
       m_indentRefs{},
       m_flows{} {}
 
-Scanner::~Scanner() {}
+Scanner::~Scanner() = default;
 
 bool Scanner::empty() {
   EnsureTokensInQueue();
@@ -88,7 +88,7 @@ void Scanner::ScanNextToken() {
     return StartStream();
   }
 
-  // get rid of whitespace, etc. (in between tokens it should be irrelevent)
+  // get rid of whitespace, etc. (in between tokens it should be irrelevant)
   ScanToNextToken();
 
   // maybe need to end some blocks

@@ -1,0 +1,22 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "dangling_for.go",
+        "dangling_for_init.go",
+        "dangling_for_init_cond.go",
+        "dangling_for_init_cond_post.go",
+        "dangling_if.go",
+        "dangling_if_eof.go",
+        "dangling_if_init.go",
+        "dangling_if_init_cond.go",
+        "dangling_multiline_if.go",
+        "dangling_selector_1.go",
+        "dangling_selector_2.go",
+        "dangling_switch_init.go",
+        "dangling_switch_init_tag.go",
+    ],
+    importpath = "golang.org/x/tools/internal/lsp/testdata/lsp/primarymod/danglingstmt",
+    visibility = ["//:__subpackages__"],
+)

@@ -5,8 +5,8 @@
 # See LICENSE for copying information.
 
 # 'foreign' means that we're not enforcing GNU package rules strictly.
-# '1.9' means that we need automake 1.9 or later (and we do).
-AUTOMAKE_OPTIONS = foreign 1.9 subdir-objects
+# '1.13' means that we need automake 1.13 or later (and we do).
+AUTOMAKE_OPTIONS = foreign 1.13 subdir-objects
 
 ACLOCAL_AMFLAGS = -I m4
 
@@ -113,8 +113,6 @@ CMAKE_FILES = \
 	cmake/CheckConstExists.cmake \
 	cmake/CheckFileOffsetBits.c \
 	cmake/CheckFileOffsetBits.cmake \
-	cmake/CheckFunctionExistsEx.c \
-	cmake/CheckFunctionExistsEx.cmake \
 	cmake/CheckFunctionKeywords.cmake \
 	cmake/CheckPrototypeDefinition.c.in \
 	cmake/CheckPrototypeDefinition.cmake \
@@ -123,9 +121,11 @@ CMAKE_FILES = \
 	cmake/COPYING-CMAKE-SCRIPTS \
 	cmake/Copyright.txt \
 	cmake/FindGit.cmake \
-	cmake/LibeventConfigBuildTree.cmake.in \
 	cmake/LibeventConfig.cmake.in \
 	cmake/LibeventConfigVersion.cmake.in \
+	cmake/Macros.cmake \
+	cmake/Uninstall.cmake.in \
+	cmake/UseDoxygen.cmake \
 	cmake/VersionViaGit.cmake \
 	event-config.h.cmake \
 	evconfig-private.h.cmake \
@@ -180,6 +180,7 @@ include test/include.am
 
 if BUILD_WIN32
 
+SYS_CORE_LIBS = -liphlpapi
 SYS_LIBS = -lws2_32 -lshell32 -ladvapi32
 SYS_SRC = win32select.c buffer_iocp.c event_iocp.c \
 	bufferevent_async.c
@@ -191,6 +192,7 @@ endif
 
 else
 
+SYS_CORE_LIBS =
 SYS_LIBS =
 SYS_SRC =
 SYS_INCLUDES =
@@ -268,11 +270,11 @@ AM_LDFLAGS = $(LIBEVENT_LDFLAGS)
 GENERIC_LDFLAGS = -version-info $(VERSION_INFO) $(RELEASE) $(NO_UNDEFINED) $(AM_LDFLAGS)
 
 libevent_la_SOURCES = $(CORE_SRC) $(EXTRAS_SRC)
-libevent_la_LIBADD = @LTLIBOBJS@ $(SYS_LIBS)
+libevent_la_LIBADD = @LTLIBOBJS@ $(SYS_LIBS) $(SYS_CORE_LIBS)
 libevent_la_LDFLAGS = $(GENERIC_LDFLAGS)
 
 libevent_core_la_SOURCES = $(CORE_SRC)
-libevent_core_la_LIBADD = @LTLIBOBJS@ $(SYS_LIBS)
+libevent_core_la_LIBADD = @LTLIBOBJS@ $(SYS_LIBS) $(SYS_CORE_LIBS)
 libevent_core_la_LDFLAGS = $(GENERIC_LDFLAGS)
 
 if PTHREADS
@@ -338,9 +340,7 @@ endif
 
 verify: check
 
-doxygen: FORCE
-	doxygen $(srcdir)/Doxyfile
-FORCE:
+include doxygen.am
 
 DISTCLEANFILES += *~ libevent.pc libevent_core.pc libevent_extra.pc ./include/event2/event-config.h
 

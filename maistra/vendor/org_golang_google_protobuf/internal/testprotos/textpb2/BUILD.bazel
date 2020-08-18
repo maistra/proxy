@@ -1,0 +1,20 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["test.pb.go"],
+    importpath = "google.golang.org/protobuf/internal/testprotos/textpb2",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//internal/testprotos/fieldmaskpb:go_default_library",
+        "//reflect/protoreflect:go_default_library",
+        "//runtime/protoiface:go_default_library",
+        "//runtime/protoimpl:go_default_library",
+        "//types/known/anypb:go_default_library",
+        "//types/known/durationpb:go_default_library",
+        "//types/known/emptypb:go_default_library",
+        "//types/known/structpb:go_default_library",
+        "//types/known/timestamppb:go_default_library",
+        "//types/known/wrapperspb:go_default_library",
+    ],
+)

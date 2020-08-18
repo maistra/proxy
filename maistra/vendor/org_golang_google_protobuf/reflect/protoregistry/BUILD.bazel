@@ -1,0 +1,28 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["registry.go"],
+    importpath = "google.golang.org/protobuf/reflect/protoregistry",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//internal/errors:go_default_library",
+        "//reflect/protoreflect:go_default_library",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = ["registry_test.go"],
+    embed = [":go_default_library"],
+    deps = [
+        "//encoding/prototext:go_default_library",
+        "//internal/impl:go_default_library",
+        "//internal/testprotos/registry:go_default_library",
+        "//reflect/protodesc:go_default_library",
+        "//reflect/protoreflect:go_default_library",
+        "//types/descriptorpb:go_default_library",
+        "@com_github_google_go_cmp//cmp:go_default_library",
+        "@com_github_google_go_cmp//cmp/cmpopts:go_default_library",
+    ],
+)

@@ -30,19 +30,15 @@ if (generate_linker_map) {
   assert(
       is_official_build,
       "Linker map files should only be generated when is_official_build = true")
-  assert(current_os == "android" || target_os == "linux",
+  assert(current_os == "android" || current_os == "linux" ||
+             target_os == "android" || target_os == "linux",
          "Linker map files should only be generated for Android and Linux")
 }
 
 declare_args() {
   if (is_clang) {
     # Clang compiler version. Clang files are placed at version-dependent paths.
-    if (llvm_force_head_revision) {
-      clang_version = "11.0.0"
-    } else {
-      # TODO(crbug.com/1042192): Remove in the next Clang roll.
-      clang_version = "10.0.0"
-    }
+    clang_version = "11.0.0"
   }
 }
 

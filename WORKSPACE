@@ -38,11 +38,11 @@ new_local_repository(
 # 2. Update .bazelversion, envoy.bazelrc and .bazelrc if needed.
 #
 # Commit date: 2020-08-13 - Branch: release-1.7
-ENVOY_SHA = "e31a9ae70e4c67d0e83de64621e0a510c13e7094"
+ENVOY_SHA = "66da05ac11ce21fe51cca4ea0b3814e3a7b8957f"
 
-ENVOY_SHA256 = "dca5119d83188496540510b028235b9198b88e95ed438e8457c05d0fcf7ececf"
+ENVOY_SHA256 = "68f3589abfa2b8649ec93f861f7f5e3dd5c12a66cfc76c555104f51496f9d5fb"
 
-ENVOY_ORG = "istio"
+ENVOY_ORG = "dmitri-d"
 
 ENVOY_REPO = "envoy"
 

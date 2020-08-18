@@ -5,7 +5,6 @@ build --override_repository=antlr4_tool=/work/maistra/vendor/antlr4_tool
 build --override_repository=bazel_gazelle=/work/maistra/vendor/bazel_gazelle
 build --override_repository=bazel_skylib=/work/maistra/vendor/bazel_skylib
 build --override_repository=bazel_toolchains=/work/maistra/vendor/bazel_toolchains
-build --override_repository=bazel_version=/work/maistra/vendor/bazel_version
 build --override_repository=bssl_wrapper=/work/maistra/vendor/bssl_wrapper
 build --override_repository=build_bazel_apple_support=/work/maistra/vendor/build_bazel_apple_support
 build --override_repository=build_bazel_rules_apple=/work/maistra/vendor/build_bazel_rules_apple
@@ -50,13 +49,14 @@ build --override_repository=com_google_protobuf=/work/maistra/vendor/com_google_
 build --override_repository=com_googlesource_chromium_v8=/work/maistra/vendor/com_googlesource_chromium_v8
 build --override_repository=com_googlesource_code_re2=/work/maistra/vendor/com_googlesource_code_re2
 build --override_repository=com_lightstep_tracer_cpp=/work/maistra/vendor/com_lightstep_tracer_cpp
+build --override_repository=config_validation_pip3=/work/maistra/vendor/config_validation_pip3
 build --override_repository=envoy=/work/maistra/vendor/envoy
 build --override_repository=envoy_build_tools=/work/maistra/vendor/envoy_build_tools
 build --override_repository=foreign_cc_platform_utils=/work/maistra/vendor/foreign_cc_platform_utils
 build --override_repository=googletest_git=/work/maistra/vendor/googletest_git
 build --override_repository=grpc_httpjson_transcoding=/work/maistra/vendor/grpc_httpjson_transcoding
 build --override_repository=io_bazel_rules_go=/work/maistra/vendor/io_bazel_rules_go
-build --override_repository=io_bazel_rules_go_compat=/work/maistra/vendor/io_bazel_rules_go_compat
+build --override_repository=io_bazel_rules_go_name_hack=/work/maistra/vendor/io_bazel_rules_go_name_hack
 build --override_repository=io_bazel_rules_nogo=/work/maistra/vendor/io_bazel_rules_nogo
 build --override_repository=io_opencensus_cpp=/work/maistra/vendor/io_opencensus_cpp
 build --override_repository=io_opentracing_cpp=/work/maistra/vendor/io_opentracing_cpp
@@ -66,9 +66,13 @@ build --override_repository=mixerapi_git=/work/maistra/vendor/mixerapi_git
 build --override_repository=net_zlib=/work/maistra/vendor/net_zlib
 build --override_repository=opencensus_proto=/work/maistra/vendor/opencensus_proto
 build --override_repository=openssl_cbs=/work/maistra/vendor/openssl_cbs
+build --override_repository=org_golang_google_protobuf=/work/maistra/vendor/org_golang_google_protobuf
 build --override_repository=org_golang_x_tools=/work/maistra/vendor/org_golang_x_tools
 build --override_repository=platforms=/work/maistra/vendor/platforms
 build --override_repository=prometheus_metrics_model=/work/maistra/vendor/prometheus_metrics_model
+build --override_repository=protodoc_pip3=/work/maistra/vendor/protodoc_pip3
+build --override_repository=proxy_wasm_cpp_host=/work/maistra/vendor/proxy_wasm_cpp_host
+build --override_repository=proxy_wasm_cpp_sdk=/work/maistra/vendor/proxy_wasm_cpp_sdk
 build --override_repository=remote_coverage_tools=/work/maistra/vendor/remote_coverage_tools
 build --override_repository=remote_java_tools_darwin=/work/maistra/vendor/remote_java_tools_darwin
 build --override_repository=remote_java_tools_linux=/work/maistra/vendor/remote_java_tools_linux
@@ -76,6 +80,7 @@ build --override_repository=remote_java_tools_windows=/work/maistra/vendor/remot
 build --override_repository=rules_antlr=/work/maistra/vendor/rules_antlr
 build --override_repository=rules_cc=/work/maistra/vendor/rules_cc
 build --override_repository=rules_foreign_cc=/work/maistra/vendor/rules_foreign_cc
+build --override_repository=rules_foreign_cc_bazel_version=/work/maistra/vendor/rules_foreign_cc_bazel_version
 build --override_repository=rules_java=/work/maistra/vendor/rules_java
 build --override_repository=rules_proto=/work/maistra/vendor/rules_proto
 build --override_repository=rules_python=/work/maistra/vendor/rules_python

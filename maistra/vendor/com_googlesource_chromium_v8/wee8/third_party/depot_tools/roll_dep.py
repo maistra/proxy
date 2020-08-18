@@ -99,13 +99,15 @@ def gclient(args):
 def generate_commit_message(
     full_dir, dependency, head, roll_to, no_log, log_limit):
   """Creates the commit message for this specific roll."""
-  commit_range = '%s..%s' % (head[:9], roll_to[:9])
+  commit_range = '%s..%s' % (head, roll_to)
+  commit_range_for_header = '%s..%s' % (head[:9], roll_to[:9])
   upstream_url = check_output(
       ['git', 'config', 'remote.origin.url'], cwd=full_dir).strip()
   log_url = get_log_url(upstream_url, head, roll_to)
   cmd = ['git', 'log', commit_range, '--date=short', '--no-merges']
   logs = check_output(
-      cmd + ['--format=%ad %ae %s'], # Args with '=' are automatically quoted.
+      # Args with '=' are automatically quoted.
+      cmd + ['--format=%ad %ae %s', '--'],
       cwd=full_dir).rstrip()
   logs = re.sub(r'(?m)^(\d\d\d\d-\d\d-\d\d [^@]+)@[^ ]+( .*)$', r'\1\2', logs)
   lines = logs.splitlines()
@@ -116,7 +118,7 @@ def generate_commit_message(
   rolls = nb_commits - len(cleaned_lines)
   header = 'Roll %s/ %s (%d commit%s%s)\n\n' % (
       dependency,
-      commit_range,
+      commit_range_for_header,
       nb_commits,
       's' if nb_commits > 1 else '',
       ('; %s trivial rolls' % rolls) if rolls else '')
@@ -125,6 +127,7 @@ def generate_commit_message(
     log_section = log_url + '\n\n'
   log_section += '$ %s ' % ' '.join(cmd)
   log_section += '--format=\'%ad %ae %s\'\n'
+  log_section = log_section.replace(commit_range, commit_range_for_header)
   # It is important that --no-log continues to work, as it is used by
   # internal -> external rollers. Please do not remove or break it.
   if not no_log and should_show_log(upstream_url):
@@ -262,6 +265,8 @@ def main():
   except Error as e:
     sys.stderr.write('error: %s\n' % e)
     return 2 if isinstance(e, AlreadyRolledError) else 1
+  except subprocess.CalledProcessError:
+    return 1
 
   print('')
   if not reviewers:

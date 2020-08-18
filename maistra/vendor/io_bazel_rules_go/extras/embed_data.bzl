@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""embed_data.bzl provides the go_embed_data rule for embedding data in go files"""
+
 load(
     "@io_bazel_rules_go//go/private:context.bzl",  #TODO: This ought to be def
     "go_context",
@@ -64,8 +66,8 @@ def _go_embed_data_impl(ctx):
         args.add("-multi")
     args.add_all(srcs)
 
-    library = go.new_library(go, srcs = srcs)
-    source = go.library_to_source(go, ctx.attr, library, ctx.coverage_instrumented())
+    library = go.new_library(go, srcs = [out])
+    source = go.library_to_source(go, {}, library, ctx.coverage_instrumented())
 
     ctx.actions.run(
         outputs = [out],
@@ -97,4 +99,4 @@ go_embed_data = go_rule(
         ),
     },
 )
-"""See go/extras.rst#go_embed_data for full documentation."""
+# See go/extras.rst#go_embed_data for full documentation.

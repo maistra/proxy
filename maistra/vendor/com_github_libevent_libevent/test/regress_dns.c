@@ -1274,8 +1274,6 @@ test_bufferevent_connect_hostname(void *arg)
 	ev_uint16_t dns_port=0;
 	int n_accept=0, n_dns=0;
 	char buf[128];
-	int success = BEV_EVENT_CONNECTED;
-	int default_error = 0;
 	unsigned i;
 	int ret;
 	struct evutil_addrinfo in_hints;
@@ -1286,22 +1284,6 @@ test_bufferevent_connect_hostname(void *arg)
 		in_hints.ai_protocol = IPPROTO_TCP;
 		in_hints.ai_socktype = SOCK_STREAM;
 		in_hints.ai_flags = EVUTIL_AI_ADDRCONFIG;
-	}
-
-	if (emfile) {
-		success = BEV_EVENT_ERROR;
-#if defined(__linux__)
-		/* on linux glibc/musl reports EAI_SYSTEM, when getaddrinfo() cannot
-		 * open file for resolving service. */
-		default_error = EVUTIL_EAI_SYSTEM;
-#elif defined(__sun__)
-		/* on solaris it returns EAI_FAIL */
-		default_error = EVUTIL_EAI_FAIL;
-		/** the DP_POLL can also fail with EINVAL under EMFILE */
-#else
-		/* on osx/freebsd it returns EAI_NONAME */
-		default_error = EVUTIL_EAI_NONAME;
-#endif
 	}
 
 	be_connect_hostname_base = data->base;
@@ -1394,12 +1376,16 @@ test_bufferevent_connect_hostname(void *arg)
 
 	tt_int_op(be_outcome[0].what, ==, BEV_EVENT_ERROR);
 	tt_int_op(be_outcome[0].dnserr, ==, EVUTIL_EAI_NONAME);
-	tt_int_op(be_outcome[1].what, ==, success);
+	tt_int_op(be_outcome[1].what, ==, !emfile ? BEV_EVENT_CONNECTED : BEV_EVENT_ERROR);
 	tt_int_op(be_outcome[1].dnserr, ==, 0);
-	tt_int_op(be_outcome[2].what, ==, success);
+	tt_int_op(be_outcome[2].what, ==, !emfile ? BEV_EVENT_CONNECTED : BEV_EVENT_ERROR);
 	tt_int_op(be_outcome[2].dnserr, ==, 0);
-	tt_int_op(be_outcome[3].what, ==, success);
-	tt_int_op(be_outcome[3].dnserr, ==, default_error);
+	tt_int_op(be_outcome[3].what, ==, !emfile ? BEV_EVENT_CONNECTED : BEV_EVENT_ERROR);
+	if (!emfile) {
+		tt_int_op(be_outcome[3].dnserr, ==, 0);
+	} else {
+		tt_int_op(be_outcome[3].dnserr, !=, 0);
+	}
 	if (expect_err) {
 		tt_int_op(be_outcome[4].what, ==, BEV_EVENT_ERROR);
 		tt_int_op(be_outcome[4].dnserr, ==, expect_err);
@@ -2141,6 +2127,7 @@ dns_client_fail_requests_test(void *arg)
 {
 	struct basic_test_data *data = arg;
 	struct event_base *base = data->base;
+	int limit_inflight = data->setup_data && !strcmp(data->setup_data, "limit-inflight");
 	struct evdns_base *dns = NULL;
 	struct evdns_server_port *dns_port = NULL;
 	ev_uint16_t portnum = 0;
@@ -2157,6 +2144,9 @@ dns_client_fail_requests_test(void *arg)
 
 	dns = evdns_base_new(base, EVDNS_BASE_DISABLE_WHEN_INACTIVE);
 	tt_assert(!evdns_base_nameserver_ip_add(dns, buf));
+
+	if (limit_inflight)
+		tt_assert(!evdns_base_set_option(dns, "max-inflight:", "11"));
 
 	for (i = 0; i < 20; ++i)
 		evdns_base_resolve_ipv4(dns, "foof.example.com", 0, generic_dns_callback, &r[i]);
@@ -2451,6 +2441,8 @@ struct testcase_t dns_testcases[] = {
 
 	{ "client_fail_requests", dns_client_fail_requests_test,
 	  TT_FORK|TT_NEED_BASE|TT_NO_LOGS, &basic_setup, NULL },
+	{ "client_fail_waiting_requests", dns_client_fail_requests_test,
+	  TT_FORK|TT_NEED_BASE|TT_NO_LOGS, &basic_setup, (char*)"limit-inflight" },
 	{ "client_fail_requests_getaddrinfo",
 	  dns_client_fail_requests_getaddrinfo_test,
 	  TT_FORK|TT_NEED_BASE|TT_NO_LOGS, &basic_setup, NULL },

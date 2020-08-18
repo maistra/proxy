@@ -5,13 +5,14 @@
 package source
 
 import (
+	"context"
 	"go/types"
 	"strings"
 	"time"
 )
 
-// Limit deep completion results because in most cases there are too many
-// to be useful.
+// MaxDeepCompletions limits deep completion results because in most cases
+// there are too many to be useful.
 const MaxDeepCompletions = 3
 
 // deepCompletionState stores our state as we search for deep completions.
@@ -39,10 +40,16 @@ type deepCompletionState struct {
 	candidateCount int
 }
 
-// push pushes obj onto our search stack.
-func (s *deepCompletionState) push(obj types.Object) {
+// push pushes obj onto our search stack. If invoke is true then
+// invocation parens "()" will be appended to the object name.
+func (s *deepCompletionState) push(obj types.Object, invoke bool) {
 	s.chain = append(s.chain, obj)
-	s.chainNames = append(s.chainNames, obj.Name())
+
+	name := obj.Name()
+	if invoke {
+		name += "()"
+	}
+	s.chainNames = append(s.chainNames, name)
 }
 
 // pop pops the last object off our search stack.
@@ -87,6 +94,28 @@ func (s *deepCompletionState) isHighScore(score float64) bool {
 	return false
 }
 
+// scorePenalty computes a deep candidate score penalty. A candidate
+// is penalized based on depth to favor shallower candidates. We also
+// give a slight bonus to unexported objects and a slight additional
+// penalty to function objects.
+func (s *deepCompletionState) scorePenalty() float64 {
+	var deepPenalty float64
+	for _, dc := range s.chain {
+		deepPenalty += 1
+
+		if !dc.Exported() {
+			deepPenalty -= 0.1
+		}
+
+		if _, isSig := dc.Type().Underlying().(*types.Signature); isSig {
+			deepPenalty += 0.1
+		}
+	}
+
+	// Normalize penalty to a max depth of 10.
+	return deepPenalty / 10
+}
+
 func (c *completer) inDeepCompletion() bool {
 	return len(c.deepState.chain) > 0
 }
@@ -101,8 +130,8 @@ func (c *completer) shouldPrune() bool {
 	}
 
 	// Check our remaining budget every 100 candidates.
-	if c.deepState.candidateCount%100 == 0 {
-		spent := float64(time.Since(c.startTime)) / float64(c.opts.Budget)
+	if c.opts.budget > 0 && c.deepState.candidateCount%100 == 0 {
+		spent := float64(time.Since(c.startTime)) / float64(c.opts.budget)
 
 		switch {
 		case spent >= 0.90:
@@ -132,12 +161,14 @@ func (c *completer) shouldPrune() bool {
 	return false
 }
 
-// deepSearch searches through obj's subordinate objects for more
+// deepSearch searches through cand's subordinate objects for more
 // completion items.
-func (c *completer) deepSearch(obj types.Object) {
+func (c *completer) deepSearch(ctx context.Context, cand candidate) {
 	if c.deepState.maxDepth == 0 {
 		return
 	}
+
+	obj := cand.obj
 
 	// If we are definitely completing a struct field name, deep completions
 	// don't make sense.
@@ -150,22 +181,37 @@ func (c *completer) deepSearch(obj types.Object) {
 		return
 	}
 
+	if obj.Type() == nil {
+		return
+	}
+
 	// Don't search embedded fields because they were already included in their
 	// parent's fields.
 	if v, ok := obj.(*types.Var); ok && v.Embedded() {
 		return
 	}
 
+	if sig, ok := obj.Type().Underlying().(*types.Signature); ok {
+		// If obj is a function that takes no arguments and returns one
+		// value, keep searching across the function call.
+		if sig.Params().Len() == 0 && sig.Results().Len() == 1 {
+			// Pass invoke=true since the function needs to be invoked in
+			// the deep chain.
+			c.deepState.push(obj, true)
+			// The result of a function call is not addressable.
+			c.methodsAndFields(ctx, sig.Results().At(0).Type(), false, cand.imp)
+			c.deepState.pop()
+		}
+	}
+
 	// Push this object onto our search stack.
-	c.deepState.push(obj)
+	c.deepState.push(obj, false)
 
 	switch obj := obj.(type) {
 	case *types.PkgName:
-		c.packageMembers(obj)
+		c.packageMembers(ctx, obj.Imported(), stdScore, cand.imp)
 	default:
-		// For now it is okay to assume obj is addressable since we don't search beyond
-		// function calls.
-		c.methodsAndFields(obj.Type(), true)
+		c.methodsAndFields(ctx, obj.Type(), cand.addressable, cand.imp)
 	}
 
 	// Pop the object off our search stack.

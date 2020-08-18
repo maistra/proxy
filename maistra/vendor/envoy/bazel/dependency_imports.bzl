@@ -4,6 +4,9 @@ load("@envoy_build_tools//toolchains:rbe_toolchains_config.bzl", "rbe_toolchains
 load("@bazel_gazelle//:deps.bzl", "gazelle_dependencies", "go_repository")
 load("@build_bazel_rules_apple//apple:repositories.bzl", "apple_rules_dependencies")
 load("@upb//bazel:repository_defs.bzl", upb_bazel_version_repository = "bazel_version_repository")
+load("@config_validation_pip3//:requirements.bzl", config_validation_pip_install = "pip_install")
+load("@protodoc_pip3//:requirements.bzl", protodoc_pip_install = "pip_install")
+load("@rules_antlr//antlr:deps.bzl", "antlr_dependencies")
 
 # go version for rules_go
 GO_VERSION = "host"
@@ -16,13 +19,14 @@ def envoy_dependency_imports(go_version = GO_VERSION):
     gazelle_dependencies()
     apple_rules_dependencies()
     upb_bazel_version_repository(name = "upb_bazel_version")
+    antlr_dependencies(471)
 
     go_repository(
         name = "org_golang_google_grpc",
         build_file_proto_mode = "disable",
         importpath = "google.golang.org/grpc",
-        sum = "h1:AzbTB6ux+okLTzP8Ru1Xs41C303zdcfEht7MQnYJt5A=",
-        version = "v1.23.0",
+        sum = "h1:EC2SB8S04d2r73uptxphDSUG+kTKVgjRPF+N3xpxRB4=",
+        version = "v1.29.1",
     )
 
     go_repository(
@@ -38,3 +42,6 @@ def envoy_dependency_imports(go_version = GO_VERSION):
         sum = "h1:g61tztE5qeGQ89tm6NTjjM9VPIm088od1l6aSorWRWg=",
         version = "v0.3.0",
     )
+
+    config_validation_pip_install()
+    protodoc_pip_install()

@@ -1,0 +1,13 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["plugin.pb.go"],
+    importpath = "google.golang.org/protobuf/types/pluginpb",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//reflect/protoreflect:go_default_library",
+        "//runtime/protoimpl:go_default_library",
+        "//types/descriptorpb:go_default_library",
+    ],
+)

@@ -1,21 +1,14 @@
 # rules_foreign_cc
 [![Build status](https://badge.buildkite.com/c28afbf846e2077715c753dda1f4b820cdcc46cc6cde16503c.svg)](https://buildkite.com/bazel/rules-foreign-cc)
 
-Rules for building C/C++ projects using foreign build systems inside Bazel projects.
+**Rules for building C/C++ projects using foreign build systems inside Bazel projects.**
 
-* <span style="color:red">**Experimental** - API will most definitely change.</span>
-* This is not an officially supported Google product
+This is **not an officially supported Google product**
 (meaning, support and/or new releases may be limited.)
 
 ## Bazel versions compatibility
 
-**Bazel HEAD after [cae1e816e](https://github.com/bazelbuild/bazel/commit/cae1e816e5e1142fbd4aefdd29bffb2cbad71fa8) or 0.23+:**
-
-No flags are required, works on Windows.
-
-**Bazel 0.22:**
-
-No flags are required, but unfortunately Bazel's Starlark C++ API **is broken on Windows**.
+Works with Bazel after 0.23 without any flags.
 
 ## News
 **March 2019:**
@@ -247,6 +240,9 @@ attrs: {
     # cache_entries - the rule makes only a poor guess about the target system,
     # it is better to specify it manually.
     "generate_crosstool_file": attr.bool(mandatory = False, default = False),
+    # Working directory, with the main CMakeLists.txt
+    # (otherwise, the top directory of the lib_source label files is used.)
+    "working_directory": attr.string(mandatory = False, default = ""),
     #
     # From framework.bzl:
     # 

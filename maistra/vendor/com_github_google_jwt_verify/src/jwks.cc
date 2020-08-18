@@ -17,18 +17,16 @@
 #include <assert.h>
 
 #include <iostream>
-#include <fstream>
 
 #include "absl/strings/escaping.h"
 #include "absl/strings/match.h"
 #include "google/protobuf/struct.pb.h"
 #include "google/protobuf/util/json_util.h"
-#include "opensslcbs/cbs.h"
 #include "jwt_verify_lib/struct_utils.h"
 #include "openssl/bio.h"
 #include "openssl/bn.h"
+#include "openssl/curve25519.h"
 #include "openssl/ecdsa.h"
-#include "openssl/err.h"
 #include "openssl/evp.h"
 #include "openssl/rsa.h"
 #include "openssl/sha.h"
@@ -49,11 +47,6 @@ inline const uint8_t* castToUChar(const std::string& str) {
 }
 
 /** Class to create key object from string of public key, formatted in PEM
-inline const char* castToChar(const std::string& str) {
-  return reinterpret_cast<const char*>(str.c_str());
-}
-
-/** Class to create EVP_PKEY object from string of public key, formatted in PEM
  * or JWKs.
  * If it fails, status_ holds the failure reason.
  *
@@ -85,16 +78,16 @@ class KeyGetter : public WithStatus {
       updateStatus(Status::JwksEcCreateKeyFail);
       return nullptr;
     }
-    BIGNUM *bn_x = createBigNumFromBase64UrlString(x);
-    BIGNUM *bn_y = createBigNumFromBase64UrlString(y);
+    bssl::UniquePtr<BIGNUM> bn_x = createBigNumFromBase64UrlString(x);
+    bssl::UniquePtr<BIGNUM> bn_y = createBigNumFromBase64UrlString(y);
     if (!bn_x || !bn_y) {
       // EC public key field x or y Base64 decode fail
       updateStatus(Status::JwksEcXorYBadBase64);
       return nullptr;
     }
 
-    if (EC_KEY_set_public_key_affine_coordinates(ec_key.get(), bn_x,
-                                                 bn_y) == 0) {
+    if (EC_KEY_set_public_key_affine_coordinates(ec_key.get(), bn_x.get(),
+                                                 bn_y.get()) == 0) {
       updateStatus(Status::JwksEcParseError);
       return nullptr;
     }
@@ -102,37 +95,44 @@ class KeyGetter : public WithStatus {
   }
 
   bssl::UniquePtr<RSA> createRsaFromJwk(const std::string& n,
-                                          const std::string& e) {
+                                        const std::string& e) {
     bssl::UniquePtr<RSA> rsa(RSA_new());
-    BIGNUM *bn_n = createBigNumFromBase64UrlString(n);
-    BIGNUM *bn_e = createBigNumFromBase64UrlString(e);
-
-    if (bn_n == nullptr || bn_e == nullptr) {
+    rsa->n = createBigNumFromBase64UrlString(n).release();
+    rsa->e = createBigNumFromBase64UrlString(e).release();
+    if (rsa->n == nullptr || rsa->e == nullptr) {
       // RSA public key field is missing or has parse error.
       updateStatus(Status::JwksRsaParseError);
       return nullptr;
     }
-
-    if (BN_cmp_word(bn_e, 3) != 0 && BN_cmp_word(bn_e, 65537) != 0) {
+    if (BN_cmp_word(rsa->e, 3) != 0 && BN_cmp_word(rsa->e, 65537) != 0) {
       // non-standard key; reject it early.
-      BN_free(bn_n);
-      BN_free(bn_e);
       updateStatus(Status::JwksRsaParseError);
       return nullptr;
     }
-
-    RSA_set0_key(rsa.get(), bn_n, bn_e, NULL);
     return rsa;
   }
 
+  std::string createRawKeyFromJwkOKP(int nid, size_t keylen,
+                                     const std::string& x) {
+    std::string x_decoded;
+    if (!absl::WebSafeBase64Unescape(x, &x_decoded)) {
+      updateStatus(Status::JwksOKPXBadBase64);
+    } else if (x_decoded.length() != keylen) {
+      updateStatus(Status::JwksOKPXWrongLength);
+    }
+    // For OKP the "x" value is the public key and can just be used as-is
+    return x_decoded;
+  }
+
  private:
-  BIGNUM* createBigNumFromBase64UrlString(
+  bssl::UniquePtr<BIGNUM> createBigNumFromBase64UrlString(
       const std::string& s) {
     std::string s_decoded;
     if (!absl::WebSafeBase64Unescape(s, &s_decoded)) {
       return nullptr;
     }
-    return BN_bin2bn(castToUChar(s_decoded), s_decoded.length(), NULL);
+    return bssl::UniquePtr<BIGNUM>(
+        BN_bin2bn(castToUChar(s_decoded), s_decoded.length(), NULL));
   };
 };
 
@@ -262,6 +262,57 @@ Status extractJwkFromJwkOct(const ::google::protobuf::Struct& jwk_pb,
   return Status::Ok;
 }
 
+// The "OKP" key type is defined in https://tools.ietf.org/html/rfc8037
+Status extractJwkFromJwkOKP(const ::google::protobuf::Struct& jwk_pb,
+                            Jwks::Pubkey* jwk) {
+  // alg is not required, but if present it must be EdDSA
+  if (!jwk->alg_.empty() && jwk->alg_ != "EdDSA") {
+    return Status::JwksOKPKeyBadAlg;
+  }
+
+  // crv is required per https://tools.ietf.org/html/rfc8037#section-2
+  StructUtils jwk_getter(jwk_pb);
+  std::string crv_str;
+  auto code = jwk_getter.GetString("crv", &crv_str);
+  if (code == StructUtils::MISSING) {
+    return Status::JwksOKPKeyMissingCrv;
+  }
+  if (code == StructUtils::WRONG_TYPE) {
+    return Status::JwksOKPKeyBadCrv;
+  }
+  jwk->crv_ = crv_str;
+
+  // Valid crv values:
+  // https://tools.ietf.org/html/rfc8037#section-3
+  // https://www.iana.org/assignments/jose/jose.xhtml#web-key-elliptic-curve
+  // In addition to Ed25519 there are:
+  // X25519: Implemented in boringssl but not used for JWT and thus not
+  // supported here
+  // Ed448 and X448: Not implemented in boringssl
+  int nid;
+  size_t keylen;
+  if (jwk->crv_ == "Ed25519") {
+    nid = EVP_PKEY_ED25519;
+    keylen = ED25519_PUBLIC_KEY_LEN;
+  } else {
+    return Status::JwksOKPKeyCrvUnsupported;
+  }
+
+  // x is required per https://tools.ietf.org/html/rfc8037#section-2
+  std::string x_str;
+  code = jwk_getter.GetString("x", &x_str);
+  if (code == StructUtils::MISSING) {
+    return Status::JwksOKPKeyMissingX;
+  }
+  if (code == StructUtils::WRONG_TYPE) {
+    return Status::JwksOKPKeyBadX;
+  }
+
+  KeyGetter e;
+  jwk->okp_key_raw_ = e.createRawKeyFromJwkOKP(nid, keylen, x_str);
+  return e.getStatus();
+}
+
 Status extractJwk(const ::google::protobuf::Struct& jwk_pb, Jwks::Pubkey* jwk) {
   StructUtils jwk_getter(jwk_pb);
   // Check "kty" parameter, it should exist.
@@ -274,7 +325,7 @@ Status extractJwk(const ::google::protobuf::Struct& jwk_pb, Jwks::Pubkey* jwk) {
     return Status::JwksBadKty;
   }
 
-  // "kid", "alg" and "crv" are optional, if they do not exist, set them to
+  // "kid" and "alg" are optional, if they do not exist, set them to
   // empty. https://tools.ietf.org/html/rfc7517#page-8
   jwk_getter.GetString("kid", &jwk->kid_);
   jwk_getter.GetString("alg", &jwk->alg_);
@@ -287,6 +338,8 @@ Status extractJwk(const ::google::protobuf::Struct& jwk_pb, Jwks::Pubkey* jwk) {
     return extractJwkFromJwkRSA(jwk_pb, jwk);
   } else if (jwk->kty_ == "oct") {
     return extractJwkFromJwkOct(jwk_pb, jwk);
+  } else if (jwk->kty_ == "OKP") {
+    return extractJwkFromJwkOKP(jwk_pb, jwk);
   }
   return Status::JwksNotImplementedKty;
 }
@@ -417,7 +470,7 @@ void Jwks::createFromPemCore(const std::string& pkey_pem) {
   }
   assert(e.getStatus() == Status::Ok);
 
-  switch (EVP_PKEY_type(EVP_PKEY_id(evp_pkey.get()))) {
+  switch (EVP_PKEY_type(evp_pkey->type)) {
     case EVP_PKEY_RSA:
       key_ptr->rsa_.reset(EVP_PKEY_get1_RSA(evp_pkey.get()));
       key_ptr->kty_ = "RSA";
@@ -426,6 +479,22 @@ void Jwks::createFromPemCore(const std::string& pkey_pem) {
       key_ptr->ec_key_.reset(EVP_PKEY_get1_EC_KEY(evp_pkey.get()));
       key_ptr->kty_ = "EC";
       break;
+#ifndef BORINGSSL_FIPS
+    case EVP_PKEY_ED25519: {
+      uint8_t raw_key[ED25519_PUBLIC_KEY_LEN];
+      size_t out_len = ED25519_PUBLIC_KEY_LEN;
+      if (EVP_PKEY_get_raw_public_key(evp_pkey.get(), raw_key, &out_len) != 1 ||
+          out_len != ED25519_PUBLIC_KEY_LEN) {
+        updateStatus(Status::JwksPemGetRawEd25519Error);
+        return;
+      }
+      key_ptr->okp_key_raw_ =
+          std::string(reinterpret_cast<const char*>(raw_key), out_len);
+      key_ptr->kty_ = "OKP";
+      key_ptr->crv_ = "Ed25519";
+      break;
+    }
+#endif
     default:
       updateStatus(Status::JwksPemNotImplementedKty);
       return;
@@ -470,14 +539,16 @@ void Jwks::createFromJwksCore(const std::string& jwks_json) {
     Status status = extractJwk(key_value.struct_value(), key_ptr.get());
     if (status == Status::Ok) {
       keys_.push_back(std::move(key_ptr));
+      resetStatus(status);
     } else {
       updateStatus(status);
-      break;
     }
   }
 
   if (keys_.empty()) {
     updateStatus(Status::JwksNoValidKeys);
+  } else {
+    resetStatus(Status::Ok);
   }
 }
 

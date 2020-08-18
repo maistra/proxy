@@ -106,9 +106,6 @@ public:
       const envoy::extensions::transport_sockets::tls::v3::UpstreamTlsContext& config,
       Server::Configuration::TransportSocketFactoryContext& secret_provider_context)
       : ClientContextConfigImpl(config, "", secret_provider_context) {}
-  ClientContextConfigImpl(
-      const Json::Object& config,
-      Server::Configuration::TransportSocketFactoryContext& secret_provider_context);
 
   // Ssl::ClientContextConfig
   const std::string& serverNameIndication() const override { return server_name_indication_; }
@@ -132,9 +129,6 @@ class ServerContextConfigImpl : public ContextConfigImpl, public Envoy::Ssl::Ser
 public:
   ServerContextConfigImpl(
       const envoy::extensions::transport_sockets::tls::v3::DownstreamTlsContext& config,
-      Server::Configuration::TransportSocketFactoryContext& secret_provider_context);
-  ServerContextConfigImpl(
-      const Json::Object& config,
       Server::Configuration::TransportSocketFactoryContext& secret_provider_context);
   ~ServerContextConfigImpl() override;
 

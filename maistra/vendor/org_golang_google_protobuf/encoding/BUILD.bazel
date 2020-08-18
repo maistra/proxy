@@ -1,0 +1,12 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_test")
+
+go_test(
+    name = "go_default_test",
+    srcs = ["bench_test.go"],
+    deps = [
+        "//encoding/protojson:go_default_library",
+        "//encoding/prototext:go_default_library",
+        "//internal/testprotos/test:go_default_library",
+        "//reflect/protoreflect:go_default_library",
+    ],
+)

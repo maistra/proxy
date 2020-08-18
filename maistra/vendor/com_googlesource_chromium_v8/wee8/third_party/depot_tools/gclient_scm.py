@@ -1081,11 +1081,7 @@ class GitWrapper(SCMWrapper):
       raise gclient_utils.Error("Background task requires input. Rerun "
                                 "gclient with --jobs=1 so that\n"
                                 "interaction is possible.")
-    try:
-      return raw_input(prompt)
-    except KeyboardInterrupt:
-      # Hide the exception.
-      sys.exit(1)
+    return gclient_utils.AskForData(prompt)
 
 
   def _AttemptRebase(self, upstream, files, options, newbase=None,
@@ -1374,9 +1370,7 @@ class GitWrapper(SCMWrapper):
     """Attempts to fetch |revision| if not available in local repo.
 
     Returns possibly updated revision."""
-    try:
-      self._Capture(['rev-parse', revision])
-    except subprocess2.CalledProcessError:
+    if not scm.GIT.IsValidRevision(self.checkout_path, revision):
       self._Fetch(options, refspec=revision)
       revision = self._Capture(['rev-parse', 'FETCH_HEAD'])
     return revision

@@ -137,11 +137,20 @@ function assert_return(action, expected) {
   switch (expected) {
     case "nan:canonical":
     case "nan:arithmetic":
-    case "nan:any":
       // Note that JS can't reliably distinguish different NaN values,
       // so there's no good way to test that it's a canonical NaN.
       if (!Number.isNaN(actual)) {
-        throw new Error("Wasm return value NaN expected, got " + actual);
+        throw new Error("Wasm NaN return value expected, got " + actual);
+      };
+      return;
+    case "ref.func":
+      if (typeof actual !== "function") {
+        throw new Error("Wasm function return value expected, got " + actual);
+      };
+      return;
+    case "ref.any":
+      if (actual === null) {
+        throw new Error("Wasm reference return value expected, got " + actual);
       };
       return;
     default:
@@ -149,20 +158,6 @@ function assert_return(action, expected) {
         throw new Error("Wasm return value " + expected + " expected, got " + actual);
       };
   }
-}
-
-function assert_return_ref(action) {
-  let actual = action();
-  if (actual === null || typeof actual !== "object" && typeof actual !== "function") {
-    throw new Error("Wasm reference return value expected, got " + actual);
-  };
-}
-
-function assert_return_func(action) {
-  let actual = action();
-  if (typeof actual !== "function") {
-    throw new Error("Wasm function return value expected, got " + actual);
-  };
 }
 
 // bulk.wast:2

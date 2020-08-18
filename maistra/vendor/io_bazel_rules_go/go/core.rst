@@ -1,29 +1,29 @@
-Core go rules
+Core Go rules
 =============
 
-.. _test_filter: https://docs.bazel.build/versions/master/user-manual.html#flag--test_filter
-.. _test_arg: https://docs.bazel.build/versions/master/user-manual.html#flag--test_arg
-.. _Gazelle: https://github.com/bazelbuild/bazel-gazelle
-.. _GoLibrary: providers.rst#GoLibrary
-.. _GoSource: providers.rst#GoSource
-.. _GoArchive: providers.rst#GoArchive
-.. _GoPath: providers.rst#GoPath
-.. _cgo: http://golang.org/cmd/cgo/
 .. _"Make variable": https://docs.bazel.build/versions/master/be/make-variables.html
 .. _Bourne shell tokenization: https://docs.bazel.build/versions/master/be/common-definitions.html#sh-tokenization
-.. _data dependencies: https://docs.bazel.build/versions/master/build-ref.html#data
-.. _cc library deps: https://docs.bazel.build/versions/master/be/c-cpp.html#cc_library.deps
-.. _shard_count: https://docs.bazel.build/versions/master/be/common-definitions.html#test.shard_count
-.. _pure: modes.rst#pure
-.. _static: modes.rst#static
-.. _goos: modes.rst#goos
-.. _goarch: modes.rst#goarch
-.. _mode attributes: modes.rst#mode-attributes
-.. _write a CROSSTOOL file: https://github.com/bazelbuild/bazel/wiki/Yet-Another-CROSSTOOL-Writing-Tutorial
+.. _Gazelle: https://github.com/bazelbuild/bazel-gazelle
+.. _GoArchive: providers.rst#GoArchive
+.. _GoLibrary: providers.rst#GoLibrary
+.. _GoPath: providers.rst#GoPath
+.. _GoSource: providers.rst#GoSource
 .. _build constraints: https://golang.org/pkg/go/build/#hdr-Build_Constraints
-.. _select: https://docs.bazel.build/versions/master/be/functions.html#select
+.. _cc library deps: https://docs.bazel.build/versions/master/be/c-cpp.html#cc_library.deps
+.. _cgo: http://golang.org/cmd/cgo/
 .. _config_setting: https://docs.bazel.build/versions/master/be/general.html#config_setting
+.. _data dependencies: https://docs.bazel.build/versions/master/build-ref.html#data
+.. _goarch: modes.rst#goarch
+.. _goos: modes.rst#goos
+.. _mode attributes: modes.rst#mode-attributes
 .. _nogo: nogo.rst#nogo
+.. _pure: modes.rst#pure
+.. _select: https://docs.bazel.build/versions/master/be/functions.html#select
+.. _shard_count: https://docs.bazel.build/versions/master/be/common-definitions.html#test.shard_count
+.. _static: modes.rst#static
+.. _test_arg: https://docs.bazel.build/versions/master/user-manual.html#flag--test_arg
+.. _test_filter: https://docs.bazel.build/versions/master/user-manual.html#flag--test_filter
+.. _write a CROSSTOOL file: https://github.com/bazelbuild/bazel/wiki/Yet-Another-CROSSTOOL-Writing-Tutorial
 
 .. role:: param(kbd)
 .. role:: type(emphasis)
@@ -31,14 +31,33 @@ Core go rules
 .. |mandatory| replace:: **mandatory value**
 
 These are the core go rules, required for basic operation.
-The intent is that theses rules are sufficient to match the capabilities of the normal go tools.
+The intent is that these rules are sufficient to match the capabilities of the normal go tools.
 
 .. contents:: :depth: 2
 
 -----
 
-Design
-------
+Introduction
+------------
+
+Three core rules may be used to build most projects: `go_library`_, `go_binary`_,
+and `go_test`_.
+
+`go_library`_ builds a single package. It has a list of source files
+(specified with ``srcs``) and may depend on other packages (with ``deps``).
+Each `go_library`_ has an ``importpath``, which is the name used to import it
+in Go source files.
+
+`go_binary`_ also builds a single ``main`` package and links it into an
+executable. It may embed the content of a `go_library`_ using the ``embed``
+attribute. Embedded sources are compiled together in the same package.
+Binaries can be built for alternative platforms and configurations by setting
+``goos``, ``goarch``, and other attributes.
+
+`go_test`_ builds a test executable. Like tests produced by ``go test``, this
+consists of three packages: an internal test package compiled together with
+the library being tested (specified with ``embed``), an external test package
+compiled separately, and a generated test main package.
 
 Defines and stamping
 ~~~~~~~~~~~~~~~~~~~~
@@ -57,7 +76,7 @@ and values are the string to use. Keys may be names of variables in the package
 being compiled, or they may be fully qualified names of variables in another
 package.
 
-These mappings are collected up across the entire transitive dependancies of a
+These mappings are collected up across the entire transitive dependencies of a
 binary. This means you can set a value using :param:`x_defs` in a
 ``go_library``, and any binary that links that library will be stamped with that
 value. You can also override stamp values from libraries using :param:`x_defs`
@@ -218,8 +237,8 @@ Embedding may also be used to add extra sources sources to a
         importpath = "example.com/foo",
     )
 
-API
----
+Rules
+-----
 
 go_library
 ~~~~~~~~~~
@@ -503,14 +522,19 @@ Attributes
 | This is one of the `mode attributes`_ that controls whether to instrument                        |
 | code for data race detection. It may be :value:`on`, :value:`off`, or                            |
 | :value:`auto`. In most cases, it's better to enable race detection globally                      |
-| with ``--features=race`` on the command line.                                                    |
+| with ``--@io_bazel_rules_go//go/config:race`` on the command line.                               |
 +----------------------------+-----------------------------+---------------------------------------+
 | :param:`msan`              | :type:`string`              | :value:`auto`                         |
 +----------------------------+-----------------------------+---------------------------------------+
 | This is one of the `mode attributes`_ that controls whether to instrument                        |
-| code for memory santization. It may be :value:`on`, :value:`off`, or                             |
+| code for memory sanitization. It may be :value:`on`, :value:`off`, or                            |
 | :value:`auto`. In most cases, it's better to enable memory sanitization                          |
-| globally with ``--features=msan`` on the command line.                                           |
+| globally with ``--@io_bazel_rules_go//go/config:msan`` on the command line.                      |
++----------------------------+-----------------------------+---------------------------------------+
+| :param:`gotags`            | :type:`string_list`         : :value:`[]`                           |
++----------------------------+-----------------------------+---------------------------------------+
+| This is one of the `mode attributes`_ that controls which build tags are                         |
+| enabled when evaluating build constraints. Useful for conditional compilation.                   |
 +----------------------------+-----------------------------+---------------------------------------+
 | :param:`goos`              | :type:`string`              | :value:`auto`                         |
 +----------------------------+-----------------------------+---------------------------------------+
@@ -643,6 +667,8 @@ To run a Go benchmark test, run
 You can run specific tests by passing the `--test_filter=pattern <test_filter_>`_ argument to Bazel.
 You can pass arguments to tests by passing `--test_arg=arg <test_arg_>`_ arguments to Bazel.
 
+To write structured testlog information to Bazel's ``XML_OUTPUT_FILE``, tests ran with ``bazel test`` execute using a wrapper that invokes the testbinary with ``-test.v``. This functionality can be disabled by setting ``GO_TEST_WRAP=0`` in the test environment.
+
 Attributes
 ^^^^^^^^^^
 
@@ -712,14 +738,19 @@ Attributes
 | This is one of the `mode attributes`_ that controls whether to instrument                        |
 | code for data race detection. It may be :value:`on`, :value:`off`, or                            |
 | :value:`auto`. In most cases, it's better to enable race detection globally                      |
-| with ``--features=race`` on the command line.                                                    |
+| with ``--@io_bazel_rules_go//go/config:race`` on the command line.                               |
 +----------------------------+-----------------------------+---------------------------------------+
 | :param:`msan`              | :type:`string`              | :value:`auto`                         |
 +----------------------------+-----------------------------+---------------------------------------+
 | This is one of the `mode attributes`_ that controls whether to instrument                        |
-| code for memory santization. It may be :value:`on`, :value:`off`, or                             |
+| code for memory sanitization. It may be :value:`on`, :value:`off`, or                            |
 | :value:`auto`. In most cases, it's better to enable memory sanitization                          |
-| globally with ``--features=msan`` on the command line.                                           |
+| globally with ``--@io_bazel_rules_go//go/config:msan`` on the command line.                      |
++----------------------------+-----------------------------+---------------------------------------+
+| :param:`gotags`            | :type:`string_list`         : :value:`[]`                           |
++----------------------------+-----------------------------+---------------------------------------+
+| This is one of the `mode attributes`_ that controls which build tags are                         |
+| enabled when evaluating build constraints. Useful for conditional compilation.                   |
 +----------------------------+-----------------------------+---------------------------------------+
 | :param:`goos`              | :type:`string`              | :value:`auto`                         |
 +----------------------------+-----------------------------+---------------------------------------+
@@ -999,13 +1030,6 @@ Attributes
 | for this rule will be included regardless of this attribute.                                     |
 +----------------------------+-----------------------------+---------------------------------------+
 
-go_rule
-~~~~~~~
-
-This is a wrapper around the normal rule function.
-It modifies the attrs and toolchains attributes to make sure everything needed to build a go_context
-is present.
-
 Cross compilation
 -----------------
 
@@ -1082,25 +1106,3 @@ OS-architecture pair. For a full list, run this command:
     $ bazel query 'kind(config_setting, @io_bazel_rules_go//go/platform:all)'
 
 `Gazelle`_ will generate dependencies in this format automatically.
-
-Note on goos and goarch attributes
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-It is possible to cross-compile ``go_binary`` and ``go_test`` targets by
-setting the ``goos`` and ``goarch`` attributes to the target platform. These
-attributes were added for projects that cross-compile binaries for multiple
-platforms in the same build, then package the resulting executables.
-
-Bazel does not have a native understanding of the ``goos`` and ``goarch``
-attributes, so values do not affect `select`_ expressions. This means if you use
-these attributes with a target that has any transitive platform-specific
-dependencies, ``select`` may choose the wrong set of dependencies. Consequently,
-if you use ``goos`` or ``goarch`` attributes, you will not be able to safely
-generate build files with Gazelle or ``go_repository``.
-
-Additionally, setting ``goos`` and ``goarch`` will not automatically disable
-cgo. You should almost always set ``pure = "on"`` together with these
-attributes.
-
-Because of these limitations, it's almost always better to cross-compile by
-setting ``--platforms`` on the command line instead.

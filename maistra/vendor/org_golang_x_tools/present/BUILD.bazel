@@ -17,6 +17,12 @@ go_library(
     ],
     importpath = "golang.org/x/tools/present",
     visibility = ["//visibility:public"],
+    deps = [
+        "@com_github_yuin_goldmark//:go_default_library",
+        "@com_github_yuin_goldmark//ast:go_default_library",
+        "@com_github_yuin_goldmark//renderer/html:go_default_library",
+        "@com_github_yuin_goldmark//text:go_default_library",
+    ],
 )
 
 go_test(
@@ -24,7 +30,9 @@ go_test(
     srcs = [
         "code_test.go",
         "link_test.go",
+        "parse_test.go",
         "style_test.go",
     ],
+    data = glob(["testdata/**"]),
     embed = [":go_default_library"],
 )

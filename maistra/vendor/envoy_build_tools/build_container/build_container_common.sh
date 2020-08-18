@@ -53,7 +53,8 @@ if [[ "$(uname -m)" == "aarch64" ]]; then
 fi
 
 LLVM_RELEASE="clang+llvm-${LLVM_VERSION}-${LLVM_DISTRO}"
-download_and_check "${LLVM_RELEASE}.tar.xz" "https://releases.llvm.org/${LLVM_VERSION}/${LLVM_RELEASE}.tar.xz" "${LLVM_SHA256SUM}"
+LLVM_DOWNLOAD_PREFIX=${LLVM_DOWNLOAD_PREFIX:-https://github.com/llvm/llvm-project/releases/download/llvmorg-}
+download_and_check "${LLVM_RELEASE}.tar.xz" "${LLVM_DOWNLOAD_PREFIX}${LLVM_VERSION}/${LLVM_RELEASE}.tar.xz" "${LLVM_SHA256SUM}"
 tar Jxf "${LLVM_RELEASE}.tar.xz"
 mv "./${LLVM_RELEASE}" /opt/llvm
 chown -R root:root /opt/llvm
@@ -63,6 +64,14 @@ ldconfig
 
 # Install gn tools.
 install_gn
+
+# Install lcov
+LCOV_VERSION=1.14
+download_and_check lcov-${LCOV_VERSION}.tar.gz https://github.com/linux-test-project/lcov/releases/download/v${LCOV_VERSION}/lcov-${LCOV_VERSION}.tar.gz \
+  14995699187440e0ae4da57fe3a64adc0a3c5cf14feab971f8db38fb7d8f071a
+tar zxf lcov-${LCOV_VERSION}.tar.gz
+make -C lcov-${LCOV_VERSION} install
+rm -rf "lcov-${LCOV_VERSION}" "./lcov-${LCOV_VERSION}.tar.gz"
 
 # MSAN
 export PATH="/opt/llvm/bin:${PATH}"

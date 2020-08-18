@@ -1,0 +1,17 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_tool_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["analysis.go"],
+    importpath = "golang.org/x/tools/internal/analysisinternal",
+    visibility = ["//:__subpackages__"],
+    deps = ["//go/ast/astutil:go_default_library"],
+)
+
+go_tool_library(
+    name = "go_tool_library",
+    srcs = ["analysis.go"],
+    importpath = "golang.org/x/tools/internal/analysisinternal",
+    visibility = ["//:__subpackages__"],
+    deps = ["//go/ast/astutil:go_tool_library"],
+)

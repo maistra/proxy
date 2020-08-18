@@ -13,22 +13,30 @@
 # limitations under the License.
 
 load(
-    "@io_bazel_rules_go//go/private:context.bzl",
+    ":context.bzl",
     "go_context",
 )
 load(
-    "@io_bazel_rules_go//go/private:rules/rule.bzl",
-    "go_rule",
+    ":providers.bzl",
+    "CgoContextInfo",
+    "GoConfigInfo",
 )
 
 def _stdlib_impl(ctx):
     go = go_context(ctx)
     source, library = go.toolchain.actions.stdlib(go)
-    return [source, library]
+    return [source, library, source.stdlib]
 
-stdlib = go_rule(
+stdlib = rule(
     implementation = _stdlib_impl,
-    bootstrap = True,
+    attrs = {
+        "cgo_context_data": attr.label(providers = [CgoContextInfo]),
+        "_go_config": attr.label(
+            default = "//:go_config",
+            providers = [GoConfigInfo],
+        ),
+    },
     doc = """stdlib builds the standard library for the target configuration
 or uses the precompiled standard library from the SDK if it is suitable.""",
+    toolchains = ["@io_bazel_rules_go//go:toolchain"],
 )

@@ -13,15 +13,11 @@
 # limitations under the License.
 
 load(
-    "@io_bazel_rules_go_compat//:compat.bzl",
-    "providers_with_coverage",
-)
-load(
-    "@io_bazel_rules_go//go/private:context.bzl",
+    ":context.bzl",
     "go_context",
 )
 load(
-    "@io_bazel_rules_go//go/private:common.bzl",
+    ":common.bzl",
     "asm_exts",
     "cgo_exts",
     "go_exts",
@@ -29,30 +25,20 @@ load(
     "split_srcs",
 )
 load(
-    "@io_bazel_rules_go//go/private:rules/binary.bzl",
+    ":rules/binary.bzl",
     "gc_linkopts",
 )
 load(
-    "@io_bazel_rules_go//go/private:providers.bzl",
+    ":providers.bzl",
     "GoLibrary",
     "INFERRED_PATH",
-    "get_archive",
 )
 load(
-    "@io_bazel_rules_go//go/private:rules/aspect.bzl",
-    "go_archive_aspect",
+    ":rules/transition.bzl",
+    "go_transition_rule",
 )
 load(
-    "@io_bazel_rules_go//go/private:rules/rule.bzl",
-    "go_rule",
-)
-load(
-    "@io_bazel_rules_go//go/platform:list.bzl",
-    "GOARCH",
-    "GOOS",
-)
-load(
-    "@io_bazel_rules_go//go/private:mode.bzl",
+    ":mode.bzl",
     "LINKMODE_NORMAL",
 )
 
@@ -97,7 +83,7 @@ def _go_test_impl(ctx):
     else:
         run_dir = pkg_dir(ctx.label.workspace_root, ctx.label.package)
 
-    main_go = go.declare_file(go, "testmain.go")
+    main_go = go.declare_file(go, path = "testmain.go")
     arguments = go.builder_args(go, "gentestmain")
     arguments.add("-rundir", run_dir)
     arguments.add("-output", main_go)
@@ -113,6 +99,7 @@ def _go_test_impl(ctx):
         "-import",
         "l_test=" + external_source.library.importpath,
     )
+    arguments.add("-pkgname", internal_source.library.importpath)
     arguments.add_all(go_srcs, before_each = "-src", format_each = "l=%s")
     ctx.actions.run(
         inputs = go_srcs,
@@ -140,7 +127,7 @@ def _go_test_impl(ctx):
     if ctx.configuration.coverage_enabled:
         test_deps.append(go.coverdata)
     test_source = go.library_to_source(go, struct(
-        srcs = [struct(files = [main_go])],
+        srcs = [struct(files = [main_go] + ctx.files._testmain_additional_srcs)],
         deps = test_deps,
     ), test_library, False)
     test_archive, executable, runfiles = go.binary(
@@ -154,86 +141,36 @@ def _go_test_impl(ctx):
     )
 
     # Bazel only looks for coverage data if the test target has an
-    # InstrumentedFilesProvider. The coverage_common module can create
-    # this provider, but it was introduced in v23, and we can't use
-    # the legacy syntax anymore. We use the compatibility layer to
-    # support old versions of Bazel.
-    #
-    # If the provider is found and at least one source file is present, Bazel
-    # will set the COVERAGE_OUTPUT_FILE environment variable during tests
-    # and will save that file to the build events + test outputs.
-    return providers_with_coverage(
-        ctx,
-        extensions = ["go"],
-        source_attributes = ["srcs"],
-        dependency_attributes = ["deps", "embed"],
-        providers = [
-            test_archive,
-            DefaultInfo(
-                files = depset([executable]),
-                runfiles = runfiles,
-                executable = executable,
-            ),
-            OutputGroupInfo(
-                compilation_outputs = [internal_archive.data.file],
-            ),
-        ],
-    )
+    # InstrumentedFilesProvider. If the provider is found and at least one
+    # source file is present, Bazel will set the COVERAGE_OUTPUT_FILE
+    # environment variable during tests and will save that file to the build
+    # events + test outputs.
+    return [
+        test_archive,
+        DefaultInfo(
+            files = depset([executable]),
+            runfiles = runfiles,
+            executable = executable,
+        ),
+        OutputGroupInfo(
+            compilation_outputs = [internal_archive.data.file],
+        ),
+        coverage_common.instrumented_files_info(
+            ctx,
+            source_attributes = ["srcs"],
+            dependency_attributes = ["deps", "embed"],
+            extensions = ["go"],
+        ),
+    ]
 
-go_test = go_rule(
-    _go_test_impl,
-    attrs = {
+_go_test_kwargs = {
+    "implementation": _go_test_impl,
+    "attrs": {
         "data": attr.label_list(allow_files = True),
         "srcs": attr.label_list(allow_files = go_exts + asm_exts + cgo_exts),
-        "deps": attr.label_list(
-            providers = [GoLibrary],
-            aspects = [go_archive_aspect],
-        ),
-        "embed": attr.label_list(
-            providers = [GoLibrary],
-            aspects = [go_archive_aspect],
-        ),
+        "deps": attr.label_list(providers = [GoLibrary]),
+        "embed": attr.label_list(providers = [GoLibrary]),
         "importpath": attr.string(),
-        "pure": attr.string(
-            values = [
-                "on",
-                "off",
-                "auto",
-            ],
-            default = "auto",
-        ),
-        "static": attr.string(
-            values = [
-                "on",
-                "off",
-                "auto",
-            ],
-            default = "auto",
-        ),
-        "race": attr.string(
-            values = [
-                "on",
-                "off",
-                "auto",
-            ],
-            default = "auto",
-        ),
-        "msan": attr.string(
-            values = [
-                "on",
-                "off",
-                "auto",
-            ],
-            default = "auto",
-        ),
-        "goos": attr.string(
-            values = GOOS.keys() + ["auto"],
-            default = "auto",
-        ),
-        "goarch": attr.string(
-            values = GOARCH.keys() + ["auto"],
-            default = "auto",
-        ),
         "gc_goopts": attr.string_list(),
         "gc_linkopts": attr.string_list(),
         "rundir": attr.string(),
@@ -245,6 +182,11 @@ go_test = go_rule(
         "copts": attr.string_list(),
         "cxxopts": attr.string_list(),
         "clinkopts": attr.string_list(),
+        "_go_context_data": attr.label(default = "//:go_context_data"),
+        "_testmain_additional_srcs": attr.label_list(
+            default = ["@io_bazel_rules_go//go/tools/testwrapper:srcs"],
+            allow_files = go_exts,
+        ),
         # Workaround for bazelbuild/bazel#6293. See comment in lcov_merger.sh.
         "_lcov_merger": attr.label(
             executable = True,
@@ -252,7 +194,10 @@ go_test = go_rule(
             cfg = "target",
         ),
     },
-    executable = True,
-    test = True,
-)
-"""See go/core.rst#go_test for full documentation."""
+    "executable": True,
+    "test": True,
+    "toolchains": ["@io_bazel_rules_go//go:toolchain"],
+}
+
+go_test = rule(**_go_test_kwargs)
+go_transition_test = go_transition_rule(**_go_test_kwargs)

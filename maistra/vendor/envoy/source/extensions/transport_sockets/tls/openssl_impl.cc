@@ -156,8 +156,6 @@ X509* getVerifyCallbackCert(X509_STORE_CTX* store_ctx, void* arg) {
   return x509;
 }
 
-int ssl_session_is_resumable(const SSL_SESSION* session) { return 1; }
-
 void ssl_ctx_add_client_CA(SSL_CTX* ctx, X509* x) { SSL_CTX_add_client_CA(ctx, x); }
 
 int should_be_single_use(const SSL_SESSION* session) { return 1; }

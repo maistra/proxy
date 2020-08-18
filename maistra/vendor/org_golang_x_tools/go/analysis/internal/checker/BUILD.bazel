@@ -9,6 +9,8 @@ go_library(
         "//go/analysis:go_default_library",
         "//go/analysis/internal/analysisflags:go_default_library",
         "//go/packages:go_default_library",
+        "//internal/analysisinternal:go_default_library",
+        "//internal/span:go_default_library",
     ],
 )
 

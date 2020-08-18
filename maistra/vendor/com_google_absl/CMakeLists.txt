@@ -27,7 +27,7 @@ cmake_policy(SET CMP0025 NEW)
 # if command can use IN_LIST
 cmake_policy(SET CMP0057 NEW)
 
-# Project version variables are the empty std::string if version is unspecified
+# Project version variables are the empty string if version is unspecified
 cmake_policy(SET CMP0048 NEW)
 
 project(absl CXX)
@@ -81,6 +81,10 @@ endif()
 ## pthread
 find_package(Threads REQUIRED)
 
+option(ABSL_USE_EXTERNAL_GOOGLETEST
+  "If ON, Abseil will assume that the targets for GoogleTest are already provided by the including project. This makes sense when Abseil is used with add_subproject." OFF)
+
+
 option(ABSL_USE_GOOGLETEST_HEAD
   "If ON, abseil will download HEAD from googletest at config time." OFF)
 
@@ -94,19 +98,17 @@ if(${ABSL_RUN_TESTS})
   # enable CTest.  This will set BUILD_TESTING to ON unless otherwise specified
   # on the command line
   include(CTest)
-  enable_testing()
-endif()
 
-## check targets
-if(BUILD_TESTING)
-
-  set(absl_gtest_build_dir ${CMAKE_BINARY_DIR}/googletest-build)
-  if(${ABSL_USE_GOOGLETEST_HEAD})
-    set(absl_gtest_src_dir ${CMAKE_BINARY_DIR}/googletest-src)
-  else()
-    set(absl_gtest_src_dir ${ABSL_LOCAL_GOOGLETEST_DIR})
+  ## check targets
+  if (NOT ABSL_USE_EXTERNAL_GOOGLETEST)
+    set(absl_gtest_build_dir ${CMAKE_BINARY_DIR}/googletest-build)
+    if(${ABSL_USE_GOOGLETEST_HEAD})
+      set(absl_gtest_src_dir ${CMAKE_BINARY_DIR}/googletest-src)
+    else()
+      set(absl_gtest_src_dir ${ABSL_LOCAL_GOOGLETEST_DIR})
+    endif()
+    include(CMake/Googletest/DownloadGTest.cmake)
   endif()
-  include(CMake/Googletest/DownloadGTest.cmake)
 
   check_target(gtest)
   check_target(gtest_main)
@@ -169,5 +171,7 @@ if(ABSL_ENABLE_INSTALL)
     FILES_MATCHING
       PATTERN "*.inc"
       PATTERN "*.h"
-  )
+      PATTERN "copts" EXCLUDE
+      PATTERN "testdata" EXCLUDE
+    )
 endif()  # ABSL_ENABLE_INSTALL

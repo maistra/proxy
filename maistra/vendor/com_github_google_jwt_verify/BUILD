@@ -26,9 +26,7 @@ cc_library(
         "//external:abseil_strings",
         "//external:abseil_time",
         "//external:protobuf",
-        "//external:bssl_wrapper_lib",
-        "//external:openssl_cbs_lib",
-        "@openssl//:openssl-lib",
+        "//external:ssl",
     ],
 )
 
@@ -184,6 +182,23 @@ cc_test(
 )
 
 cc_test(
+    name = "verify_jwk_okp_test",
+    srcs = [
+        "src/test_common.h",
+        "src/verify_jwk_okp_test.cc",
+    ],
+    linkopts = [
+        "-lm",
+        "-lpthread",
+    ],
+    linkstatic = 1,
+    deps = [
+        ":jwt_verify_lib",
+        "//external:googletest_main",
+    ],
+)
+
+cc_test(
     name = "verify_pem_rsa_test",
     srcs = [
         "src/test_common.h",
@@ -200,12 +215,28 @@ cc_test(
     ],
 )
 
-
 cc_test(
     name = "verify_pem_ec_test",
     srcs = [
         "src/test_common.h",
         "src/verify_pem_ec_test.cc",
+    ],
+    linkopts = [
+        "-lm",
+        "-lpthread",
+    ],
+    linkstatic = 1,
+    deps = [
+        ":jwt_verify_lib",
+        "//external:googletest_main",
+    ],
+)
+
+cc_test(
+    name = "verify_pem_okp_test",
+    srcs = [
+        "src/test_common.h",
+        "src/verify_pem_okp_test.cc",
     ],
     linkopts = [
         "-lm",

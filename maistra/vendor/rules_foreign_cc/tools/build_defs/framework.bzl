@@ -11,7 +11,7 @@ load(
     "get_env_vars",
     "targets_windows",
 )
-load("@rules_foreign_cc//tools/build_defs:detect_root.bzl", "detect_root")
+load("@rules_foreign_cc//tools/build_defs:detect_root.bzl", "detect_root", "filter_containing_dirs_from_inputs")
 load(
     "@rules_foreign_cc//tools/build_defs:run_shell_file_utils.bzl",
     "copy_directory",
@@ -246,8 +246,6 @@ def cc_external_rule_impl(ctx, attrs):
         "##mkdirs## $$INSTALLDIR$$",
         _print_env(),
         "\n".join(_copy_deps_and_tools(inputs)),
-        # replace placeholder with the dependencies root
-        "##define_absolute_paths## $$EXT_BUILD_DEPS$$ $$EXT_BUILD_DEPS$$",
         "cd $$BUILD_TMPDIR$$",
         attrs.create_configure_script(ConfigureParameters(ctx = ctx, attrs = attrs, inputs = inputs)),
         "\n".join(attrs.make_commands),
@@ -262,7 +260,7 @@ def cc_external_rule_impl(ctx, attrs):
         "cd $$EXT_BUILD_ROOT$$",
     ]
 
-    script_text = convert_shell_script(ctx, script_lines)
+    script_text = "#!/usr/bin/env bash\n" + convert_shell_script(ctx, script_lines)
     wrapped_outputs = wrap_outputs(ctx, lib_name, attrs.configure_name, script_text)
 
     rule_outputs = outputs.declared_outputs + [installdir_copy.file]
@@ -347,6 +345,9 @@ rm -rf $BUILD_TMPDIR $EXT_BUILD_DEPS""",
 rules_foreign_cc: Printing build logs:\\n\\n_____ BEGIN BUILD LOGS _____\\n"
 ##cat## $$BUILD_LOG$$
 ##echo## "\\n_____ END BUILD LOGS _____\\n"
+##echo## "Printing build script:\\n\\n_____ BEGIN BUILD SCRIPT _____\\n"
+##cat## $$BUILD_SCRIPT$$
+##echo## "\\n_____ END BUILD SCRIPT _____\\n"
 ##echo## "rules_foreign_cc: Build script location: $$BUILD_SCRIPT$$\\n"
 ##echo## "rules_foreign_cc: Build log location: $$BUILD_LOG$$\\n\\n"
 """,
@@ -366,7 +367,7 @@ rules_foreign_cc: Printing build logs:\\n\\n_____ BEGIN BUILD LOGS _____\\n"
         "##touch## $$BUILD_LOG$$",
         "##redirect_out_err## $$BUILD_SCRIPT$$ $$BUILD_LOG$$",
     ]
-    build_command = convert_shell_script(ctx, build_command_lines)
+    build_command = "#!/usr/bin/env bash\n" + convert_shell_script(ctx, build_command_lines)
 
     wrapper_script_file = ctx.actions.declare_file("{}/logs/wrapper_script.sh".format(lib_name))
     ctx.actions.write(
@@ -393,14 +394,14 @@ def _get_transitive_artifacts(deps):
     for dep in deps:
         foreign_dep = get_foreign_cc_dep(dep)
         if foreign_dep:
-            artifacts += [foreign_dep.artifacts]
+            artifacts.append(foreign_dep.artifacts)
     return artifacts
 
 def _print_env():
     return "\n".join([
-        "##echo## \"Environment:______________\"",
+        "##echo## \"Environment:______________\\n\"",
         "##env##",
-        "##echo## \"__________________________\"",
+        "##echo## \"__________________________\\n\"",
     ])
 
 def _correct_path_variable(env):
@@ -434,10 +435,10 @@ def _copy_deps_and_tools(files):
         lines.append("##symlink_to_dir## $$EXT_BUILD_ROOT$$/{} $$EXT_BUILD_DEPS$$/bin/".format(tool))
 
     for ext_dir in files.ext_build_dirs:
-        lines += ["##symlink_to_dir## $$EXT_BUILD_ROOT$$/{} $$EXT_BUILD_DEPS$$".format(_file_path(ext_dir))]
+        lines.append("##symlink_to_dir## $$EXT_BUILD_ROOT$$/{} $$EXT_BUILD_DEPS$$".format(_file_path(ext_dir)))
 
-    lines += ["##children_to_path## $$EXT_BUILD_DEPS$$/bin"]
-    lines += ["##path## $$EXT_BUILD_DEPS$$/bin"]
+    lines.append("##children_to_path## $$EXT_BUILD_DEPS$$/bin")
+    lines.append("##path## $$EXT_BUILD_DEPS$$/bin")
 
     return lines
 
@@ -449,15 +450,11 @@ def _symlink_contents_to_dir(dir_name, files_list):
         return []
     lines = ["##mkdirs## $$EXT_BUILD_DEPS$$/" + dir_name]
 
-    paths_list = []
     for file in files_list:
-        paths_list += [_file_path(file).strip()]
-
-    for path in paths_list:
-        # Filter out empty subpaths
-        # (current directory may be passed as quote_includes, but we should not symlink it)
-        if path and path != ".":
-            lines += ["##symlink_contents_to_dir## $$EXT_BUILD_ROOT$$/{} $$EXT_BUILD_DEPS$$/{}".format(path, dir_name)]
+        path = _file_path(file).strip()
+        if path:
+            lines.append("##symlink_contents_to_dir## \
+$$EXT_BUILD_ROOT$$/{} $$EXT_BUILD_DEPS$$/{}".format(path, dir_name))
 
     return lines
 
@@ -555,7 +552,7 @@ def _define_inputs(attrs):
     for dep in attrs.deps:
         external_deps = get_foreign_cc_dep(dep)
 
-        cc_infos += [dep[CcInfo]]
+        cc_infos.append(dep[CcInfo])
 
         if external_deps:
             ext_build_dirs += [artifact.gen_dir for artifact in external_deps.artifacts.to_list()]
@@ -574,7 +571,7 @@ def _define_inputs(attrs):
     tools_files = []
     for tool in attrs.tools_deps:
         tool_root = detect_root(tool)
-        tools_roots += [tool_root]
+        tools_roots.append(tool_root)
         for file_list in tool.files.to_list():
             tools_files += _list(file_list)
 
@@ -594,9 +591,12 @@ def _define_inputs(attrs):
         deps_compilation_info = cc_info_merged.compilation_context,
         deps_linking_info = cc_info_merged.linking_context,
         ext_build_dirs = ext_build_dirs,
-        declared_inputs = attrs.lib_source.files.to_list() + bazel_libs + tools_files +
+        declared_inputs = filter_containing_dirs_from_inputs(attrs.lib_source.files.to_list()) +
+                          bazel_libs +
+                          tools_files +
                           attrs.additional_inputs +
-                          cc_info_merged.compilation_context.headers.to_list() + ext_build_dirs,
+                          cc_info_merged.compilation_context.headers.to_list() +
+                          ext_build_dirs,
     )
 
 def uniq_list_keep_order(list):
@@ -614,11 +614,12 @@ def get_foreign_cc_dep(dep):
 
 # consider optimization here to do not iterate both collections
 def _get_headers(compilation_info):
-    # NB: current directory (".") is passed by quote_includes;
-    # ignore it by now, will be filtered by symlinking code.
-    include_dirs = collections.uniq(compilation_info.system_includes.to_list() +
-                                    compilation_info.includes.to_list() +
-                                    compilation_info.quote_includes.to_list())
+    include_dirs = compilation_info.system_includes.to_list() + \
+                   compilation_info.includes.to_list()
+
+    # do not use quote includes, currently they do not contain
+    # library-specific information
+    include_dirs = collections.uniq(include_dirs)
     headers = []
     for header in compilation_info.headers.to_list():
         path = header.path
@@ -628,7 +629,7 @@ def _get_headers(compilation_info):
                 included = True
                 break
         if not included:
-            headers += [header]
+            headers.append(header)
     return struct(
         headers = headers,
         include_dirs = include_dirs,

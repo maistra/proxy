@@ -10,10 +10,8 @@
 
 #ifndef NULL_PLUGIN
 #include "proxy_wasm_intrinsics.h"
-// Required Proxy-Wasm ABI version.
-extern "C" PROXY_WASM_KEEPALIVE void proxy_abi_version_0_1_0() {}
 #else
-#include "extensions/common/wasm/null/null_plugin.h"
+#include "include/proxy-wasm/null_plugin.h"
 #endif
 
 START_WASM_PLUGIN(CommonWasmTestCpp)
@@ -39,10 +37,15 @@ static float gInfinity = INFINITY;
     abort();                                                                                       \
   } while (0)
 
-WASM_EXPORT(uint32_t, proxy_on_vm_start, (uint32_t, uint32_t context_id)) {
+WASM_EXPORT(void, proxy_abi_version_0_2_0, (void)) {}
+
+WASM_EXPORT(void, proxy_on_context_create, (uint32_t, uint32_t)) {}
+
+WASM_EXPORT(uint32_t, proxy_on_vm_start, (uint32_t context_id, uint32_t configuration_size)) {
   const char* configuration_ptr = nullptr;
   size_t size;
-  proxy_get_configuration(&configuration_ptr, &size);
+  proxy_get_buffer_bytes(WasmBufferType::VmConfiguration, 0, configuration_size, &configuration_ptr,
+                         &size);
   std::string configuration(configuration_ptr, size);
   if (configuration == "logging") {
     std::string trace_message = "test trace logging";
@@ -63,9 +66,11 @@ WASM_EXPORT(uint32_t, proxy_on_vm_start, (uint32_t, uint32_t context_id)) {
   } else if (configuration == "divbyzero") {
     std::string message = "before div by zero";
     proxy_log(LogLevel::error, message.c_str(), message.size());
-    int zero = context_id / 1000;
     ::free(const_cast<void*>(reinterpret_cast<const void*>(configuration_ptr)));
+#pragma clang optimize off
+    int zero = context_id / 1000;
     message = "divide by zero: " + std::to_string(100 / zero);
+#pragma clang optimize on
     proxy_log(LogLevel::error, message.c_str(), message.size());
   } else if (configuration == "globals") {
     std::string message = "NaN " + std::to_string(gNan);
@@ -137,7 +142,7 @@ WASM_EXPORT(uint32_t, proxy_on_vm_start, (uint32_t, uint32_t context_id)) {
     ::free(result);
   } else if (configuration == "WASI") {
     // These checks depend on Emscripten's support for WASI and will only
-    // work if invoked on a "real" WASM VM.
+    // work if invoked on a "real" Wasm VM.
     int err = fprintf(stdout, "WASI write to stdout\n");
     if (err < 0) {
       FAIL_NOW("stdout write should succeed");
@@ -170,6 +175,9 @@ WASM_EXPORT(uint32_t, proxy_on_vm_start, (uint32_t, uint32_t context_id)) {
     if (errno != EBADF || tty != 0) {
       FAIL_NOW("isatty errors on bad fds. errno = " + std::to_string(errno));
     }
+  } else if (configuration == "on_foreign") {
+    std::string message = "on_foreign start";
+    proxy_log(LogLevel::debug, message.c_str(), message.size());
   } else {
     std::string message = "on_vm_start " + configuration;
     proxy_log(LogLevel::info, message.c_str(), message.size());
@@ -178,10 +186,11 @@ WASM_EXPORT(uint32_t, proxy_on_vm_start, (uint32_t, uint32_t context_id)) {
   return 1;
 }
 
-WASM_EXPORT(uint32_t, proxy_on_configure, (uint32_t, uint32_t)) {
+WASM_EXPORT(uint32_t, proxy_on_configure, (uint32_t, uint32_t configuration_size)) {
   const char* configuration_ptr = nullptr;
   size_t size;
-  proxy_get_configuration(&configuration_ptr, &size);
+  proxy_get_buffer_bytes(WasmBufferType::PluginConfiguration, 0, configuration_size,
+                         &configuration_ptr, &size);
   std::string configuration(configuration_ptr, size);
   if (configuration == "done") {
     proxy_done();
@@ -191,6 +200,12 @@ WASM_EXPORT(uint32_t, proxy_on_configure, (uint32_t, uint32_t)) {
   }
   ::free(const_cast<void*>(reinterpret_cast<const void*>(configuration_ptr)));
   return 1;
+}
+
+WASM_EXPORT(void, proxy_on_foreign_function, (uint32_t, uint32_t token, uint32_t data_size)) {
+  std::string message =
+      "on_foreign_function " + std::to_string(token) + " " + std::to_string(data_size);
+  proxy_log(LogLevel::info, message.c_str(), message.size());
 }
 
 WASM_EXPORT(uint32_t, proxy_on_done, (uint32_t)) {

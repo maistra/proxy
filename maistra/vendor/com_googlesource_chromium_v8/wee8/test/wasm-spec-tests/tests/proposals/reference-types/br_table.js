@@ -137,11 +137,20 @@ function assert_return(action, expected) {
   switch (expected) {
     case "nan:canonical":
     case "nan:arithmetic":
-    case "nan:any":
       // Note that JS can't reliably distinguish different NaN values,
       // so there's no good way to test that it's a canonical NaN.
       if (!Number.isNaN(actual)) {
-        throw new Error("Wasm return value NaN expected, got " + actual);
+        throw new Error("Wasm NaN return value expected, got " + actual);
+      };
+      return;
+    case "ref.func":
+      if (typeof actual !== "function") {
+        throw new Error("Wasm function return value expected, got " + actual);
+      };
+      return;
+    case "ref.any":
+      if (actual === null) {
+        throw new Error("Wasm reference return value expected, got " + actual);
       };
       return;
     default:
@@ -149,20 +158,6 @@ function assert_return(action, expected) {
         throw new Error("Wasm return value " + expected + " expected, got " + actual);
       };
   }
-}
-
-function assert_return_ref(action) {
-  let actual = action();
-  if (actual === null || typeof actual !== "object" && typeof actual !== "function") {
-    throw new Error("Wasm reference return value expected, got " + actual);
-  };
-}
-
-function assert_return_func(action) {
-  let actual = action();
-  if (typeof actual !== "function") {
-    throw new Error("Wasm function return value expected, got " + actual);
-  };
 }
 
 // br_table.wast:3
@@ -616,40 +611,40 @@ assert_return(() => call($1, "meet-anyref", [1, hostref(1)]), hostref(1));
 assert_return(() => call($1, "meet-anyref", [2, hostref(1)]), hostref(1));
 
 // br_table.wast:1499
-assert_return(() => call($1, "meet-funcref-1", [0]), ref.func);
+assert_return(() => call($1, "meet-funcref-1", [0]), "ref.func");
 
 // br_table.wast:1500
-assert_return(() => call($1, "meet-funcref-1", [1]), ref.func);
+assert_return(() => call($1, "meet-funcref-1", [1]), "ref.func");
 
 // br_table.wast:1501
-assert_return(() => call($1, "meet-funcref-1", [2]), ref.func);
+assert_return(() => call($1, "meet-funcref-1", [2]), "ref.func");
 
 // br_table.wast:1502
-assert_return(() => call($1, "meet-funcref-2", [0]), ref.func);
+assert_return(() => call($1, "meet-funcref-2", [0]), "ref.func");
 
 // br_table.wast:1503
-assert_return(() => call($1, "meet-funcref-2", [1]), ref.func);
+assert_return(() => call($1, "meet-funcref-2", [1]), "ref.func");
 
 // br_table.wast:1504
-assert_return(() => call($1, "meet-funcref-2", [2]), ref.func);
+assert_return(() => call($1, "meet-funcref-2", [2]), "ref.func");
 
 // br_table.wast:1505
-assert_return(() => call($1, "meet-funcref-3", [0]), ref.func);
+assert_return(() => call($1, "meet-funcref-3", [0]), "ref.func");
 
 // br_table.wast:1506
-assert_return(() => call($1, "meet-funcref-3", [1]), ref.func);
+assert_return(() => call($1, "meet-funcref-3", [1]), "ref.func");
 
 // br_table.wast:1507
-assert_return(() => call($1, "meet-funcref-3", [2]), ref.func);
+assert_return(() => call($1, "meet-funcref-3", [2]), "ref.func");
 
 // br_table.wast:1508
-assert_return(() => call($1, "meet-funcref-4", [0]), ref.func);
+assert_return(() => call($1, "meet-funcref-4", [0]), "ref.func");
 
 // br_table.wast:1509
-assert_return(() => call($1, "meet-funcref-4", [1]), ref.func);
+assert_return(() => call($1, "meet-funcref-4", [1]), "ref.func");
 
 // br_table.wast:1510
-assert_return(() => call($1, "meet-funcref-4", [2]), ref.func);
+assert_return(() => call($1, "meet-funcref-4", [2]), "ref.func");
 
 // br_table.wast:1512
 assert_invalid("\x00\x61\x73\x6d\x01\x00\x00\x00\x01\x85\x80\x80\x80\x00\x01\x60\x00\x01\x7f\x03\x82\x80\x80\x80\x00\x01\x00\x0a\x92\x80\x80\x80\x00\x01\x8c\x80\x80\x80\x00\x00\x02\x40\x41\x01\x0e\x00\x00\x41\x01\x0b\x0b");

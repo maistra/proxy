@@ -28,7 +28,7 @@
 
 /** @file event2/buffer.h
 
-  Functions for buffering data for network sending or receiving.
+  @brief Functions for buffering data for network sending or receiving.
 
   An evbuffer can be used for preparing data before sending it to
   the network or conversely for reading data from the network.
@@ -169,7 +169,7 @@ void evbuffer_free(struct evbuffer *buf);
 
   @param buf pointer to the evbuffer
   @param max buffer size
-  @return 0 on success, -1 on failure (if @max > INT_MAX).
+  @return 0 on success, -1 on failure (if max > INT_MAX).
  */
 EVENT2_EXPORT_SYMBOL
 int evbuffer_set_max_read(struct evbuffer *buf, size_t max);
@@ -231,8 +231,7 @@ void evbuffer_unlock(struct evbuffer *buf);
 
 /** Change the flags that are set for an evbuffer by adding more.
  *
- * @param buffer the evbuffer that the callback is watching.
- * @param cb the callback whose status we want to change.
+ * @param buf the evbuffer that the callback is watching.
  * @param flags One or more EVBUFFER_FLAG_* options
  * @return 0 on success, -1 on failure.
  */
@@ -240,8 +239,7 @@ EVENT2_EXPORT_SYMBOL
 int evbuffer_set_flags(struct evbuffer *buf, ev_uint64_t flags);
 /** Change the flags that are set for an evbuffer by removing some.
  *
- * @param buffer the evbuffer that the callback is watching.
- * @param cb the callback whose status we want to change.
+ * @param buf the evbuffer that the callback is watching.
  * @param flags One or more EVBUFFER_FLAG_* options
  * @return 0 on success, -1 on failure.
  */
@@ -750,7 +748,8 @@ int evbuffer_write_atmost(struct evbuffer *buffer, evutil_socket_t fd,
 
   @param buffer the evbuffer to store the result
   @param fd the file descriptor to read from
-  @param howmuch the number of bytes to be read
+  @param howmuch the number of bytes to be read. If the given number is negative
+  or out of maximum bytes per one read, as many bytes as we can will be read.
   @return the number of bytes read, or -1 if an error occurred
   @see evbuffer_write()
  */

@@ -8,6 +8,9 @@ go_library(
     deps = [
         "//proto:go_default_library",
         "//protoc-gen-go/descriptor:go_default_library",
+        "@org_golang_google_protobuf//reflect/protodesc:go_default_library",
+        "@org_golang_google_protobuf//reflect/protoreflect:go_default_library",
+        "@org_golang_google_protobuf//runtime/protoimpl:go_default_library",
     ],
 )
 
@@ -19,6 +22,9 @@ go_library(
     deps = [
         "//proto:go_default_library",
         "@io_bazel_rules_go//proto/wkt:descriptor_go_proto",
+        "@org_golang_google_protobuf//reflect/protodesc:go_default_library",
+        "@org_golang_google_protobuf//reflect/protoreflect:go_default_library",
+        "@org_golang_google_protobuf//runtime/protoimpl:go_default_library",
     ],
 )
 
@@ -28,7 +34,8 @@ go_test(
     srcs = ["descriptor_test.go"],
     embed = [":go_default_library"],
     deps = [
-        "//proto/test_proto:go_default_library",
         "//protoc-gen-go/descriptor:go_default_library",
+        "@com_github_google_go_cmp//cmp:go_default_library",
+        "@org_golang_google_protobuf//reflect/protoreflect:go_default_library",
     ],
 )

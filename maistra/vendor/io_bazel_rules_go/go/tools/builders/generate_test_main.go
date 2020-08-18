@@ -57,6 +57,7 @@ type Cases struct {
 	Examples   []Example
 	TestMain   string
 	Coverage   bool
+	Pkgname    string
 }
 
 const testMainTpl = `
@@ -65,6 +66,7 @@ import (
 	"flag"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -117,6 +119,18 @@ func testsInShard() []testing.InternalTest {
 }
 
 func main() {
+	if shouldWrap() {
+		err := wrap("{{.Pkgname}}")
+		if xerr, ok := err.(*exec.ExitError); ok {
+			os.Exit(xerr.ExitCode())
+		} else if err != nil {
+			log.Print(err)
+			os.Exit(testWrapperAbnormalExit)
+		} else {
+			os.Exit(0)
+		}
+	}
+
 	// Check if we're being run by Bazel and change directories if so.
 	// TEST_SRCDIR and TEST_WORKSPACE are set by the Bazel test runner, so that makes a decent proxy.
 	testSrcdir := os.Getenv("TEST_SRCDIR")
@@ -172,6 +186,7 @@ func genTestMain(args []string) error {
 	runDir := flags.String("rundir", ".", "Path to directory where tests should run.")
 	out := flags.String("output", "", "output file to write. Defaults to stdout.")
 	coverage := flags.Bool("coverage", false, "whether coverage is supported")
+	pkgname := flags.String("pkgname", "", "package name of test")
 	flags.Var(&imports, "import", "Packages to import")
 	flags.Var(&sources, "src", "Sources to process for tests")
 	if err := flags.Parse(args); err != nil {
@@ -222,6 +237,7 @@ func genTestMain(args []string) error {
 	cases := Cases{
 		RunDir:   strings.Replace(filepath.FromSlash(*runDir), `\`, `\\`, -1),
 		Coverage: *coverage,
+		Pkgname:  *pkgname,
 	}
 
 	testFileSet := token.NewFileSet()
@@ -313,9 +329,13 @@ func genTestMain(args []string) error {
 			}
 		}
 	}
-	// Add only the imports we found tests for
-	for pkg := range pkgs {
-		cases.Imports = append(cases.Imports, importMap[pkg])
+
+	for name := range importMap {
+		// Set the names for all unused imports to "_"
+		if !pkgs[name] {
+			importMap[name].Name = "_"
+		}
+		cases.Imports = append(cases.Imports, importMap[name])
 	}
 	sort.Slice(cases.Imports, func(i, j int) bool {
 		return cases.Imports[i].Name < cases.Imports[j].Name

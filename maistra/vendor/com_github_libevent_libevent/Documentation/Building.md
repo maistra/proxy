@@ -47,6 +47,7 @@ The configure script also supports the following flags:
                            management functions.
  --disable-openssl         Disable support for OpenSSL encryption.
  --disable-thread-support  Don't support multithreaded environments.
+ --enable-doxygen-doc      Build doxygen documentation
 ```
 
 ## Building on Windows
@@ -119,6 +120,9 @@ EVENT__ENABLE_VERBOSE_DEBUG:BOOL=OFF
 # on the the cross compilation target to verify that it works. See CMake
 # documentation for try_run for more details
 EVENT__FORCE_KQUEUE_CHECK:BOOL=OFF
+
+# Build documentation with doxygen
+EVENT__DOXYGEN:BOOL=OFF
 ```
 __More variables can be found by running `cmake -LAH <sourcedir_path>`__
 

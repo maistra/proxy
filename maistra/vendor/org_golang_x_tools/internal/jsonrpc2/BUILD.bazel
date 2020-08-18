@@ -5,15 +5,27 @@ go_library(
     srcs = [
         "handler.go",
         "jsonrpc2.go",
+        "messages.go",
+        "serve.go",
         "stream.go",
         "wire.go",
     ],
     importpath = "golang.org/x/tools/internal/jsonrpc2",
     visibility = ["//:__subpackages__"],
+    deps = [
+        "//internal/event:go_default_library",
+        "//internal/event/label:go_default_library",
+        "//internal/lsp/debug/tag:go_default_library",
+    ],
 )
 
 go_test(
     name = "go_default_test",
-    srcs = ["jsonrpc2_test.go"],
+    srcs = [
+        "jsonrpc2_test.go",
+        "serve_test.go",
+        "wire_test.go",
+    ],
     embed = [":go_default_library"],
+    deps = ["//internal/event/export/eventtest:go_default_library"],
 )

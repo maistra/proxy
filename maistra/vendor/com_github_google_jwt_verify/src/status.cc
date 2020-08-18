@@ -30,19 +30,40 @@ std::string getStatusString(Status status) {
     case Status::JwtExpired:
       return "Jwt is expired";
     case Status::JwtBadFormat:
-      return "Jwt is not in the form of Header.Payload.Signature";
-    case Status::JwtHeaderParseError:
-      return "Jwt header is an invalid Base64url input or an invalid JSON";
+      return "Jwt is not in the form of Header.Payload.Signature with two dots "
+             "and 3 sections";
+    case Status::JwtHeaderParseErrorBadBase64:
+      return "Jwt header is an invalid Base64url encoded";
+    case Status::JwtHeaderParseErrorBadJson:
+      return "Jwt header is an invalid JSON";
     case Status::JwtHeaderBadAlg:
-      return "Jwt header [alg] field is not a string";
+      return "Jwt header [alg] field is required and must be a string";
     case Status::JwtHeaderNotImplementedAlg:
-      return "Jwt header [alg] field value is invalid";
+      return "Jwt header [alg] is not supported";
     case Status::JwtHeaderBadKid:
       return "Jwt header [kid] field is not a string";
-    case Status::JwtPayloadParseError:
-      return "Jwt payload is an invalid Base64 or an invalid JSON";
-    case Status::JwtSignatureParseError:
-      return "Jwt signature is an invalid Base64";
+    case Status::JwtPayloadParseErrorBadBase64:
+      return "Jwt payload is an invalid Base64url encoded";
+    case Status::JwtEd25519SignatureWrongLength:
+      return "Jwt ED25519 signature is wrong length";
+    case Status::JwtPayloadParseErrorBadJson:
+      return "Jwt payload is an invalid JSON";
+    case Status::JwtPayloadParseErrorIssNotString:
+      return "Jwt payload [iss] field is not a string";
+    case Status::JwtPayloadParseErrorSubNotString:
+      return "Jwt payload [sub] field is not a string";
+    case Status::JwtPayloadParseErrorIatNotInteger:
+      return "Jwt payload [iat] field is not an integer";
+    case Status::JwtPayloadParseErrorNbfNotInteger:
+      return "Jwt payload [nbf] field is not an integer";
+    case Status::JwtPayloadParseErrorExpNotInteger:
+      return "Jwt payload [exp] field is not an integer";
+    case Status::JwtPayloadParseErrorJtiNotString:
+      return "Jwt payload [jti] field is not a string";
+    case Status::JwtPayloadParseErrorAudNotString:
+      return "Jwt payload [aud] field is not a string or string list";
+    case Status::JwtSignatureParseErrorBadBase64:
+      return "Jwt signature is an invalid Base64url encoded";
     case Status::JwtUnknownIssuer:
       return "Jwt issuer is not configured";
     case Status::JwtAudienceNotAllowed:
@@ -70,6 +91,10 @@ std::string getStatusString(Status status) {
       return "Jwks EC [x] and [y] fields have a parse error.";
     case Status::JwksOctBadBase64:
       return "Jwks Oct key is an invalid Base64";
+    case Status::JwksOKPXBadBase64:
+      return "Jwks OKP [x] field is an invalid Base64.";
+    case Status::JwksOKPXWrongLength:
+      return "Jwks OKP [x] field is wrong length.";
     case Status::JwksFetchFail:
       return "Jwks remote fetch is failed";
 
@@ -115,6 +140,19 @@ std::string getStatusString(Status status) {
     case Status::JwksHMACKeyBadK:
       return "[k] field is not string for an HMAC key";
 
+    case Status::JwksOKPKeyBadAlg:
+      return "[alg] is not [EdDSA] for an OKP key";
+    case Status::JwksOKPKeyMissingCrv:
+      return "[crv] field is missing for an OKP key";
+    case Status::JwksOKPKeyBadCrv:
+      return "[crv] field is not string for an OKP key";
+    case Status::JwksOKPKeyCrvUnsupported:
+      return "[crv] field is not supported for an OKP key";
+    case Status::JwksOKPKeyMissingX:
+      return "[x] field is missing for an OKP key";
+    case Status::JwksOKPKeyBadX:
+      return "[x] field is not string for an OKP key";
+
     case Status::JwksX509BioWriteError:
       return "X509 parse pubkey internal fails: memory allocation";
     case Status::JwksX509ParseError:
@@ -126,6 +164,8 @@ std::string getStatusString(Status status) {
       return "PEM Key type is not supported";
     case Status::JwksPemBadBase64:
       return "PEM pubkey parse fails";
+    case Status::JwksPemGetRawEd25519Error:
+      return "PEM failed to get raw ED25519 key";
 
     case Status::JwksBioAllocError:
       return "Failed to create BIO due to memory allocation failure";

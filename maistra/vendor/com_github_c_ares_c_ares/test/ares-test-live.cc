@@ -214,8 +214,11 @@ TEST_P(DefaultChannelModeTest, LiveGetLocalhostByAddrV4) {
     EXPECT_EQ(ARES_SUCCESS, result.status_);
     EXPECT_LT(0, (int)result.host_.addrs_.size());
     EXPECT_EQ(AF_INET, result.host_.addrtype_);
-    EXPECT_NE(std::string::npos,
-              result.host_.name_.find("localhost"));
+    // oddly, travis does not resolve to localhost, but a random hostname starting with travis-job
+    if (result.host_.name_.find("travis-job") == std::string::npos) {
+        EXPECT_NE(std::string::npos,
+                  result.host_.name_.find("localhost"));
+    }
   }
 }
 
@@ -691,6 +694,54 @@ TEST_F(DefaultChannelTest, VerifySocketFunctionCallback) {
     EXPECT_NE(0, count);
   }
 
+}
+
+TEST_F(DefaultChannelTest, LiveSetServers) {
+  struct ares_addr_node server1;
+  struct ares_addr_node server2;
+  server1.next = &server2;
+  server1.family = AF_INET;
+  server1.addr.addr4.s_addr = htonl(0x01020304);
+  server2.next = nullptr;
+  server2.family = AF_INET;
+  server2.addr.addr4.s_addr = htonl(0x02030405);
+
+  // Change not allowed while request is pending
+  HostResult result;
+  ares_gethostbyname(channel_, "www.google.com.", AF_INET, HostCallback, &result);
+  EXPECT_EQ(ARES_ENOTIMP, ares_set_servers(channel_, &server1));
+  ares_cancel(channel_);
+}
+
+TEST_F(DefaultChannelTest, LiveSetServersPorts) {
+  struct ares_addr_port_node server1;
+  struct ares_addr_port_node server2;
+  server1.next = &server2;
+  server1.family = AF_INET;
+  server1.addr.addr4.s_addr = htonl(0x01020304);
+  server1.udp_port = 111;
+  server1.tcp_port = 111;
+  server2.next = nullptr;
+  server2.family = AF_INET;
+  server2.addr.addr4.s_addr = htonl(0x02030405);
+  server2.udp_port = 0;
+  server2.tcp_port = 0;;
+  EXPECT_EQ(ARES_ENODATA, ares_set_servers_ports(nullptr, &server1));
+
+  // Change not allowed while request is pending
+  HostResult result;
+  ares_gethostbyname(channel_, "www.google.com.", AF_INET, HostCallback, &result);
+  EXPECT_EQ(ARES_ENOTIMP, ares_set_servers_ports(channel_, &server1));
+  ares_cancel(channel_);
+}
+
+TEST_F(DefaultChannelTest, LiveSetServersCSV) {
+  // Change not allowed while request is pending
+  HostResult result;
+  ares_gethostbyname(channel_, "www.google.com.", AF_INET, HostCallback, &result);
+  EXPECT_EQ(ARES_ENOTIMP, ares_set_servers_csv(channel_, "1.2.3.4,2.3.4.5"));
+  EXPECT_EQ(ARES_ENOTIMP, ares_set_servers_ports_csv(channel_, "1.2.3.4:56,2.3.4.5:67"));
+  ares_cancel(channel_);
 }
 
 

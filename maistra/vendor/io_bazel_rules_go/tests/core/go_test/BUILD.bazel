@@ -143,3 +143,26 @@ go_bazel_test(
     name = "test_filter_test",
     srcs = ["test_filter_test.go"],
 )
+
+go_bazel_test(
+    name = "xmlreport_test",
+    srcs = ["xmlreport_test.go"],
+)
+
+go_test(
+    name = "testmain_import_test",
+    srcs = [
+        "testmain_import_indirect_test.go",
+        "testmain_import_main_test.go",
+    ],
+    importpath = "example.com/imports/test_main",
+)
+
+go_test(
+    name = "tags_test",
+    srcs = [
+        "tags_bad_test.go",
+        "tags_good_test.go",
+    ],
+    gotags = ["good"],
+)

@@ -2,6 +2,7 @@ Cross compilation
 =================
 
 .. _go_binary: /go/core.rst#go_binary
+.. _go_library: /go/core.rst#go_library
 
 Tests to ensure that cross compilation is working as expected.
 
@@ -10,12 +11,23 @@ Tests to ensure that cross compilation is working as expected.
 cross_test
 ----------
 
-Tests that cross compilation controlled by the goos and goarch attributes on a go_binary_ produces
-executables of the correct type.
-This builds binaries using `main.go <main.go>`_ in multiple configurations, and then passes them as data to a
-test `written in go <cross_test.go>`_.
-The test executes the unix command "file" on the binaries to determine their type, and checks
-they were built for the expected architecture.
+
+Tests that cross compilation controlled by the ``goos`` and ``goarch``
+attributes on a `go_binary`_ produces executables for the correct platform.
+
+This builds binaries using `main.go <main.go>`_ in multiple configurations, and
+then passes them as data to a test `written in go <cross_test.go>`_.
+
+The test executes the unix command "file" on the binaries to determine their
+type, and checks they were built for the expected architecture.
+
+The test also checks that `go_library`_ packages imoprted by `go_binary`_ with
+``goos`` set are built in the correct configuration, and ``select`` is applied
+in that configuration. Each binary depends on ``platform_lib``, which has a
+different source file (determined by ``select``) for each platform. The source
+files have a ``goos`` suffix, so they will only be built on the right platform.
+If the wrong source file is used or if all files are filtered out, the
+`go_binary`_ will not build.
 
 ios_select_test
 ---------------

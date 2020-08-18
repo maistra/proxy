@@ -1,0 +1,24 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["legacy.pb.go"],
+    importpath = "google.golang.org/protobuf/internal/testprotos/legacy",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//internal/testprotos/legacy/proto2_20160225_2fc053c5:go_default_library",
+        "//internal/testprotos/legacy/proto2_20160519_a4ab9ec5:go_default_library",
+        "//internal/testprotos/legacy/proto2_20180125_92554152:go_default_library",
+        "//internal/testprotos/legacy/proto2_20180430_b4deda09:go_default_library",
+        "//internal/testprotos/legacy/proto2_20180814_aa810b61:go_default_library",
+        "//internal/testprotos/legacy/proto2_20190205_c823c79e:go_default_library",
+        "//internal/testprotos/legacy/proto3_20160225_2fc053c5:go_default_library",
+        "//internal/testprotos/legacy/proto3_20160519_a4ab9ec5:go_default_library",
+        "//internal/testprotos/legacy/proto3_20180125_92554152:go_default_library",
+        "//internal/testprotos/legacy/proto3_20180430_b4deda09:go_default_library",
+        "//internal/testprotos/legacy/proto3_20180814_aa810b61:go_default_library",
+        "//internal/testprotos/legacy/proto3_20190205_c823c79e:go_default_library",
+        "//reflect/protoreflect:go_default_library",
+        "//runtime/protoimpl:go_default_library",
+    ],
+)

@@ -1,3 +1,3 @@
-all: headers_cpp.wasm async_call_cpp.wasm metadata_cpp.wasm grpc_call_cpp.wasm shared_cpp.wasm queue_cpp.wasm root_id_cpp.wasm body_cpp.wasm
+all: headers_rust.wasm async_call_rust.wasm metadata_rust.wasm shared_data_rust.wasm shared_queue_rust.wasm body_rust.wasm
 
-include ../../../../../../api/wasm/cpp/Makefile.base_lite
+include ../../../../../../api/wasm/rust/Makefile.base

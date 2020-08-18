@@ -1,0 +1,17 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "impl.go",
+        "version.go",
+    ],
+    importpath = "google.golang.org/protobuf/runtime/protoimpl",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//internal/filedesc:go_default_library",
+        "//internal/filetype:go_default_library",
+        "//internal/impl:go_default_library",
+        "//internal/version:go_default_library",
+    ],
+)

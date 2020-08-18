@@ -7,6 +7,7 @@ go_library(
         "external.go",
         "golist.go",
         "golist_overlay.go",
+        "loadmode_string.go",
         "packages.go",
         "visit.go",
     ],
@@ -15,8 +16,9 @@ go_library(
     deps = [
         "//go/gcexportdata:go_default_library",
         "//go/internal/packagesdriver:go_default_library",
-        "//internal/gopathwalk:go_default_library",
-        "//internal/semver:go_default_library",
+        "//internal/gocommand:go_default_library",
+        "//internal/packagesinternal:go_default_library",
+        "@org_golang_x_xerrors//:go_default_library",
     ],
 )
 
@@ -24,7 +26,10 @@ go_test(
     name = "go_default_test",
     srcs = [
         "example_test.go",
+        "overlay_test.go",
         "packages110_test.go",
+        "packages114_test.go",
+        "packages115_test.go",
         "packages_test.go",
         "packagescgo_test.go",
         "stdlib_test.go",
@@ -32,6 +37,7 @@ go_test(
     embed = [":go_default_library"],
     deps = [
         "//go/packages/packagestest:go_default_library",
+        "//internal/packagesinternal:go_default_library",
         "//internal/testenv:go_default_library",
     ],
 )

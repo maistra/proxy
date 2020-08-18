@@ -1,10 +1,11 @@
 // Copyright(c) 2015-present, Gabi Melman & spdlog contributors.
 // Distributed under the MIT License (http://opensource.org/licenses/MIT)
 
-// cirucal q view of std::vector.
+// circular q view of std::vector.
 #pragma once
 
 #include <vector>
+#include <cassert>
 
 namespace spdlog {
 namespace details {
@@ -62,14 +63,35 @@ public:
 
     // Return reference to the front item.
     // If there are no elements in the container, the behavior is undefined.
-    const T& front() const
+    const T &front() const
     {
         return v_[head_];
     }
 
-    T& front()
+    T &front()
     {
         return v_[head_];
+    }
+
+    // Return number of elements actually stored
+    size_t size() const
+    {
+        if (tail_ >= head_)
+        {
+            return tail_ - head_;
+        }
+        else
+        {
+            return max_items_ - (head_ - tail_);
+        }
+    }
+
+    // Return const reference to item by index.
+    // If index is out of range 0…size()-1, the behavior is undefined.
+    const T &at(size_t i) const
+    {
+        assert(i < size());
+        return v_[(head_ + i) % max_items_];
     }
 
     // Pop item from front.
@@ -87,7 +109,7 @@ public:
     bool full() const
     {
         // head is ahead of the tail by 1
-        if(max_items_ > 0)
+        if (max_items_ > 0)
         {
             return ((tail_ + 1) % max_items_) == head_;
         }

@@ -18,6 +18,10 @@ go_test(
     data = glob(["testdata/**"]),
     embed = [":go_default_library"],
     deps = select({
+        "@io_bazel_rules_go//go/platform:aix": [
+            "//go/loader:go_default_library",
+            "//internal/testenv:go_default_library",
+        ],
         "@io_bazel_rules_go//go/platform:darwin": [
             "//go/loader:go_default_library",
             "//internal/testenv:go_default_library",
@@ -30,7 +34,15 @@ go_test(
             "//go/loader:go_default_library",
             "//internal/testenv:go_default_library",
         ],
+        "@io_bazel_rules_go//go/platform:illumos": [
+            "//go/loader:go_default_library",
+            "//internal/testenv:go_default_library",
+        ],
         "@io_bazel_rules_go//go/platform:ios": [
+            "//go/loader:go_default_library",
+            "//internal/testenv:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:js": [
             "//go/loader:go_default_library",
             "//internal/testenv:go_default_library",
         ],
