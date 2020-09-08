@@ -130,10 +130,16 @@ Network::IoResult SslSocket::doRead(Buffer::Instance& read_buffer) {
         case SSL_ERROR_ZERO_RETURN:
           end_stream = true;
           break;
+        case SSL_ERROR_SSL:
+          // If EAGAIN treat it as if it's SSL_ERROR_WANT_READ
+          if (errno == EAGAIN) {
+            break;
+          }
+          // fall through for other errors
         case SSL_ERROR_WANT_WRITE:
         // Renegotiation has started. We don't handle renegotiation so just fall through.
         default:
-          drainErrorQueue();
+          drainErrorQueue(true);
           action = PostIoAction::Close;
           break;
         }
