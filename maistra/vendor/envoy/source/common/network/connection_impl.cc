@@ -610,7 +610,7 @@ void ConnectionImpl::onWriteReady() {
     ENVOY_CONN_LOG(debug, "write flush complete", *this);
     if (delayed_close_state_ == DelayedCloseState::CloseAfterFlushAndWait) {
       ASSERT(delayed_close_timer_ != nullptr);
-      delayed_close_timer_->enableTimer(delayed_close_timeout_);
+      enableDelayedCloseTimer();
     } else {
       ASSERT(bothSidesHalfClosed() || delayed_close_state_ == DelayedCloseState::CloseAfterFlush);
       closeSocket(ConnectionEvent::LocalClose);
@@ -618,7 +618,7 @@ void ConnectionImpl::onWriteReady() {
   } else {
     ASSERT(result.action_ == PostIoAction::KeepOpen);
     if (delayed_close_timer_ != nullptr) {
-      delayed_close_timer_->enableTimer(delayed_close_timeout_);
+      enableDelayedCloseTimer();
     }
     if (result.bytes_processed_ > 0) {
       for (BytesSentCb& cb : bytes_sent_callbacks_) {
@@ -666,20 +666,32 @@ bool ConnectionImpl::bothSidesHalfClosed() {
 }
 
 void ConnectionImpl::onDelayedCloseTimeout() {
-  delayed_close_timer_.reset();
-  ENVOY_CONN_LOG(debug, "triggered delayed close", *this);
-  if (connection_stats_ != nullptr && connection_stats_->delayed_close_timeouts_ != nullptr) {
-    connection_stats_->delayed_close_timeouts_->inc();
+  const auto now = dispatcher().timeSource().monotonicTime();
+  std::chrono::milliseconds delta = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_timer_enable_);
+  if (delta < delayed_close_timeout_) {
+    ENVOY_CONN_LOG(debug, "early triggered delayed close", *this);
+    enableDelayedCloseTimer();
+  } else {
+    delayed_close_timer_.reset();
+    ENVOY_CONN_LOG(debug, "triggered delayed close", *this);
+    if (connection_stats_ != nullptr && connection_stats_->delayed_close_timeouts_ != nullptr) {
+      connection_stats_->delayed_close_timeouts_->inc();
+    }
+    closeSocket(ConnectionEvent::LocalClose);
   }
-  closeSocket(ConnectionEvent::LocalClose);
 }
 
 void ConnectionImpl::initializeDelayedCloseTimer() {
   const auto timeout = delayed_close_timeout_.count();
   ASSERT(delayed_close_timer_ == nullptr && timeout > 0);
   delayed_close_timer_ = dispatcher_.createTimer([this]() -> void { onDelayedCloseTimeout(); });
-  ENVOY_CONN_LOG(debug, "setting delayed close timer with timeout {} ms", *this, timeout);
-  delayed_close_timer_->enableTimer(delayed_close_timeout_);
+  enableDelayedCloseTimer();
+}
+
+void ConnectionImpl::enableDelayedCloseTimer() {
+    ENVOY_CONN_LOG(debug, "enabling delayed close timer with timeout {} ms", *this, delayed_close_timeout_.count());
+    last_timer_enable_ = dispatcher().timeSource().monotonicTime();
+    delayed_close_timer_->enableTimer(delayed_close_timeout_);
 }
 
 absl::string_view ConnectionImpl::transportFailureReason() const {

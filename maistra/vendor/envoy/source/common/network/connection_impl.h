@@ -150,6 +150,7 @@ protected:
   Buffer::InstancePtr write_buffer_;
   uint32_t read_buffer_limit_ = 0;
   std::chrono::milliseconds delayed_close_timeout_{0};
+  MonotonicTime last_timer_enable_;
 
 protected:
   bool connecting_{false};
@@ -178,6 +179,7 @@ private:
   void onDelayedCloseTimeout();
 
   void initializeDelayedCloseTimer();
+  void enableDelayedCloseTimer();
   bool inDelayedClose() const { return delayed_close_state_ != DelayedCloseState::None; }
 
   static std::atomic<uint64_t> next_global_id_;
