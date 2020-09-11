@@ -856,7 +856,7 @@ TEST_P(ProxyProtocolTest, AddressVersionsNotMatch2) {
   expectProxyProtoError();
 }
 
-TEST_P(ProxyProtocolTest, Truncated) {
+TEST_P(ProxyProtocolTest, DISABLED_Truncated) {
   connect(false);
   write("PROXY TCP4 1.2.3.4 5.6.7.8 1234 5678");
   dispatcher_->run(Event::Dispatcher::RunType::NonBlock);
@@ -868,7 +868,7 @@ TEST_P(ProxyProtocolTest, Truncated) {
   dispatcher_->run(Event::Dispatcher::RunType::Block);
 }
 
-TEST_P(ProxyProtocolTest, Closed) {
+TEST_P(ProxyProtocolTest, DISABLED_Closed) {
   connect(false);
   write("PROXY TCP4 1.2.3");
   dispatcher_->run(Event::Dispatcher::RunType::NonBlock);

@@ -18,6 +18,11 @@ Version history
 * tls: fixed a bug where wilcard matching for "\*.foo.com" also matched domains of the form "a.b.foo.com". This behavior can be temporarily reverted by setting runtime feature `envoy.reloadable_features.fix_wildcard_matching` to false.
 
 1.14.3 (June 30, 2020)
+1.12.6 (July 7, 2020)
+=====================
+* tls: fixed a bug where wilcard matching for "\*.foo.com" also matched domains of the form "a.b.foo.com". This behavior can be temporarily reverted by setting runtime feature `envoy.reloadable_features.fix_wildcard_matching` to false.
+
+1.12.5 (June 30, 2020)
 ======================
 * buffer: fixed CVE-2020-12603 by avoiding fragmentation, and tracking of HTTP/2 data and control frames in the output buffer.
 * http: fixed CVE-2020-12604 by changing :ref:`stream_idle_timeout <envoy_api_field_config.filter.network.http_connection_manager.v2.HttpConnectionManager.stream_idle_timeout>`
