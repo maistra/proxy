@@ -21,8 +21,8 @@ sed -i "s|=/work/|=$(pwd)/|" maistra/bazelrc-vendor
 bazel build \
   --config=release \
   --config=${ARCH} \
-  --local_resources 12288,6.0,1.0 \
-  --jobs=6 \
+  --local_resources 12288,4.0,1.0 \
+  --jobs=4 \
   //src/envoy:envoy
 
 echo "Build succeeded. Binary generated:"
@@ -32,6 +32,9 @@ bazel-bin/src/envoy/envoy --version
 bazel test \
   --config=release \
   --config=${ARCH} \
-  --local_resources 12288,6.0,1.0 \
-  --jobs=6 \
-  //src/...
+  --local_resources 12288,4.0,1.0 \
+  --jobs=4 \
+  --test_output=all \
+  --build_tests_only \
+  --test_env=ENVOY_IP_TEST_VERSIONS=v4only \
+//src/...
