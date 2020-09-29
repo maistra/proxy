@@ -43,7 +43,7 @@ public:
   MOCK_METHOD2(scriptLog_, void(spdlog::level::level_enum level, absl::string_view message));
 };
 
-class WasmNetworkFilterTest : public testing::TestWithParam<std::string> {
+class WasmNetworkFilterTest : public testing::TestWithParam<std::tuple<std::string, std::string>> {
 public:
   WasmNetworkFilterTest() {}
   ~WasmNetworkFilterTest() {}
@@ -53,7 +53,7 @@ public:
     envoy::extensions::filters::network::wasm::v3::Wasm proto_config;
     proto_config.mutable_config()->mutable_vm_config()->set_vm_id("vm_id");
     proto_config.mutable_config()->mutable_vm_config()->set_runtime(
-        absl::StrCat("envoy.wasm.runtime.", GetParam()));
+        absl::StrCat("envoy.wasm.runtime.", std::get<0>(GetParam())));
     proto_config.mutable_config()
         ->mutable_vm_config()
         ->mutable_code()
@@ -94,13 +94,14 @@ public:
   Config::DataSource::RemoteAsyncDataProviderPtr remote_data_provider_;
 }; // namespace Wasm
 
-INSTANTIATE_TEST_SUITE_P(Runtimes, WasmNetworkFilterTest,
-                         testing::Values("v8"
+INSTANTIATE_TEST_SUITE_P(RuntimesAndLanguages, WasmNetworkFilterTest,
+                         testing::Combine(testing::Values("v8"
 #if defined(ENVOY_WASM_WAVM)
-                                         ,
-                                         "wavm"
+                                                          ,
+                                                          "wavm"
 #endif
-                                         ));
+                                                          ),
+                                          testing::Values("cpp", "rust")));
 
 // Bad code in initial config.
 TEST_P(WasmNetworkFilterTest, BadCode) {
@@ -111,7 +112,8 @@ TEST_P(WasmNetworkFilterTest, BadCode) {
 // Test happy path.
 TEST_P(WasmNetworkFilterTest, HappyPath) {
   setupConfig(TestEnvironment::readFileToStringForTest(TestEnvironment::substitute(
-      "{{ test_rundir }}/test/extensions/filters/network/wasm/test_data/logging_cpp.wasm")));
+      absl::StrCat("{{ test_rundir }}/test/extensions/filters/network/wasm/test_data/logging_",
+                   std::get<1>(GetParam()), ".wasm"))));
   setupFilter();
 
   EXPECT_CALL(*filter_,
