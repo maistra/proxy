@@ -263,12 +263,12 @@ ContextImpl::ContextImpl(Stats::Scope& scope, const Envoy::Ssl::ContextConfig& c
     if (tls_context_.cert_chain_ == nullptr ||
         !SSL_CTX_use_certificate(tls_context_.ssl_ctx_.get(), tls_context_.cert_chain_.get())) {
       while (uint64_t err = ERR_get_error()) {
-        ENVOY_LOG_MISC(debug, "SSL error: {}:{}:{}:{}", err, ERR_lib_error_string(err),
+        ENVOY_LOG_MISC(error, "SSL error: {}:{}:{}:{}", err, ERR_lib_error_string(err),
                        ERR_func_error_string(err), ERR_GET_REASON(err),
                        ERR_reason_error_string(err));
       }
       throw EnvoyException(
-          absl::StrCat("Failed to load certificate chain from ", tls_context_.cert_chain_file_path_));
+          fmt::format("Failed to load certificate chain from {}, please see log for details", tls_context_.cert_chain_file_path_));
     }
     // Read rest of the certificate chain.
     while (true) {

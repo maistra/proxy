@@ -303,6 +303,33 @@ TEST(OpenCensusTracerConfigTest, DoubleRegistrationTest) {
       EnvoyException, "Double registration for name: 'envoy.tracers.opencensus'");
 }
 
+TEST(OpenCensusTracerConfigTest, OpenCensusHttpTracerStackdriverGrpc) {
+  NiceMock<Server::Configuration::MockTracerFactoryContext> context;
+  const std::string yaml_string = R"EOF(
+  http:
+    name: opencensus
+    typed_config:
+      "@type": type.googleapis.com/envoy.config.trace.v2.OpenCensusConfig
+      stackdriver_exporter_enabled: true
+      stackdriver_grpc_service:
+        google_grpc:
+          target_uri: 127.0.0.1:55678
+          stat_prefix: test
+        initial_metadata:
+        - key: foo
+          value: bar
+  )EOF";
+
+  envoy::config::trace::v3::Tracing configuration;
+  TestUtility::loadFromYaml(yaml_string, configuration);
+
+  OpenCensusTracerFactory factory;
+  auto message = Config::Utility::translateToFactoryConfig(
+      configuration.http(), ProtobufMessage::getStrictValidationVisitor(), factory);
+  Tracing::HttpTracerSharedPtr tracer = factory.createHttpTracer(*message, context);
+  EXPECT_NE(nullptr, tracer);
+}
+
 } // namespace OpenCensus
 } // namespace Tracers
 } // namespace Extensions
