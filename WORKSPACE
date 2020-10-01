@@ -74,7 +74,7 @@ envoy_dependency_imports()
 
 load("@rules_antlr//antlr:deps.bzl", "antlr_dependencies")
 
-antlr_dependencies(471)
+antlr_dependencies(472)
 
 FLAT_BUFFERS_SHA = "a83caf5910644ba1c421c002ef68e42f21c15f9f"
 
