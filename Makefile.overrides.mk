@@ -14,3 +14,5 @@
 
 # this repo is not on the container plan by default
 BUILD_WITH_CONTAINER ?= 0
+
+include maistra/Makefile
