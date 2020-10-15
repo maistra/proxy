@@ -39,9 +39,9 @@ new_local_repository(
 #
 # commit date: 06/30/2020
 # Used by scripts/generate-wasm.sh
-ENVOY_SHA = "36695402d122c56641b26b7fe8dee690d6d7b4fc"
+ENVOY_SHA = "edd9591b86c6cab8fb32f3d8fc88e423d4cf0ff3"
  
-ENVOY_SHA256 = "0af7e711b9c7b0a70ca29fe57c61a2d9c0a0be34c0a89b3bacdfa5403fea5a40"
+ENVOY_SHA256 = "aa866b177f10ff0330dc65cbc5c9e8c1197a48a14743604288ae30d01feff5c8"
  
 ENVOY_ORG = "maistra"
 
