@@ -119,8 +119,12 @@ public:
 private:
   static const unsigned DEFAULT_MIN_VERSION;
   static const unsigned DEFAULT_MAX_VERSION;
-  static const std::string DEFAULT_CIPHER_SUITES;
-  static const std::string DEFAULT_CURVES;
+  // FIPS Configuration
+  static const std::string DEFAULT_FIPS_CIPHER_SUITES;
+  static const std::string DEFAULT_FIPS_CURVES;
+  // Non FIPS Configuration
+  static const std::string DEFAULT_NON_FIPS_CIPHER_SUITES;
+  static const std::string DEFAULT_NON_FIPS_CURVES;
 
   const std::string server_name_indication_;
   const bool allow_renegotiation_;
@@ -159,9 +163,14 @@ public:
 
 private:
   static const unsigned DEFAULT_MIN_VERSION;
-  static const unsigned DEFAULT_MAX_VERSION;
-  static const std::string DEFAULT_CIPHER_SUITES;
-  static const std::string DEFAULT_CURVES;
+  // FIPS Configuration
+  static const unsigned DEFAULT_FIPS_MAX_VERSION;
+  static const std::string DEFAULT_FIPS_CIPHER_SUITES;
+  static const std::string DEFAULT_FIPS_CURVES;
+  // Non FIPS Configuration
+  static const unsigned DEFAULT_NON_FIPS_MAX_VERSION;
+  static const std::string DEFAULT_NON_FIPS_CIPHER_SUITES;
+  static const std::string DEFAULT_NON_FIPS_CURVES;
 
   const bool require_client_certificate_;
   std::vector<SessionTicketKey> session_ticket_keys_;

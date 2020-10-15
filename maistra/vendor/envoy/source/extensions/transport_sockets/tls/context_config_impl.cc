@@ -1,5 +1,6 @@
 #include "extensions/transport_sockets/tls/context_config_impl.h"
 
+#include <fstream>
 #include <memory>
 #include <string>
 
@@ -20,6 +21,22 @@ namespace TransportSockets {
 namespace Tls {
 
 namespace {
+
+bool getFipsEnabled() {
+  std::ifstream file("/proc/sys/crypto/fips_enabled");
+  if (file.fail()) {
+    return false;
+  }
+
+  std::stringstream file_string;
+  file_string << file.rdbuf();
+
+  std::string fipsEnabledText = file_string.str();
+  fipsEnabledText.erase(fipsEnabledText.find_last_not_of("\n")+1);
+  return fipsEnabledText.compare("1") == 0;
+}
+
+bool isFipsEnabled = getFipsEnabled();
 
 std::vector<Secret::TlsCertificateConfigProviderSharedPtr> getTlsCertificateConfigProviders(
     const envoy::extensions::transport_sockets::tls::v3::CommonTlsContext& config,
@@ -306,7 +323,24 @@ unsigned ContextConfigImpl::tlsVersionFromProto(
 const unsigned ClientContextConfigImpl::DEFAULT_MIN_VERSION = TLS1_2_VERSION;
 const unsigned ClientContextConfigImpl::DEFAULT_MAX_VERSION = TLS1_2_VERSION;
 
-const std::string ClientContextConfigImpl::DEFAULT_CIPHER_SUITES =
+// FIPS configuration
+const std::string ClientContextConfigImpl::DEFAULT_FIPS_CIPHER_SUITES =
+    "ECDHE-ECDSA-AES128-GCM-SHA256:"
+    "ECDHE-RSA-AES128-GCM-SHA256:"
+    "ECDHE-ECDSA-AES128-SHA:"
+    "ECDHE-RSA-AES128-SHA:"
+    "AES128-GCM-SHA256:"
+    "AES128-SHA:"
+    "ECDHE-ECDSA-AES256-GCM-SHA384:"
+    "ECDHE-RSA-AES256-GCM-SHA384:"
+    "ECDHE-ECDSA-AES256-SHA:"
+    "ECDHE-RSA-AES256-SHA:"
+    "AES256-GCM-SHA384:"
+    "AES256-SHA";
+const std::string ClientContextConfigImpl::DEFAULT_FIPS_CURVES =
+    "P-256";
+// Non FIPS configuration
+const std::string ClientContextConfigImpl::DEFAULT_NON_FIPS_CIPHER_SUITES =
     "[ECDHE-ECDSA-AES128-GCM-SHA256|ECDHE-ECDSA-CHACHA20-POLY1305]:"
     "[ECDHE-RSA-AES128-GCM-SHA256|ECDHE-RSA-CHACHA20-POLY1305]:"
     "ECDHE-ECDSA-AES128-SHA:"
@@ -319,15 +353,18 @@ const std::string ClientContextConfigImpl::DEFAULT_CIPHER_SUITES =
     "ECDHE-RSA-AES256-SHA:"
     "AES256-GCM-SHA384:"
     "AES256-SHA";
+const std::string ClientContextConfigImpl::DEFAULT_NON_FIPS_CURVES =
+    "X25519:"
+    "P-256";
 
-const std::string ClientContextConfigImpl::DEFAULT_CURVES = "X25519:"
-                                                            "P-256";
 ClientContextConfigImpl::ClientContextConfigImpl(
     const envoy::extensions::transport_sockets::tls::v3::UpstreamTlsContext& config,
     absl::string_view sigalgs,
     Server::Configuration::TransportSocketFactoryContext& factory_context)
     : ContextConfigImpl(config.common_tls_context(), DEFAULT_MIN_VERSION, DEFAULT_MAX_VERSION,
-                        DEFAULT_CIPHER_SUITES, DEFAULT_CURVES, factory_context),
+                        isFipsEnabled ? DEFAULT_FIPS_CIPHER_SUITES : DEFAULT_NON_FIPS_CIPHER_SUITES,
+                        isFipsEnabled ? DEFAULT_FIPS_CURVES : DEFAULT_NON_FIPS_CURVES,
+                        factory_context),
       server_name_indication_(config.sni()), allow_renegotiation_(config.allow_renegotiation()),
       max_session_keys_(PROTOBUF_GET_WRAPPED_OR_DEFAULT(config, max_session_keys, 1)),
       sigalgs_(sigalgs) {
@@ -344,9 +381,27 @@ ClientContextConfigImpl::ClientContextConfigImpl(
 }
 
 const unsigned ServerContextConfigImpl::DEFAULT_MIN_VERSION = TLS1_VERSION;
-const unsigned ServerContextConfigImpl::DEFAULT_MAX_VERSION = TLS1_3_VERSION;
 
-const std::string ServerContextConfigImpl::DEFAULT_CIPHER_SUITES =
+// FIPS configuration
+const unsigned ServerContextConfigImpl::DEFAULT_FIPS_MAX_VERSION = TLS1_2_VERSION;
+const std::string ServerContextConfigImpl::DEFAULT_FIPS_CIPHER_SUITES =
+    "ECDHE-ECDSA-AES128-GCM-SHA256:"
+    "ECDHE-RSA-AES128-GCM-SHA256:"
+    "ECDHE-ECDSA-AES128-SHA:"
+    "ECDHE-RSA-AES128-SHA:"
+    "AES128-GCM-SHA256:"
+    "AES128-SHA:"
+    "ECDHE-ECDSA-AES256-GCM-SHA384:"
+    "ECDHE-RSA-AES256-GCM-SHA384:"
+    "ECDHE-ECDSA-AES256-SHA:"
+    "ECDHE-RSA-AES256-SHA:"
+    "AES256-GCM-SHA384:"
+    "AES256-SHA";
+const std::string ServerContextConfigImpl::DEFAULT_FIPS_CURVES =
+    "P-256";
+// Non FIPS configuration
+const unsigned ServerContextConfigImpl::DEFAULT_NON_FIPS_MAX_VERSION = TLS1_3_VERSION;
+const std::string ServerContextConfigImpl::DEFAULT_NON_FIPS_CIPHER_SUITES =
     "[ECDHE-ECDSA-AES128-GCM-SHA256|ECDHE-ECDSA-CHACHA20-POLY1305]:"
     "[ECDHE-RSA-AES128-GCM-SHA256|ECDHE-RSA-CHACHA20-POLY1305]:"
     "ECDHE-ECDSA-AES128-SHA:"
@@ -359,15 +414,18 @@ const std::string ServerContextConfigImpl::DEFAULT_CIPHER_SUITES =
     "ECDHE-RSA-AES256-SHA:"
     "AES256-GCM-SHA384:"
     "AES256-SHA";
-
-const std::string ServerContextConfigImpl::DEFAULT_CURVES = "X25519:"
-                                                            "P-256";
+const std::string ServerContextConfigImpl::DEFAULT_NON_FIPS_CURVES =
+    "X25519:"
+    "P-256";
 
 ServerContextConfigImpl::ServerContextConfigImpl(
     const envoy::extensions::transport_sockets::tls::v3::DownstreamTlsContext& config,
     Server::Configuration::TransportSocketFactoryContext& factory_context)
-    : ContextConfigImpl(config.common_tls_context(), DEFAULT_MIN_VERSION, DEFAULT_MAX_VERSION,
-                        DEFAULT_CIPHER_SUITES, DEFAULT_CURVES, factory_context),
+    : ContextConfigImpl(config.common_tls_context(), DEFAULT_MIN_VERSION,
+                        isFipsEnabled ? DEFAULT_FIPS_MAX_VERSION : DEFAULT_NON_FIPS_MAX_VERSION,
+                        isFipsEnabled ? DEFAULT_FIPS_CIPHER_SUITES : DEFAULT_NON_FIPS_CIPHER_SUITES,
+                        isFipsEnabled ? DEFAULT_FIPS_CURVES : DEFAULT_NON_FIPS_CURVES,
+                        factory_context),
       require_client_certificate_(
           PROTOBUF_GET_WRAPPED_OR_DEFAULT(config, require_client_certificate, false)),
       session_ticket_keys_provider_(getTlsSessionTicketKeysConfigProvider(factory_context, config)),
