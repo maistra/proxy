@@ -45,11 +45,13 @@ protected:
   DelayedCloseState delayed_close_state_{DelayedCloseState::None};
 
   Event::TimerPtr delayed_close_timer_;
+  MonotonicTime last_timer_enable_;
   std::chrono::milliseconds delayed_close_timeout_{0};
   Event::Dispatcher& dispatcher_;
   const uint64_t id_;
   std::list<ConnectionCallbacks*> callbacks_;
   std::unique_ptr<ConnectionStats> connection_stats_;
+  void enableDelayedCloseTimer();
 
 private:
   // Callback issued when a delayed close timeout triggers.

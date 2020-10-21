@@ -1298,13 +1298,23 @@ TEST_P(ConnectionImplTest, FlushWriteAndDelayConfigDisabledTest) {
   server_connection->close(ConnectionCloseType::NoFlush);
 }
 
+class ConnectionImplForTesting : public Network::ConnectionImpl {
+public:
+  ConnectionImplForTesting(Event::Dispatcher& dispatcher, ConnectionSocketPtr&& socket,
+                           TransportSocketPtr&& transport_socket,
+                           StreamInfo::StreamInfo& stream_info, bool connected)
+      : Network::ConnectionImpl(dispatcher, std::move(socket), std::move(transport_socket),
+                                stream_info, connected) {}
+  void setLastTimerEnable(const MonotonicTime time) { last_timer_enable_ = time; }
+};
+
 // Test that the delayed close timer is reset while write flushes are happening when a connection
 // is in delayed close mode.
 TEST_P(ConnectionImplTest, DelayedCloseTimerResetWithPendingWriteBufferFlushes) {
   ConnectionMocks mocks = createConnectionMocks();
   MockTransportSocket* transport_socket = mocks.transport_socket_.get();
   IoHandlePtr io_handle = std::make_unique<IoSocketHandleImpl>(0);
-  auto server_connection = std::make_unique<Network::ConnectionImpl>(
+  auto server_connection = std::make_unique<ConnectionImplForTesting>(
       *mocks.dispatcher_,
       std::make_unique<ConnectionSocketImpl>(std::move(io_handle), nullptr, nullptr),
       std::move(mocks.transport_socket_), stream_info_, true);
@@ -1347,6 +1357,11 @@ TEST_P(ConnectionImplTest, DelayedCloseTimerResetWithPendingWriteBufferFlushes) 
   EXPECT_CALL(*mocks.timer_, enableTimer(timeout, _)).Times(1);
   (*mocks.file_ready_cb_)(Event::FileReadyType::Write);
 
+  // set last_timer_enable_ back 100ms to make the delayed close callback below fire instead of
+  // it being rescheduled
+  server_connection->setLastTimerEnable(
+      server_connection->dispatcher().timeSource().monotonicTime() -
+      std::chrono::milliseconds(100));
   // Force the delayed close timeout to trigger so the connection is cleaned up.
   mocks.timer_->invokeCallback();
 }
