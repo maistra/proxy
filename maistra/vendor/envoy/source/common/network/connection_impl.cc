@@ -622,7 +622,7 @@ void ConnectionImpl::onWriteReady() {
     ENVOY_CONN_LOG(debug, "write flush complete", *this);
     if (delayed_close_state_ == DelayedCloseState::CloseAfterFlushAndWait) {
       ASSERT(delayed_close_timer_ != nullptr);
-      delayed_close_timer_->enableTimer(delayed_close_timeout_);
+      enableDelayedCloseTimer();
     } else {
       ASSERT(bothSidesHalfClosed() || delayed_close_state_ == DelayedCloseState::CloseAfterFlush);
       closeConnectionImmediately();
@@ -630,7 +630,7 @@ void ConnectionImpl::onWriteReady() {
   } else {
     ASSERT(result.action_ == PostIoAction::KeepOpen);
     if (delayed_close_timer_ != nullptr) {
-      delayed_close_timer_->enableTimer(delayed_close_timeout_);
+      enableDelayedCloseTimer();
     }
     if (result.bytes_processed_ > 0) {
       for (BytesSentCb& cb : bytes_sent_callbacks_) {
