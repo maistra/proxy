@@ -23,6 +23,7 @@ bazel build \
   --config=${ARCH} \
   --local_resources 12288,4.0,1.0 \
   --jobs=4 \
+  --disk_cache=/bazel-cache \
   //src/envoy:envoy
 
 echo "Build succeeded. Binary generated:"
@@ -37,4 +38,5 @@ bazel test \
   --test_output=all \
   --build_tests_only \
   --test_env=ENVOY_IP_TEST_VERSIONS=v4only \
+  --disk_cache=/bazel-cache \
 //src/...
