@@ -25,6 +25,7 @@ bazel build \
   --config=${ARCH} \
   --local_resources 12288,4.0,1.0 \
   --jobs=4 \
+  --disk_cache=/bazel-cache \
   //src/envoy:envoy_tar
 
 # Copy binary to GCS
