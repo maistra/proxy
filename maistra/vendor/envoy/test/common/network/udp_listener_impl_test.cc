@@ -32,6 +32,13 @@ namespace Envoy {
 namespace Network {
 namespace {
 
+// This helper allows to intercept syscalls and
+// toggle the behavior as per individual test requirements.
+class OverrideOsSysCallsImpl : public Api::OsSysCallsImpl {
+public:
+  MOCK_METHOD(bool, supportsMmsg, (), (const));
+};
+
 class UdpListenerImplTest : public ListenerImplTestBase {
 public:
   UdpListenerImplTest()
@@ -40,6 +47,10 @@ public:
   }
 
   void SetUp() override {
+    // Return the real version by default.
+    ON_CALL(override_syscall_, supportsMmsg())
+        .WillByDefault(Return(os_calls.latched().supportsMmsg()));
+
     // Set listening socket options.
     server_socket_->addOptions(SocketOptionFactory::buildIpPacketInfoOptions());
     server_socket_->addOptions(SocketOptionFactory::buildRxQueueOverFlowOptions());
@@ -47,6 +58,9 @@ public:
     listener_ = std::make_unique<UdpListenerImpl>(
         dispatcherImpl(), server_socket_, listener_callbacks_, dispatcherImpl().timeSource());
   }
+
+  NiceMock<OverrideOsSysCallsImpl> override_syscall_;
+  TestThreadsafeSingletonInjector<Api::OsSysCallsImpl> os_calls{&override_syscall_};
 
 protected:
   Address::Instance* getServerLoopbackAddress() {
@@ -99,7 +113,7 @@ protected:
   SocketSharedPtr server_socket_;
   Network::Test::UdpSyncPeer client_{GetParam()};
   Address::InstanceConstSharedPtr send_to_addr_;
-  MockUdpListenerCallbacks listener_callbacks_;
+  NiceMock<MockUdpListenerCallbacks> listener_callbacks_;
   std::unique_ptr<UdpListenerImpl> listener_;
   size_t num_packets_received_by_listener_{0};
 };
@@ -163,6 +177,53 @@ TEST_P(UdpListenerImplTest, UseActualDstUdp) {
       }));
 
   dispatcher_->run(Event::Dispatcher::RunType::Block);
+}
+
+// Test a large datagram that gets dropped using recvmmsg if supported.
+TEST_P(UdpListenerImplTest, LargeDatagramRecvmmsg) {
+  // This will get dropped.
+  const std::string first(4096, 'a');
+  client_.write(first, *send_to_addr_);
+  const std::string second("second");
+  client_.write(second, *send_to_addr_);
+  // This will get dropped.
+  const std::string third(4096, 'b');
+  client_.write(third, *send_to_addr_);
+
+  EXPECT_CALL(listener_callbacks_, onReadReady());
+  EXPECT_CALL(listener_callbacks_, onData(_)).WillOnce(Invoke([&](const UdpRecvData& data) -> void {
+    validateRecvCallbackParams(data);
+    EXPECT_EQ(data.buffer_->toString(), second);
+    dispatcher_->exit();
+  }));
+
+  dispatcher_->run(Event::Dispatcher::RunType::Block);
+  EXPECT_EQ(2, listener_->packetsDropped());
+}
+
+// Test a large datagram that gets dropped using recvmsg.
+TEST_P(UdpListenerImplTest, LargeDatagramRecvmsg) {
+  ON_CALL(override_syscall_, supportsMmsg()).WillByDefault(Return(false));
+
+  // This will get dropped.
+  const std::string first(4096, 'a');
+  client_.write(first, *send_to_addr_);
+  const std::string second("second");
+  client_.write(second, *send_to_addr_);
+  // This will get dropped.
+  const std::string third(4096, 'b');
+  client_.write(third, *send_to_addr_);
+
+  EXPECT_CALL(listener_callbacks_, onReadReady());
+  EXPECT_CALL(listener_callbacks_, onData(_)).WillOnce(Invoke([&](const UdpRecvData& data) -> void {
+    validateRecvCallbackParams(data);
+    EXPECT_EQ(data.buffer_->toString(), second);
+
+    dispatcher_->exit();
+  }));
+
+  dispatcher_->run(Event::Dispatcher::RunType::Block);
+  EXPECT_EQ(2, listener_->packetsDropped());
 }
 
 /**

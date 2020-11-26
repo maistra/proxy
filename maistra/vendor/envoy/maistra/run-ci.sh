@@ -18,6 +18,7 @@ export BUILD_SCM_STATUS="SHA=${PULL_PULL_SHA:-undefined}"
 time bazel build \
   --local_resources 12288,4.0,1.0 \
   --jobs=4 \
+  --disk_cache=/bazel-cache \
   //source/exe:envoy-static
 
 echo "Build succeeded. Binary generated:"
@@ -30,4 +31,5 @@ time bazel test \
   --build_tests_only \
   --test_env=ENVOY_IP_TEST_VERSIONS=v4only \
   --test_output=all \
+  --disk_cache=/bazel-cache \
   //test/...
