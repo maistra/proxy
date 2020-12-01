@@ -5,6 +5,9 @@ set -u
 set -o pipefail
 set -x
 
+DIR=$(cd $(dirname $0) ; pwd -P)
+source "${DIR}/common.sh"
+
 ARCH=$(uname -p)
 if [ "${ARCH}" = "ppc64le" ]; then
   ARCH="ppc"
@@ -24,7 +27,9 @@ bazel build \
   --local_ram_resources=12288 \
   --local_cpu_resources=4 \
   --jobs=4 \
-  //src/envoy:envoy
+  --disk_cache=/bazel-cache \
+  //src/envoy:envoy \
+  2>&1 | grep -v -E "${OUTPUT_TO_IGNORE}"
 
 echo "Build succeeded. Binary generated:"
 bazel-bin/src/envoy/envoy --version
@@ -39,4 +44,6 @@ bazel test \
   --test_output=all \
   --build_tests_only \
   --test_env=ENVOY_IP_TEST_VERSIONS=v4only \
-//src/...
+  --disk_cache=/bazel-cache \
+  //src/... \
+  2>&1 | grep -v -E "${OUTPUT_TO_IGNORE}"
