@@ -5,6 +5,9 @@ set -u
 set -o pipefail
 set -x
 
+DIR=$(cd $(dirname $0) ; pwd -P)
+source "${DIR}/common.sh"
+
 GCS_PROJECT=${GCS_PROJECT:-maistra-prow-testing}
 ARTIFACTS_GCS_PATH=${ARTIFACTS_GCS_PATH:-gs://maistra-prow-testing/proxy}
 
@@ -26,7 +29,8 @@ bazel build \
   --local_resources 12288,4.0,1.0 \
   --jobs=4 \
   --disk_cache=/bazel-cache \
-  //src/envoy:envoy_tar
+  //src/envoy:envoy_tar \
+  2>&1 | grep -v -E "${OUTPUT_TO_IGNORE}"
 
 # Copy binary to GCS
 SHA="$(git rev-parse --verify HEAD)"
