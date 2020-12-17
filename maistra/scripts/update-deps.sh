@@ -93,6 +93,8 @@ function apply_local_patches() {
     patch -p1 -i "${PATCHES_DIR}/luajit-ppc64.patch"
     patch -p1 -i "${PATCHES_DIR}/luajit-build-flags.patch"
   popd
+
+  patch -p1 -i maistra/patches/annonbin.patch
 }
 
 function run_bazel() {
