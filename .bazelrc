@@ -56,4 +56,5 @@ build --cxxopt -Wno-error=unused-variable
 build --cxxopt -w
 build --cxxopt -ldl
 
-import %workspace%/maistra/bazelrc
+# Temporary, until build image for 2.1 is available
+#import %workspace%/maistra/bazelrc
