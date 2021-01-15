@@ -14,6 +14,7 @@
 #include "src/base/compiler-specific.h"
 #include "src/base/threaded-list.h"
 #include "src/common/globals.h"
+#include "src/parsing/parse-info.h"
 #include "src/parsing/parser-base.h"
 #include "src/parsing/parsing.h"
 #include "src/parsing/preparser.h"
@@ -122,8 +123,6 @@ struct ParserTypes<Parser> {
   using FuncNameInferrer = v8::internal::FuncNameInferrer;
   using SourceRange = v8::internal::SourceRange;
   using SourceRangeScope = v8::internal::SourceRangeScope;
-  using Target = ParserTarget;
-  using TargetScope = ParserTargetScope;
 };
 
 class V8_EXPORT_PRIVATE Parser : public NON_EXPORTED_BASE(ParserBase<Parser>) {
@@ -136,7 +135,9 @@ class V8_EXPORT_PRIVATE Parser : public NON_EXPORTED_BASE(ParserBase<Parser>) {
 
   static bool IsPreParser() { return false; }
 
-  void ParseOnBackground(ParseInfo* info);
+  // Sets the literal on |info| if parsing succeeded.
+  void ParseOnBackground(ParseInfo* info, int start_position, int end_position,
+                         int function_literal_id);
 
   // Initializes an empty scope chain for top-level scripts, or scopes which
   // consist of only the native context.
@@ -157,7 +158,8 @@ class V8_EXPORT_PRIVATE Parser : public NON_EXPORTED_BASE(ParserBase<Parser>) {
 
   // Move statistics to Isolate
   void UpdateStatistics(Isolate* isolate, Handle<Script> script);
-  void HandleSourceURLComments(Isolate* isolate, Handle<Script> script);
+  template <typename LocalIsolate>
+  void HandleSourceURLComments(LocalIsolate* isolate, Handle<Script> script);
 
  private:
   friend class ParserBase<Parser>;
@@ -167,11 +169,11 @@ class V8_EXPORT_PRIVATE Parser : public NON_EXPORTED_BASE(ParserBase<Parser>) {
   friend class i::ParameterDeclarationParsingScope<ParserTypes<Parser>>;
   friend class i::ArrowHeadParsingScope<ParserTypes<Parser>>;
   friend bool v8::internal::parsing::ParseProgram(
-      ParseInfo*, Handle<Script>, Isolate*,
-      parsing::ReportErrorsAndStatisticsMode stats_mode);
+      ParseInfo*, Handle<Script>, MaybeHandle<ScopeInfo> maybe_outer_scope_info,
+      Isolate*, parsing::ReportStatisticsMode stats_mode);
   friend bool v8::internal::parsing::ParseFunction(
       ParseInfo*, Handle<SharedFunctionInfo> shared_info, Isolate*,
-      parsing::ReportErrorsAndStatisticsMode stats_mode);
+      parsing::ReportStatisticsMode stats_mode);
 
   bool AllowsLazyParsingWithoutUnresolvedVariables() const {
     return !MaybeParsingArrowhead() &&
@@ -208,13 +210,20 @@ class V8_EXPORT_PRIVATE Parser : public NON_EXPORTED_BASE(ParserBase<Parser>) {
 
   void PrepareGeneratorVariables();
 
-  // Returns nullptr if parsing failed.
-  FunctionLiteral* ParseProgram(Isolate* isolate, Handle<Script> script,
-                                ParseInfo* info);
+  // Sets the literal on |info| if parsing succeeded.
+  void ParseProgram(Isolate* isolate, Handle<Script> script, ParseInfo* info,
+                    MaybeHandle<ScopeInfo> maybe_outer_scope_info);
 
-  FunctionLiteral* ParseFunction(Isolate* isolate, ParseInfo* info,
-                                 Handle<SharedFunctionInfo> shared_info);
+  // Sets the literal on |info| if parsing succeeded.
+  void ParseFunction(Isolate* isolate, ParseInfo* info,
+                     Handle<SharedFunctionInfo> shared_info);
+
+  void PostProcessParseResult(Isolate* isolate, ParseInfo* info,
+                              FunctionLiteral* literal);
+
   FunctionLiteral* DoParseFunction(Isolate* isolate, ParseInfo* info,
+                                   int start_position, int end_position,
+                                   int function_literal_id,
                                    const AstRawString* raw_name);
 
   // Called by ParseProgram after setting up the scanner.
@@ -239,15 +248,9 @@ class V8_EXPORT_PRIVATE Parser : public NON_EXPORTED_BASE(ParserBase<Parser>) {
     if (reusable_preparser_ == nullptr) {
       reusable_preparser_ = new PreParser(
           &preparser_zone_, &scanner_, stack_limit_, ast_value_factory(),
-          pending_error_handler(), runtime_call_stats_, logger_, -1,
-          parsing_module_, parsing_on_main_thread_);
-#define SET_ALLOW(name) reusable_preparser_->set_allow_##name(allow_##name());
-      SET_ALLOW(natives);
-      SET_ALLOW(harmony_dynamic_import);
-      SET_ALLOW(harmony_import_meta);
-      SET_ALLOW(harmony_private_methods);
-      SET_ALLOW(eval_cache);
-#undef SET_ALLOW
+          pending_error_handler(), runtime_call_stats_, logger_, flags(),
+          parsing_on_main_thread_);
+      reusable_preparser_->set_allow_eval_cache(allow_eval_cache());
       preparse_data_buffer_.reserve(128);
     }
     return reusable_preparser_;
@@ -279,11 +282,6 @@ class V8_EXPORT_PRIVATE Parser : public NON_EXPORTED_BASE(ParserBase<Parser>) {
   };
   ZonePtrList<const NamedImport>* ParseNamedImports(int pos);
   Statement* BuildInitializationBlock(DeclarationParsingResult* parsing_result);
-  void DeclareLabel(ZonePtrList<const AstRawString>** labels,
-                    ZonePtrList<const AstRawString>** own_labels,
-                    const AstRawString* label);
-  bool ContainsLabel(ZonePtrList<const AstRawString>* labels,
-                     const AstRawString* label);
   Expression* RewriteReturn(Expression* return_value, int pos);
   Statement* RewriteSwitchStatement(SwitchStatement* switch_statement,
                                     Scope* scope);
@@ -406,10 +404,6 @@ class V8_EXPORT_PRIVATE Parser : public NON_EXPORTED_BASE(ParserBase<Parser>) {
                VariableKind kind, VariableMode mode, InitializationFlag init,
                Scope* declaration_scope, bool* was_added, int var_begin_pos,
                int var_end_pos = kNoSourcePosition);
-
-  bool TargetStackContainsLabel(const AstRawString* label);
-  BreakableStatement* LookupBreakTarget(const AstRawString* label);
-  IterationStatement* LookupContinueTarget(const AstRawString* label);
 
   // Factory methods.
   FunctionLiteral* DefaultConstructor(const AstRawString* name, bool call_super,
@@ -547,10 +541,14 @@ class V8_EXPORT_PRIVATE Parser : public NON_EXPORTED_BASE(ParserBase<Parser>) {
     return property != nullptr && property->obj()->IsThisExpression();
   }
 
-  // Returns true if the expression is of type "obj.#foo".
+  // Returns true if the expression is of type "obj.#foo" or "obj?.#foo".
   V8_INLINE static bool IsPrivateReference(Expression* expression) {
     DCHECK_NOT_NULL(expression);
     Property* property = expression->AsProperty();
+    if (expression->IsOptionalChain()) {
+      Expression* expr_inner = expression->AsOptionalChain()->expression();
+      property = expr_inner->AsProperty();
+    }
     return property != nullptr && property->IsPrivateReference();
   }
 
@@ -657,7 +655,7 @@ class V8_EXPORT_PRIVATE Parser : public NON_EXPORTED_BASE(ParserBase<Parser>) {
     if (expr->IsStringLiteral()) return expr;
     ScopedPtrList<Expression> args(pointer_buffer());
     args.Add(expr);
-    return factory()->NewCallRuntime(Runtime::kInlineToStringRT, args,
+    return factory()->NewCallRuntime(Runtime::kInlineToString, args,
                                      expr->position());
   }
 
@@ -727,6 +725,10 @@ class V8_EXPORT_PRIVATE Parser : public NON_EXPORTED_BASE(ParserBase<Parser>) {
     return arg;
   }
 
+  IterationStatement* AsIterationStatement(BreakableStatement* s) {
+    return s->AsIterationStatement();
+  }
+
   void ReportUnexpectedTokenAt(
       Scanner::Location location, Token::Value token,
       MessageTemplate message = MessageTemplate::kUnexpectedToken);
@@ -748,6 +750,10 @@ class V8_EXPORT_PRIVATE Parser : public NON_EXPORTED_BASE(ParserBase<Parser>) {
   template <typename T>
   V8_INLINE static bool IsNull(T subject) {
     return subject == nullptr;
+  }
+
+  V8_INLINE static bool IsIterationStatement(Statement* subject) {
+    return subject->AsIterationStatement() != nullptr;
   }
 
   // Non-null empty string.
@@ -778,6 +784,11 @@ class V8_EXPORT_PRIVATE Parser : public NON_EXPORTED_BASE(ParserBase<Parser>) {
   class ThisExpression* ThisExpression() {
     UseThis();
     return factory()->ThisExpression();
+  }
+
+  class ThisExpression* NewThisExpression(int pos) {
+    UseThis();
+    return factory()->NewThisExpression(pos);
   }
 
   Expression* NewSuperPropertyReference(int pos);
@@ -816,22 +827,26 @@ class V8_EXPORT_PRIVATE Parser : public NON_EXPORTED_BASE(ParserBase<Parser>) {
   }
 
   V8_INLINE ZonePtrList<Expression>* NewExpressionList(int size) const {
-    return new (zone()) ZonePtrList<Expression>(size, zone());
+    return zone()->New<ZonePtrList<Expression>>(size, zone());
   }
   V8_INLINE ZonePtrList<ObjectLiteral::Property>* NewObjectPropertyList(
       int size) const {
-    return new (zone()) ZonePtrList<ObjectLiteral::Property>(size, zone());
+    return zone()->New<ZonePtrList<ObjectLiteral::Property>>(size, zone());
   }
   V8_INLINE ZonePtrList<ClassLiteral::Property>* NewClassPropertyList(
       int size) const {
-    return new (zone()) ZonePtrList<ClassLiteral::Property>(size, zone());
+    return zone()->New<ZonePtrList<ClassLiteral::Property>>(size, zone());
   }
   V8_INLINE ZonePtrList<Statement>* NewStatementList(int size) const {
-    return new (zone()) ZonePtrList<Statement>(size, zone());
+    return zone()->New<ZonePtrList<Statement>>(size, zone());
   }
 
   Expression* NewV8Intrinsic(const AstRawString* name,
                              const ScopedPtrList<Expression>& args, int pos);
+
+  Expression* NewV8RuntimeFunctionForFuzzing(
+      const Runtime::Function* function, const ScopedPtrList<Expression>& args,
+      int pos);
 
   V8_INLINE Statement* NewThrowStatement(Expression* exception, int pos) {
     return factory()->NewExpressionStatement(
@@ -844,10 +859,10 @@ class V8_EXPORT_PRIVATE Parser : public NON_EXPORTED_BASE(ParserBase<Parser>) {
                                     int initializer_end_position,
                                     bool is_rest) {
     parameters->UpdateArityAndFunctionLength(initializer != nullptr, is_rest);
-    auto parameter = new (parameters->scope->zone())
-        ParserFormalParameters::Parameter(pattern, initializer,
-                                          scanner()->location().beg_pos,
-                                          initializer_end_position, is_rest);
+    auto parameter =
+        parameters->scope->zone()->New<ParserFormalParameters::Parameter>(
+            pattern, initializer, scanner()->location().beg_pos,
+            initializer_end_position, is_rest);
 
     parameters->params.Add(parameter);
   }
@@ -908,7 +923,7 @@ class V8_EXPORT_PRIVATE Parser : public NON_EXPORTED_BASE(ParserBase<Parser>) {
 
     SourceRange range = ranges->GetRange(SourceRangeKind::kRight);
     source_range_map_->Insert(
-        nary_op, new (zone()) NaryOperationSourceRanges(zone(), range));
+        nary_op, zone()->New<NaryOperationSourceRanges>(zone(), range));
   }
 
   V8_INLINE void AppendNaryOperationSourceRange(NaryOperation* node,
@@ -926,14 +941,14 @@ class V8_EXPORT_PRIVATE Parser : public NON_EXPORTED_BASE(ParserBase<Parser>) {
                                         int32_t continuation_position) {
     if (source_range_map_ == nullptr) return;
     source_range_map_->Insert(
-        node, new (zone()) BlockSourceRanges(continuation_position));
+        node, zone()->New<BlockSourceRanges>(continuation_position));
   }
 
   V8_INLINE void RecordCaseClauseSourceRange(CaseClause* node,
                                              const SourceRange& body_range) {
     if (source_range_map_ == nullptr) return;
     source_range_map_->Insert(node,
-                              new (zone()) CaseClauseSourceRanges(body_range));
+                              zone()->New<CaseClauseSourceRanges>(body_range));
   }
 
   V8_INLINE void RecordConditionalSourceRange(Expression* node,
@@ -942,20 +957,20 @@ class V8_EXPORT_PRIVATE Parser : public NON_EXPORTED_BASE(ParserBase<Parser>) {
     if (source_range_map_ == nullptr) return;
     source_range_map_->Insert(
         node->AsConditional(),
-        new (zone()) ConditionalSourceRanges(then_range, else_range));
+        zone()->New<ConditionalSourceRanges>(then_range, else_range));
   }
 
   V8_INLINE void RecordFunctionLiteralSourceRange(FunctionLiteral* node) {
     if (source_range_map_ == nullptr) return;
-    source_range_map_->Insert(node, new (zone()) FunctionLiteralSourceRanges);
+    source_range_map_->Insert(node, zone()->New<FunctionLiteralSourceRanges>());
   }
 
   V8_INLINE void RecordBinaryOperationSourceRange(
       Expression* node, const SourceRange& right_range) {
     if (source_range_map_ == nullptr) return;
-    source_range_map_->Insert(node->AsBinaryOperation(),
-                              new (zone())
-                                  BinaryOperationSourceRanges(right_range));
+    source_range_map_->Insert(
+        node->AsBinaryOperation(),
+        zone()->New<BinaryOperationSourceRanges>(right_range));
   }
 
   V8_INLINE void RecordJumpStatementSourceRange(Statement* node,
@@ -963,7 +978,7 @@ class V8_EXPORT_PRIVATE Parser : public NON_EXPORTED_BASE(ParserBase<Parser>) {
     if (source_range_map_ == nullptr) return;
     source_range_map_->Insert(
         static_cast<JumpStatement*>(node),
-        new (zone()) JumpStatementSourceRanges(continuation_position));
+        zone()->New<JumpStatementSourceRanges>(continuation_position));
   }
 
   V8_INLINE void RecordIfStatementSourceRange(Statement* node,
@@ -972,22 +987,22 @@ class V8_EXPORT_PRIVATE Parser : public NON_EXPORTED_BASE(ParserBase<Parser>) {
     if (source_range_map_ == nullptr) return;
     source_range_map_->Insert(
         node->AsIfStatement(),
-        new (zone()) IfStatementSourceRanges(then_range, else_range));
+        zone()->New<IfStatementSourceRanges>(then_range, else_range));
   }
 
   V8_INLINE void RecordIterationStatementSourceRange(
       IterationStatement* node, const SourceRange& body_range) {
     if (source_range_map_ == nullptr) return;
     source_range_map_->Insert(
-        node, new (zone()) IterationStatementSourceRanges(body_range));
+        node, zone()->New<IterationStatementSourceRanges>(body_range));
   }
 
   V8_INLINE void RecordSuspendSourceRange(Expression* node,
                                           int32_t continuation_position) {
     if (source_range_map_ == nullptr) return;
-    source_range_map_->Insert(static_cast<Suspend*>(node),
-                              new (zone())
-                                  SuspendSourceRanges(continuation_position));
+    source_range_map_->Insert(
+        static_cast<Suspend*>(node),
+        zone()->New<SuspendSourceRanges>(continuation_position));
   }
 
   V8_INLINE void RecordSwitchStatementSourceRange(
@@ -995,7 +1010,7 @@ class V8_EXPORT_PRIVATE Parser : public NON_EXPORTED_BASE(ParserBase<Parser>) {
     if (source_range_map_ == nullptr) return;
     source_range_map_->Insert(
         node->AsSwitchStatement(),
-        new (zone()) SwitchStatementSourceRanges(continuation_position));
+        zone()->New<SwitchStatementSourceRanges>(continuation_position));
   }
 
   V8_INLINE void RecordThrowSourceRange(Statement* node,
@@ -1004,21 +1019,21 @@ class V8_EXPORT_PRIVATE Parser : public NON_EXPORTED_BASE(ParserBase<Parser>) {
     ExpressionStatement* expr_stmt = static_cast<ExpressionStatement*>(node);
     Throw* throw_expr = expr_stmt->expression()->AsThrow();
     source_range_map_->Insert(
-        throw_expr, new (zone()) ThrowSourceRanges(continuation_position));
+        throw_expr, zone()->New<ThrowSourceRanges>(continuation_position));
   }
 
   V8_INLINE void RecordTryCatchStatementSourceRange(
       TryCatchStatement* node, const SourceRange& body_range) {
     if (source_range_map_ == nullptr) return;
     source_range_map_->Insert(
-        node, new (zone()) TryCatchStatementSourceRanges(body_range));
+        node, zone()->New<TryCatchStatementSourceRanges>(body_range));
   }
 
   V8_INLINE void RecordTryFinallyStatementSourceRange(
       TryFinallyStatement* node, const SourceRange& body_range) {
     if (source_range_map_ == nullptr) return;
     source_range_map_->Insert(
-        node, new (zone()) TryFinallyStatementSourceRanges(body_range));
+        node, zone()->New<TryFinallyStatementSourceRanges>(body_range));
   }
 
   // Generate the next internal variable name for binding an exported namespace
@@ -1041,11 +1056,11 @@ class V8_EXPORT_PRIVATE Parser : public NON_EXPORTED_BASE(ParserBase<Parser>) {
   PreParser* reusable_preparser_;
   Mode mode_;
 
+  MaybeHandle<FixedArray> maybe_wrapped_arguments_;
+
   SourceRangeMap* source_range_map_ = nullptr;
 
-  friend class ParserTarget;
   friend class ParserTargetScope;
-  ParserTarget* target_stack_;  // for break, continue statements
 
   ScriptCompiler::CompileOptions compile_options_;
 
@@ -1066,47 +1081,6 @@ class V8_EXPORT_PRIVATE Parser : public NON_EXPORTED_BASE(ParserBase<Parser>) {
   // indicates the correct position of the ')' that closes the parameter list.
   // After that ')' is encountered, this field is reset to kNoSourcePosition.
   int parameters_end_pos_;
-};
-
-// ----------------------------------------------------------------------------
-// Target is a support class to facilitate manipulation of the
-// Parser's target_stack_ (the stack of potential 'break' and
-// 'continue' statement targets). Upon construction, a new target is
-// added; it is removed upon destruction.
-
-class ParserTarget {
- public:
-  ParserTarget(ParserBase<Parser>* parser, BreakableStatement* statement)
-      : variable_(&parser->impl()->target_stack_),
-        statement_(statement),
-        previous_(parser->impl()->target_stack_) {
-    parser->impl()->target_stack_ = this;
-  }
-
-  ~ParserTarget() { *variable_ = previous_; }
-
-  ParserTarget* previous() { return previous_; }
-  BreakableStatement* statement() { return statement_; }
-
- private:
-  ParserTarget** variable_;
-  BreakableStatement* statement_;
-  ParserTarget* previous_;
-};
-
-class ParserTargetScope {
- public:
-  explicit ParserTargetScope(ParserBase<Parser>* parser)
-      : variable_(&parser->impl()->target_stack_),
-        previous_(parser->impl()->target_stack_) {
-    parser->impl()->target_stack_ = nullptr;
-  }
-
-  ~ParserTargetScope() { *variable_ = previous_; }
-
- private:
-  ParserTarget** variable_;
-  ParserTarget* previous_;
 };
 
 }  // namespace internal

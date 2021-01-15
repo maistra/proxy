@@ -23,7 +23,7 @@ load(
 
 def _go_info_impl(ctx):
     go = go_context(ctx)
-    report = go.declare_file(go, "go_info_report")
+    report = go.declare_file(go, ext = ".txt")
     args = go.builder_args(go)
     args.add("-out", report)
     go.actions.run(
@@ -43,7 +43,7 @@ _go_info = go_rule(
     attrs = {
         "_go_info": attr.label(
             executable = True,
-            cfg = "host",
+            cfg = "exec",
             default = "@io_bazel_rules_go//go/tools/builders:info",
         ),
     },

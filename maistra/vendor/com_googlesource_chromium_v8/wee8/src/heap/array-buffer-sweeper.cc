@@ -21,6 +21,7 @@ void ArrayBufferList::Append(ArrayBufferExtension* extension) {
     tail_ = extension;
   }
 
+  bytes_ += extension->accounting_length();
   extension->set_next(nullptr);
 }
 
@@ -37,6 +38,7 @@ void ArrayBufferList::Append(ArrayBufferList* list) {
     DCHECK_NULL(list->tail_);
   }
 
+  bytes_ += list->Bytes();
   list->Reset();
 }
 
@@ -51,6 +53,18 @@ bool ArrayBufferList::Contains(ArrayBufferExtension* extension) {
   return false;
 }
 
+size_t ArrayBufferList::BytesSlow() {
+  ArrayBufferExtension* current = head_;
+  size_t sum = 0;
+
+  while (current) {
+    sum += current->accounting_length();
+    current = current->next();
+  }
+
+  return sum;
+}
+
 void ArrayBufferSweeper::EnsureFinished() {
   if (!sweeping_in_progress_) return;
 
@@ -59,14 +73,14 @@ void ArrayBufferSweeper::EnsureFinished() {
 
   switch (abort_result) {
     case TryAbortResult::kTaskAborted: {
-      job_.Sweep();
+      Sweep();
       Merge();
       break;
     }
 
     case TryAbortResult::kTaskRemoved: {
       CHECK_NE(job_.state, SweepingState::Uninitialized);
-      if (job_.state == SweepingState::Prepared) job_.Sweep();
+      if (job_.state == SweepingState::Prepared) Sweep();
       Merge();
       break;
     }
@@ -86,7 +100,23 @@ void ArrayBufferSweeper::EnsureFinished() {
       UNREACHABLE();
   }
 
+  DecrementExternalMemoryCounters();
   sweeping_in_progress_ = false;
+}
+
+void ArrayBufferSweeper::DecrementExternalMemoryCounters() {
+  size_t bytes = freed_bytes_.load(std::memory_order_relaxed);
+  if (bytes == 0) return;
+
+  while (!freed_bytes_.compare_exchange_weak(bytes, 0)) {
+    // empty body
+  }
+
+  if (bytes == 0) return;
+
+  heap_->DecrementExternalBackingStoreBytes(
+      ExternalBackingStoreType::kArrayBuffer, bytes);
+  heap_->update_external_memory(-static_cast<int64_t>(bytes));
 }
 
 void ArrayBufferSweeper::RequestSweepYoung() {
@@ -96,6 +126,10 @@ void ArrayBufferSweeper::RequestSweepYoung() {
 void ArrayBufferSweeper::RequestSweepFull() {
   RequestSweep(SweepingScope::Full);
 }
+
+size_t ArrayBufferSweeper::YoungBytes() { return young_bytes_; }
+
+size_t ArrayBufferSweeper::OldBytes() { return old_bytes_; }
 
 void ArrayBufferSweeper::RequestSweep(SweepingScope scope) {
   DCHECK(!sweeping_in_progress_);
@@ -112,7 +146,7 @@ void ArrayBufferSweeper::RequestSweep(SweepingScope scope) {
           heap_->tracer(),
           GCTracer::BackgroundScope::BACKGROUND_ARRAY_BUFFER_SWEEP);
       base::MutexGuard guard(&sweeping_mutex_);
-      job_.Sweep();
+      Sweep();
       job_finished_.NotifyAll();
     });
     job_.id = task->id();
@@ -120,8 +154,9 @@ void ArrayBufferSweeper::RequestSweep(SweepingScope scope) {
     sweeping_in_progress_ = true;
   } else {
     Prepare(scope);
-    job_.Sweep();
+    Sweep();
     Merge();
+    DecrementExternalMemoryCounters();
   }
 }
 
@@ -144,6 +179,8 @@ void ArrayBufferSweeper::Merge() {
   CHECK_EQ(job_.state, SweepingState::Swept);
   young_.Append(&job_.young);
   old_.Append(&job_.old);
+  young_bytes_ = young_.Bytes();
+  old_bytes_ = old_.Bytes();
   job_.state = SweepingState::Uninitialized;
 }
 
@@ -151,6 +188,7 @@ void ArrayBufferSweeper::ReleaseAll() {
   EnsureFinished();
   ReleaseAll(&old_);
   ReleaseAll(&young_);
+  old_bytes_ = young_bytes_ = 0;
 }
 
 void ArrayBufferSweeper::ReleaseAll(ArrayBufferList* list) {
@@ -167,11 +205,25 @@ void ArrayBufferSweeper::ReleaseAll(ArrayBufferList* list) {
 
 void ArrayBufferSweeper::Append(JSArrayBuffer object,
                                 ArrayBufferExtension* extension) {
+  size_t bytes = extension->accounting_length();
+
   if (Heap::InYoungGeneration(object)) {
     young_.Append(extension);
+    young_bytes_ += bytes;
   } else {
     old_.Append(extension);
+    old_bytes_ += bytes;
   }
+
+  DecrementExternalMemoryCounters();
+  IncrementExternalMemoryCounters(bytes);
+}
+
+void ArrayBufferSweeper::IncrementExternalMemoryCounters(size_t bytes) {
+  heap_->IncrementExternalBackingStoreBytes(
+      ExternalBackingStoreType::kArrayBuffer, bytes);
+  reinterpret_cast<v8::Isolate*>(heap_->isolate())
+      ->AdjustAmountOfExternalAllocatedMemory(static_cast<int64_t>(bytes));
 }
 
 ArrayBufferSweeper::SweepingJob::SweepingJob()
@@ -188,52 +240,53 @@ ArrayBufferSweeper::SweepingJob ArrayBufferSweeper::SweepingJob::Prepare(
   return job;
 }
 
-void ArrayBufferSweeper::SweepingJob::Sweep() {
-  CHECK_EQ(state, SweepingState::Prepared);
+void ArrayBufferSweeper::Sweep() {
+  CHECK_EQ(job_.state, SweepingState::Prepared);
 
-  if (scope == SweepingScope::Young) {
+  if (job_.scope == SweepingScope::Young) {
     SweepYoung();
   } else {
-    CHECK_EQ(scope, SweepingScope::Full);
+    CHECK_EQ(job_.scope, SweepingScope::Full);
     SweepFull();
   }
-  state = SweepingState::Swept;
+  job_.state = SweepingState::Swept;
 }
 
-void ArrayBufferSweeper::SweepingJob::SweepFull() {
-  CHECK_EQ(scope, SweepingScope::Full);
-  ArrayBufferList promoted = SweepListFull(&young);
-  ArrayBufferList survived = SweepListFull(&old);
+void ArrayBufferSweeper::SweepFull() {
+  CHECK_EQ(job_.scope, SweepingScope::Full);
+  ArrayBufferList promoted = SweepListFull(&job_.young);
+  ArrayBufferList survived = SweepListFull(&job_.old);
 
-  old = promoted;
-  old.Append(&survived);
+  job_.old = promoted;
+  job_.old.Append(&survived);
 }
 
-ArrayBufferList ArrayBufferSweeper::SweepingJob::SweepListFull(
-    ArrayBufferList* list) {
+ArrayBufferList ArrayBufferSweeper::SweepListFull(ArrayBufferList* list) {
   ArrayBufferExtension* current = list->head_;
-  ArrayBufferList survived;
+  ArrayBufferList survivor_list;
 
   while (current) {
     ArrayBufferExtension* next = current->next();
 
     if (!current->IsMarked()) {
+      size_t bytes = current->accounting_length();
       delete current;
+      IncrementFreedBytes(bytes);
     } else {
       current->Unmark();
-      survived.Append(current);
+      survivor_list.Append(current);
     }
 
     current = next;
   }
 
   list->Reset();
-  return survived;
+  return survivor_list;
 }
 
-void ArrayBufferSweeper::SweepingJob::SweepYoung() {
-  CHECK_EQ(scope, SweepingScope::Young);
-  ArrayBufferExtension* current = young.head_;
+void ArrayBufferSweeper::SweepYoung() {
+  CHECK_EQ(job_.scope, SweepingScope::Young);
+  ArrayBufferExtension* current = job_.young.head_;
 
   ArrayBufferList new_young;
   ArrayBufferList new_old;
@@ -242,7 +295,9 @@ void ArrayBufferSweeper::SweepingJob::SweepYoung() {
     ArrayBufferExtension* next = current->next();
 
     if (!current->IsYoungMarked()) {
+      size_t bytes = current->accounting_length();
       delete current;
+      IncrementFreedBytes(bytes);
     } else if (current->IsYoungPromoted()) {
       current->YoungUnmark();
       new_old.Append(current);
@@ -254,8 +309,13 @@ void ArrayBufferSweeper::SweepingJob::SweepYoung() {
     current = next;
   }
 
-  old = new_old;
-  young = new_young;
+  job_.old = new_old;
+  job_.young = new_young;
+}
+
+void ArrayBufferSweeper::IncrementFreedBytes(size_t bytes) {
+  if (bytes == 0) return;
+  freed_bytes_.fetch_add(bytes);
 }
 
 }  // namespace internal

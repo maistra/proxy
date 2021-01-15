@@ -18,6 +18,12 @@ go_test(
     data = glob(["testdata/**"]),
     embed = [":go_default_library"],
     deps = select({
+        "@io_bazel_rules_go//go/platform:aix": [
+            "//go/callgraph:go_default_library",
+            "//go/loader:go_default_library",
+            "//go/ssa:go_default_library",
+            "//go/ssa/ssautil:go_default_library",
+        ],
         "@io_bazel_rules_go//go/platform:darwin": [
             "//go/callgraph:go_default_library",
             "//go/loader:go_default_library",
@@ -36,7 +42,19 @@ go_test(
             "//go/ssa:go_default_library",
             "//go/ssa/ssautil:go_default_library",
         ],
+        "@io_bazel_rules_go//go/platform:illumos": [
+            "//go/callgraph:go_default_library",
+            "//go/loader:go_default_library",
+            "//go/ssa:go_default_library",
+            "//go/ssa/ssautil:go_default_library",
+        ],
         "@io_bazel_rules_go//go/platform:ios": [
+            "//go/callgraph:go_default_library",
+            "//go/loader:go_default_library",
+            "//go/ssa:go_default_library",
+            "//go/ssa/ssautil:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:js": [
             "//go/callgraph:go_default_library",
             "//go/loader:go_default_library",
             "//go/ssa:go_default_library",

@@ -28,6 +28,9 @@
       "@@@STEP_LOG_LINE@json.output@[@@@",
       "@@@STEP_LOG_LINE@json.output@  {@@@",
       "@@@STEP_LOG_LINE@json.output@    \"branch\": \"refs/heads/experiment\", @@@",
+      "@@@STEP_LOG_LINE@json.output@    \"owner\": {@@@",
+      "@@@STEP_LOG_LINE@json.output@      \"name\": \"John Doe\"@@@",
+      "@@@STEP_LOG_LINE@json.output@    }, @@@",
       "@@@STEP_LOG_LINE@json.output@    \"revisions\": {@@@",
       "@@@STEP_LOG_LINE@json.output@      \"184ebe53805e102605d11f6b143486d15c23a09c\": {@@@",
       "@@@STEP_LOG_LINE@json.output@        \"_number\": \"1\", @@@",
@@ -138,13 +141,6 @@
   },
   {
     "cmd": [],
-    "name": "TRYJOB DO NOT RETRY",
-    "~followup_annotations": [
-      "@@@SET_BUILD_PROPERTY@do_not_retry@true@@@"
-    ]
-  },
-  {
-    "cmd": [],
     "name": "TRYJOB FAILURE (2)",
     "~followup_annotations": [
       "@@@STEP_TEXT@COMPILE_FAILURE@@@",
@@ -189,23 +185,6 @@
     ]
   },
   {
-    "cmd": [
-      "python",
-      "-u",
-      "import sys; sys.exit(1)"
-    ],
-    "name": "fail",
-    "~followup_annotations": [
-      "@@@STEP_TEXT@foo@@@",
-      "@@@SET_BUILD_PROPERTY@failure_hash@\"622c0c52e65e6d0dc78957dd113ad343e57ae6d2\"@@@",
-      "@@@STEP_FAILURE@@@"
-    ]
-  },
-  {
-    "failure": {
-      "failure": {},
-      "humanReason": "Step('fail') (retcode: 1)"
-    },
     "name": "$result"
   }
 ]

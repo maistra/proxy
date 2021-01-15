@@ -12,7 +12,7 @@ load("test/mjsunit/wasm/exceptions-utils.js");
   print(arguments.callee.name);
   let builder = new WasmModuleBuilder();
   builder.addFunction("push_and_drop_exnref", kSig_v_v)
-      .addLocals({except_count: 1})
+      .addLocals(kWasmExnRef, 1)
       .addBody([
         kExprLocalGet, 0,
         kExprDrop,
@@ -83,6 +83,159 @@ load("test/mjsunit/wasm/exceptions-utils.js");
 
   assertEquals(23, instance.exports.simple_throw_catch_to_0_1(0));
   assertEquals(42, instance.exports.simple_throw_catch_to_0_1(1));
+})();
+
+(function TestTrapNotCaught() {
+  print(arguments.callee.name);
+  let builder = new WasmModuleBuilder();
+  builder.addFunction('unreachable_in_try', kSig_v_v)
+      .addBody([
+        kExprTry, kWasmStmt,
+          kExprUnreachable,
+        kExprCatch,
+          kExprDrop,
+        kExprEnd
+      ]).exportFunc();
+  let instance = builder.instantiate();
+
+  assertTraps(kTrapUnreachable, () => instance.exports.unreachable_in_try());
+})();
+
+(function TestTrapInCalleeNotCaught() {
+  print(arguments.callee.name);
+  let builder = new WasmModuleBuilder();
+  let func_div = builder.addFunction('div', kSig_i_ii).addBody([
+    kExprLocalGet, 0,
+    kExprLocalGet, 1,
+    kExprI32DivU
+  ]);
+  builder.addFunction('trap_in_callee', kSig_i_ii)
+      .addBody([
+        kExprTry, kWasmI32,
+          kExprLocalGet, 0,
+          kExprLocalGet, 1,
+          kExprCallFunction, func_div.index,
+        kExprCatch,
+          kExprDrop,
+          kExprI32Const, 11,
+        kExprEnd
+      ]).exportFunc();
+  let instance = builder.instantiate();
+
+  assertEquals(3, instance.exports.trap_in_callee(7, 2));
+  assertTraps(kTrapDivByZero, () => instance.exports.trap_in_callee(1, 0));
+})();
+
+(function TestTrapViaJSNotCaught() {
+  print(arguments.callee.name);
+  let builder = new WasmModuleBuilder();
+  let imp = builder.addImport('imp', 'ort', kSig_i_v);
+  builder.addFunction('div', kSig_i_ii)
+      .addBody([
+        kExprLocalGet, 0,
+        kExprLocalGet, 1,
+        kExprI32DivU
+      ]).exportFunc();
+  builder.addFunction('call_import', kSig_i_v)
+      .addBody([
+        kExprTry, kWasmI32,
+          kExprCallFunction, imp,
+        kExprCatch,
+          kExprDrop,
+          kExprI32Const, 11,
+        kExprEnd
+      ]).exportFunc();
+  let exception = undefined;
+  let instance;
+  function js_import() {
+    try {
+      instance.exports.div(1, 0);
+    } catch (e) {
+      exception = e;
+    }
+    throw exception;
+  }
+  instance = builder.instantiate({imp: {ort: js_import}});
+  let caught = undefined;
+  try {
+    let res = instance.exports.call_import();
+    assertUnreachable('call_import should trap, but returned with ' + res);
+  } catch (e) {
+    caught = e;
+  }
+  assertSame(exception, caught);
+  assertInstanceof(exception, WebAssembly.RuntimeError);
+  assertEquals(exception.message, kTrapMsgs[kTrapDivByZero]);
+})();
+
+(function TestManuallyThrownRuntimeErrorCaught() {
+  print(arguments.callee.name);
+  let builder = new WasmModuleBuilder();
+  let imp = builder.addImport('imp', 'ort', kSig_i_v);
+  builder.addFunction('call_import', kSig_i_v)
+      .addBody([
+        kExprTry, kWasmI32,
+          kExprCallFunction, imp,
+        kExprCatch,
+          kExprDrop,
+          kExprI32Const, 11,
+        kExprEnd
+      ]).exportFunc();
+  function throw_exc() {
+    throw new WebAssembly.RuntimeError('My user text');
+  }
+  let instance = builder.instantiate({imp: {ort: throw_exc}});
+
+  assertEquals(11, instance.exports.call_import());
+})();
+
+(function TestExnWithWasmProtoNotCaught() {
+  print(arguments.callee.name);
+  let builder = new WasmModuleBuilder();
+  let except = builder.addException(kSig_v_v);
+  let imp = builder.addImport('imp', 'ort', kSig_v_v);
+  let throw_fn = builder.addFunction('throw', kSig_v_v)
+                     .addBody([kExprThrow, except])
+                     .exportFunc();
+  builder.addFunction('test', kSig_v_v)
+      .addBody([
+        // Calling "throw" directly should produce the expected exception.
+        kExprTry, kWasmStmt,
+          kExprCallFunction, throw_fn.index,
+        kExprCatch,
+          kExprBrOnExn, 0, except,
+          kExprRethrow,
+        kExprEnd,
+        // Calling through JS produces a wrapped exceptions which does not match
+        // the br_on_exn.
+        kExprTry, kWasmStmt,
+          kExprCallFunction, imp,
+        kExprCatch,
+          kExprBrOnExn, 0, except,
+          kExprRethrow,
+        kExprEnd
+      ]).exportFunc();
+  let instance;
+  let wrapped_exn;
+  function js_import() {
+    try {
+      instance.exports.throw();
+    } catch (e) {
+      wrapped_exn = new Error();
+      wrapped_exn.__proto__ = e;
+      throw wrapped_exn;
+    }
+  }
+  instance = builder.instantiate({imp: {ort: js_import}});
+  let caught = undefined;
+  try {
+    instance.exports.test();
+  } catch (e) {
+    caught = e;
+  }
+  assertTrue(!!caught, 'should have trapped');
+  assertEquals(caught, wrapped_exn);
+  assertInstanceof(caught.__proto__, WebAssembly.RuntimeError);
 })();
 
 // Test that we can distinguish which exception was thrown by using a cascaded
@@ -190,7 +343,7 @@ load("test/mjsunit/wasm/exceptions-utils.js");
   let builder = new WasmModuleBuilder();
   let except = builder.addException(kSig_v_v);
   builder.addFunction("catch_complex", kSig_i_i)
-      .addLocals({except_count: 1})
+      .addLocals(kWasmExnRef, 1)
       .addBody([
         kExprBlock, kWasmI32,
           kExprTry, kWasmStmt,
@@ -314,7 +467,7 @@ load("test/mjsunit/wasm/exceptions-utils.js");
   let builder = new WasmModuleBuilder();
   let except = builder.addException(kSig_v_l);
   builder.addFunction("throw_catch_param", kSig_i_i)
-      .addLocals({i64_count: 1})
+      .addLocals(kWasmI64, 1)
       .addBody([
         kExprLocalGet, 0,
         kExprI64UConvertI32,
@@ -508,7 +661,7 @@ load("test/mjsunit/wasm/exceptions-utils.js");
     .exportFunc();
 
   builder.addFunction("same_scope_multiple", kSig_i_i)
-    .addLocals({i32_count: 1, except_count: 1})
+    .addLocals(kWasmI32, 1).addLocals(kWasmExnRef, 1)
     // path = 0;
     //
     // try {

@@ -185,8 +185,7 @@ MaybeHandle<Cell> SourceTextModule::ResolveExport(
     if (result.second) {
       // |module| wasn't in the map previously, so allocate a new name set.
       Zone* zone = resolve_set->zone();
-      name_set =
-          new (zone->New(sizeof(UnorderedStringSet))) UnorderedStringSet(zone);
+      name_set = zone->New<UnorderedStringSet>(zone);
     } else if (name_set->count(export_name)) {
       // Cycle detected.
       if (must_resolve) {
@@ -369,9 +368,14 @@ bool SourceTextModule::RunInitializationCode(Isolate* isolate,
   Handle<JSFunction> function(JSFunction::cast(module->code()), isolate);
   DCHECK_EQ(MODULE_SCOPE, function->shared().scope_info().scope_type());
   Handle<Object> receiver = isolate->factory()->undefined_value();
-  Handle<Object> argv[] = {module};
+
+  Handle<ScopeInfo> scope_info(function->shared().scope_info(), isolate);
+  Handle<Context> context = isolate->factory()->NewModuleContext(
+      module, isolate->native_context(), scope_info);
+  function->set_context(*context);
+
   MaybeHandle<Object> maybe_generator =
-      Execution::Call(isolate, function, receiver, arraysize(argv), argv);
+      Execution::Call(isolate, function, receiver, 0, {});
   Handle<Object> generator;
   if (!maybe_generator.ToHandle(&generator)) {
     DCHECK(isolate->has_pending_exception());
@@ -449,10 +453,9 @@ bool SourceTextModule::FinishInstantiate(
     if (requested_module->status() == kInstantiating) {
       // SyntheticModules go straight to kInstantiated so this must be a
       // SourceTextModule
-      module->set_dfs_ancestor_index(
-          std::min(module->dfs_ancestor_index(),
-                   Handle<SourceTextModule>::cast(requested_module)
-                       ->dfs_ancestor_index()));
+      module->set_dfs_ancestor_index(std::min(
+          module->dfs_ancestor_index(),
+          SourceTextModule::cast(*requested_module).dfs_ancestor_index()));
     }
   }
 
@@ -578,6 +581,19 @@ Handle<JSModuleNamespace> SourceTextModule::GetModuleNamespace(
   return Module::GetModuleNamespace(isolate, requested_module);
 }
 
+MaybeHandle<JSObject> SourceTextModule::GetImportMeta(
+    Isolate* isolate, Handle<SourceTextModule> module) {
+  Handle<HeapObject> import_meta(module->import_meta(), isolate);
+  if (import_meta->IsTheHole(isolate)) {
+    if (!isolate->RunHostInitializeImportMetaObjectCallback(module).ToHandle(
+            &import_meta)) {
+      return {};
+    }
+    module->set_import_meta(*import_meta);
+  }
+  return Handle<JSObject>::cast(import_meta);
+}
+
 MaybeHandle<Object> SourceTextModule::EvaluateMaybeAsync(
     Isolate* isolate, Handle<SourceTextModule> module) {
   // In the event of errored evaluation, return a rejected promise.
@@ -677,7 +693,7 @@ MaybeHandle<Object> SourceTextModule::Evaluate(
       CHECK_EQ(descendant->status(), kEvaluating);
       //  ii. Set m.[[Status]] to "evaluated".
       // iii. Set m.[[EvaluationError]] to result.
-      descendant->RecordErrorUsingPendingException(isolate);
+      Module::RecordErrorUsingPendingException(isolate, descendant);
     }
 
 #ifdef DEBUG
@@ -802,7 +818,7 @@ void SourceTextModule::AsyncModuleExecutionRejected(
   }
 
   // 4. Set module.[[EvaluationError]] to ThrowCompletion(error).
-  module->RecordError(isolate, exception);
+  Module::RecordError(isolate, module, exception);
 
   // 5. Set module.[[AsyncEvaluating]] to false.
   module->set_async_evaluating(false);
@@ -1054,7 +1070,7 @@ MaybeHandle<Object> SourceTextModule::InnerModuleEvaluation(
         module->IncrementPendingAsyncDependencies();
 
         //      2. Append module to requiredModule.[[AsyncParentModules]].
-        required_module->AddAsyncParentModule(isolate, module);
+        AddAsyncParentModule(isolate, required_module, module);
       }
     } else {
       RETURN_ON_EXCEPTION(isolate, Module::Evaluate(isolate, requested_module),

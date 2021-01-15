@@ -1,0 +1,20 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["undeclared.go"],
+    importpath = "golang.org/x/tools/internal/lsp/analysis/undeclaredname",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//go/analysis:go_default_library",
+        "//go/ast/astutil:go_default_library",
+        "//internal/analysisinternal:go_default_library",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = ["undeclared_test.go"],
+    embed = [":go_default_library"],
+    deps = ["//go/analysis/analysistest:go_default_library"],
+)

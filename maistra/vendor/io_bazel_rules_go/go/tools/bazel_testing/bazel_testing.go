@@ -43,6 +43,20 @@ import (
 	"github.com/bazelbuild/rules_go/go/tools/internal/txtar"
 )
 
+const (
+	// Standard Bazel exit codes.
+	// A subset of codes in https://cs.opensource.google/bazel/bazel/+/master:src/main/java/com/google/devtools/build/lib/util/ExitCode.java.
+	SUCCESS                    = 0
+	BUILD_FAILURE              = 1
+	COMMAND_LINE_ERROR         = 2
+	TESTS_FAILED               = 3
+	NO_TESTS_FOUND             = 4
+	RUN_FAILURE                = 6
+	ANALYSIS_FAILURE           = 7
+	INTERRUPTED                = 8
+	LOCK_HELD_NOBLOCK_FOR_LOCK = 9
+)
+
 // Args is a list of arguments to TestMain. It's defined as a struct so
 // that new optional arguments may be added without breaking compatibility.
 type Args struct {
@@ -71,6 +85,12 @@ type Args struct {
 // debug may be set to make the test print the test workspace path and stop
 // instead of running tests.
 const debug = false
+
+// outputUserRoot is set to the directory where Bazel should put its internal files.
+// Since Bazel 2.0.0, this needs to be set explicitly to avoid it defaulting to a
+// deeply nested directory within the test, which runs into Windows path length limits.
+// We try to detect the original value in setupWorkspace and set it to that.
+var outputUserRoot string
 
 // TestMain should be called by tests using this framework from a function named
 // "TestMain". For example:
@@ -160,7 +180,11 @@ func TestMain(m *testing.M, args Args) {
 // bazel binary based on the environment and sanitizes the environment to
 // hide that this code is executing inside a bazel test.
 func BazelCmd(args ...string) *exec.Cmd {
-	cmd := exec.Command("bazel", args...)
+	cmd := exec.Command("bazel")
+	if outputUserRoot != "" {
+		cmd.Args = append(cmd.Args, "--output_user_root="+outputUserRoot)
+	}
+	cmd.Args = append(cmd.Args, args...)
 	for _, e := range os.Environ() {
 		// Filter environment variables set by the bazel test wrapper script.
 		// These confuse recursive invocations of Bazel.
@@ -221,6 +245,10 @@ func (e *StderrExitError) Error() string {
 	return sb.String()
 }
 
+func (e *StderrExitError) Unwrap() error {
+	return e.Err
+}
+
 func setupWorkspace(args Args, files []string) (dir string, cleanup func() error, err error) {
 	var cleanups []func() error
 	cleanup = func() error {
@@ -252,6 +280,7 @@ func setupWorkspace(args Args, files []string) (dir string, cleanup func() error
 		tmpDir = filepath.Clean(tmpDir)
 		if i := strings.Index(tmpDir, string(os.PathSeparator)+"execroot"+string(os.PathSeparator)); i >= 0 {
 			outBaseDir = tmpDir[:i]
+			outputUserRoot = filepath.Dir(outBaseDir)
 			cacheDir = filepath.Join(outBaseDir, "bazel_testing")
 		} else {
 			cacheDir = filepath.Join(tmpDir, "bazel_testing")
@@ -272,11 +301,23 @@ func setupWorkspace(args Args, files []string) (dir string, cleanup func() error
 	}
 	cleanups = append(cleanups, func() error { return os.RemoveAll(execDir) })
 
-	// Extract test files for the main workspace.
+	// Create the workspace directory.
 	mainDir := filepath.Join(execDir, "main")
 	if err := os.MkdirAll(mainDir, 0777); err != nil {
 		return "", cleanup, err
 	}
+
+	// Create a .bazelrc file if GO_BAZEL_TEST_BAZELFLAGS is set.
+	// The test can override this with its own .bazelrc or with flags in commands.
+	if flags := os.Getenv("GO_BAZEL_TEST_BAZELFLAGS"); flags != "" {
+		bazelrcPath := filepath.Join(mainDir, ".bazelrc")
+		content := "build " + flags
+		if err := ioutil.WriteFile(bazelrcPath, []byte(content), 0666); err != nil {
+			return "", cleanup, err
+		}
+	}
+
+	// Extract test files for the main workspace.
 	if err := extractTxtar(mainDir, args.Main); err != nil {
 		return "", cleanup, fmt.Errorf("building main workspace: %v", err)
 	}
@@ -409,6 +450,10 @@ func parseLocationArg(arg string) (workspace, shortPath string, err error) {
 }
 
 func loadWorkspaceName(workspacePath string) (string, error) {
+	runfilePath, err := bazel.Runfile(workspacePath)
+	if err == nil {
+		workspacePath = runfilePath
+	}
 	workspaceData, err := ioutil.ReadFile(workspacePath)
 	if err != nil {
 		return "", err

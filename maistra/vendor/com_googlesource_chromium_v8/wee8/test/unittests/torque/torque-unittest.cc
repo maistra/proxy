@@ -25,7 +25,17 @@ namespace torque_internal {
     const object: HeapObject;
     const offset: intptr;
   }
+  type ConstReference<T : type> extends Reference<T>;
+  type MutableReference<T : type> extends ConstReference<T>;
+
   type UninitializedHeapObject extends HeapObject;
+  macro DownCastForTorqueClass<T : type extends HeapObject>(o: HeapObject):
+      T labels _CastError {
+    return %RawDownCast<T>(o);
+  }
+  macro IsWithContext<T : type extends HeapObject>(o: HeapObject): bool {
+    return false;
+  }
 }
 
 type Tagged generates 'TNode<MaybeObject>' constexpr 'MaybeObject';
@@ -42,6 +52,7 @@ extern class HeapObject extends StrongTagged {
 }
 type Map extends HeapObject generates 'TNode<Map>';
 type Object = Smi | HeapObject;
+type Number = Smi|HeapNumber;
 type JSReceiver extends HeapObject generates 'TNode<JSReceiver>';
 type JSObject extends JSReceiver generates 'TNode<JSObject>';
 type int32 generates 'TNode<Int32T>' constexpr 'int32_t';
@@ -66,15 +77,25 @@ type bool generates 'TNode<BoolT>' constexpr 'bool';
 type bint generates 'TNode<BInt>' constexpr 'BInt';
 type string constexpr 'const char*';
 type RawPtr generates 'TNode<RawPtrT>' constexpr 'void*';
+type ExternalPointer
+    generates 'TNode<ExternalPointerT>' constexpr 'ExternalPointer_t';
 type Code extends HeapObject generates 'TNode<Code>';
 type BuiltinPtr extends Smi generates 'TNode<BuiltinPtr>';
 type Context extends HeapObject generates 'TNode<Context>';
 type NativeContext extends Context;
+type SmiTagged<T : type extends uint31> extends Smi;
+type String extends HeapObject;
+type HeapNumber extends HeapObject;
+type FixedArrayBase extends HeapObject;
 
 struct float64_or_hole {
   is_hole: bool;
   value: float64;
 }
+
+extern operator '+' macro IntPtrAdd(intptr, intptr): intptr;
+extern operator '!' macro Word32BinaryNot(bool): bool;
+extern operator '==' macro Word32Equal(int32, int32): bool;
 
 intrinsic %FromConstexpr<To: type, From: type>(b: From): To;
 intrinsic %RawDownCast<To: type, From: type>(x: From): To;
@@ -84,6 +105,7 @@ extern macro TaggedToSmi(Object): Smi
     labels CastError;
 extern macro TaggedToHeapObject(Object): HeapObject
     labels CastError;
+extern macro Float64SilenceNaN(float64): float64;
 
 extern macro IntPtrConstant(constexpr int31): intptr;
 
@@ -97,12 +119,24 @@ FromConstexpr<Smi, constexpr int31>(s: constexpr int31): Smi {
 FromConstexpr<intptr, constexpr int31>(i: constexpr int31): intptr {
   return IntPtrConstant(i);
 }
+FromConstexpr<intptr, constexpr intptr>(i: constexpr intptr): intptr {
+  return %FromConstexpr<intptr>(i);
+}
+extern macro BoolConstant(constexpr bool): bool;
+FromConstexpr<bool, constexpr bool>(b: constexpr bool): bool {
+  return BoolConstant(b);
+}
+FromConstexpr<int32, constexpr int31>(i: constexpr int31): int32 {
+  return %FromConstexpr<int32>(i);
+}
 
 macro Cast<A : type extends Object>(implicit context: Context)(o: Object): A
     labels CastError {
   return Cast<A>(TaggedToHeapObject(o) otherwise CastError)
       otherwise CastError;
 }
+macro Cast<A : type extends HeapObject>(o: HeapObject): A
+    labels CastError;
 Cast<Smi>(o: Object): Smi
     labels CastError {
   return TaggedToSmi(o) otherwise CastError;
@@ -318,6 +352,22 @@ TEST(Torque, ConstexprLetBindingDoesNotCrash) {
   ExpectFailingCompilation(
       R"(@export macro FooBar() { let foo = 0; check(foo >= 0); })",
       HasSubstr("Use 'const' instead of 'let' for variable 'foo'"));
+}
+
+TEST(Torque, FailedImplicitCastFromConstexprDoesNotCrash) {
+  ExpectFailingCompilation(
+      R"(
+    extern enum SomeEnum {
+      kValue,
+      ...
+    }
+    macro Foo() {
+      Bar(SomeEnum::kValue);
+    }
+    macro Bar<T: type>(value: T) {}
+  )",
+      HasSubstr(
+          "Cannot find non-constexpr type corresponding to constexpr kValue"));
 }
 
 TEST(Torque, DoubleUnderScorePrefixIllegalForIdentifiers) {
@@ -611,6 +661,300 @@ TEST(Torque, EnumInTypeswitch) {
       }
     }
   )");
+
+  ExpectSuccessfulCompilation(R"(
+  extern enum MyEnum extends Smi {
+    kA,
+    kB,
+    kC,
+    ...
+  }
+
+  @export
+  macro Test(implicit context: Context)(b: bool): Smi {
+    return b ? MyEnum::kB : MyEnum::kA;
+  }
+)");
+}
+
+TEST(Torque, EnumTypeAnnotations) {
+  ExpectSuccessfulCompilation(R"(
+    type Type1 extends intptr;
+    type Type2 extends intptr;
+    extern enum MyEnum extends intptr {
+      kValue1: Type1,
+      kValue2: Type2,
+      kValue3
+    }
+    @export macro Foo() {
+      const _a: Type1 = MyEnum::kValue1;
+      const _b: Type2 = MyEnum::kValue2;
+      const _c: intptr = MyEnum::kValue3;
+    }
+  )");
+}
+
+TEST(Torque, ConstClassFields) {
+  ExpectSuccessfulCompilation(R"(
+    class Foo extends HeapObject {
+      const x: int32;
+      y: int32;
+    }
+
+    @export
+    macro Test(implicit context: Context)(o: Foo, n: int32) {
+      const _x: int32 = o.x;
+      o.y = n;
+    }
+  )");
+
+  ExpectFailingCompilation(R"(
+    class Foo extends HeapObject {
+      const x: int32;
+    }
+
+    @export
+    macro Test(implicit context: Context)(o: Foo, n: int32) {
+      o.x = n;
+    }
+  )",
+                           HasSubstr("cannot assign to const value"));
+
+  ExpectSuccessfulCompilation(R"(
+    class Foo extends HeapObject {
+      s: Bar;
+    }
+    struct Bar {
+      const x: int32;
+      y: int32;
+    }
+
+    @export
+    macro Test(implicit context: Context)(o: Foo, n: int32) {
+      const _x: int32 = o.s.x;
+      // Assigning a struct as a value is OK, even when the struct contains
+      // const fields.
+      o.s = Bar{x: n, y: n};
+      o.s.y = n;
+    }
+  )");
+
+  ExpectFailingCompilation(R"(
+    class Foo extends HeapObject {
+      const s: Bar;
+    }
+    struct Bar {
+      const x: int32;
+      y: int32;
+    }
+
+    @export
+    macro Test(implicit context: Context)(o: Foo, n: int32) {
+      o.s.y = n;
+    }
+  )",
+                           HasSubstr("cannot assign to const value"));
+
+  ExpectFailingCompilation(R"(
+    class Foo extends HeapObject {
+      s: Bar;
+    }
+    struct Bar {
+      const x: int32;
+      y: int32;
+    }
+
+    @export
+    macro Test(implicit context: Context)(o: Foo, n: int32) {
+      o.s.x = n;
+    }
+  )",
+                           HasSubstr("cannot assign to const value"));
+}
+
+TEST(Torque, References) {
+  ExpectSuccessfulCompilation(R"(
+    class Foo extends HeapObject {
+      const x: int32;
+      y: int32;
+    }
+
+    @export
+    macro Test(implicit context: Context)(o: Foo, n: int32) {
+      const constRefX: const &int32 = &o.x;
+      const refY: &int32 = &o.y;
+      const constRefY: const &int32 = refY;
+      const _x: int32 = *constRefX;
+      const _y1: int32 = *refY;
+      const _y2: int32 = *constRefY;
+      *refY = n;
+      let r: const &int32 = constRefX;
+      r = constRefY;
+    }
+  )");
+
+  ExpectFailingCompilation(R"(
+    class Foo extends HeapObject {
+      const x: int32;
+      y: int32;
+    }
+
+    @export
+    macro Test(implicit context: Context)(o: Foo) {
+      const _refX: &int32 = &o.x;
+    }
+  )",
+                           HasSubstr("cannot use expression of type const "
+                                     "&int32 as a value of type &int32"));
+
+  ExpectFailingCompilation(R"(
+    class Foo extends HeapObject {
+      const x: int32;
+      y: int32;
+    }
+
+    @export
+    macro Test(implicit context: Context)(o: Foo, n: int32) {
+      const constRefX: const &int32 = &o.x;
+      *constRefX = n;
+    }
+  )",
+                           HasSubstr("cannot assign to const value"));
+}
+
+TEST(Torque, CatchFirstHandler) {
+  ExpectFailingCompilation(
+      R"(
+    @export
+    macro Test() {
+      try {
+      } label Foo {
+      } catch (e) {}
+    }
+  )",
+      HasSubstr(
+          "catch handler always has to be first, before any label handler"));
+}
+
+TEST(Torque, BitFieldLogicalAnd) {
+  std::string prelude = R"(
+    bitfield struct S extends uint32 {
+      a: bool: 1 bit;
+      b: bool: 1 bit;
+      c: int32: 5 bit;
+    }
+    macro Test(s: S): bool { return
+  )";
+  std::string postlude = ";}";
+  std::string message = "use & rather than &&";
+  ExpectFailingCompilation(prelude + "s.a && s.b" + postlude,
+                           HasSubstr(message));
+  ExpectFailingCompilation(prelude + "s.a && !s.b" + postlude,
+                           HasSubstr(message));
+  ExpectFailingCompilation(prelude + "!s.b && s.c == 34" + postlude,
+                           HasSubstr(message));
+}
+
+TEST(Torque, FieldAccessOnNonClassType) {
+  ExpectFailingCompilation(
+      R"(
+    @export
+    macro Test(x: Number): Map {
+      return x.map;
+    }
+  )",
+      HasSubstr("map"));
+}
+
+TEST(Torque, UnusedImplicit) {
+  ExpectSuccessfulCompilation(R"(
+    @export
+    macro Test1(implicit c: Smi)(a: Object): Object { return a; }
+    @export
+    macro Test2(b: Object) { Test1(b);  }
+  )");
+
+  ExpectFailingCompilation(
+      R"(
+    macro Test1(implicit c: Smi)(_a: Object): Smi { return c; }
+    @export
+    macro Test2(b: Smi) { Test1(b);  }
+  )",
+      HasSubstr("undefined expression of type Smi: the implicit "
+                "parameter 'c' is not defined when invoking Test1 at"));
+
+  ExpectFailingCompilation(
+      R"(
+    extern macro Test3(implicit c: Smi)(Object): Smi;
+    @export
+    macro Test4(b: Smi) { Test3(b);  }
+  )",
+      HasSubstr("unititialized implicit parameters can only be passed to "
+                "Torque-defined macros: the implicit parameter 'c' is not "
+                "defined when invoking Test3"));
+  ExpectSuccessfulCompilation(
+      R"(
+    macro Test7<T: type>(implicit c: Smi)(o: T): Smi;
+    Test7<Smi>(implicit c: Smi)(o: Smi): Smi { return o; }
+    @export
+    macro Test8(b: Smi) { Test7(b); }
+  )");
+
+  ExpectFailingCompilation(
+      R"(
+    macro Test6<T: type>(_o: T): T;
+    macro Test6<T: type>(implicit c: T)(_o: T): T {
+      return c;
+    }
+    macro Test7<T: type>(o: T): Smi;
+    Test7<Smi>(o: Smi): Smi { return Test6<Smi>(o); }
+    @export
+    macro Test8(b: Smi) { Test7(b); }
+  )",
+      HasSubstr("\nambiguous callable : \n  Test6(Smi)\ncandidates are:\n  "
+                "Test6(Smi): Smi\n  Test6(implicit Smi)(Smi): Smi"));
+}
+
+TEST(Torque, ImplicitTemplateParameterInference) {
+  ExpectSuccessfulCompilation(R"(
+    macro Foo(_x: Map) {}
+    macro Foo(_x: Smi) {}
+    macro GenericMacro<T: type>(implicit x: T)() {
+      Foo(x);
+    }
+    @export
+    macro Test1(implicit x: Smi)() { GenericMacro(); }
+    @export
+    macro Test2(implicit x: Map)() { GenericMacro();  }
+  )");
+
+  ExpectFailingCompilation(
+      R"(
+    // Wrap in namespace to avoid redeclaration error.
+    namespace foo {
+    macro Foo(implicit x: Map)() {}
+    }
+    macro Foo(implicit x: Smi)() {}
+    namespace foo{
+    @export
+    macro Test(implicit x: Smi)() { Foo(); }
+    }
+  )",
+      HasSubstr("ambiguous callable"));
+
+  ExpectFailingCompilation(
+      R"(
+    // Wrap in namespace to avoid redeclaration error.
+    namespace foo {
+    macro Foo(implicit x: Map)() {}
+    }
+    macro Foo(implicit x: Smi)() {}
+    namespace foo{
+    @export
+    macro Test(implicit x: Map)() { Foo(); }
+    }
+  )",
+      HasSubstr("ambiguous callable"));
 }
 
 }  // namespace torque

@@ -13,6 +13,7 @@
 #include "src/heap/factory.h"
 #include "src/heap/incremental-marking.h"
 #include "src/heap/marking-worklist.h"
+#include "src/logging/counters.h"
 #include "src/objects/js-promise-inl.h"
 #include "src/objects/js-promise.h"
 #include "src/tasks/task-utils.h"
@@ -94,7 +95,7 @@ class V8_EXPORT_PRIVATE MeasureMemoryDelegate
  public:
   MeasureMemoryDelegate(Isolate* isolate, Handle<NativeContext> context,
                         Handle<JSPromise> promise, v8::MeasureMemoryMode mode);
-  ~MeasureMemoryDelegate();
+  ~MeasureMemoryDelegate() override;
 
   // v8::MeasureMemoryDelegate overrides:
   bool ShouldMeasure(v8::Local<v8::Context> context) override;
@@ -164,7 +165,12 @@ void MeasureMemoryDelegate::MeasurementComplete(
   JSPromise::Resolve(promise_, result).ToHandleChecked();
 }
 
-MemoryMeasurement::MemoryMeasurement(Isolate* isolate) : isolate_(isolate) {}
+MemoryMeasurement::MemoryMeasurement(Isolate* isolate)
+    : isolate_(isolate), random_number_generator_() {
+  if (FLAG_random_seed) {
+    random_number_generator_.SetSeed(FLAG_random_seed);
+  }
+}
 
 bool MemoryMeasurement::EnqueueRequest(
     std::unique_ptr<v8::MeasureMemoryDelegate> delegate,
@@ -178,8 +184,12 @@ bool MemoryMeasurement::EnqueueRequest(
   }
   Handle<WeakFixedArray> global_weak_contexts =
       isolate_->global_handles()->Create(*weak_contexts);
-  Request request = {std::move(delegate), global_weak_contexts,
-                     std::vector<size_t>(length), 0u};
+  Request request = {std::move(delegate),
+                     global_weak_contexts,
+                     std::vector<size_t>(length),
+                     0u,
+                     {}};
+  request.timer.Start();
   received_.push_back(std::move(request));
   ScheduleGCTask(execution);
   return true;
@@ -233,12 +243,16 @@ void MemoryMeasurement::ScheduleReportingTask() {
 }
 
 bool MemoryMeasurement::IsGCTaskPending(v8::MeasureMemoryExecution execution) {
+  DCHECK(execution == v8::MeasureMemoryExecution::kEager ||
+         execution == v8::MeasureMemoryExecution::kDefault);
   return execution == v8::MeasureMemoryExecution::kEager
              ? eager_gc_task_pending_
              : delayed_gc_task_pending_;
 }
 
 void MemoryMeasurement::SetGCTaskPending(v8::MeasureMemoryExecution execution) {
+  DCHECK(execution == v8::MeasureMemoryExecution::kEager ||
+         execution == v8::MeasureMemoryExecution::kDefault);
   if (execution == v8::MeasureMemoryExecution::kEager) {
     eager_gc_task_pending_ = true;
   } else {
@@ -247,6 +261,8 @@ void MemoryMeasurement::SetGCTaskPending(v8::MeasureMemoryExecution execution) {
 }
 
 void MemoryMeasurement::SetGCTaskDone(v8::MeasureMemoryExecution execution) {
+  DCHECK(execution == v8::MeasureMemoryExecution::kEager ||
+         execution == v8::MeasureMemoryExecution::kDefault);
   if (execution == v8::MeasureMemoryExecution::kEager) {
     eager_gc_task_pending_ = false;
   } else {
@@ -255,6 +271,7 @@ void MemoryMeasurement::SetGCTaskDone(v8::MeasureMemoryExecution execution) {
 }
 
 void MemoryMeasurement::ScheduleGCTask(v8::MeasureMemoryExecution execution) {
+  if (execution == v8::MeasureMemoryExecution::kLazy) return;
   if (IsGCTaskPending(execution)) return;
   SetGCTaskPending(execution);
   auto taskrunner = V8::GetCurrentPlatform()->GetForegroundTaskRunner(
@@ -281,8 +298,13 @@ void MemoryMeasurement::ScheduleGCTask(v8::MeasureMemoryExecution execution) {
   if (execution == v8::MeasureMemoryExecution::kEager) {
     taskrunner->PostTask(std::move(task));
   } else {
-    taskrunner->PostDelayedTask(std::move(task), kGCTaskDelayInSeconds);
+    taskrunner->PostDelayedTask(std::move(task), NextGCTaskDelayInSeconds());
   }
+}
+
+int MemoryMeasurement::NextGCTaskDelayInSeconds() {
+  return kGCTaskDelayInSeconds +
+         random_number_generator_.NextInt(kGCTaskDelayInSeconds);
 }
 
 void MemoryMeasurement::ReportResults() {
@@ -303,6 +325,8 @@ void MemoryMeasurement::ReportResults() {
       sizes.push_back(std::make_pair(context, request.sizes[i]));
     }
     request.delegate->MeasurementComplete(sizes, request.shared);
+    isolate_->counters()->measure_memory_delay_ms()->AddSample(
+        static_cast<int>(request.timer.Elapsed().InMilliseconds()));
   }
 }
 

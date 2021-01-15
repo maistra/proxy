@@ -21,7 +21,7 @@ namespace hsql {
     DropStatement(DropType type);
     virtual ~DropStatement();
       void tablesAccessed(TableAccessMap& accessMap) const override {
-        if (name != nullptr) {
+        if ((name != nullptr) && (type == kDropTable)) {
             TableAccess::addOperation(accessMap, name, schema, TableAccess::OpDrop);
         }
       };

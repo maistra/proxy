@@ -3,7 +3,11 @@
 // found in the LICENSE file.
 
 // Flags: --allow-natives-syntax --randomize-all-allocations
-// Flags: --wasm-far-jump-table --wasm-max-initial-code-space-reservation=1
+// Flags: --wasm-max-initial-code-space-reservation=1
+
+// Disable tier-up, to reduce execution time of this test (Liftoff generates
+// much bigger code, thus reaches the four code spaces much faster).
+// Flags: --no-wasm-tier-up
 
 load('test/mjsunit/wasm/wasm-module-builder.js');
 

@@ -27,7 +27,7 @@ enum CpuFeature {
   POPCNT,
   ATOM,
 
-#elif V8_TARGET_ARCH_ARM || V8_TARGET_ARCH_ARM64
+#elif V8_TARGET_ARCH_ARM
   // - Standard configurations. The baseline is ARMv6+VFPv2.
   ARMv7,        // ARMv7-A + VFPv3-D32 + NEON
   ARMv7_SUDIV,  // ARMv7-A + VFPv4-D32 + NEON + SUDIV
@@ -39,6 +39,9 @@ enum CpuFeature {
   VFP32DREGS = ARMv7,
   SUDIV = ARMv7_SUDIV,
 
+#elif V8_TARGET_ARCH_ARM64
+  JSCVT,
+
 #elif V8_TARGET_ARCH_MIPS || V8_TARGET_ARCH_MIPS64
   FPU,
   FP64FPU,
@@ -47,7 +50,7 @@ enum CpuFeature {
   MIPSr6,
   MIPS_SIMD,  // MSA instructions
 
-#elif V8_TARGET_ARCH_PPC
+#elif V8_TARGET_ARCH_PPC || V8_TARGET_ARCH_PPC64
   FPU,
   FPR_GPR_MOV,
   LWSYNC,

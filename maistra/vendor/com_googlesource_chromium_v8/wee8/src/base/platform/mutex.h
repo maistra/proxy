@@ -16,6 +16,12 @@
 #include <pthread.h>  // NOLINT
 #endif
 
+#if V8_OS_STARBOARD
+#include "starboard/common/mutex.h"
+#include "starboard/common/recursive_mutex.h"
+#include "starboard/common/rwlock.h"
+#endif
+
 namespace v8 {
 namespace base {
 
@@ -58,6 +64,8 @@ class V8_BASE_EXPORT Mutex final {
   using NativeHandle = pthread_mutex_t;
 #elif V8_OS_WIN
   using NativeHandle = SRWLOCK;
+#elif V8_OS_STARBOARD
+  using NativeHandle = SbMutex;
 #endif
 
   NativeHandle& native_handle() {
@@ -67,7 +75,8 @@ class V8_BASE_EXPORT Mutex final {
     return native_handle_;
   }
 
-  V8_INLINE void AssertHeld() { DCHECK_EQ(1, level_); }
+  V8_INLINE void AssertHeld() const { DCHECK_EQ(1, level_); }
+  V8_INLINE void AssertUnheld() const { DCHECK_EQ(0, level_); }
 
  private:
   NativeHandle native_handle_;
@@ -158,6 +167,8 @@ class V8_BASE_EXPORT RecursiveMutex final {
   using NativeHandle = pthread_mutex_t;
 #elif V8_OS_WIN
   using NativeHandle = CRITICAL_SECTION;
+#elif V8_OS_STARBOARD
+  using NativeHandle = starboard::RecursiveMutex;
 #endif
 
   NativeHandle native_handle_;
@@ -246,6 +257,8 @@ class V8_BASE_EXPORT SharedMutex final {
   using NativeHandle = pthread_rwlock_t;
 #elif V8_OS_WIN
   using NativeHandle = SRWLOCK;
+#elif V8_OS_STARBOARD
+  using NativeHandle = starboard::RWLock;
 #endif
 
   NativeHandle native_handle_;

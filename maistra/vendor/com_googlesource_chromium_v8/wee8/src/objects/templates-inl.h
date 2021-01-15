@@ -24,20 +24,17 @@ TQ_OBJECT_CONSTRUCTORS_IMPL(FunctionTemplateRareData)
 
 NEVER_READ_ONLY_SPACE_IMPL(TemplateInfo)
 
-TQ_SMI_ACCESSORS(TemplateInfo, number_of_properties)
-
-TQ_SMI_ACCESSORS(FunctionTemplateInfo, length)
-BOOL_ACCESSORS(FunctionTemplateInfo, flag, undetectable, kUndetectableBit)
+BOOL_ACCESSORS(FunctionTemplateInfo, flag, undetectable,
+               UndetectableBit::kShift)
 BOOL_ACCESSORS(FunctionTemplateInfo, flag, needs_access_check,
-               kNeedsAccessCheckBit)
+               NeedsAccessCheckBit::kShift)
 BOOL_ACCESSORS(FunctionTemplateInfo, flag, read_only_prototype,
-               kReadOnlyPrototypeBit)
+               ReadOnlyPrototypeBit::kShift)
 BOOL_ACCESSORS(FunctionTemplateInfo, flag, remove_prototype,
-               kRemovePrototypeBit)
-BOOL_ACCESSORS(FunctionTemplateInfo, flag, do_not_cache, kDoNotCacheBit)
+               RemovePrototypeBit::kShift)
+BOOL_ACCESSORS(FunctionTemplateInfo, flag, do_not_cache, DoNotCacheBit::kShift)
 BOOL_ACCESSORS(FunctionTemplateInfo, flag, accept_any_receiver,
-               kAcceptAnyReceiver)
-TQ_SMI_ACCESSORS(FunctionTemplateInfo, flag)
+               AcceptAnyReceiverBit::kShift)
 
 // static
 FunctionTemplateRareData FunctionTemplateInfo::EnsureFunctionTemplateRareData(
@@ -50,11 +47,11 @@ FunctionTemplateRareData FunctionTemplateInfo::EnsureFunctionTemplateRareData(
   }
 }
 
-#define RARE_ACCESSORS(Name, CamelName, Type)                                 \
+#define RARE_ACCESSORS(Name, CamelName, Type, Default)                        \
   DEF_GETTER(FunctionTemplateInfo, Get##CamelName, Type) {                    \
     HeapObject extra = rare_data(isolate);                                    \
     HeapObject undefined = GetReadOnlyRoots(isolate).undefined_value();       \
-    return extra == undefined ? undefined                                     \
+    return extra == undefined ? Default                                       \
                               : FunctionTemplateRareData::cast(extra).Name(); \
   }                                                                           \
   inline void FunctionTemplateInfo::Set##CamelName(                           \
@@ -65,14 +62,20 @@ FunctionTemplateRareData FunctionTemplateInfo::EnsureFunctionTemplateRareData(
     rare_data.set_##Name(*Name);                                              \
   }
 
-RARE_ACCESSORS(prototype_template, PrototypeTemplate, Object)
-RARE_ACCESSORS(prototype_provider_template, PrototypeProviderTemplate, Object)
-RARE_ACCESSORS(parent_template, ParentTemplate, Object)
-RARE_ACCESSORS(named_property_handler, NamedPropertyHandler, Object)
-RARE_ACCESSORS(indexed_property_handler, IndexedPropertyHandler, Object)
-RARE_ACCESSORS(instance_template, InstanceTemplate, Object)
-RARE_ACCESSORS(instance_call_handler, InstanceCallHandler, Object)
-RARE_ACCESSORS(access_check_info, AccessCheckInfo, Object)
+RARE_ACCESSORS(prototype_template, PrototypeTemplate, HeapObject, undefined)
+RARE_ACCESSORS(prototype_provider_template, PrototypeProviderTemplate,
+               HeapObject, undefined)
+RARE_ACCESSORS(parent_template, ParentTemplate, HeapObject, undefined)
+RARE_ACCESSORS(named_property_handler, NamedPropertyHandler, HeapObject,
+               undefined)
+RARE_ACCESSORS(indexed_property_handler, IndexedPropertyHandler, HeapObject,
+               undefined)
+RARE_ACCESSORS(instance_template, InstanceTemplate, HeapObject, undefined)
+RARE_ACCESSORS(instance_call_handler, InstanceCallHandler, HeapObject,
+               undefined)
+RARE_ACCESSORS(access_check_info, AccessCheckInfo, HeapObject, undefined)
+RARE_ACCESSORS(c_function, CFunction, Object, Smi(0))
+RARE_ACCESSORS(c_signature, CSignature, Object, Smi(0))
 #undef RARE_ACCESSORS
 
 bool FunctionTemplateInfo::instantiated() {
@@ -110,26 +113,20 @@ ObjectTemplateInfo ObjectTemplateInfo::GetParent(Isolate* isolate) {
 }
 
 int ObjectTemplateInfo::embedder_field_count() const {
-  Object value = data();
-  DCHECK(value.IsSmi());
-  return EmbedderFieldCount::decode(Smi::ToInt(value));
+  return EmbedderFieldCountBits::decode(data());
 }
 
 void ObjectTemplateInfo::set_embedder_field_count(int count) {
   DCHECK_LE(count, JSObject::kMaxEmbedderFields);
-  return set_data(
-      Smi::FromInt(EmbedderFieldCount::update(Smi::ToInt(data()), count)));
+  return set_data(EmbedderFieldCountBits::update(data(), count));
 }
 
 bool ObjectTemplateInfo::immutable_proto() const {
-  Object value = data();
-  DCHECK(value.IsSmi());
-  return IsImmutablePrototype::decode(Smi::ToInt(value));
+  return IsImmutablePrototypeBit::decode(data());
 }
 
 void ObjectTemplateInfo::set_immutable_proto(bool immutable) {
-  return set_data(Smi::FromInt(
-      IsImmutablePrototype::update(Smi::ToInt(data()), immutable)));
+  return set_data(IsImmutablePrototypeBit::update(data(), immutable));
 }
 
 bool FunctionTemplateInfo::IsTemplateFor(JSObject object) {

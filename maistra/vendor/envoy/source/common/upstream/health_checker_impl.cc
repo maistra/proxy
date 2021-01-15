@@ -16,8 +16,10 @@
 #include "common/config/well_known_names.h"
 #include "common/grpc/common.h"
 #include "common/http/header_map_impl.h"
+#include "common/http/header_utility.h"
 #include "common/network/address_impl.h"
 #include "common/router/router.h"
+#include "common/runtime/runtime_features.h"
 #include "common/runtime/runtime_impl.h"
 #include "common/upstream/host_utility.h"
 
@@ -57,17 +59,15 @@ const std::string& getHostname(const HostSharedPtr& host,
 class HealthCheckerFactoryContextImpl : public Server::Configuration::HealthCheckerFactoryContext {
 public:
   HealthCheckerFactoryContextImpl(Upstream::Cluster& cluster, Envoy::Runtime::Loader& runtime,
-                                  Envoy::Runtime::RandomGenerator& random,
                                   Event::Dispatcher& dispatcher,
                                   HealthCheckEventLoggerPtr&& event_logger,
                                   ProtobufMessage::ValidationVisitor& validation_visitor,
                                   Api::Api& api)
-      : cluster_(cluster), runtime_(runtime), random_(random), dispatcher_(dispatcher),
+      : cluster_(cluster), runtime_(runtime), dispatcher_(dispatcher),
         event_logger_(std::move(event_logger)), validation_visitor_(validation_visitor), api_(api) {
   }
   Upstream::Cluster& cluster() override { return cluster_; }
   Envoy::Runtime::Loader& runtime() override { return runtime_; }
-  Envoy::Runtime::RandomGenerator& random() override { return random_; }
   Event::Dispatcher& dispatcher() override { return dispatcher_; }
   HealthCheckEventLoggerPtr eventLogger() override { return std::move(event_logger_); }
   ProtobufMessage::ValidationVisitor& messageValidationVisitor() override {
@@ -78,7 +78,6 @@ public:
 private:
   Upstream::Cluster& cluster_;
   Envoy::Runtime::Loader& runtime_;
-  Envoy::Runtime::RandomGenerator& random_;
   Event::Dispatcher& dispatcher_;
   HealthCheckEventLoggerPtr event_logger_;
   ProtobufMessage::ValidationVisitor& validation_visitor_;
@@ -87,7 +86,7 @@ private:
 
 HealthCheckerSharedPtr HealthCheckerFactory::create(
     const envoy::config::core::v3::HealthCheck& health_check_config, Upstream::Cluster& cluster,
-    Runtime::Loader& runtime, Runtime::RandomGenerator& random, Event::Dispatcher& dispatcher,
+    Runtime::Loader& runtime, Event::Dispatcher& dispatcher,
     AccessLog::AccessLogManager& log_manager,
     ProtobufMessage::ValidationVisitor& validation_visitor, Api::Api& api) {
   HealthCheckEventLoggerPtr event_logger;
@@ -98,24 +97,26 @@ HealthCheckerSharedPtr HealthCheckerFactory::create(
   switch (health_check_config.health_checker_case()) {
   case envoy::config::core::v3::HealthCheck::HealthCheckerCase::kHttpHealthCheck:
     return std::make_shared<ProdHttpHealthCheckerImpl>(cluster, health_check_config, dispatcher,
-                                                       runtime, random, std::move(event_logger));
+                                                       runtime, api.randomGenerator(),
+                                                       std::move(event_logger));
   case envoy::config::core::v3::HealthCheck::HealthCheckerCase::kTcpHealthCheck:
     return std::make_shared<TcpHealthCheckerImpl>(cluster, health_check_config, dispatcher, runtime,
-                                                  random, std::move(event_logger));
+                                                  api.randomGenerator(), std::move(event_logger));
   case envoy::config::core::v3::HealthCheck::HealthCheckerCase::kGrpcHealthCheck:
     if (!(cluster.info()->features() & Upstream::ClusterInfo::Features::HTTP2)) {
       throw EnvoyException(fmt::format("{} cluster must support HTTP/2 for gRPC healthchecking",
                                        cluster.info()->name()));
     }
     return std::make_shared<ProdGrpcHealthCheckerImpl>(cluster, health_check_config, dispatcher,
-                                                       runtime, random, std::move(event_logger));
+                                                       runtime, api.randomGenerator(),
+                                                       std::move(event_logger));
   case envoy::config::core::v3::HealthCheck::HealthCheckerCase::kCustomHealthCheck: {
     auto& factory =
         Config::Utility::getAndCheckFactory<Server::Configuration::CustomHealthCheckerFactory>(
             health_check_config.custom_health_check());
     std::unique_ptr<Server::Configuration::HealthCheckerFactoryContext> context(
-        new HealthCheckerFactoryContextImpl(cluster, runtime, random, dispatcher,
-                                            std::move(event_logger), validation_visitor, api));
+        new HealthCheckerFactoryContextImpl(cluster, runtime, dispatcher, std::move(event_logger),
+                                            validation_visitor, api));
     return factory.createCustomHealthChecker(health_check_config, *context);
   }
   default:
@@ -128,7 +129,7 @@ HttpHealthCheckerImpl::HttpHealthCheckerImpl(const Cluster& cluster,
                                              const envoy::config::core::v3::HealthCheck& config,
                                              Event::Dispatcher& dispatcher,
                                              Runtime::Loader& runtime,
-                                             Runtime::RandomGenerator& random,
+                                             Random::RandomGenerator& random,
                                              HealthCheckEventLoggerPtr&& event_logger)
     : HealthCheckerImplBase(cluster, config, dispatcher, runtime, random, std::move(event_logger)),
       path_(config.http_health_check().path()), host_value_(config.http_health_check().host()),
@@ -140,7 +141,8 @@ HttpHealthCheckerImpl::HttpHealthCheckerImpl(const Cluster& cluster,
       codec_client_type_(
           codecClientType(config.http_health_check().hidden_envoy_deprecated_use_http2()
                               ? envoy::type::v3::HTTP2
-                              : config.http_health_check().codec_client_type())) {
+                              : config.http_health_check().codec_client_type())),
+      random_generator_(random) {
   // The deprecated service_name field was previously being used to compare with the health checked
   // cluster name using a StartsWith comparison. Since StartsWith is essentially a prefix
   // comparison, representing the intent by using a StringMatcher prefix is a more natural way.
@@ -250,7 +252,8 @@ void HttpHealthCheckerImpl::HttpActiveHealthCheckSession::onEvent(Network::Conne
 void HttpHealthCheckerImpl::HttpActiveHealthCheckSession::onInterval() {
   if (!client_) {
     Upstream::Host::CreateConnectionData conn =
-        host_->createHealthCheckConnection(parent_.dispatcher_, parent_.transportSocketOptions());
+        host_->createHealthCheckConnection(parent_.dispatcher_, parent_.transportSocketOptions(),
+                                           parent_.transportSocketMatchMetadata().get());
     client_.reset(parent_.createCodecClient(conn));
     client_->addConnectionCallbacks(connection_callback_impl_);
     expect_reset_ = false;
@@ -302,8 +305,7 @@ HttpHealthCheckerImpl::HttpActiveHealthCheckSession::healthCheckResult() {
     parent_.stats_.verify_cluster_.inc();
     std::string service_cluster_healthchecked =
         response_headers_->EnvoyUpstreamHealthCheckedCluster()
-            ? std::string(
-                  response_headers_->EnvoyUpstreamHealthCheckedCluster()->value().getStringView())
+            ? std::string(response_headers_->getEnvoyUpstreamHealthCheckedClusterValue())
             : EMPTY_STRING;
     if (parent_.service_name_matcher_->match(service_cluster_healthchecked)) {
       return degraded ? HealthCheckResult::Degraded : HealthCheckResult::Succeeded;
@@ -343,6 +345,14 @@ bool HttpHealthCheckerImpl::HttpActiveHealthCheckSession::shouldClose() const {
     return false;
   }
 
+  if (!parent_.reuse_connection_) {
+    return true;
+  }
+
+  if (Runtime::runtimeFeatureEnabled("envoy.reloadable_features.fixed_connection_close")) {
+    return Http::HeaderUtility::shouldCloseConnection(client_->protocol(), *response_headers_);
+  }
+
   if (response_headers_->Connection()) {
     const bool close =
         absl::EqualsIgnoreCase(response_headers_->Connection()->value().getStringView(),
@@ -359,10 +369,6 @@ bool HttpHealthCheckerImpl::HttpActiveHealthCheckSession::shouldClose() const {
     if (close) {
       return true;
     }
-  }
-
-  if (!parent_.reuse_connection_) {
-    return true;
   }
 
   return false;
@@ -398,7 +404,7 @@ HttpHealthCheckerImpl::codecClientType(const envoy::type::v3::CodecClientType& t
 Http::CodecClient*
 ProdHttpHealthCheckerImpl::createCodecClient(Upstream::Host::CreateConnectionData& data) {
   return new Http::CodecClientProd(codec_client_type_, std::move(data.connection_),
-                                   data.host_description_, dispatcher_);
+                                   data.host_description_, dispatcher_, random_generator_);
 }
 
 TcpHealthCheckMatcher::MatchSegments TcpHealthCheckMatcher::loadProtoBytes(
@@ -419,7 +425,7 @@ TcpHealthCheckMatcher::MatchSegments TcpHealthCheckMatcher::loadProtoBytes(
 bool TcpHealthCheckMatcher::match(const MatchSegments& expected, const Buffer::Instance& buffer) {
   uint64_t start_index = 0;
   for (const std::vector<uint8_t>& segment : expected) {
-    ssize_t search_result = buffer.search(&segment[0], segment.size(), start_index);
+    ssize_t search_result = buffer.search(segment.data(), segment.size(), start_index);
     if (search_result == -1) {
       return false;
     }
@@ -433,7 +439,7 @@ bool TcpHealthCheckMatcher::match(const MatchSegments& expected, const Buffer::I
 TcpHealthCheckerImpl::TcpHealthCheckerImpl(const Cluster& cluster,
                                            const envoy::config::core::v3::HealthCheck& config,
                                            Event::Dispatcher& dispatcher, Runtime::Loader& runtime,
-                                           Runtime::RandomGenerator& random,
+                                           Random::RandomGenerator& random,
                                            HealthCheckEventLoggerPtr&& event_logger)
     : HealthCheckerImplBase(cluster, config, dispatcher, runtime, random, std::move(event_logger)),
       send_bytes_([&config] {
@@ -505,7 +511,9 @@ void TcpHealthCheckerImpl::TcpActiveHealthCheckSession::onEvent(Network::Connect
 void TcpHealthCheckerImpl::TcpActiveHealthCheckSession::onInterval() {
   if (!client_) {
     client_ =
-        host_->createHealthCheckConnection(parent_.dispatcher_, parent_.transportSocketOptions())
+        host_
+            ->createHealthCheckConnection(parent_.dispatcher_, parent_.transportSocketOptions(),
+                                          parent_.transportSocketMatchMetadata().get())
             .connection_;
     session_callbacks_ = std::make_shared<TcpSessionCallbacks>(*this);
     client_->addConnectionCallbacks(*session_callbacks_);
@@ -519,7 +527,7 @@ void TcpHealthCheckerImpl::TcpActiveHealthCheckSession::onInterval() {
   if (!parent_.send_bytes_.empty()) {
     Buffer::OwnedImpl data;
     for (const std::vector<uint8_t>& segment : parent_.send_bytes_) {
-      data.add(&segment[0], segment.size());
+      data.add(segment.data(), segment.size());
     }
 
     client_->write(data, false);
@@ -536,9 +544,10 @@ GrpcHealthCheckerImpl::GrpcHealthCheckerImpl(const Cluster& cluster,
                                              const envoy::config::core::v3::HealthCheck& config,
                                              Event::Dispatcher& dispatcher,
                                              Runtime::Loader& runtime,
-                                             Runtime::RandomGenerator& random,
+                                             Random::RandomGenerator& random,
                                              HealthCheckEventLoggerPtr&& event_logger)
     : HealthCheckerImplBase(cluster, config, dispatcher, runtime, random, std::move(event_logger)),
+      random_generator_(random),
       service_method_(*Protobuf::DescriptorPool::generated_pool()->FindMethodByName(
           "grpc.health.v1.Health.Check")) {
   if (!config.grpc_health_check().service_name().empty()) {
@@ -583,8 +592,8 @@ void GrpcHealthCheckerImpl::GrpcActiveHealthCheckSession::decodeHeaders(
                   end_stream);
     return;
   }
-  if (!Grpc::Common::hasGrpcContentType(*headers)) {
-    onRpcComplete(Grpc::Status::WellKnownGrpcStatus::Internal, "invalid gRPC content-type", false);
+  if (!Grpc::Common::isGrpcResponseHeaders(*headers, end_stream)) {
+    onRpcComplete(Grpc::Status::WellKnownGrpcStatus::Internal, "not a gRPC request", false);
     return;
   }
   if (end_stream) {
@@ -659,7 +668,8 @@ void GrpcHealthCheckerImpl::GrpcActiveHealthCheckSession::onEvent(Network::Conne
 void GrpcHealthCheckerImpl::GrpcActiveHealthCheckSession::onInterval() {
   if (!client_) {
     Upstream::Host::CreateConnectionData conn =
-        host_->createHealthCheckConnection(parent_.dispatcher_, parent_.transportSocketOptions());
+        host_->createHealthCheckConnection(parent_.dispatcher_, parent_.transportSocketOptions(),
+                                           parent_.transportSocketMatchMetadata().get());
     client_ = parent_.createCodecClient(conn);
     client_->addConnectionCallbacks(connection_callback_impl_);
     client_->setCodecConnectionCallbacks(http_connection_callback_impl_);
@@ -694,16 +704,24 @@ void GrpcHealthCheckerImpl::GrpcActiveHealthCheckSession::onInterval() {
 void GrpcHealthCheckerImpl::GrpcActiveHealthCheckSession::onResetStream(Http::StreamResetReason,
                                                                         absl::string_view) {
   const bool expected_reset = expect_reset_;
+  const bool goaway = received_no_error_goaway_;
   resetState();
 
   if (expected_reset) {
     // Stream reset was initiated by us (bogus gRPC response, timeout or cluster host is going
-    // away). In these cases health check failure has already been reported, so just return.
+    // away). In these cases health check failure has already been reported and a GOAWAY (if any)
+    // has already been handled, so just return.
     return;
   }
 
   ENVOY_CONN_LOG(debug, "connection/stream error health_flags={}", *client_,
                  HostUtility::healthFlagsToString(*host_));
+
+  if (goaway || !parent_.reuse_connection_) {
+    // Stream reset was unexpected, so we haven't closed the connection
+    // yet in response to a GOAWAY or due to disabled connection reuse.
+    client_->close();
+  }
 
   // TODO(baranov1ch): according to all HTTP standards, we should check if reason is one of
   // Http::StreamResetReason::RemoteRefusedStreamReset (which may mean GOAWAY),
@@ -713,9 +731,19 @@ void GrpcHealthCheckerImpl::GrpcActiveHealthCheckSession::onResetStream(Http::St
   handleFailure(envoy::data::core::v3::NETWORK);
 }
 
-void GrpcHealthCheckerImpl::GrpcActiveHealthCheckSession::onGoAway() {
+void GrpcHealthCheckerImpl::GrpcActiveHealthCheckSession::onGoAway(
+    Http::GoAwayErrorCode error_code) {
   ENVOY_CONN_LOG(debug, "connection going away health_flags={}", *client_,
                  HostUtility::healthFlagsToString(*host_));
+  // If we have an active health check probe and receive a GOAWAY indicating
+  // graceful shutdown, allow the probe to complete before closing the connection.
+  // The connection will be closed when the active check completes or another
+  // terminal condition occurs, such as a timeout or stream reset.
+  if (request_encoder_ && error_code == Http::GoAwayErrorCode::NoError) {
+    received_no_error_goaway_ = true;
+    return;
+  }
+
   // Even if we have active health check probe, fail it on GOAWAY and schedule new one.
   if (request_encoder_) {
     handleFailure(envoy::data::core::v3::NETWORK);
@@ -748,6 +776,9 @@ void GrpcHealthCheckerImpl::GrpcActiveHealthCheckSession::onRpcComplete(
     handleFailure(envoy::data::core::v3::ACTIVE);
   }
 
+  // Read the value as we may call resetState() and clear it.
+  const bool goaway = received_no_error_goaway_;
+
   // |end_stream| will be false if we decided to stop healthcheck before HTTP stream has ended -
   // invalid gRPC payload, unexpected message stream or wrong content-type.
   if (end_stream) {
@@ -758,7 +789,7 @@ void GrpcHealthCheckerImpl::GrpcActiveHealthCheckSession::onRpcComplete(
     request_encoder_->getStream().resetStream(Http::StreamResetReason::LocalReset);
   }
 
-  if (!parent_.reuse_connection_) {
+  if (!parent_.reuse_connection_ || goaway) {
     client_->close();
   }
 }
@@ -768,13 +799,18 @@ void GrpcHealthCheckerImpl::GrpcActiveHealthCheckSession::resetState() {
   request_encoder_ = nullptr;
   decoder_ = Grpc::Decoder();
   health_check_response_.reset();
+  received_no_error_goaway_ = false;
 }
 
 void GrpcHealthCheckerImpl::GrpcActiveHealthCheckSession::onTimeout() {
   ENVOY_CONN_LOG(debug, "connection/stream timeout health_flags={}", *client_,
                  HostUtility::healthFlagsToString(*host_));
   expect_reset_ = true;
-  request_encoder_->getStream().resetStream(Http::StreamResetReason::LocalReset);
+  if (received_no_error_goaway_ || !parent_.reuse_connection_) {
+    client_->close();
+  } else {
+    request_encoder_->getStream().resetStream(Http::StreamResetReason::LocalReset);
+  }
 }
 
 void GrpcHealthCheckerImpl::GrpcActiveHealthCheckSession::logHealthCheckStatus(
@@ -793,9 +829,11 @@ void GrpcHealthCheckerImpl::GrpcActiveHealthCheckSession::logHealthCheckStatus(
     case grpc::health::v1::HealthCheckResponse::UNKNOWN:
       service_status = "unknown";
       break;
+    case grpc::health::v1::HealthCheckResponse::SERVICE_UNKNOWN:
+      service_status = "service_unknown";
+      break;
     default:
-      // Should not happen really, Protobuf should not parse undefined enums values.
-      NOT_REACHED_GCOVR_EXCL_LINE;
+      service_status = "unknown_healthcheck_response";
       break;
     }
   }
@@ -812,9 +850,9 @@ void GrpcHealthCheckerImpl::GrpcActiveHealthCheckSession::logHealthCheckStatus(
 
 Http::CodecClientPtr
 ProdGrpcHealthCheckerImpl::createCodecClient(Upstream::Host::CreateConnectionData& data) {
-  return std::make_unique<Http::CodecClientProd>(Http::CodecClient::Type::HTTP2,
-                                                 std::move(data.connection_),
-                                                 data.host_description_, dispatcher_);
+  return std::make_unique<Http::CodecClientProd>(
+      Http::CodecClient::Type::HTTP2, std::move(data.connection_), data.host_description_,
+      dispatcher_, random_generator_);
 }
 
 std::ostream& operator<<(std::ostream& out, HealthState state) {

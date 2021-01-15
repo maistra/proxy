@@ -1,12 +1,10 @@
 load("@rules_cc//cc:defs.bzl", "cc_library", "cc_proto_library")
+load("//bazel:envoy_build_system.bzl", "envoy_package")
+load("//bazel:envoy_internal.bzl", "envoy_select_force_libcpp")
 
 licenses(["notice"])  # Apache 2
 
-load("//bazel:envoy_build_system.bzl", "envoy_package")
-
 envoy_package()
-
-load("//bazel:envoy_internal.bzl", "envoy_select_force_libcpp")
 
 exports_files([
     "gen_sh_test_runner.sh",
@@ -41,12 +39,6 @@ genrule(
     # Undocumented attr to depend on workspace status files.
     # https://github.com/bazelbuild/bazel/issues/4942
     stamp = 1,
-)
-
-sh_binary(
-    name = "fuzzit_wrapper",
-    srcs = ["fuzzit_wrapper.sh"],
-    data = ["@fuzzit_linux//:fuzzit"],
 )
 
 # A target to optionally link C++ standard library dynamically in sanitizer runs.
@@ -108,6 +100,11 @@ config_setting(
 )
 
 config_setting(
+    name = "no_debug_info",
+    values = {"define": "no_debug_info=1"},
+)
+
+config_setting(
     name = "asan_build",
     values = {"define": "ENVOY_CONFIG_ASAN=1"},
 )
@@ -125,11 +122,6 @@ config_setting(
 config_setting(
     name = "coverage_build",
     values = {"define": "ENVOY_CONFIG_COVERAGE=1"},
-)
-
-config_setting(
-    name = "compdb_build",
-    values = {"define": "ENVOY_CONFIG_COMPILATION_DATABASE=1"},
 )
 
 config_setting(
@@ -161,6 +153,37 @@ config_setting(
 config_setting(
     name = "debug_tcmalloc",
     values = {"define": "tcmalloc=debug"},
+)
+
+config_setting(
+    name = "gperftools_tcmalloc",
+    values = {"define": "tcmalloc=gperftools"},
+)
+
+# As select() can't be nested we need these specialized settings to avoid ambiguity when choosing
+# tcmalloc's flavor for x86_64 builds.
+config_setting(
+    name = "disable_tcmalloc_on_linux_x86_64",
+    values = {
+        "define": "tcmalloc=disabled",
+        "cpu": "k8",
+    },
+)
+
+config_setting(
+    name = "gperftools_tcmalloc_on_linux_x86_64",
+    values = {
+        "define": "tcmalloc=gperftools",
+        "cpu": "k8",
+    },
+)
+
+config_setting(
+    name = "debug_tcmalloc_on_linux_x86_64",
+    values = {
+        "define": "tcmalloc=debug",
+        "cpu": "k8",
+    },
 )
 
 config_setting(
@@ -200,6 +223,11 @@ config_setting(
 config_setting(
     name = "enable_path_normalization_by_default",
     values = {"define": "path_normalization_by_default=true"},
+)
+
+config_setting(
+    name = "enable_new_codecs_in_integration_tests",
+    values = {"define": "use_new_codecs_in_integration_tests=true"},
 )
 
 cc_proto_library(
@@ -247,10 +275,19 @@ config_setting(
 )
 
 config_setting(
+    name = "zlib_ng",
+    constraint_values = [
+        "@bazel_tools//platforms:linux",
+    ],
+    values = {"define": "zlib=ng"},
+)
+
+config_setting(
     name = "enable_quiche",
     values = {"define": "quiche=enabled"},
 )
 
+# TODO: consider converting WAVM VM support to an extension (https://github.com/envoyproxy/envoy/issues/12574)
 config_setting(
     name = "wasm_all",
     values = {"define": "wasm=enabled"},
@@ -259,6 +296,16 @@ config_setting(
 config_setting(
     name = "wasm_wavm",
     values = {"define": "wasm=wavm"},
+)
+
+config_setting(
+    name = "wasm_v8",
+    values = {"define": "wasm=v8"},
+)
+
+config_setting(
+    name = "wasm_none",
+    values = {"define": "wasm=disabled"},
 )
 
 # Alias pointing to the selected version of BoringSSL:
@@ -352,6 +399,19 @@ config_setting(
 config_setting(
     name = "android_logger",
     values = {"define": "logger=android"},
+)
+
+config_setting(
+    name = "libfuzzer_coverage",
+    define_values = {
+        "FUZZING_ENGINE": "libfuzzer",
+        "ENVOY_CONFIG_COVERAGE": "1",
+    },
+)
+
+config_setting(
+    name = "libfuzzer",
+    values = {"define": "FUZZING_ENGINE=libfuzzer"},
 )
 
 alias(

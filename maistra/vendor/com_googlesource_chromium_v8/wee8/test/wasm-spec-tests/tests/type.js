@@ -111,36 +111,40 @@ function assert_exhaustion(action) {
   throw new Error("Wasm resource exhaustion expected");
 }
 
-function assert_return(action, expected) {
+function assert_return(action, ...expected) {
   let actual = action();
-  switch (expected) {
-    case "nan:canonical":
-    case "nan:arithmetic":
-    case "nan:any":
-      // Note that JS can't reliably distinguish different NaN values,
-      // so there's no good way to test that it's a canonical NaN.
-      if (!Number.isNaN(actual)) {
-        throw new Error("Wasm return value NaN expected, got " + actual);
-      };
-      return;
-    default:
-      if (!Object.is(actual, expected)) {
-        throw new Error("Wasm return value " + expected + " expected, got " + actual);
-      };
+  if (actual === undefined) {
+    actual = [];
+  } else if (!Array.isArray(actual)) {
+    actual = [actual];
+  }
+  if (actual.length !== expected.length) {
+    throw new Error(expected.length + " value(s) expected, got " + actual.length);
+  }
+  for (let i = 0; i < actual.length; ++i) {
+    switch (expected[i]) {
+      case "nan:canonical":
+      case "nan:arithmetic":
+      case "nan:any":
+        // Note that JS can't reliably distinguish different NaN values,
+        // so there's no good way to test that it's a canonical NaN.
+        if (!Number.isNaN(actual[i])) {
+          throw new Error("Wasm return value NaN expected, got " + actual[i]);
+        };
+        return;
+      default:
+        if (!Object.is(actual[i], expected[i])) {
+          throw new Error("Wasm return value " + expected[i] + " expected, got " + actual[i]);
+        };
+    }
   }
 }
 
 // type.wast:3
-let $1 = instance("\x00\x61\x73\x6d\x01\x00\x00\x00\x01\xc5\x80\x80\x80\x00\x0e\x60\x00\x00\x60\x00\x00\x60\x01\x7f\x00\x60\x01\x7f\x00\x60\x00\x01\x7f\x60\x01\x7f\x01\x7f\x60\x01\x7f\x01\x7f\x60\x02\x7d\x7c\x00\x60\x02\x7d\x7c\x00\x60\x02\x7d\x7c\x00\x60\x02\x7d\x7c\x00\x60\x02\x7d\x7c\x00\x60\x06\x7d\x7c\x7f\x7c\x7f\x7f\x00\x60\x03\x7d\x7c\x7f\x00");
+let $1 = instance("\x00\x61\x73\x6d\x01\x00\x00\x00\x01\x89\x81\x80\x80\x00\x17\x60\x00\x00\x60\x00\x00\x60\x01\x7f\x00\x60\x01\x7f\x00\x60\x00\x01\x7f\x60\x01\x7f\x01\x7f\x60\x01\x7f\x01\x7f\x60\x02\x7d\x7c\x00\x60\x00\x02\x7e\x7d\x60\x02\x7f\x7e\x02\x7d\x7c\x60\x02\x7d\x7c\x00\x60\x02\x7d\x7c\x00\x60\x02\x7d\x7c\x00\x60\x02\x7d\x7c\x00\x60\x00\x02\x7e\x7d\x60\x02\x7f\x7e\x02\x7d\x7c\x60\x02\x7f\x7e\x02\x7d\x7c\x60\x06\x7d\x7c\x7f\x7c\x7f\x7f\x00\x60\x00\x05\x7e\x7e\x7d\x7d\x7f\x60\x04\x7f\x7f\x7e\x7f\x04\x7d\x7c\x7c\x7f\x60\x03\x7d\x7c\x7f\x00\x60\x00\x03\x7e\x7e\x7d\x60\x05\x7f\x7f\x7e\x7f\x7f\x04\x7d\x7c\x7c\x7f");
 
 // type.wast:43
 assert_malformed("\x3c\x6d\x61\x6c\x66\x6f\x72\x6d\x65\x64\x20\x71\x75\x6f\x74\x65\x3e");
 
 // type.wast:47
 assert_malformed("\x3c\x6d\x61\x6c\x66\x6f\x72\x6d\x65\x64\x20\x71\x75\x6f\x74\x65\x3e");
-
-// type.wast:52
-assert_invalid("\x00\x61\x73\x6d\x01\x00\x00\x00\x01\x86\x80\x80\x80\x00\x01\x60\x00\x02\x7f\x7f");
-
-// type.wast:56
-assert_invalid("\x00\x61\x73\x6d\x01\x00\x00\x00\x01\x86\x80\x80\x80\x00\x01\x60\x00\x02\x7f\x7f");

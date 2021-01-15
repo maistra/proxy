@@ -144,7 +144,7 @@ const Operator* CommonOperatorBuilder::MarkAsSafetyCheck(
 
 const Operator* CommonOperatorBuilder::DelayedStringConstant(
     const StringConstantBase* str) {
-  return new (zone()) Operator1<const StringConstantBase*>(
+  return zone()->New<Operator1<const StringConstantBase*>>(
       IrOpcode::kDelayedStringConstant, Operator::kPure,
       "DelayedStringConstant", 0, 0, 0, 1, 0, 0, str);
 }
@@ -257,7 +257,8 @@ size_t hash_value(RelocatablePtrConstantInfo const& p) {
 
 std::ostream& operator<<(std::ostream& os,
                          RelocatablePtrConstantInfo const& p) {
-  return os << p.value() << ", " << p.rmode() << ", " << p.type();
+  return os << p.value() << ", " << static_cast<int>(p.rmode()) << ", "
+            << p.type();
 }
 
 SparseInputMask::InputIterator::InputIterator(
@@ -279,6 +280,15 @@ void SparseInputMask::InputIterator::Advance() {
     ++real_index_;
   }
   bit_mask_ >>= 1;
+}
+
+size_t SparseInputMask::InputIterator::AdvanceToNextRealOrEnd() {
+  DCHECK_NE(bit_mask_, SparseInputMask::kDenseBitMask);
+
+  size_t count = base::bits::CountTrailingZeros(bit_mask_);
+  bit_mask_ >>= count;
+  DCHECK(IsReal() || IsEnd());
+  return count;
 }
 
 Node* SparseInputMask::InputIterator::GetReal() const {
@@ -445,24 +455,21 @@ IfValueParameters const& IfValueParametersOf(const Operator* op) {
   return OpParameter<IfValueParameters>(op);
 }
 
-#define COMMON_CACHED_OP_LIST(V)                                              \
-  V(Dead, Operator::kFoldable, 0, 0, 0, 1, 1, 1)                              \
-  V(Unreachable, Operator::kFoldable, 0, 1, 1, 1, 1, 0)                       \
-  V(IfTrue, Operator::kKontrol, 0, 0, 1, 0, 0, 1)                             \
-  V(IfFalse, Operator::kKontrol, 0, 0, 1, 0, 0, 1)                            \
-  V(IfSuccess, Operator::kKontrol, 0, 0, 1, 0, 0, 1)                          \
-  V(IfException, Operator::kKontrol, 0, 1, 1, 1, 1, 1)                        \
-  V(Throw, Operator::kKontrol, 0, 1, 1, 0, 0, 1)                              \
-  V(Terminate, Operator::kKontrol, 0, 1, 1, 0, 0, 1)                          \
-  V(OsrNormalEntry, Operator::kFoldable, 0, 1, 1, 0, 1, 1)                    \
-  V(OsrLoopEntry, Operator::kFoldable | Operator::kNoThrow, 0, 1, 1, 0, 1, 1) \
-  V(LoopExit, Operator::kKontrol, 0, 0, 2, 0, 0, 1)                           \
-  V(LoopExitValue, Operator::kPure, 1, 0, 1, 1, 0, 0)                         \
-  V(LoopExitEffect, Operator::kNoThrow, 0, 1, 1, 0, 1, 0)                     \
-  V(Checkpoint, Operator::kKontrol, 0, 1, 1, 0, 1, 0)                         \
-  V(FinishRegion, Operator::kKontrol, 1, 1, 0, 1, 1, 0)                       \
-  V(Retain, Operator::kKontrol, 1, 1, 0, 0, 1, 0)                             \
-  V(StaticAssert, Operator::kFoldable, 1, 1, 0, 0, 1, 0)
+#define COMMON_CACHED_OP_LIST(V)                          \
+  V(Dead, Operator::kFoldable, 0, 0, 0, 1, 1, 1)          \
+  V(Unreachable, Operator::kFoldable, 0, 1, 1, 1, 1, 0)   \
+  V(IfTrue, Operator::kKontrol, 0, 0, 1, 0, 0, 1)         \
+  V(IfFalse, Operator::kKontrol, 0, 0, 1, 0, 0, 1)        \
+  V(IfSuccess, Operator::kKontrol, 0, 0, 1, 0, 0, 1)      \
+  V(IfException, Operator::kKontrol, 0, 1, 1, 1, 1, 1)    \
+  V(Throw, Operator::kKontrol, 0, 1, 1, 0, 0, 1)          \
+  V(Terminate, Operator::kKontrol, 0, 1, 1, 0, 0, 1)      \
+  V(LoopExit, Operator::kKontrol, 0, 0, 2, 0, 0, 1)       \
+  V(LoopExitValue, Operator::kPure, 1, 0, 1, 1, 0, 0)     \
+  V(LoopExitEffect, Operator::kNoThrow, 0, 1, 1, 0, 1, 0) \
+  V(Checkpoint, Operator::kKontrol, 0, 1, 1, 0, 1, 0)     \
+  V(FinishRegion, Operator::kKontrol, 1, 1, 0, 1, 1, 0)   \
+  V(Retain, Operator::kKontrol, 1, 1, 0, 0, 1, 0)
 
 #define CACHED_BRANCH_LIST(V)   \
   V(None, CriticalSafetyCheck)  \
@@ -882,7 +889,7 @@ struct CommonOperatorGlobalCache final {
 namespace {
 DEFINE_LAZY_LEAKY_OBJECT_GETTER(CommonOperatorGlobalCache,
                                 GetCommonOperatorGlobalCache)
-}
+}  // namespace
 
 CommonOperatorBuilder::CommonOperatorBuilder(Zone* zone)
     : cache_(*GetCommonOperatorGlobalCache()), zone_(zone) {}
@@ -908,7 +915,7 @@ const Operator* CommonOperatorBuilder::End(size_t control_input_count) {
       break;
   }
   // Uncached.
-  return new (zone()) Operator(             //--
+  return zone()->New<Operator>(             //--
       IrOpcode::kEnd, Operator::kKontrol,   // opcode
       "End",                                // name
       0, 0, control_input_count, 0, 0, 0);  // counts
@@ -925,10 +932,16 @@ const Operator* CommonOperatorBuilder::Return(int value_input_count) {
       break;
   }
   // Uncached.
-  return new (zone()) Operator(               //--
+  return zone()->New<Operator>(               //--
       IrOpcode::kReturn, Operator::kNoThrow,  // opcode
       "Return",                               // name
       value_input_count + 1, 1, 1, 0, 0, 1);  // counts
+}
+
+const Operator* CommonOperatorBuilder::StaticAssert(const char* source) {
+  return zone()->New<Operator1<const char*>>(
+      IrOpcode::kStaticAssert, Operator::kFoldable, "StaticAssert", 1, 1, 0, 0,
+      1, 0, source);
 }
 
 const Operator* CommonOperatorBuilder::Branch(BranchHint hint,
@@ -956,7 +969,7 @@ const Operator* CommonOperatorBuilder::Deoptimize(
   // Uncached
   DeoptimizeParameters parameter(kind, reason, feedback,
                                  IsSafetyCheck::kNoSafetyCheck);
-  return new (zone()) Operator1<DeoptimizeParameters>(  // --
+  return zone()->New<Operator1<DeoptimizeParameters>>(  // --
       IrOpcode::kDeoptimize,                            // opcodes
       Operator::kFoldable | Operator::kNoThrow,         // properties
       "Deoptimize",                                     // name
@@ -977,7 +990,7 @@ const Operator* CommonOperatorBuilder::DeoptimizeIf(
 #undef CACHED_DEOPTIMIZE_IF
   // Uncached
   DeoptimizeParameters parameter(kind, reason, feedback, is_safety_check);
-  return new (zone()) Operator1<DeoptimizeParameters>(  // --
+  return zone()->New<Operator1<DeoptimizeParameters>>(  // --
       IrOpcode::kDeoptimizeIf,                          // opcode
       Operator::kFoldable | Operator::kNoThrow,         // properties
       "DeoptimizeIf",                                   // name
@@ -998,7 +1011,7 @@ const Operator* CommonOperatorBuilder::DeoptimizeUnless(
 #undef CACHED_DEOPTIMIZE_UNLESS
   // Uncached
   DeoptimizeParameters parameter(kind, reason, feedback, is_safety_check);
-  return new (zone()) Operator1<DeoptimizeParameters>(  // --
+  return zone()->New<Operator1<DeoptimizeParameters>>(  // --
       IrOpcode::kDeoptimizeUnless,                      // opcode
       Operator::kFoldable | Operator::kNoThrow,         // properties
       "DeoptimizeUnless",                               // name
@@ -1017,7 +1030,7 @@ const Operator* CommonOperatorBuilder::TrapIf(TrapId trap_id) {
       break;
   }
   // Uncached
-  return new (zone()) Operator1<TrapId>(         // --
+  return zone()->New<Operator1<TrapId>>(         // --
       IrOpcode::kTrapIf,                         // opcode
       Operator::kFoldable | Operator::kNoThrow,  // properties
       "TrapIf",                                  // name
@@ -1036,7 +1049,7 @@ const Operator* CommonOperatorBuilder::TrapUnless(TrapId trap_id) {
       break;
   }
   // Uncached
-  return new (zone()) Operator1<TrapId>(         // --
+  return zone()->New<Operator1<TrapId>>(         // --
       IrOpcode::kTrapUnless,                     // opcode
       Operator::kFoldable | Operator::kNoThrow,  // properties
       "TrapUnless",                              // name
@@ -1045,7 +1058,7 @@ const Operator* CommonOperatorBuilder::TrapUnless(TrapId trap_id) {
 }
 
 const Operator* CommonOperatorBuilder::Switch(size_t control_output_count) {
-  return new (zone()) Operator(               // --
+  return zone()->New<Operator>(               // --
       IrOpcode::kSwitch, Operator::kKontrol,  // opcode
       "Switch",                               // name
       1, 0, 1, 0, 0, control_output_count);   // counts
@@ -1054,7 +1067,7 @@ const Operator* CommonOperatorBuilder::Switch(size_t control_output_count) {
 const Operator* CommonOperatorBuilder::IfValue(int32_t index,
                                                int32_t comparison_order,
                                                BranchHint hint) {
-  return new (zone()) Operator1<IfValueParameters>(       // --
+  return zone()->New<Operator1<IfValueParameters>>(       // --
       IrOpcode::kIfValue, Operator::kKontrol,             // opcode
       "IfValue",                                          // name
       0, 0, 1, 0, 0, 1,                                   // counts
@@ -1062,7 +1075,7 @@ const Operator* CommonOperatorBuilder::IfValue(int32_t index,
 }
 
 const Operator* CommonOperatorBuilder::IfDefault(BranchHint hint) {
-  return new (zone()) Operator1<BranchHint>(     // --
+  return zone()->New<Operator1<BranchHint>>(     // --
       IrOpcode::kIfDefault, Operator::kKontrol,  // opcode
       "IfDefault",                               // name
       0, 0, 1, 0, 0, 1,                          // counts
@@ -1070,7 +1083,7 @@ const Operator* CommonOperatorBuilder::IfDefault(BranchHint hint) {
 }
 
 const Operator* CommonOperatorBuilder::Start(int value_output_count) {
-  return new (zone()) Operator(                                    // --
+  return zone()->New<Operator>(                                    // --
       IrOpcode::kStart, Operator::kFoldable | Operator::kNoThrow,  // opcode
       "Start",                                                     // name
       0, 0, 0, value_output_count, 1, 1);                          // counts
@@ -1088,7 +1101,7 @@ const Operator* CommonOperatorBuilder::Loop(int control_input_count) {
       break;
   }
   // Uncached.
-  return new (zone()) Operator(             // --
+  return zone()->New<Operator>(             // --
       IrOpcode::kLoop, Operator::kKontrol,  // opcode
       "Loop",                               // name
       0, 0, control_input_count, 0, 0, 1);  // counts
@@ -1106,7 +1119,7 @@ const Operator* CommonOperatorBuilder::Merge(int control_input_count) {
       break;
   }
   // Uncached.
-  return new (zone()) Operator(              // --
+  return zone()->New<Operator>(              // --
       IrOpcode::kMerge, Operator::kKontrol,  // opcode
       "Merge",                               // name
       0, 0, control_input_count, 0, 0, 1);   // counts
@@ -1127,7 +1140,7 @@ const Operator* CommonOperatorBuilder::Parameter(int index,
     }
   }
   // Uncached.
-  return new (zone()) Operator1<ParameterInfo>(  // --
+  return zone()->New<Operator1<ParameterInfo>>(  // --
       IrOpcode::kParameter, Operator::kPure,     // opcode
       "Parameter",                               // name
       1, 0, 0, 1, 0, 0,                          // counts
@@ -1135,7 +1148,7 @@ const Operator* CommonOperatorBuilder::Parameter(int index,
 }
 
 const Operator* CommonOperatorBuilder::OsrValue(int index) {
-  return new (zone()) Operator1<int>(                // --
+  return zone()->New<Operator1<int>>(                // --
       IrOpcode::kOsrValue, Operator::kNoProperties,  // opcode
       "OsrValue",                                    // name
       0, 0, 1, 1, 0, 0,                              // counts
@@ -1143,7 +1156,7 @@ const Operator* CommonOperatorBuilder::OsrValue(int index) {
 }
 
 const Operator* CommonOperatorBuilder::Int32Constant(int32_t value) {
-  return new (zone()) Operator1<int32_t>(         // --
+  return zone()->New<Operator1<int32_t>>(         // --
       IrOpcode::kInt32Constant, Operator::kPure,  // opcode
       "Int32Constant",                            // name
       0, 0, 0, 1, 0, 0,                           // counts
@@ -1152,16 +1165,23 @@ const Operator* CommonOperatorBuilder::Int32Constant(int32_t value) {
 
 
 const Operator* CommonOperatorBuilder::Int64Constant(int64_t value) {
-  return new (zone()) Operator1<int64_t>(         // --
+  return zone()->New<Operator1<int64_t>>(         // --
       IrOpcode::kInt64Constant, Operator::kPure,  // opcode
       "Int64Constant",                            // name
       0, 0, 0, 1, 0, 0,                           // counts
       value);                                     // parameter
 }
 
+const Operator* CommonOperatorBuilder::TaggedIndexConstant(int32_t value) {
+  return zone()->New<Operator1<int32_t>>(               // --
+      IrOpcode::kTaggedIndexConstant, Operator::kPure,  // opcode
+      "TaggedIndexConstant",                            // name
+      0, 0, 0, 1, 0, 0,                                 // counts
+      value);                                           // parameter
+}
 
 const Operator* CommonOperatorBuilder::Float32Constant(volatile float value) {
-  return new (zone()) Operator1<float>(             // --
+  return zone()->New<Operator1<float>>(             // --
       IrOpcode::kFloat32Constant, Operator::kPure,  // opcode
       "Float32Constant",                            // name
       0, 0, 0, 1, 0, 0,                             // counts
@@ -1170,7 +1190,7 @@ const Operator* CommonOperatorBuilder::Float32Constant(volatile float value) {
 
 
 const Operator* CommonOperatorBuilder::Float64Constant(volatile double value) {
-  return new (zone()) Operator1<double>(            // --
+  return zone()->New<Operator1<double>>(            // --
       IrOpcode::kFloat64Constant, Operator::kPure,  // opcode
       "Float64Constant",                            // name
       0, 0, 0, 1, 0, 0,                             // counts
@@ -1180,7 +1200,7 @@ const Operator* CommonOperatorBuilder::Float64Constant(volatile double value) {
 
 const Operator* CommonOperatorBuilder::ExternalConstant(
     const ExternalReference& value) {
-  return new (zone()) Operator1<ExternalReference>(  // --
+  return zone()->New<Operator1<ExternalReference>>(  // --
       IrOpcode::kExternalConstant, Operator::kPure,  // opcode
       "ExternalConstant",                            // name
       0, 0, 0, 1, 0, 0,                              // counts
@@ -1189,7 +1209,7 @@ const Operator* CommonOperatorBuilder::ExternalConstant(
 
 
 const Operator* CommonOperatorBuilder::NumberConstant(volatile double value) {
-  return new (zone()) Operator1<double>(           // --
+  return zone()->New<Operator1<double>>(           // --
       IrOpcode::kNumberConstant, Operator::kPure,  // opcode
       "NumberConstant",                            // name
       0, 0, 0, 1, 0, 0,                            // counts
@@ -1197,7 +1217,7 @@ const Operator* CommonOperatorBuilder::NumberConstant(volatile double value) {
 }
 
 const Operator* CommonOperatorBuilder::PointerConstant(intptr_t value) {
-  return new (zone()) Operator1<intptr_t>(          // --
+  return zone()->New<Operator1<intptr_t>>(          // --
       IrOpcode::kPointerConstant, Operator::kPure,  // opcode
       "PointerConstant",                            // name
       0, 0, 0, 1, 0, 0,                             // counts
@@ -1206,7 +1226,7 @@ const Operator* CommonOperatorBuilder::PointerConstant(intptr_t value) {
 
 const Operator* CommonOperatorBuilder::HeapConstant(
     const Handle<HeapObject>& value) {
-  return new (zone()) Operator1<Handle<HeapObject>>(  // --
+  return zone()->New<Operator1<Handle<HeapObject>>>(  // --
       IrOpcode::kHeapConstant, Operator::kPure,       // opcode
       "HeapConstant",                                 // name
       0, 0, 0, 1, 0, 0,                               // counts
@@ -1215,7 +1235,7 @@ const Operator* CommonOperatorBuilder::HeapConstant(
 
 const Operator* CommonOperatorBuilder::CompressedHeapConstant(
     const Handle<HeapObject>& value) {
-  return new (zone()) Operator1<Handle<HeapObject>>(       // --
+  return zone()->New<Operator1<Handle<HeapObject>>>(       // --
       IrOpcode::kCompressedHeapConstant, Operator::kPure,  // opcode
       "CompressedHeapConstant",                            // name
       0, 0, 0, 1, 0, 0,                                    // counts
@@ -1233,9 +1253,14 @@ const StringConstantBase* StringConstantBaseOf(const Operator* op) {
   return OpParameter<const StringConstantBase*>(op);
 }
 
+const char* StaticAssertSourceOf(const Operator* op) {
+  DCHECK_EQ(IrOpcode::kStaticAssert, op->opcode());
+  return OpParameter<const char*>(op);
+}
+
 const Operator* CommonOperatorBuilder::RelocatableInt32Constant(
     int32_t value, RelocInfo::Mode rmode) {
-  return new (zone()) Operator1<RelocatablePtrConstantInfo>(  // --
+  return zone()->New<Operator1<RelocatablePtrConstantInfo>>(  // --
       IrOpcode::kRelocatableInt32Constant, Operator::kPure,   // opcode
       "RelocatableInt32Constant",                             // name
       0, 0, 0, 1, 0, 0,                                       // counts
@@ -1244,7 +1269,7 @@ const Operator* CommonOperatorBuilder::RelocatableInt32Constant(
 
 const Operator* CommonOperatorBuilder::RelocatableInt64Constant(
     int64_t value, RelocInfo::Mode rmode) {
-  return new (zone()) Operator1<RelocatablePtrConstantInfo>(  // --
+  return zone()->New<Operator1<RelocatablePtrConstantInfo>>(  // --
       IrOpcode::kRelocatableInt64Constant, Operator::kPure,   // opcode
       "RelocatableInt64Constant",                             // name
       0, 0, 0, 1, 0, 0,                                       // counts
@@ -1252,7 +1277,7 @@ const Operator* CommonOperatorBuilder::RelocatableInt64Constant(
 }
 
 const Operator* CommonOperatorBuilder::ObjectId(uint32_t object_id) {
-  return new (zone()) Operator1<uint32_t>(   // --
+  return zone()->New<Operator1<uint32_t>>(   // --
       IrOpcode::kObjectId, Operator::kPure,  // opcode
       "ObjectId",                            // name
       0, 0, 0, 1, 0, 0,                      // counts
@@ -1261,7 +1286,7 @@ const Operator* CommonOperatorBuilder::ObjectId(uint32_t object_id) {
 
 const Operator* CommonOperatorBuilder::Select(MachineRepresentation rep,
                                               BranchHint hint) {
-  return new (zone()) Operator1<SelectParameters>(  // --
+  return zone()->New<Operator1<SelectParameters>>(  // --
       IrOpcode::kSelect, Operator::kPure,           // opcode
       "Select",                                     // name
       3, 0, 0, 1, 0, 0,                             // counts
@@ -1280,7 +1305,7 @@ const Operator* CommonOperatorBuilder::Phi(MachineRepresentation rep,
   CACHED_PHI_LIST(CACHED_PHI)
 #undef CACHED_PHI
   // Uncached.
-  return new (zone()) Operator1<MachineRepresentation>(  // --
+  return zone()->New<Operator1<MachineRepresentation>>(  // --
       IrOpcode::kPhi, Operator::kPure,                   // opcode
       "Phi",                                             // name
       value_input_count, 0, 1, 1, 0, 0,                  // counts
@@ -1288,11 +1313,18 @@ const Operator* CommonOperatorBuilder::Phi(MachineRepresentation rep,
 }
 
 const Operator* CommonOperatorBuilder::TypeGuard(Type type) {
-  return new (zone()) Operator1<Type>(        // --
+  return zone()->New<Operator1<Type>>(        // --
       IrOpcode::kTypeGuard, Operator::kPure,  // opcode
       "TypeGuard",                            // name
       1, 1, 1, 1, 1, 0,                       // counts
       type);                                  // parameter
+}
+
+const Operator* CommonOperatorBuilder::FoldConstant() {
+  return zone()->New<Operator>(                  // --
+      IrOpcode::kFoldConstant, Operator::kPure,  // opcode
+      "FoldConstant",                            // name
+      2, 0, 0, 1, 0, 0);                         // counts
 }
 
 const Operator* CommonOperatorBuilder::EffectPhi(int effect_input_count) {
@@ -1307,7 +1339,7 @@ const Operator* CommonOperatorBuilder::EffectPhi(int effect_input_count) {
       break;
   }
   // Uncached.
-  return new (zone()) Operator(                  // --
+  return zone()->New<Operator>(                  // --
       IrOpcode::kEffectPhi, Operator::kKontrol,  // opcode
       "EffectPhi",                               // name
       0, effect_input_count, 1, 0, 1, 0);        // counts
@@ -1326,7 +1358,7 @@ const Operator* CommonOperatorBuilder::InductionVariablePhi(int input_count) {
       break;
   }
   // Uncached.
-  return new (zone()) Operator(                          // --
+  return zone()->New<Operator>(                          // --
       IrOpcode::kInductionVariablePhi, Operator::kPure,  // opcode
       "InductionVariablePhi",                            // name
       input_count, 0, 1, 1, 0, 0);                       // counts
@@ -1362,7 +1394,7 @@ const Operator* CommonOperatorBuilder::StateValues(int arguments,
 #endif
 
   // Uncached.
-  return new (zone()) Operator1<SparseInputMask>(  // --
+  return zone()->New<Operator1<SparseInputMask>>(  // --
       IrOpcode::kStateValues, Operator::kPure,     // opcode
       "StateValues",                               // name
       arguments, 0, 0, 1, 0, 0,                    // counts
@@ -1376,7 +1408,7 @@ const Operator* CommonOperatorBuilder::TypedStateValues(
          bitmask.CountReal() == static_cast<int>(types->size()));
 #endif
 
-  return new (zone()) Operator1<TypedStateValueInfo>(  // --
+  return zone()->New<Operator1<TypedStateValueInfo>>(  // --
       IrOpcode::kTypedStateValues, Operator::kPure,    // opcode
       "TypedStateValues",                              // name
       static_cast<int>(types->size()), 0, 0, 1, 0, 0,  // counts
@@ -1385,31 +1417,28 @@ const Operator* CommonOperatorBuilder::TypedStateValues(
 
 const Operator* CommonOperatorBuilder::ArgumentsElementsState(
     ArgumentsStateType type) {
-  return new (zone()) Operator1<ArgumentsStateType>(       // --
+  return zone()->New<Operator1<ArgumentsStateType>>(       // --
       IrOpcode::kArgumentsElementsState, Operator::kPure,  // opcode
       "ArgumentsElementsState",                            // name
       0, 0, 0, 1, 0, 0,                                    // counts
       type);                                               // parameter
 }
 
-const Operator* CommonOperatorBuilder::ArgumentsLengthState(
-    ArgumentsStateType type) {
-  return new (zone()) Operator1<ArgumentsStateType>(     // --
+const Operator* CommonOperatorBuilder::ArgumentsLengthState() {
+  return zone()->New<Operator>(                          // --
       IrOpcode::kArgumentsLengthState, Operator::kPure,  // opcode
       "ArgumentsLengthState",                            // name
-      0, 0, 0, 1, 0, 0,                                  // counts
-      type);                                             // parameter
+      0, 0, 0, 1, 0, 0);                                 // counts
 }
 
 ArgumentsStateType ArgumentsStateTypeOf(Operator const* op) {
-  DCHECK(op->opcode() == IrOpcode::kArgumentsElementsState ||
-         op->opcode() == IrOpcode::kArgumentsLengthState);
+  DCHECK(op->opcode() == IrOpcode::kArgumentsElementsState);
   return OpParameter<ArgumentsStateType>(op);
 }
 
 const Operator* CommonOperatorBuilder::ObjectState(uint32_t object_id,
                                                    int pointer_slots) {
-  return new (zone()) Operator1<ObjectStateInfo>(  // --
+  return zone()->New<Operator1<ObjectStateInfo>>(  // --
       IrOpcode::kObjectState, Operator::kPure,     // opcode
       "ObjectState",                               // name
       pointer_slots, 0, 0, 1, 0, 0,                // counts
@@ -1418,7 +1447,7 @@ const Operator* CommonOperatorBuilder::ObjectState(uint32_t object_id,
 
 const Operator* CommonOperatorBuilder::TypedObjectState(
     uint32_t object_id, const ZoneVector<MachineType>* types) {
-  return new (zone()) Operator1<TypedObjectStateInfo>(  // --
+  return zone()->New<Operator1<TypedObjectStateInfo>>(  // --
       IrOpcode::kTypedObjectState, Operator::kPure,     // opcode
       "TypedObjectState",                               // name
       static_cast<int>(types->size()), 0, 0, 1, 0, 0,   // counts
@@ -1447,7 +1476,7 @@ const Operator* CommonOperatorBuilder::FrameState(
     BailoutId bailout_id, OutputFrameStateCombine state_combine,
     const FrameStateFunctionInfo* function_info) {
   FrameStateInfo state_info(bailout_id, state_combine, function_info);
-  return new (zone()) Operator1<FrameStateInfo>(  // --
+  return zone()->New<Operator1<FrameStateInfo>>(  // --
       IrOpcode::kFrameState, Operator::kPure,     // opcode
       "FrameState",                               // name
       5, 0, 0, 1, 0, 0,                           // counts
@@ -1475,7 +1504,7 @@ const Operator* CommonOperatorBuilder::Call(
       os << "[" << *parameter() << "]";
     }
   };
-  return new (zone()) CallOperator(call_descriptor);
+  return zone()->New<CallOperator>(call_descriptor);
 }
 
 const Operator* CommonOperatorBuilder::TailCall(
@@ -1495,7 +1524,7 @@ const Operator* CommonOperatorBuilder::TailCall(
       os << "[" << *parameter() << "]";
     }
   };
-  return new (zone()) TailCallOperator(call_descriptor);
+  return zone()->New<TailCallOperator>(call_descriptor);
 }
 
 const Operator* CommonOperatorBuilder::Projection(size_t index) {
@@ -1509,7 +1538,7 @@ const Operator* CommonOperatorBuilder::Projection(size_t index) {
       break;
   }
   // Uncached.
-  return new (zone()) Operator1<size_t>(  // --
+  return zone()->New<Operator1<size_t>>(  // --
       IrOpcode::kProjection,              // opcode
       Operator::kPure,                    // flags
       "Projection",                       // name
@@ -1537,12 +1566,12 @@ const FrameStateFunctionInfo*
 CommonOperatorBuilder::CreateFrameStateFunctionInfo(
     FrameStateType type, int parameter_count, int local_count,
     Handle<SharedFunctionInfo> shared_info) {
-  return new (zone()->New(sizeof(FrameStateFunctionInfo)))
-      FrameStateFunctionInfo(type, parameter_count, local_count, shared_info);
+  return zone()->New<FrameStateFunctionInfo>(type, parameter_count, local_count,
+                                             shared_info);
 }
 
 const Operator* CommonOperatorBuilder::DeadValue(MachineRepresentation rep) {
-  return new (zone()) Operator1<MachineRepresentation>(  // --
+  return zone()->New<Operator1<MachineRepresentation>>(  // --
       IrOpcode::kDeadValue, Operator::kPure,             // opcode
       "DeadValue",                                       // name
       1, 0, 0, 1, 0, 0,                                  // counts

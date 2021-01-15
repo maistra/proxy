@@ -1,0 +1,1 @@
+fn example(){println!("test");}

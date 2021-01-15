@@ -77,6 +77,7 @@
 #include <stdarg.h>
 #ifdef _WIN32
 #include <winsock2.h>
+#include <winerror.h>
 #include <ws2tcpip.h>
 #ifndef _WIN32_IE
 #define _WIN32_IE 0x400
@@ -84,12 +85,15 @@
 #include <shlobj.h>
 #endif
 
+#include "event2/buffer.h"
+#include "event2/bufferevent.h"
 #include "event2/dns.h"
 #include "event2/dns_struct.h"
 #include "event2/dns_compat.h"
 #include "event2/util.h"
 #include "event2/event.h"
 #include "event2/event_struct.h"
+#include "event2/listener.h"
 #include "event2/thread.h"
 
 #include "defer-internal.h"
@@ -126,7 +130,9 @@
 #include <stdio.h>
 
 #undef MIN
+#undef MAX
 #define MIN(a,b) ((a)<(b)?(a):(b))
+#define MAX(a,b) ((a)>(b)?(a):(b))
 
 #define ASSERT_VALID_REQUEST(req) \
 	EVUTIL_ASSERT((req)->handle && (req)->handle->current_req == (req))
@@ -141,14 +147,29 @@
 #define MAX_V4_ADDRS 32
 #define MAX_V6_ADDRS 32
 
+/* Maximum allowable size of a DNS message over UDP without EDNS.*/
+#define DNS_MAX_UDP_SIZE 512
+/* Maximum allowable size of a DNS message over UDP with EDNS.*/
+#define EDNS_MAX_UDP_SIZE 65535
+
+#define EDNS_ENABLED(base) \
+	(((base)->global_max_udp_size) > DNS_MAX_UDP_SIZE)
 
 #define TYPE_A	       EVDNS_TYPE_A
 #define TYPE_CNAME     5
 #define TYPE_PTR       EVDNS_TYPE_PTR
 #define TYPE_SOA       EVDNS_TYPE_SOA
 #define TYPE_AAAA      EVDNS_TYPE_AAAA
+#define TYPE_OPT       41
 
 #define CLASS_INET     EVDNS_CLASS_INET
+
+/* Timeout in seconds for idle TCP connections that server keeps alive. */
+#define SERVER_IDLE_CONN_TIMEOUT 10
+/* Timeout in seconds for idle TCP connections that client keeps alive. */
+#define CLIENT_IDLE_CONN_TIMEOUT 5
+/* Default maximum number of simultaneous TCP client connections that DNS server can hold. */
+#define MAX_CLIENT_CONNECTIONS 10
 
 /* Persistent handle.  We keep this separate from 'struct request' since we
  * need some object to last for as long as an evdns_request is outstanding so
@@ -166,10 +187,12 @@ struct evdns_request {
 	struct search_state *search_state;
 	char *search_origname;	/* needs to be free()ed */
 	int search_flags;
+	u16 tcp_flags;
 };
 
 struct request {
 	u8 *request;  /* the dns packet data */
+	u16 request_size; /* size of memory block stored in request field */
 	u8 request_type; /* TYPE_PTR or TYPE_A or TYPE_AAAA */
 	unsigned int request_len;
 	int reissue_count;
@@ -199,23 +222,38 @@ struct request {
 struct reply {
 	unsigned int type;
 	unsigned int have_answer : 1;
+	u32 rr_count;
 	union {
-		struct {
-			u32 addrcount;
-			u32 addresses[MAX_V4_ADDRS];
-		} a;
-		struct {
-			u32 addrcount;
-			struct in6_addr addresses[MAX_V6_ADDRS];
-		} aaaa;
-		struct {
-			char name[HOST_NAME_MAX];
-		} ptr;
+		u32 *a;
+		struct in6_addr *aaaa;
+		char *ptr_name;
+		void *raw;
 	} data;
+};
+
+enum tcp_state {
+	TS_DISCONNECTED,
+	TS_CONNECTING,
+	TS_CONNECTED
+};
+
+struct tcp_connection {
+	struct bufferevent *bev;
+	enum tcp_state state;
+	u16 awaiting_packet_size;
+};
+
+struct evdns_server_port;
+
+struct client_tcp_connection {
+	LIST_ENTRY(client_tcp_connection) next;
+	struct tcp_connection connection;
+	struct evdns_server_port *port;
 };
 
 struct nameserver {
 	evutil_socket_t socket;	 /* a connected UDP socket */
+	struct tcp_connection *connection; /* intended for TCP support */
 	struct sockaddr_storage address;
 	ev_socklen_t addrlen;
 	int failed_times;  /* number of times which we have given this server a chance */
@@ -239,8 +277,7 @@ struct nameserver {
 };
 
 
-/* Represents a local port where we're listening for DNS requests. Right now, */
-/* only UDP is supported. */
+/* Represents a local port where we're listening for DNS requests. */
 struct evdns_server_port {
 	evutil_socket_t socket; /* socket we use to read queries and write replies. */
 	int refcnt; /* reference count. */
@@ -252,6 +289,13 @@ struct evdns_server_port {
 	/* circular list of replies that we want to write. */
 	struct server_request *pending_replies;
 	struct event_base *event_base;
+
+	/* Structures for tcp support */
+	struct evconnlistener *listener;
+	LIST_HEAD(client_list, client_tcp_connection) client_connections;
+	unsigned client_connections_count;
+	unsigned max_client_connections;
+	struct timeval tcp_idle_timeout;
 
 #ifndef EVENT__DISABLE_THREAD_SUPPORT
 	void *lock;
@@ -281,8 +325,10 @@ struct server_request {
 
 	u16 trans_id; /* Transaction id. */
 	struct evdns_server_port *port; /* Which port received this request on? */
-	struct sockaddr_storage addr; /* Where to send the response */
+	struct client_tcp_connection *client; /* Equal to NULL in case of UDP connection. */
+	struct sockaddr_storage addr; /* Where to send the response in case of UDP. Equal to NULL in case of TCP connection.*/
 	ev_socklen_t addrlen; /* length of addr */
+	u16 max_udp_reply_size; /* Maximum size of udp reply that client can handle. */
 
 	int n_answer; /* how many answer RRs have been set? */
 	int n_authority; /* how many authority RRs have been set? */
@@ -334,10 +380,18 @@ struct evdns_base {
 	int global_max_nameserver_timeout;
 	/* true iff we will use the 0x20 hack to prevent poisoning attacks. */
 	int global_randomize_case;
+	/* Maximum size of a UDP DNS packet. */
+	u16 global_max_udp_size;
 
 	/* The first time that a nameserver fails, how long do we wait before
 	 * probing to see if it has returned?  */
 	struct timeval global_nameserver_probe_initial_timeout;
+
+	/* Combination of DNS_QUERY_USEVC, DNS_QUERY_IGNTC flags
+	 * to control requests via TCP. */
+	u16 global_tcp_flags;
+	/* Idle timeout for outgoing TCP connections. */
+	struct timeval global_tcp_idle_timeout;
 
 	/** Port to bind to for outgoing DNS packets. */
 	struct sockaddr_storage global_outgoing_address;
@@ -405,6 +459,7 @@ static struct request *search_request_new(struct evdns_base *base, struct evdns_
 static void evdns_requests_pump_waiting_queue(struct evdns_base *base);
 static u16 transaction_id_pick(struct evdns_base *base);
 static struct request *request_new(struct evdns_base *base, struct evdns_request *handle, int type, const char *name, int flags, evdns_callback_type callback, void *ptr);
+static struct request *request_clone(struct evdns_base *base, struct request* current);
 static void request_submit(struct request *const req);
 
 static int server_request_free(struct server_request *req);
@@ -416,6 +471,9 @@ static int evdns_base_set_option_impl(struct evdns_base *base,
     const char *option, const char *val, int flags);
 static void evdns_base_free_and_unlock(struct evdns_base *base, int fail_requests);
 static void evdns_request_timeout_callback(evutil_socket_t fd, short events, void *arg);
+static int evdns_server_request_format_response(struct server_request *req, int err);
+static void incoming_conn_cb(struct evconnlistener *listener, evutil_socket_t fd,
+    struct sockaddr *address, int socklen, void *arg);
 
 static int strtoint(const char *const str);
 
@@ -464,6 +522,106 @@ evdns_log_(int severity, const char *fmt, ...)
 }
 
 #define log evdns_log_
+
+/* Initialize tcp_connection structure. */
+static void
+init_tcp_connection(struct tcp_connection *conn, struct bufferevent *bev)
+{
+	memset(conn, 0, sizeof(*conn));
+	conn->state = TS_DISCONNECTED;
+	conn->bev = bev;
+	conn->awaiting_packet_size = 0;
+}
+
+/* Disconnect tcp connection. */
+static void
+evdns_tcp_disconnect(struct tcp_connection *conn)
+{
+	if (!conn)
+		return;
+	conn->state = TS_DISCONNECTED;
+	conn->awaiting_packet_size = 0;
+	if (conn->bev) {
+		bufferevent_free(conn->bev);
+		conn->bev = NULL;
+	}
+}
+
+/* Add new tcp client to the list of TCP clients in the TCP DNS server. */
+static struct client_tcp_connection*
+evdns_add_tcp_client(struct evdns_server_port *port, struct bufferevent *bev)
+{
+	struct client_tcp_connection *client;
+	EVUTIL_ASSERT(port && bev);
+	if (port->max_client_connections == port->client_connections_count)
+		goto error;
+
+	client = mm_calloc(1, sizeof(*client));
+	if (!client)
+		goto error;
+	init_tcp_connection(&client->connection, bev);
+	client->port = port;
+	LIST_INSERT_HEAD(&port->client_connections, client, next);
+
+	++port->client_connections_count;
+	/* we need to hold evdns_server_port as long as one connection at least stays alive */
+	++port->refcnt;
+	return client;
+error:
+	return NULL;
+}
+
+/* Remove tcp client and free all associated data from the TCP DNS server. */
+static int
+evdns_remove_tcp_client(struct evdns_server_port *port, struct client_tcp_connection *client)
+{
+	if (!port || !client)
+		goto error;
+
+	evdns_tcp_disconnect(&client->connection);
+	LIST_REMOVE(client, next);
+	mm_free(client);
+	--port->client_connections_count;
+	--port->refcnt;
+	return 0;
+error:
+	return -1;
+}
+
+/* Remove all tcp clients and free all associated data from the TCP DNS server. */
+static void
+evdns_remove_all_tcp_clients(struct evdns_server_port *port)
+{
+	struct client_tcp_connection *client;
+	while ((client = LIST_FIRST(&port->client_connections))) {
+		evdns_remove_tcp_client(port, client);
+	}
+}
+
+/* Create new tcp connection structure for DNS client. */
+static struct tcp_connection *
+new_tcp_connecton(struct bufferevent *bev)
+{
+	struct tcp_connection *conn;
+	if (!bev)
+		return NULL;
+
+	conn = mm_calloc(1, sizeof(*conn));
+	if (!conn)
+		return NULL;
+	init_tcp_connection(conn, bev);
+	return conn;
+}
+
+/* Disconnect and free all associated data for the tcp connection in DNS client. */
+static void
+disconnect_and_free_connection(struct tcp_connection *conn)
+{
+	if (!conn)
+		return;
+	evdns_tcp_disconnect(conn);
+	mm_free(conn);
+}
 
 /* This walks the list of inflight requests to find the */
 /* one with a matching transaction id. Returns NULL on */
@@ -558,7 +716,7 @@ request_swap_ns(struct request *req, struct nameserver *ns) {
 /* called when a nameserver has been deemed to have failed. For example, too */
 /* many packets have timed out etc */
 static void
-nameserver_failed(struct nameserver *const ns, const char *msg) {
+nameserver_failed(struct nameserver *const ns, const char *msg, int err) {
 	struct request *req, *started_at;
 	struct evdns_base *base = ns->base;
 	int i;
@@ -584,6 +742,39 @@ nameserver_failed(struct nameserver *const ns, const char *msg) {
 	ns->state = 0;
 	ns->failed_times = 1;
 
+	if (ns->connection) {
+		disconnect_and_free_connection(ns->connection);
+		ns->connection = NULL;
+	} else if (err == ENOTCONN) {
+		/* XXX: If recvfrom results in ENOTCONN, the socket remains readable
+		 * which triggers another recvfrom. The observed behavior is 100% CPU use.
+		 * This occurs on iOS (kqueue) after the process has been backgrounded
+		 * for a long time (~300 seconds) and then resumed.
+		 * All sockets, TCP and UDP, seem to get ENOTCONN and must be closed.
+		 * https://github.com/libevent/libevent/issues/265 */
+		const struct sockaddr *address = (const struct sockaddr *)&ns->address;
+		evutil_closesocket(ns->socket);
+		ns->socket = evutil_socket_(address->sa_family,
+			SOCK_DGRAM | EVUTIL_SOCK_NONBLOCK | EVUTIL_SOCK_CLOEXEC, 0);
+
+		if (base->global_outgoing_addrlen &&
+			!evutil_sockaddr_is_loopback_(address)) {
+			if (bind(ns->socket,
+					(struct sockaddr *)&base->global_outgoing_address,
+					base->global_outgoing_addrlen) < 0) {
+				log(EVDNS_LOG_WARN, "Couldn't bind to outgoing address");
+			}
+		}
+
+		event_del(&ns->event);
+		event_assign(&ns->event, ns->base->event_base, ns->socket,
+			EV_READ | (ns->write_waiting ? EV_WRITE : 0) | EV_PERSIST,
+			nameserver_ready_callback, ns);
+		if (!base->disable_when_inactive && event_add(&ns->event, NULL) < 0) {
+			log(EVDNS_LOG_WARN, "Couldn't add %s event",
+				ns->write_waiting ? "rw": "read");
+		}
+	}
 	if (evtimer_add(&ns->timeout_event,
 		&base->global_nameserver_probe_initial_timeout) < 0) {
 		log(EVDNS_LOG_WARN,
@@ -794,15 +985,15 @@ reply_run_callback(struct event_callback *d, void *user_pointer)
 	case TYPE_A:
 		if (cb->have_reply)
 			cb->user_callback(DNS_ERR_NONE, DNS_IPv4_A,
-			    cb->reply.data.a.addrcount, cb->ttl,
-			    cb->reply.data.a.addresses,
+			    cb->reply.rr_count, cb->ttl,
+			    cb->reply.data.a,
 			    user_pointer);
 		else
 			cb->user_callback(cb->err, 0, 0, cb->ttl, NULL, user_pointer);
 		break;
 	case TYPE_PTR:
 		if (cb->have_reply) {
-			char *name = cb->reply.data.ptr.name;
+			char *name = cb->reply.data.ptr_name;
 			cb->user_callback(DNS_ERR_NONE, DNS_PTR, 1, cb->ttl,
 			    &name, user_pointer);
 		} else {
@@ -812,8 +1003,8 @@ reply_run_callback(struct event_callback *d, void *user_pointer)
 	case TYPE_AAAA:
 		if (cb->have_reply)
 			cb->user_callback(DNS_ERR_NONE, DNS_IPv6_AAAA,
-			    cb->reply.data.aaaa.addrcount, cb->ttl,
-			    cb->reply.data.aaaa.addresses,
+			    cb->reply.rr_count, cb->ttl,
+			    cb->reply.data.aaaa,
 			    user_pointer);
 		else
 			cb->user_callback(cb->err, 0, 0, cb->ttl, NULL, user_pointer);
@@ -824,6 +1015,10 @@ reply_run_callback(struct event_callback *d, void *user_pointer)
 
 	if (cb->handle && cb->handle->pending_cb) {
 		mm_free(cb->handle);
+	}
+
+	if (cb->reply.data.raw) {
+		mm_free(cb->reply.data.raw);
 	}
 
 	mm_free(cb);
@@ -849,6 +1044,8 @@ reply_schedule_callback(struct request *const req, u32 ttl, u32 err, struct repl
 	if (reply) {
 		d->have_reply = 1;
 		memcpy(&d->reply, reply, sizeof(struct reply));
+		/* We've taken ownership of the data. */
+		reply->data.raw = NULL;
 	}
 
 	if (req->handle) {
@@ -866,6 +1063,21 @@ reply_schedule_callback(struct request *const req, u32 ttl, u32 err, struct repl
 		&d->deferred);
 }
 
+static int
+client_retransmit_through_tcp(struct evdns_request *handle)
+{
+	struct request *req = handle->current_req;
+	struct evdns_base *base = req->base;
+	struct request *newreq = request_clone(base, req);
+	ASSERT_LOCKED(base);
+	if (!newreq)
+		return 1;
+	request_finished(req, &REQ_HEAD(req->base, req->trans_id), 0);
+	handle->current_req = newreq;
+	newreq->handle = handle;
+	request_submit(newreq);
+	return 0;
+}
 
 #define _QR_MASK    0x8000U
 #define _OP_MASK    0x7800U
@@ -884,6 +1096,7 @@ static void
 reply_handle(struct request *const req, u16 flags, u32 ttl, struct reply *reply) {
 	int error;
 	char addrbuf[128];
+	int retransmit_via_tcp = 0;
 	static const int error_codes[] = {
 		DNS_ERR_FORMAT, DNS_ERR_SERVERFAILED, DNS_ERR_NOTEXIST,
 		DNS_ERR_NOTIMPL, DNS_ERR_REFUSED
@@ -896,6 +1109,7 @@ reply_handle(struct request *const req, u16 flags, u32 ttl, struct reply *reply)
 		/* there was an error */
 		if (flags & _TC_MASK) {
 			error = DNS_ERR_TRUNCATED;
+			retransmit_via_tcp = (req->handle->tcp_flags & (DNS_QUERY_IGNTC | DNS_QUERY_USEVC)) == 0;
 		} else if (flags & _RCODE_MASK) {
 			u16 error_code = (flags & _RCODE_MASK) - 1;
 			if (error_code > 4) {
@@ -917,7 +1131,7 @@ reply_handle(struct request *const req, u16 flags, u32 ttl, struct reply *reply)
 				char msg[64];
 				evutil_snprintf(msg, sizeof(msg), "Bad response %d (%s)",
 					 error, evdns_err_to_string(error));
-				nameserver_failed(req->ns, msg);
+				nameserver_failed(req->ns, msg, 0);
 				if (!request_reissue(req)) return;
 			}
 			break;
@@ -943,6 +1157,14 @@ reply_handle(struct request *const req, u16 flags, u32 ttl, struct reply *reply)
 			}
 
 			nameserver_up(req->ns);
+		}
+
+		if (retransmit_via_tcp) {
+			log(EVDNS_LOG_DEBUG, "Recieved truncated reply(flags 0x%x, transanc ID: %d). Retransmiting via TCP.",
+				req->handle->tcp_flags, req->trans_id);
+			req->handle->tcp_flags |= DNS_QUERY_USEVC;
+			client_retransmit_through_tcp(req->handle);
+			return;
 		}
 
 		if (req->handle->search_state &&
@@ -1030,7 +1252,8 @@ name_parse(u8 *packet, int length, int *idx, char *name_out, int name_out_len) {
 
 /* parses a raw request from a nameserver */
 static int
-reply_parse(struct evdns_base *base, u8 *packet, int length) {
+reply_parse(struct evdns_base *base, u8 *packet, int length)
+{
 	int j = 0, k = 0;  /* index into packet */
 	u16 t_;	 /* used by the macros */
 	u32 t32_;  /* used by the macros */
@@ -1042,7 +1265,7 @@ reply_parse(struct evdns_base *base, u8 *packet, int length) {
 	u32 ttl, ttl_r = 0xffffffff;
 	struct reply reply;
 	struct request *req = NULL;
-	unsigned int i;
+	unsigned int i, buf_size;
 
 	ASSERT_LOCKED(base);
 
@@ -1108,6 +1331,13 @@ reply_parse(struct evdns_base *base, u8 *packet, int length) {
 	if (!name_matches)
 		goto err;
 
+	/* We can allocate less for the reply data, but to do it we'll have
+	 * to parse the response. To simplify things let's just allocate
+	 * a little bit more to avoid complex evaluations.
+	 */
+	buf_size = MAX(length - j, HOST_NAME_MAX);
+	reply.data.raw = mm_malloc(buf_size);
+
 	/* now we have the answer section which looks like
 	 * <label:name><u16:type><u16:class><u32:ttl><u16:len><data...>
 	 */
@@ -1122,30 +1352,28 @@ reply_parse(struct evdns_base *base, u8 *packet, int length) {
 		GET16(datalength);
 
 		if (type == TYPE_A && class == CLASS_INET) {
-			int addrcount, addrtocopy;
+			int addrcount;
 			if (req->request_type != TYPE_A) {
 				j += datalength; continue;
 			}
 			if ((datalength & 3) != 0) /* not an even number of As. */
 			    goto err;
 			addrcount = datalength >> 2;
-			addrtocopy = MIN(MAX_V4_ADDRS - reply.data.a.addrcount, (unsigned)addrcount);
 
 			ttl_r = MIN(ttl_r, ttl);
 			/* we only bother with the first four addresses. */
-			if (j + 4*addrtocopy > length) goto err;
-			memcpy(&reply.data.a.addresses[reply.data.a.addrcount],
-				   packet + j, 4*addrtocopy);
-			j += 4*addrtocopy;
-			reply.data.a.addrcount += addrtocopy;
+			if (j + 4*addrcount > length) goto err;
+			memcpy(&reply.data.a[reply.rr_count],
+				   packet + j, 4*addrcount);
+			j += 4*addrcount;
+			reply.rr_count += addrcount;
 			reply.have_answer = 1;
-			if (reply.data.a.addrcount == MAX_V4_ADDRS) break;
 		} else if (type == TYPE_PTR && class == CLASS_INET) {
 			if (req->request_type != TYPE_PTR) {
 				j += datalength; continue;
 			}
-			if (name_parse(packet, length, &j, reply.data.ptr.name,
-						   sizeof(reply.data.ptr.name))<0)
+			if (name_parse(packet, length, &j, reply.data.ptr_name,
+						   buf_size)<0)
 				goto err;
 			ttl_r = MIN(ttl_r, ttl);
 			reply.have_answer = 1;
@@ -1160,24 +1388,22 @@ reply_parse(struct evdns_base *base, u8 *packet, int length) {
 				goto err;
 			*req->put_cname_in_ptr = mm_strdup(cname);
 		} else if (type == TYPE_AAAA && class == CLASS_INET) {
-			int addrcount, addrtocopy;
+			int addrcount;
 			if (req->request_type != TYPE_AAAA) {
 				j += datalength; continue;
 			}
 			if ((datalength & 15) != 0) /* not an even number of AAAAs. */
 				goto err;
 			addrcount = datalength >> 4;  /* each address is 16 bytes long */
-			addrtocopy = MIN(MAX_V6_ADDRS - reply.data.aaaa.addrcount, (unsigned)addrcount);
 			ttl_r = MIN(ttl_r, ttl);
 
 			/* we only bother with the first four addresses. */
-			if (j + 16*addrtocopy > length) goto err;
-			memcpy(&reply.data.aaaa.addresses[reply.data.aaaa.addrcount],
-				   packet + j, 16*addrtocopy);
-			reply.data.aaaa.addrcount += addrtocopy;
-			j += 16*addrtocopy;
+			if (j + 16*addrcount > length) goto err;
+			memcpy(&reply.data.aaaa[reply.rr_count],
+				   packet + j, 16*addrcount);
+			reply.rr_count += addrcount;
+			j += 16*addrcount;
 			reply.have_answer = 1;
-			if (reply.data.aaaa.addrcount == MAX_V6_ADDRS) break;
 		} else {
 			/* skip over any other type of resource */
 			j += datalength;
@@ -1218,10 +1444,14 @@ reply_parse(struct evdns_base *base, u8 *packet, int length) {
 		ttl_r = 0;
 
 	reply_handle(req, flags, ttl_r, &reply);
+	if (reply.data.raw)
+		mm_free(reply.data.raw);
 	return 0;
  err:
 	if (req)
 		reply_handle(req, flags, 0, NULL);
+	if (reply.data.raw)
+		mm_free(reply.data.raw);
 	return -1;
 }
 
@@ -1229,15 +1459,19 @@ reply_parse(struct evdns_base *base, u8 *packet, int length) {
 /* a DNS client (addr,addrlen), and if it's well-formed, call the corresponding */
 /* callback. */
 static int
-request_parse(u8 *packet, int length, struct evdns_server_port *port, struct sockaddr *addr, ev_socklen_t addrlen)
+request_parse(u8 *packet, int length, struct evdns_server_port *port,
+				struct sockaddr *addr, ev_socklen_t addrlen, struct client_tcp_connection *client)
 {
 	int j = 0;	/* index into packet */
 	u16 t_;	 /* used by the macros */
+	u32 t32_;  /* used by the macros */
 	char tmp_name[256]; /* used by the macros */
 
 	int i;
 	u16 trans_id, flags, questions, answers, authority, additional;
 	struct server_request *server_req = NULL;
+	u32 ttl;
+	u16 type, class, rdlen;
 
 	ASSERT_LOCKED(port);
 
@@ -1248,9 +1482,6 @@ request_parse(u8 *packet, int length, struct evdns_server_port *port, struct soc
 	GET16(answers);
 	GET16(authority);
 	GET16(additional);
-	(void)answers;
-	(void)additional;
-	(void)authority;
 
 	if (flags & _QR_MASK) return -1; /* Must not be an answer. */
 	flags &= (_RD_MASK|_CD_MASK); /* Only RD and CD get preserved. */
@@ -1260,9 +1491,13 @@ request_parse(u8 *packet, int length, struct evdns_server_port *port, struct soc
 	memset(server_req, 0, sizeof(struct server_request));
 
 	server_req->trans_id = trans_id;
-	memcpy(&server_req->addr, addr, addrlen);
-	server_req->addrlen = addrlen;
+	if (addr) {
+		memcpy(&server_req->addr, addr, addrlen);
+		server_req->addrlen = addrlen;
+	}
 
+	server_req->port = port;
+	server_req->client = client;
 	server_req->base.flags = flags;
 	server_req->base.nquestions = 0;
 	server_req->base.questions = mm_calloc(sizeof(struct evdns_server_question *), questions);
@@ -1287,9 +1522,49 @@ request_parse(u8 *packet, int length, struct evdns_server_port *port, struct soc
 		server_req->base.questions[server_req->base.nquestions++] = q;
 	}
 
-	/* Ignore answers, authority, and additional. */
+#define SKIP_RR \
+	do { \
+		SKIP_NAME; \
+		j += 2 /* type */ + 2 /* class */ + 4 /* ttl */; \
+		GET16(rdlen); \
+		j += rdlen; \
+	} while (0)
 
-	server_req->port = port;
+	for (i = 0; i < answers; ++i) {
+		SKIP_RR;
+	}
+
+	for (i = 0; i < authority; ++i) {
+		SKIP_RR;
+	}
+
+	server_req->max_udp_reply_size = DNS_MAX_UDP_SIZE;
+	for (i = 0; i < additional; ++i) {
+		SKIP_NAME;
+		GET16(type);
+		GET16(class);
+		GET32(ttl);
+		GET16(rdlen);
+		(void)ttl;
+		j += rdlen;
+		if (type == TYPE_OPT) {
+			/* In case of OPT pseudo-RR `class` field is treated
+			 * as a requestor's UDP payload size. */
+			server_req->max_udp_reply_size = MAX(class, DNS_MAX_UDP_SIZE);
+			evdns_server_request_add_reply(&(server_req->base),
+				EVDNS_ADDITIONAL_SECTION,
+				"", /* name */
+				TYPE_OPT, /* type */
+				DNS_MAX_UDP_SIZE, /* class */
+				0, /* ttl */
+				0, /* datalen */
+				0, /* is_name */
+				NULL /* data */
+			);
+			break;
+		}
+	}
+
 	port->refcnt++;
 
 	/* Only standard queries are supported. */
@@ -1310,6 +1585,7 @@ err:
 	mm_free(server_req);
 	return -1;
 
+#undef SKIP_RR
 #undef SKIP_NAME
 #undef GET32
 #undef GET16
@@ -1385,21 +1661,27 @@ static void
 nameserver_read(struct nameserver *ns) {
 	struct sockaddr_storage ss;
 	ev_socklen_t addrlen = sizeof(ss);
-	u8 packet[1500];
 	char addrbuf[128];
+	const size_t max_packet_size = ns->base->global_max_udp_size;
+	u8 *packet = mm_malloc(max_packet_size);
 	ASSERT_LOCKED(ns->base);
+
+	if (!packet) {
+		nameserver_failed(ns, "not enough memory", 0);
+		return;
+	}
 
 	for (;;) {
 		const int r = recvfrom(ns->socket, (void*)packet,
-		    sizeof(packet), 0,
+		    max_packet_size, 0,
 		    (struct sockaddr*)&ss, &addrlen);
 		if (r < 0) {
 			int err = evutil_socket_geterror(ns->socket);
 			if (EVUTIL_ERR_RW_RETRIABLE(err))
-				return;
+				goto done;
 			nameserver_failed(ns,
-			    evutil_socket_error_to_string(err));
-			return;
+			    evutil_socket_error_to_string(err), err);
+			goto done;
 		}
 		if (evutil_sockaddr_cmp((struct sockaddr*)&ss,
 			(struct sockaddr*)&ns->address, 0)) {
@@ -1408,18 +1690,20 @@ nameserver_read(struct nameserver *ns) {
 			    evutil_format_sockaddr_port_(
 				    (struct sockaddr *)&ss,
 				    addrbuf, sizeof(addrbuf)));
-			return;
+			goto done;
 		}
 
 		ns->timedout = 0;
 		reply_parse(ns->base, packet, r);
 	}
+done:
+	mm_free(packet);
 }
 
 /* Read a packet from a DNS client on a server port s, parse it, and */
 /* act accordingly. */
 static void
-server_port_read(struct evdns_server_port *s) {
+server_udp_port_read(struct evdns_server_port *s) {
 	u8 packet[1500];
 	struct sockaddr_storage addr;
 	ev_socklen_t addrlen;
@@ -1439,8 +1723,36 @@ server_port_read(struct evdns_server_port *s) {
 			    evutil_socket_error_to_string(err), err);
 			return;
 		}
-		request_parse(packet, r, s, (struct sockaddr*) &addr, addrlen);
+		request_parse(packet, r, s, (struct sockaddr*) &addr, addrlen, NULL);
 	}
+}
+
+static int
+server_send_response(struct evdns_server_port *port, struct server_request *req)
+{
+	u16 packet_size = 0;
+	struct bufferevent *bev = NULL;
+	if (req->client) {
+		bev = req->client->connection.bev;
+		EVUTIL_ASSERT(bev);
+		EVUTIL_ASSERT(req->response_len <= 65535);
+		packet_size = htons((u16)req->response_len);
+		if (bufferevent_write(bev, &packet_size, sizeof(packet_size)))
+			goto beferevent_error;
+		if (bufferevent_write(bev, (void*)req->response, req->response_len))
+			goto beferevent_error;
+		return (int)req->response_len;
+	} else {
+		int r = sendto(port->socket, req->response, (int)req->response_len, 0,
+					(struct sockaddr*) &req->addr, (ev_socklen_t)req->addrlen);
+		return r;
+	}
+
+beferevent_error:
+	log(EVDNS_LOG_WARN, "Failed to send reply to request %p for client %p", req, req->client);
+	/* disconnect if we got bufferevent error */
+	evdns_remove_tcp_client(port, req->client);
+	return -1;
 }
 
 /* Try to write all pending replies on a given DNS server port. */
@@ -1450,8 +1762,7 @@ server_port_flush(struct evdns_server_port *port)
 	struct server_request *req = port->pending_replies;
 	ASSERT_LOCKED(port);
 	while (req) {
-		int r = sendto(port->socket, req->response, (int)req->response_len, 0,
-			   (struct sockaddr*) &req->addr, (ev_socklen_t)req->addrlen);
+		int r = server_send_response(port, req);
 		if (r < 0) {
 			int err = evutil_socket_geterror(port->socket);
 			if (EVUTIL_ERR_RW_RETRIABLE(err))
@@ -1535,7 +1846,7 @@ server_port_ready_callback(evutil_socket_t fd, short events, void *arg) {
 		server_port_flush(port);
 	}
 	if (events & EV_READ) {
-		server_port_read(port);
+		server_udp_port_read(port);
 	}
 	EVDNS_UNLOCK(port);
 }
@@ -1680,10 +1991,20 @@ dnsname_to_labels(u8 *const buf, size_t buf_len, off_t j,
 /* length. The actual request may be smaller than the value returned */
 /* here */
 static size_t
-evdns_request_len(const size_t name_len) {
+evdns_request_len(const struct evdns_base *base, const size_t name_len)
+{
+	int addional_section_len = 0;
+	if (EDNS_ENABLED(base)) {
+		addional_section_len = 1 + /* length of domain name string, always 0 */
+			2 + /* space for resource type */
+			2 + /* space for UDP payload size */
+			4 + /* space for extended RCODE flags */
+			2;  /* space for length of RDATA, always 0 */
+	}
 	return 96 + /* length of the DNS standard header */
 		name_len + 2 +
-		4;  /* space for the resource type */
+		4 /* space for the resource type */ +
+		addional_section_len;
 }
 
 /* build a dns request packet into buf. buf should be at least as long */
@@ -1691,18 +2012,21 @@ evdns_request_len(const size_t name_len) {
 /* */
 /* Returns the amount of space used. Negative on error. */
 static int
-evdns_request_data_build(const char *const name, const size_t name_len,
-    const u16 trans_id, const u16 type, const u16 class,
-    u8 *const buf, size_t buf_len) {
+evdns_request_data_build(const struct evdns_base *base,
+	const char *const name, const size_t name_len,
+	const u16 trans_id, const u16 type, const u16 class, u8 *const buf,
+	size_t buf_len)
+{
 	off_t j = 0;  /* current offset into buf */
 	u16 t_;	 /* used by the macros */
+	u32 t32_;  /* used by the macros */
 
 	APPEND16(trans_id);
 	APPEND16(0x0100);  /* standard query, recusion needed */
 	APPEND16(1);  /* one question */
 	APPEND16(0);  /* no answers */
 	APPEND16(0);  /* no authority */
-	APPEND16(0);  /* no additional */
+	APPEND16(EDNS_ENABLED(base) ? 1 : 0); /* additional */
 
 	j = dnsname_to_labels(buf, buf_len, j, name, name_len, NULL);
 	if (j < 0) {
@@ -1711,6 +2035,26 @@ evdns_request_data_build(const char *const name, const size_t name_len,
 
 	APPEND16(type);
 	APPEND16(class);
+
+	if (EDNS_ENABLED(base)) {
+		/* The OPT pseudo-RR format 
+		 * (https://tools.ietf.org/html/rfc6891#section-6.1.2)
+		 * +------------+--------------+------------------------------+
+		 * | Field Name | Field Type   | Description                  |
+		 * +------------+--------------+------------------------------+
+		 * | NAME       | domain name  | MUST be 0 (root domain)      |
+		 * | TYPE       | u_int16_t    | OPT (41)                     |
+		 * | CLASS      | u_int16_t    | requestor's UDP payload size |
+		 * | TTL        | u_int32_t    | extended RCODE and flags     |
+		 * | RDLEN      | u_int16_t    | length of all RDATA          |
+		 * | RDATA      | octet stream | {attribute,value} pairs      |
+		 * +------------+--------------+------------------------------+ */
+		buf[j++] = 0;  /* NAME, always 0 */
+		APPEND16(TYPE_OPT);  /* OPT type */
+		APPEND16(base->global_max_udp_size);  /* max UDP payload size */
+		APPEND32(0);  /* No extended RCODE flags set */
+		APPEND16(0);  /* length of RDATA is 0 */
+	}
 
 	return (int)j;
  overflow:
@@ -1737,7 +2081,11 @@ evdns_add_server_port_with_base(struct event_base *base, evutil_socket_t socket,
 	port->user_data = user_data;
 	port->pending_replies = NULL;
 	port->event_base = base;
-
+	port->max_client_connections = MAX_CLIENT_CONNECTIONS;
+	port->tcp_idle_timeout.tv_sec = SERVER_IDLE_CONN_TIMEOUT;
+	port->tcp_idle_timeout.tv_usec = 0;
+	port->client_connections_count = 0;
+	LIST_INIT(&port->client_connections);
 	event_assign(&port->event, port->event_base,
 				 port->socket, EV_READ | EV_PERSIST,
 				 server_port_ready_callback, port);
@@ -1747,6 +2095,174 @@ evdns_add_server_port_with_base(struct event_base *base, evutil_socket_t socket,
 	}
 	EVTHREAD_ALLOC_LOCK(port->lock, EVTHREAD_LOCKTYPE_RECURSIVE);
 	return port;
+}
+
+/* exported function */
+struct evdns_server_port *
+evdns_add_server_port_with_listener(struct event_base *base, struct evconnlistener *listener, int flags, evdns_request_callback_fn_type cb, void *user_data)
+{
+	struct evdns_server_port *port;
+	if (!listener)
+		return NULL;
+	if (flags)
+		return NULL; /* flags not yet implemented */
+
+	if (!(port = mm_calloc(1, sizeof(struct evdns_server_port))))
+		return NULL;
+	port->socket = -1;
+	port->refcnt = 1;
+	port->choked = 0;
+	port->closing = 0;
+	port->user_callback = cb;
+	port->user_data = user_data;
+	port->pending_replies = NULL;
+	port->event_base = base;
+	port->max_client_connections = MAX_CLIENT_CONNECTIONS;
+	port->client_connections_count = 0;
+	LIST_INIT(&port->client_connections);
+	port->listener = listener;
+	evconnlistener_set_cb(port->listener, incoming_conn_cb, port);
+
+	EVTHREAD_ALLOC_LOCK(port->lock, EVTHREAD_LOCKTYPE_RECURSIVE);
+	return port;
+}
+
+static void
+server_tcp_event_cb(struct bufferevent *bev, short events, void *ctx);
+
+static int
+tcp_read_message(struct tcp_connection *conn, u8 **msg, int *msg_len)
+{
+	struct bufferevent *bev = conn->bev;
+	struct evbuffer *input = bufferevent_get_input(bev);
+	u8 *packet = NULL;
+	int r = 0;
+
+	EVUTIL_ASSERT(conn);
+	EVUTIL_ASSERT(conn->state == TS_CONNECTED);
+
+	/* reading new packet size */
+	if (!conn->awaiting_packet_size) {
+		if (evbuffer_get_length(input) < sizeof(ev_uint16_t))
+			goto awaiting_next;
+
+		bufferevent_read(bev, (void*)&conn->awaiting_packet_size,
+			sizeof(conn->awaiting_packet_size));
+		conn->awaiting_packet_size = ntohs(conn->awaiting_packet_size);
+		if (conn->awaiting_packet_size <= 0)
+			goto fail;
+	}
+
+	/* reading new packet content */
+	if (evbuffer_get_length(input) < conn->awaiting_packet_size)
+		goto awaiting_next;
+
+	packet = mm_malloc(conn->awaiting_packet_size);
+	if (!packet)
+		goto fail;
+
+	r = (int)bufferevent_read(bev, (void*)packet, conn->awaiting_packet_size);
+	if (r != conn->awaiting_packet_size) {
+		mm_free(packet);
+		packet = NULL;
+		goto fail;
+	}
+
+	*msg = packet;
+	*msg_len = r;
+awaiting_next:
+	return 0;
+fail:
+	return 1;
+}
+
+static void
+server_tcp_read_packet_cb(struct bufferevent *bev, void *ctx)
+{
+	u8 *msg = NULL;
+	int msg_len = 0;
+	int rc;
+	struct client_tcp_connection *client = (struct client_tcp_connection *)ctx;
+	struct evdns_server_port *port = client->port;
+	struct tcp_connection *conn = &client->connection;
+	EVUTIL_ASSERT(port && bev);
+	EVDNS_LOCK(port);
+
+	while (1) {
+		if (tcp_read_message(conn, &msg, &msg_len)) {
+			log(EVDNS_LOG_MSG, "Closing client connection %p due to error", bev);
+			evdns_remove_tcp_client(port, client);
+			rc = port->refcnt;
+			EVDNS_UNLOCK(port);
+			if (!rc)
+				server_port_free(port);
+			return;
+		}
+
+		/* Only part of the message was recieved. */
+		if (!msg)
+			break;
+
+		request_parse(msg, msg_len, port, NULL, 0, client);
+		mm_free(msg);
+		msg = NULL;
+		conn->awaiting_packet_size = 0;
+	}
+
+	bufferevent_setwatermark(bev, EV_READ,
+			conn->awaiting_packet_size ? conn->awaiting_packet_size : sizeof(ev_uint16_t), 0);
+	bufferevent_setcb(bev, server_tcp_read_packet_cb, NULL, server_tcp_event_cb, ctx);
+	EVDNS_UNLOCK(port);
+}
+
+static void
+server_tcp_event_cb(struct bufferevent *bev, short events, void *ctx)
+{
+	struct client_tcp_connection *client = (struct client_tcp_connection *)ctx;
+	struct evdns_server_port *port = client->port;
+	int rc;
+	EVUTIL_ASSERT(port && bev);
+	EVDNS_LOCK(port);
+	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR | BEV_EVENT_TIMEOUT)) {
+		log(EVDNS_LOG_DEBUG, "Closing connection %p", bev);
+		evdns_remove_tcp_client(port, client);
+	}
+	rc = port->refcnt;
+	EVDNS_UNLOCK(port);
+	if (!rc)
+		server_port_free(port);
+}
+
+static void
+incoming_conn_cb(struct evconnlistener *listener, evutil_socket_t fd,
+				  struct sockaddr *address, int socklen, void *arg)
+{
+	struct evdns_server_port *port = (struct evdns_server_port*)arg;
+	struct bufferevent *bev = bufferevent_socket_new(port->event_base, fd, BEV_OPT_CLOSE_ON_FREE);
+	struct client_tcp_connection *client = NULL;
+	struct tcp_connection *cd = NULL;
+
+	if (!bev)
+		goto error;
+	log(EVDNS_LOG_DEBUG, "New incoming client connection %p", bev);
+
+	bufferevent_set_timeouts(bev, &port->tcp_idle_timeout, &port->tcp_idle_timeout);
+
+	client = evdns_add_tcp_client(port, bev);
+	if (!client)
+		goto error;
+	cd = &client->connection;
+
+	cd->state = TS_CONNECTED;
+	bufferevent_setwatermark(bev, EV_READ, sizeof(ev_uint16_t), 0);
+	bufferevent_setcb(bev, server_tcp_read_packet_cb, NULL, server_tcp_event_cb, (void *)client);
+	bufferevent_enable(bev, EV_READ);
+
+	return;
+error:
+	if (bev)
+		bufferevent_free(bev);
+	return;
 }
 
 struct evdns_server_port *
@@ -1760,6 +2276,7 @@ void
 evdns_close_server_port(struct evdns_server_port *port)
 {
 	EVDNS_LOCK(port);
+	evdns_remove_all_tcp_clients(port);
 	if (--port->refcnt == 0) {
 		EVDNS_UNLOCK(port);
 		server_port_free(port);
@@ -1905,7 +2422,7 @@ evdns_server_request_set_flags(struct evdns_server_request *exreq, int flags)
 static int
 evdns_server_request_format_response(struct server_request *req, int err)
 {
-	unsigned char buf[1500];
+	unsigned char buf[1024 * 64];
 	size_t buf_len = sizeof(buf);
 	off_t j = 0, r;
 	u16 t_;
@@ -1973,16 +2490,20 @@ evdns_server_request_format_response(struct server_request *req, int err)
 				APPEND16(item->datalen);
 				if (j+item->datalen > (off_t)buf_len)
 					goto overflow;
-				memcpy(buf+j, item->data, item->datalen);
-				j += item->datalen;
+				if (item->data) {
+					memcpy(buf+j, item->data, item->datalen);
+					j += item->datalen;
+				} else {
+					EVUTIL_ASSERT(item->datalen == 0);
+				}
 			}
 			item = item->next;
 		}
 	}
 
-	if (j > 512) {
+	if (j > req->max_udp_reply_size && !req->client) {
 overflow:
-		j = 512;
+		j = req->max_udp_reply_size;
 		buf[2] |= 0x02; /* set the truncated bit. */
 	}
 
@@ -2013,9 +2534,8 @@ evdns_server_request_respond(struct evdns_server_request *req_, int err)
 			goto done;
 	}
 
-	r = sendto(port->socket, req->response, (int)req->response_len, 0,
-			   (struct sockaddr*) &req->addr, (ev_socklen_t)req->addrlen);
-	if (r<0) {
+	r = server_send_response(port, req);
+	if (r < 0 && req->client) {
 		int sock_err = evutil_socket_geterror(port->socket);
 		if (EVUTIL_ERR_RW_RETRIABLE(sock_err))
 			goto done;
@@ -2074,8 +2594,11 @@ server_request_free_answers(struct server_request *req)
 		while (victim) {
 			next = victim->next;
 			mm_free(victim->name);
-			if (victim->data)
+			victim->name = NULL;
+			if (victim->data) {
 				mm_free(victim->data);
+				victim->data = NULL;
+			}
 			mm_free(victim);
 			victim = next;
 		}
@@ -2090,9 +2613,12 @@ server_request_free(struct server_request *req)
 {
 	int i, rc=1, lock=0;
 	if (req->base.questions) {
-		for (i = 0; i < req->base.nquestions; ++i)
+		for (i = 0; i < req->base.nquestions; ++i) {
 			mm_free(req->base.questions[i]);
+			req->base.questions[i] = NULL;
+		}
 		mm_free(req->base.questions);
+		req->base.questions = NULL;
 	}
 
 	if (req->port) {
@@ -2109,6 +2635,7 @@ server_request_free(struct server_request *req)
 
 	if (req->response) {
 		mm_free(req->response);
+		req->response = NULL;
 	}
 
 	server_request_free_answers(req);
@@ -2141,8 +2668,15 @@ server_port_free(struct evdns_server_port *port)
 		evutil_closesocket(port->socket);
 		port->socket = -1;
 	}
-	(void) event_del(&port->event);
-	event_debug_unassign(&port->event);
+
+	/* if tcp server */
+	if (port->listener) {
+		evconnlistener_free(port->listener);
+	} else {
+		(void) event_del(&port->event);
+		event_debug_unassign(&port->event);
+	}
+
 	EVTHREAD_FREE_LOCK(port->lock, EVTHREAD_LOCKTYPE_RECURSIVE);
 	mm_free(port);
 }
@@ -2167,8 +2701,32 @@ evdns_server_request_get_requesting_addr(struct evdns_server_request *req_, stru
 	return req->addrlen;
 }
 
-#undef APPEND16
-#undef APPEND32
+static void
+retransmit_all_tcp_requests_for(struct nameserver *server)
+{
+	int i = 0;
+	for (i = 0; i < server->base->n_req_heads; ++i) {
+		struct request *started_at = server->base->req_heads[i];
+		struct request *req = started_at;
+		if (!req)
+			continue;
+
+		do {
+			if (req->ns == server && (req->handle->tcp_flags & DNS_QUERY_USEVC)) {
+				if (req->tx_count >= req->base->global_max_retransmits) {
+					log(EVDNS_LOG_DEBUG, "Giving up on request %p; tx_count==%d",
+						req, req->tx_count);
+					reply_schedule_callback(req, 0, DNS_ERR_TIMEOUT, NULL);
+					request_finished(req, &REQ_HEAD(req->base, req->trans_id), 1);
+				} else {
+					(void) evtimer_del(&req->timeout_event);
+					evdns_request_transmit(req);
+				}
+			}
+			req = req->next;
+		} while (req != started_at);
+	}
+}
 
 /* this is a libevent callback function which is called when a request */
 /* has timed out. */
@@ -2191,19 +2749,27 @@ evdns_request_timeout_callback(evutil_socket_t fd, short events, void *arg) {
 		reply_schedule_callback(req, 0, DNS_ERR_TIMEOUT, NULL);
 
 		request_finished(req, &REQ_HEAD(req->base, req->trans_id), 1);
-		nameserver_failed(ns, "request timed out.");
+		nameserver_failed(ns, "request timed out.", 0);
 	} else {
-		/* retransmit it */
-		log(EVDNS_LOG_DEBUG, "Retransmitting request %p; tx_count==%d",
-		    arg, req->tx_count);
-		(void) evtimer_del(&req->timeout_event);
-		request_swap_ns(req, nameserver_pick(base));
-		evdns_request_transmit(req);
+		/* if request is using tcp connection, so tear connection */
+		if (req->handle->tcp_flags & DNS_QUERY_USEVC) {
+			disconnect_and_free_connection(req->ns->connection);
+			req->ns->connection = NULL;
 
-		req->ns->timedout++;
-		if (req->ns->timedout > req->base->global_max_nameserver_timeout) {
-			req->ns->timedout = 0;
-			nameserver_failed(req->ns, "request timed out.");
+			/* client can have the only connection to DNS server */
+			retransmit_all_tcp_requests_for(req->ns);
+		} else {
+			/* retransmit it */
+			log(EVDNS_LOG_DEBUG, "Retransmitting request %p; tx_count==%d by udp", arg, req->tx_count);
+			(void) evtimer_del(&req->timeout_event);
+			request_swap_ns(req, nameserver_pick(base));
+			evdns_request_transmit(req);
+
+			req->ns->timedout++;
+			if (req->ns->timedout > req->base->global_max_nameserver_timeout) {
+				req->ns->timedout = 0;
+				nameserver_failed(req->ns, "request timed out.", 0);
+			}
 		}
 	}
 
@@ -2234,13 +2800,148 @@ evdns_request_transmit_to(struct request *req, struct nameserver *server) {
 		int err = evutil_socket_geterror(server->socket);
 		if (EVUTIL_ERR_RW_RETRIABLE(err))
 			return 1;
-		nameserver_failed(req->ns, evutil_socket_error_to_string(err));
+		nameserver_failed(req->ns, evutil_socket_error_to_string(err), err);
 		return 2;
 	} else if (r != (int)req->request_len) {
 		return 1;  /* short write */
 	} else {
 		return 0;
 	}
+}
+
+/* try to connect to a given server. */
+/* */
+/* return: */
+/*   0 ok */
+/*   1 temporary failure */
+/*   2 other failure */
+static int
+evdns_tcp_connect_if_disconnected(struct nameserver *server)
+{
+	struct tcp_connection *conn = server->connection;
+	struct timeval *timeout = &server->base->global_tcp_idle_timeout;
+	if (conn && conn->state != TS_DISCONNECTED && conn->bev != NULL)
+		return 0;
+
+	disconnect_and_free_connection(conn);
+	conn = new_tcp_connecton(bufferevent_socket_new(server->base->event_base, -1, BEV_OPT_CLOSE_ON_FREE));
+	if (!conn)
+		return 2;
+	server->connection = conn;
+
+	if (bufferevent_set_timeouts(conn->bev, timeout, timeout))
+		return 1;
+
+	EVUTIL_ASSERT(conn->state == TS_DISCONNECTED);
+	if (bufferevent_socket_connect(conn->bev, (struct sockaddr *)&server->address, server->addrlen))
+		return 1;
+
+	conn->state = TS_CONNECTING;
+	log(EVDNS_LOG_DEBUG, "New tcp connection %p created", conn);
+	return 0;
+}
+
+static void
+client_tcp_event_cb(struct bufferevent *bev, short events, void *ctx);
+
+
+static void
+client_tcp_read_packet_cb(struct bufferevent *bev, void *ctx)
+{
+	u8 *msg = NULL;
+	int msg_len = 0;
+	struct nameserver *server = (struct nameserver*)ctx;
+	struct tcp_connection *conn = server->connection;
+	EVUTIL_ASSERT(server && bev);
+	EVDNS_LOCK(server->base);
+
+	while (1) {
+		if (tcp_read_message(conn, &msg, &msg_len)) {
+			disconnect_and_free_connection(server->connection);
+			server->connection = NULL;
+			EVDNS_UNLOCK(server->base);
+			return;
+		}
+
+		/* Only part of the message was recieved. */
+		if (!msg)
+			break;
+
+		reply_parse(server->base, msg, msg_len);
+		mm_free(msg);
+		msg = NULL;
+		conn->awaiting_packet_size = 0;
+	}
+
+	bufferevent_setwatermark(bev, EV_READ,
+		conn->awaiting_packet_size ? conn->awaiting_packet_size : sizeof(ev_uint16_t), 0);
+	bufferevent_setcb(bev, client_tcp_read_packet_cb, NULL, client_tcp_event_cb, ctx);
+	EVDNS_UNLOCK(server->base);
+}
+
+static void
+client_tcp_event_cb(struct bufferevent *bev, short events, void *ctx) {
+	struct nameserver *server = (struct nameserver*)ctx;
+	struct tcp_connection *conn = server->connection;
+	EVUTIL_ASSERT(server);
+	EVDNS_LOCK(server->base);
+	EVUTIL_ASSERT(conn && conn->bev == bev && bev);
+
+	log(EVDNS_LOG_DEBUG, "Event %d on connection %p", events, conn);
+
+	if (events & (BEV_EVENT_TIMEOUT)) {
+		disconnect_and_free_connection(server->connection);
+		server->connection = NULL;
+	} else if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
+		disconnect_and_free_connection(server->connection);
+		server->connection = NULL;
+	} else if (events & BEV_EVENT_CONNECTED) {
+		EVUTIL_ASSERT (conn->state == TS_CONNECTING);
+		conn->state = TS_CONNECTED;
+		evutil_make_socket_nonblocking(bufferevent_getfd(bev));
+		bufferevent_setcb(bev, client_tcp_read_packet_cb, NULL, client_tcp_event_cb, server);
+		bufferevent_setwatermark(bev, EV_READ, sizeof(ev_uint16_t), 0);
+	}
+	EVDNS_UNLOCK(server->base);
+}
+
+/* try to send a request to a given server. */
+/* */
+/* return: */
+/*   0 ok */
+/*   1 temporary failure */
+/*   2 other failure */
+static int
+evdns_request_transmit_through_tcp(struct request *req, struct nameserver *server) {
+	uint16_t packet_size;
+	struct tcp_connection *conn = NULL;
+	int r;
+	ASSERT_LOCKED(req->base);
+	ASSERT_VALID_REQUEST(req);
+
+	if ((r = evdns_tcp_connect_if_disconnected(server)))
+		return r;
+
+	conn = server->connection;
+	bufferevent_setcb(conn->bev, client_tcp_read_packet_cb, NULL, client_tcp_event_cb, server);
+
+	log(EVDNS_LOG_DEBUG, "Sending request %p via tcp connection %p", req, conn);
+	packet_size = htons(req->request_len);
+	if (bufferevent_write(conn->bev, &packet_size, sizeof(packet_size)) )
+		goto fail;
+	if (bufferevent_write(conn->bev, (void*)req->request, req->request_len) )
+		goto fail;
+	if (bufferevent_enable(conn->bev, EV_READ))
+		goto fail;
+	if (evtimer_add(&req->timeout_event, &req->base->global_timeout) < 0)
+		goto fail;
+
+	return 0;
+fail:
+	log(EVDNS_LOG_WARN, "Failed to send request %p via tcp connection %p", req, conn);
+	disconnect_and_free_connection(server->connection);
+	server->connection = NULL;
+	return 2;
 }
 
 /* try to send a request, updating the fields of the request */
@@ -2272,7 +2973,18 @@ evdns_request_transmit(struct request *req) {
 		return 1;
 	}
 
-	r = evdns_request_transmit_to(req, req->ns);
+	if (req->handle->tcp_flags & DNS_QUERY_USEVC) {
+		r = evdns_request_transmit_through_tcp(req, req->ns);
+		/*
+		If connection didn't initiated now, so report about temporary problems.
+		We don't mark name server as chocked so udp packets possibly have no
+		problems during transmit. Simply we will retry attempt later */
+		if (r == 1) {
+			return r;
+		}
+	} else {
+		r = evdns_request_transmit_to(req, req->ns);
+	}
 	switch (r) {
 	case 1:
 		/* temp failure */
@@ -2423,6 +3135,8 @@ evdns_base_clear_nameservers_and_suspend(struct evdns_base *base)
 	}
 	while (1) {
 		struct nameserver *next = server->next;
+		disconnect_and_free_connection(server->connection);
+		server->connection = NULL;
 		(void) event_del(&server->event);
 		if (evtimer_initialized(&server->timeout_event))
 			(void) evtimer_del(&server->timeout_event);
@@ -2561,6 +3275,7 @@ evdns_nameserver_add_impl_(struct evdns_base *base, const struct sockaddr *addre
 	memcpy(&ns->address, address, addrlen);
 	ns->addrlen = addrlen;
 	ns->state = 1;
+	ns->connection = NULL;
 	event_assign(&ns->event, ns->base->event_base, ns->socket,
 				 EV_READ | EV_PERSIST, nameserver_ready_callback, ns);
 	if (!base->disable_when_inactive && event_add(&ns->event, NULL) < 0) {
@@ -2785,7 +3500,7 @@ request_new(struct evdns_base *base, struct evdns_request *handle, int type,
 	    (base->global_requests_inflight < base->global_max_requests_inflight) ? 1 : 0;
 
 	const size_t name_len = strlen(name);
-	const size_t request_max_len = evdns_request_len(name_len);
+	const size_t request_max_len = evdns_request_len(base, name_len);
 	const u16 trans_id = issuing_now ? transaction_id_pick(base) : 0xffff;
 	/* the request data is alloced in a single block with the header */
 	struct request *const req =
@@ -2804,6 +3519,7 @@ request_new(struct evdns_base *base, struct evdns_request *handle, int type,
 	}
 
 	memset(req, 0, sizeof(struct request));
+	req->request_size = (u16)(sizeof(struct request) + request_max_len);
 	req->base = base;
 
 	evtimer_assign(&req->timeout_event, req->base->event_base, evdns_request_timeout_callback, req);
@@ -2828,7 +3544,7 @@ request_new(struct evdns_base *base, struct evdns_request *handle, int type,
 	req->request = ((u8 *) req) + sizeof(struct request);
 	/* denotes that the request data shouldn't be free()ed */
 	req->request_appended = 1;
-	rlen = evdns_request_data_build(name, name_len, trans_id,
+	rlen = evdns_request_data_build(base, name, name_len, trans_id,
 	    type, CLASS_INET, req->request, request_max_len);
 	if (rlen < 0)
 		goto err1;
@@ -2851,6 +3567,37 @@ request_new(struct evdns_base *base, struct evdns_request *handle, int type,
 err1:
 	mm_free(req);
 	return NULL;
+}
+
+static struct request *
+request_clone(struct evdns_base *base, struct request* current)
+{
+	const char issuing_now =
+	    (base->global_requests_inflight < base->global_max_requests_inflight) ? 1 : 0;
+	const u16 trans_id = issuing_now ? transaction_id_pick(base) : 0xffff;
+	/* the request data is alloced in a single block with the header */
+	struct request *const req = mm_malloc(current->request_size);
+	EVUTIL_ASSERT(current && base);
+	ASSERT_LOCKED(base);
+
+	if (!req)
+		return NULL;
+	memcpy(req, current, current->request_size);
+
+	evtimer_assign(&req->timeout_event, req->base->event_base, evdns_request_timeout_callback, req);
+
+	/* request data lives just after the header */
+	req->request = ((u8 *) req) + sizeof(struct request);
+	/* We need to replace transact id */
+	request_trans_id_set(req, trans_id);
+
+	req->tx_count = 0;
+	req->ns = issuing_now ? nameserver_pick(base) : NULL;
+	req->next = req->prev = NULL;
+	req->handle = NULL;
+	log(EVDNS_LOG_DEBUG, "Clone new request TID %d from TID %d", req->trans_id, current->trans_id);
+
+	return req;
 }
 
 static void
@@ -2920,6 +3667,8 @@ evdns_base_resolve_ipv4(struct evdns_base *base, const char *name, int flags,
 	if (handle == NULL)
 		return NULL;
 	EVDNS_LOCK(base);
+	handle->tcp_flags = base->global_tcp_flags;
+	handle->tcp_flags |= flags & (DNS_QUERY_USEVC | DNS_QUERY_IGNTC);
 	if (flags & DNS_QUERY_NO_SEARCH) {
 		req =
 			request_new(base, handle, TYPE_A, name, flags,
@@ -2959,6 +3708,8 @@ evdns_base_resolve_ipv6(struct evdns_base *base,
 	if (handle == NULL)
 		return NULL;
 	EVDNS_LOCK(base);
+	handle->tcp_flags = base->global_tcp_flags;
+	handle->tcp_flags |= flags & (DNS_QUERY_USEVC | DNS_QUERY_IGNTC);
 	if (flags & DNS_QUERY_NO_SEARCH) {
 		req = request_new(base, handle, TYPE_AAAA, name, flags,
 				  callback, ptr);
@@ -3000,6 +3751,8 @@ evdns_base_resolve_reverse(struct evdns_base *base, const struct in_addr *in, in
 		return NULL;
 	log(EVDNS_LOG_DEBUG, "Resolve requested for %s (reverse)", buf);
 	EVDNS_LOCK(base);
+	handle->tcp_flags = base->global_tcp_flags;
+	handle->tcp_flags |= flags & (DNS_QUERY_USEVC | DNS_QUERY_IGNTC);
 	req = request_new(base, handle, TYPE_PTR, buf, flags, callback, ptr);
 	if (req)
 		request_submit(req);
@@ -3040,6 +3793,8 @@ evdns_base_resolve_reverse_ipv6(struct evdns_base *base, const struct in6_addr *
 		return NULL;
 	log(EVDNS_LOG_DEBUG, "Resolve requested for %s (reverse)", buf);
 	EVDNS_LOCK(base);
+	handle->tcp_flags = base->global_tcp_flags;
+	handle->tcp_flags |= flags & (DNS_QUERY_USEVC | DNS_QUERY_IGNTC);
 	req = request_new(base, handle, TYPE_PTR, buf, flags, callback, ptr);
 	if (req)
 		request_submit(req);
@@ -3480,6 +4235,44 @@ str_matches_option(const char *s1, const char *optionname)
 		return 0;
 }
 
+/* exported function */
+int
+evdns_server_port_set_option(struct evdns_server_port *port,
+	enum evdns_server_option option, size_t value)
+{
+	int res = 0;
+	EVDNS_LOCK(port);
+	switch (option) {
+	case EVDNS_SOPT_TCP_MAX_CLIENTS:
+		if (!port->listener) {
+			log(EVDNS_LOG_WARN, "EVDNS_SOPT_TCP_MAX_CLIENTS option can be set only on TCP server");
+			res = -1;
+			goto end;
+		}
+		port->max_client_connections = value;
+		log(EVDNS_LOG_DEBUG, "Setting EVDNS_SOPT_TCP_MAX_CLIENTS to %u", port->max_client_connections);
+		break;
+	case EVDNS_SOPT_TCP_IDLE_TIMEOUT:
+		if (!port->listener) {
+			log(EVDNS_LOG_WARN, "EVDNS_SOPT_TCP_IDLE_TIMEOUT option can be set only on TCP server");
+			res = -1;
+			goto end;
+		}
+		port->tcp_idle_timeout.tv_sec = value;
+		port->tcp_idle_timeout.tv_usec = 0;
+		log(EVDNS_LOG_DEBUG, "Setting EVDNS_SOPT_TCP_IDLE_TIMEOUT to %u seconds",
+			(unsigned)port->tcp_idle_timeout.tv_sec);
+		break;
+	default:
+		log(EVDNS_LOG_WARN, "Invalid DNS server option %d", (int)option);
+		res = -1;
+		break;
+	}
+end:
+	EVDNS_UNLOCK(port);
+	return res;
+}
+
 static int
 evdns_base_set_option_impl(struct evdns_base *base,
     const char *option, const char *val, int flags)
@@ -3530,6 +4323,7 @@ evdns_base_set_option_impl(struct evdns_base *base,
 		base->global_max_retransmits = retries;
 	} else if (str_matches_option(option, "randomize-case:")) {
 		int randcase = strtoint(val);
+		if (randcase == -1) return -1;
 		if (!(flags & DNS_OPTION_MISC)) return 0;
 		base->global_randomize_case = randcase;
 	} else if (str_matches_option(option, "bind-to:")) {
@@ -3553,14 +4347,38 @@ evdns_base_set_option_impl(struct evdns_base *base,
 		    sizeof(tv));
 	} else if (str_matches_option(option, "so-rcvbuf:")) {
 		int buf = strtoint(val);
+		if (buf == -1) return -1;
 		if (!(flags & DNS_OPTION_MISC)) return 0;
 		log(EVDNS_LOG_DEBUG, "Setting SO_RCVBUF to %s", val);
 		base->so_rcvbuf = buf;
 	} else if (str_matches_option(option, "so-sndbuf:")) {
 		int buf = strtoint(val);
+		if (buf == -1) return -1;
 		if (!(flags & DNS_OPTION_MISC)) return 0;
 		log(EVDNS_LOG_DEBUG, "Setting SO_SNDBUF to %s", val);
 		base->so_sndbuf = buf;
+	} else if (str_matches_option(option, "tcp-idle-timeout:")) {
+		struct timeval tv;
+		if (evdns_strtotimeval(val, &tv) == -1) return -1;
+		if (!(flags & DNS_OPTION_MISC)) return 0;
+		log(EVDNS_LOG_DEBUG, "Setting tcp idle timeout to %s", val);
+		memcpy(&base->global_tcp_idle_timeout, &tv, sizeof(tv));
+	} else if (str_matches_option(option, "use-vc:")) {
+		if (!(flags & DNS_OPTION_MISC)) return 0;
+		if (val && strlen(val)) return -1;
+		log(EVDNS_LOG_DEBUG, "Setting use-vc option");
+		base->global_tcp_flags |= DNS_QUERY_USEVC;
+	} else if (str_matches_option(option, "ignore-tc:")) {
+		if (!(flags & DNS_OPTION_MISC)) return 0;
+		if (val && strlen(val)) return -1;
+		log(EVDNS_LOG_DEBUG, "Setting ignore-tc option");
+		base->global_tcp_flags |= DNS_QUERY_IGNTC;
+	} else if (str_matches_option(option, "edns-udp-size:")) {
+		const int sz = strtoint_clipped(val, DNS_MAX_UDP_SIZE, EDNS_MAX_UDP_SIZE);
+		if (sz == -1) return -1;
+		if (!(flags & DNS_OPTION_MISC)) return 0;
+		log(EVDNS_LOG_DEBUG, "Setting edns-udp-size to %d", sz);
+		base->global_max_udp_size = sz;
 	}
 	return 0;
 }
@@ -3998,10 +4816,12 @@ evdns_base_new(struct event_base *event_base, int flags)
 	base->global_max_nameserver_timeout = 3;
 	base->global_search_state = NULL;
 	base->global_randomize_case = 1;
+	base->global_max_udp_size = DNS_MAX_UDP_SIZE;
 	base->global_getaddrinfo_allow_skew.tv_sec = 3;
 	base->global_getaddrinfo_allow_skew.tv_usec = 0;
 	base->global_nameserver_probe_initial_timeout.tv_sec = 10;
 	base->global_nameserver_probe_initial_timeout.tv_usec = 0;
+	base->global_tcp_idle_timeout.tv_sec = CLIENT_IDLE_CONN_TIMEOUT;
 
 	TAILQ_INIT(&base->hostsdb);
 
@@ -4031,7 +4851,7 @@ evdns_base_new(struct event_base *event_base, int flags)
 #else
 		r = evdns_base_resolv_conf_parse(base, opts, "/etc/resolv.conf");
 #endif
-		if (r == -1) {
+		if (r) {
 			evdns_base_free_and_unlock(base, 0);
 			return NULL;
 		}
@@ -4091,6 +4911,7 @@ evdns_nameserver_free(struct nameserver *server)
 		server->probe_request = NULL;
 	}
 	event_debug_unassign(&server->timeout_event);
+	disconnect_and_free_connection(server->connection);
 	mm_free(server);
 }
 
@@ -4105,17 +4926,17 @@ evdns_base_free_and_unlock(struct evdns_base *base, int fail_requests)
 
 	/* TODO(nickm) we might need to refcount here. */
 
+	while (base->req_waiting_head) {
+		if (fail_requests)
+			reply_schedule_callback(base->req_waiting_head, 0, DNS_ERR_SHUTDOWN, NULL);
+		request_finished(base->req_waiting_head, &base->req_waiting_head, 1);
+	}
 	for (i = 0; i < base->n_req_heads; ++i) {
 		while (base->req_heads[i]) {
 			if (fail_requests)
 				reply_schedule_callback(base->req_heads[i], 0, DNS_ERR_SHUTDOWN, NULL);
 			request_finished(base->req_heads[i], &REQ_HEAD(base, base->req_heads[i]->trans_id), 1);
 		}
-	}
-	while (base->req_waiting_head) {
-		if (fail_requests)
-			reply_schedule_callback(base->req_waiting_head, 0, DNS_ERR_SHUTDOWN, NULL);
-		request_finished(base->req_waiting_head, &base->req_waiting_head, 1);
 	}
 	base->global_requests_inflight = base->global_requests_waiting = 0;
 

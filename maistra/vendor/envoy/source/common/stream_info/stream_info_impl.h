@@ -18,27 +18,21 @@ namespace Envoy {
 namespace StreamInfo {
 
 struct StreamInfoImpl : public StreamInfo {
-  StreamInfoImpl(TimeSource& time_source)
-      : time_source_(time_source), start_time_(time_source.systemTime()),
-        start_time_monotonic_(time_source.monotonicTime()),
-        filter_state_(std::make_shared<FilterStateImpl>(FilterState::LifeSpan::FilterChain)),
-        request_id_extension_(Http::RequestIDExtensionFactory::noopInstance()) {}
+  StreamInfoImpl(TimeSource& time_source,
+                 FilterState::LifeSpan life_span = FilterState::LifeSpan::FilterChain)
+      : StreamInfoImpl(absl::nullopt, time_source, std::make_shared<FilterStateImpl>(life_span)) {}
 
   StreamInfoImpl(Http::Protocol protocol, TimeSource& time_source)
-      : time_source_(time_source), start_time_(time_source.systemTime()),
-        start_time_monotonic_(time_source.monotonicTime()), protocol_(protocol),
-        filter_state_(std::make_shared<FilterStateImpl>(FilterState::LifeSpan::FilterChain)),
-        request_id_extension_(Http::RequestIDExtensionFactory::noopInstance()) {}
+      : StreamInfoImpl(protocol, time_source,
+                       std::make_shared<FilterStateImpl>(FilterState::LifeSpan::FilterChain)) {}
 
   StreamInfoImpl(Http::Protocol protocol, TimeSource& time_source,
-                 std::shared_ptr<FilterState>& parent_filter_state)
-      : time_source_(time_source), start_time_(time_source.systemTime()),
-        start_time_monotonic_(time_source.monotonicTime()), protocol_(protocol),
-        filter_state_(std::make_shared<FilterStateImpl>(
-            FilterStateImpl::LazyCreateAncestor(parent_filter_state,
-                                                FilterState::LifeSpan::DownstreamConnection),
-            FilterState::LifeSpan::FilterChain)),
-        request_id_extension_(Http::RequestIDExtensionFactory::noopInstance()) {}
+                 FilterStateSharedPtr parent_filter_state, FilterState::LifeSpan life_span)
+      : StreamInfoImpl(
+            protocol, time_source,
+            std::make_shared<FilterStateImpl>(
+                FilterStateImpl::LazyCreateAncestor(std::move(parent_filter_state), life_span),
+                FilterState::LifeSpan::FilterChain)) {}
 
   SystemTime startTime() const override { return start_time_; }
 
@@ -125,6 +119,14 @@ struct StreamInfoImpl : public StreamInfo {
 
   void setResponseCodeDetails(absl::string_view rc_details) override {
     response_code_details_.emplace(rc_details);
+  }
+
+  const absl::optional<std::string>& connectionTerminationDetails() const override {
+    return connection_termination_details_;
+  }
+
+  void setConnectionTerminationDetails(absl::string_view connection_termination_details) override {
+    connection_termination_details_.emplace(connection_termination_details);
   }
 
   void addBytesSent(uint64_t bytes_sent) override { bytes_sent_ += bytes_sent; }
@@ -274,6 +276,10 @@ struct StreamInfoImpl : public StreamInfo {
     return upstream_cluster_info_;
   }
 
+  void setConnectionID(uint64_t id) override { connection_id_ = id; }
+
+  absl::optional<uint64_t> connectionID() const override { return connection_id_; }
+
   TimeSource& time_source_;
   const SystemTime start_time_;
   const MonotonicTime start_time_monotonic_;
@@ -286,6 +292,7 @@ struct StreamInfoImpl : public StreamInfo {
   absl::optional<Http::Protocol> protocol_;
   absl::optional<uint32_t> response_code_;
   absl::optional<std::string> response_code_details_;
+  absl::optional<std::string> connection_termination_details_;
   uint64_t response_flags_{};
   Upstream::HostDescriptionConstSharedPtr upstream_host_{};
   bool health_check_request_{};
@@ -296,6 +303,13 @@ struct StreamInfoImpl : public StreamInfo {
   std::string route_name_;
 
 private:
+  StreamInfoImpl(absl::optional<Http::Protocol> protocol, TimeSource& time_source,
+                 FilterStateSharedPtr filter_state)
+      : time_source_(time_source), start_time_(time_source.systemTime()),
+        start_time_monotonic_(time_source.monotonicTime()), protocol_(protocol),
+        filter_state_(std::move(filter_state)),
+        request_id_extension_(Http::RequestIDExtensionFactory::noopInstance()) {}
+
   uint64_t bytes_received_{};
   uint64_t bytes_sent_{};
   Network::Address::InstanceConstSharedPtr upstream_local_address_;
@@ -310,6 +324,7 @@ private:
   UpstreamTiming upstream_timing_;
   std::string upstream_transport_failure_reason_;
   absl::optional<Upstream::ClusterInfoConstSharedPtr> upstream_cluster_info_;
+  absl::optional<uint64_t> connection_id_;
 };
 
 } // namespace StreamInfo

@@ -6,82 +6,39 @@ dnl
 dnl Original version Dug Song <dugsong@monkey.org>
 
 AC_INIT(libevent,2.2.0-alpha-dev)
-AC_PREREQ(2.59)
+AC_PREREQ(2.67)
 AC_CONFIG_SRCDIR(event.c)
 
 AC_CONFIG_MACRO_DIR([m4])
-AM_INIT_AUTOMAKE
-dnl AM_SILENT_RULES req. automake 1.11.  [no] defaults V=1
-m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
+AC_CONFIG_AUX_DIR([build-aux])
+
+dnl Automake setup
+dnl 'foreign' means that GNU package rules are not strictly enforced.
+AM_INIT_AUTOMAKE([1.13 foreign subdir-objects])
+
+dnl make compilation quiet unless V=1 is used
+AM_SILENT_RULES([yes])
+
 AC_CONFIG_HEADERS(config.h  evconfig-private.h:evconfig-private.h.in)
 AC_DEFINE(NUMERIC_VERSION, 0x02020001, [Numeric representation of the version])
 
 dnl Initialize prefix.
-if test "$prefix" = "NONE"; then
-   prefix="/usr/local"
-fi
+AC_PREFIX_DEFAULT([/usr/local])
 
 dnl Try and get a full POSIX environment on obscure systems
-ifdef([AC_USE_SYSTEM_EXTENSIONS], [
 AC_USE_SYSTEM_EXTENSIONS
-], [
-AC_AIX
-AC_GNU_SOURCE
-AC_MINIX
-])
 
-AC_CANONICAL_BUILD
-AC_CANONICAL_HOST
 dnl the 'build' machine is where we run configure and compile
 dnl the 'host' machine is where the resulting stuff runs.
-
-#case "$host_os" in
-#
-# osf5*)
-#    CFLAGS="$CFLAGS -D_OSF_SOURCE"
-#    ;;
-#esac
+AC_CANONICAL_BUILD
+AC_CANONICAL_HOST
 
 dnl Checks for programs.
 AM_PROG_CC_C_O
 AC_PROG_INSTALL
 AC_PROG_LN_S
-# AC_PROG_MKDIR_P - $(MKDIR_P) should be defined by AM_INIT_AUTOMAKE
-
-# AC_PROG_SED is only available in Autoconf >= 2.59b; workaround for older
-# versions
-ifdef([AC_PROG_SED], [AC_PROG_SED], [
-AC_CHECK_PROGS(SED, [gsed sed])
-])
-
+AC_PROG_SED
 AC_PROG_GCC_TRADITIONAL
-
-# We need to test for at least gcc 2.95 here, because older versions don't
-# have -fno-strict-aliasing
-AC_COMPILE_IFELSE([AC_LANG_PROGRAM([], [
-#if !defined(__GNUC__) || (__GNUC__ < 2) || (__GNUC__ == 2 && __GNUC_MINOR__ < 95)
-#error
-#endif])], have_gcc295=yes, have_gcc295=no)
-
-if test "$GCC" = "yes" ; then
-        # Enable many gcc warnings by default...
-        CFLAGS="$CFLAGS -Wall"
-	# And disable the strict-aliasing optimization, since it breaks
-	# our sockaddr-handling code in strange ways.
-	if test x$have_gcc295 = xyes; then
-		CFLAGS="$CFLAGS -fno-strict-aliasing"
-	fi
-fi
-
-# OS X Lion started deprecating the system openssl. Let's just disable
-# all deprecation warnings on OS X; but do so only for gcc...
-if test "$GCC" = "yes" ; then
-	case "$host_os" in
-	 darwin*)
-	    CFLAGS="$CFLAGS -Wno-deprecated-declarations"
-	    ;;
-	esac
-fi
 
 AC_ARG_ENABLE(gcc-warnings,
      AS_HELP_STRING(--disable-gcc-warnings, disable verbose warnings with GCC))
@@ -103,6 +60,9 @@ AC_ARG_ENABLE(malloc-replacement,
 AC_ARG_ENABLE(openssl,
      AS_HELP_STRING(--disable-openssl, disable support for openssl encryption),
         [], [enable_openssl=yes])
+AC_ARG_ENABLE(mbedtls,
+     AS_HELP_STRING(--disable-mbedtls, disable support for mbedtls encryption),
+        [], [enable_mbedtls=yes])
 AC_ARG_ENABLE(debug-mode,
      AS_HELP_STRING(--disable-debug-mode, disable support for running in debug mode),
         [], [enable_debug_mode=yes])
@@ -126,12 +86,9 @@ AC_ARG_ENABLE([clock-gettime],
   [], [enable_clock_gettime=yes])
 
 
-AC_PROG_LIBTOOL
+LT_PREREQ([2.4.2])
+LT_INIT
 
-dnl   Uncomment "AC_DISABLE_SHARED" to make shared libraries not get
-dnl   built by default.  You can also turn shared libs on and off from
-dnl   the command line with --enable-shared and --disable-shared.
-dnl AC_DISABLE_SHARED
 AC_SUBST(LIBTOOL_DEPS)
 
 AM_CONDITIONAL([BUILD_SAMPLES], [test "$enable_samples" = "yes"])
@@ -150,40 +107,46 @@ AC_SEARCH_LIBS([sendfile], [sendfile])
 dnl - check if the macro _WIN32 is defined on this compiler.
 dnl - (this is how we check for a windows compiler)
 AC_MSG_CHECKING(for WIN32)
-AC_TRY_COMPILE(,
-	[
+AC_COMPILE_IFELSE(
+  [AC_LANG_PROGRAM([],
+    [
 #ifndef _WIN32
 die horribly
 #endif
-	],
-	bwin32=true; AC_MSG_RESULT(yes),
-	bwin32=false; AC_MSG_RESULT(no),
+    ]
+  )],
+	[bwin32=true; AC_MSG_RESULT(yes)],
+	[bwin32=false; AC_MSG_RESULT(no)]
 )
 
 dnl - check if the macro __midipix__ is defined on this compiler.
 dnl - (this is how we check for a midipix version of GCC)
 AC_MSG_CHECKING(for MIDIPIX)
-AC_TRY_COMPILE(,
-	[
+AC_COMPILE_IFELSE(
+  [AC_LANG_PROGRAM([],
+    [
 #ifndef __midipix__
 die horribly
 #endif
-	],
-	midipix=true; AC_MSG_RESULT(yes),
-	midipix=false; AC_MSG_RESULT(no),
+    ]
+  )],
+	[midipix=true; AC_MSG_RESULT(yes)],
+	[midipix=false; AC_MSG_RESULT(no)]
 )
 
 dnl - check if the macro __CYGWIN__ is defined on this compiler.
 dnl - (this is how we check for a cygwin version of GCC)
 AC_MSG_CHECKING(for CYGWIN)
-AC_TRY_COMPILE(,
-	[
+AC_COMPILE_IFELSE(
+  [AC_LANG_PROGRAM([],
+    [
 #ifndef __CYGWIN__
 die horribly
 #endif
-	],
-	cygwin=true; AC_MSG_RESULT(yes),
-	cygwin=false; AC_MSG_RESULT(no),
+    ]
+  )],
+	[cygwin=true; AC_MSG_RESULT(yes)],
+	[cygwin=false; AC_MSG_RESULT(no)]
 )
 
 AC_CHECK_HEADERS([zlib.h])
@@ -219,6 +182,7 @@ AC_SUBST(OPENSSL_LIBADD)
 AC_SYS_LARGEFILE
 
 LIBEVENT_OPENSSL
+LIBEVENT_MBEDTLS
 
 dnl Checks for header files.
 AC_CHECK_HEADERS([ \
@@ -226,6 +190,7 @@ AC_CHECK_HEADERS([ \
   fcntl.h \
   ifaddrs.h \
   mach/mach_time.h \
+  mach/mach.h \
   netdb.h \
   netinet/in.h \
   netinet/in6.h \
@@ -252,14 +217,21 @@ AC_CHECK_HEADERS([ \
   sys/timerfd.h \
   sys/uio.h \
   sys/wait.h \
+  sys/random.h \
   errno.h \
+  afunix.h \
 ])
 
-AC_CHECK_HEADERS(sys/sysctl.h, [], [], [
-#ifdef HAVE_SYS_PARAM_H
-#include <sys/param.h>
-#endif
-])
+case "${host_os}" in
+    linux*) ;;
+    *)
+        AC_CHECK_HEADERS(sys/sysctl.h, [], [], [
+        #ifdef HAVE_SYS_PARAM_H
+        #include <sys/param.h>
+        #endif
+        ])
+esac
+
 if test "x$ac_cv_header_sys_queue_h" = "xyes"; then
 	AC_MSG_CHECKING(for TAILQ_FOREACH in sys/queue.h)
 	AC_EGREP_CPP(yes,
@@ -332,7 +304,7 @@ if test "x$ac_cv_header_sys_time_h" = "xyes"; then
 fi
 
 if test "x$ac_cv_header_sys_sysctl_h" = "xyes"; then
-	AC_CHECK_DECLS([CTL_KERN, KERN_RANDOM, RANDOM_UUID, KERN_ARND], [], [],
+	AC_CHECK_DECLS([CTL_KERN, KERN_ARND], [], [],
 	   [[#include <sys/types.h>
 	     #include <sys/sysctl.h>]]
 	)
@@ -344,7 +316,7 @@ AM_CONDITIONAL(BUILD_MIDIPIX, test x$midipix = xtrue)
 AM_CONDITIONAL(BUILD_WITH_NO_UNDEFINED, test x$bwin32 = xtrue || test x$cygwin = xtrue || test x$midipix = xtrue)
 
 if test x$bwin32 = xtrue; then
-   AC_SEARCH_LIBS([getservbyname],[ws2_32])
+  AC_HAVE_LIBRARY([ws2_32])
 fi
 
 dnl Checks for typedefs, structures, and compiler characteristics.
@@ -364,11 +336,7 @@ AC_CHECK_FUNCS([ \
   getegid \
   geteuid \
   getifaddrs \
-  getnameinfo \
-  getprotobynumber \
   gettimeofday \
-  inet_ntop \
-  inet_pton \
   issetugid \
   mach_absolute_time \
   mmap \
@@ -393,10 +361,36 @@ AC_CHECK_FUNCS([ \
   unsetenv \
   usleep \
   vasprintf \
-  getservbyname \
+  getrandom \
 ])
+
+AS_IF([test x$bwin32 = xtrue],
+  AC_CHECK_FUNCS(_gmtime64_s, , [AC_CHECK_FUNCS(_gmtime64)])
+)
+
 AM_CONDITIONAL(STRLCPY_IMPL, [test x"$ac_cv_func_strlcpy" = xno])
 
+m4_define([funcstochk],
+  [getnameinfo
+  getprotobynumber
+  getservbyname
+  inet_ntop
+  inet_pton]
+)
+
+AS_IF([test x$bwin32 = xtrue],
+  [AX_CHECK_DECLS_EX([funcstochk getaddrinfo],
+    [#ifdef _WIN32
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
+    #endif])],
+  [AC_CHECK_FUNCS(m4_normalize(funcstochk))]
+)
+
+m4_undefine([funcstochk])
+
+dnl check getaddrinfo and gethostbyname_r for non-windows
+AS_IF([test x$bwin32 = xfalse], [
 AC_CACHE_CHECK(
     [for getaddrinfo],
     [libevent_cv_getaddrinfo],
@@ -419,9 +413,9 @@ if test "$libevent_cv_getaddrinfo" = "yes" ; then
     AC_DEFINE([HAVE_GETADDRINFO], [1], [Do we have getaddrinfo()?])
 else
 
-# Check for gethostbyname_r in all its glorious incompatible versions.
-#   (This is cut-and-pasted from Tor, which based its logic on
-#   Python's configure.in.)
+dnl Check for gethostbyname_r in all its glorious incompatible versions.
+dnl   (This is cut-and-pasted from Tor, which based its logic on
+dnl   Python's configure.in.)
 AH_TEMPLATE(HAVE_GETHOSTBYNAME_R,
   [Define this if you have any gethostbyname_r()])
 
@@ -442,27 +436,27 @@ AC_CHECK_FUNC(gethostbyname_r, [
      [Define this if gethostbyname_r takes 6 arguments])
     AC_MSG_RESULT(6)
   ], [
-    AC_TRY_COMPILE([
+    AC_COMPILE_IFELSE([AC_LANG_PROGRAM([
 #include <netdb.h>
     ], [
       char *cp1, *cp2;
       struct hostent *h1;
       int i1, i2;
       (void)gethostbyname_r(cp1,h1,cp2,i1,&i2);
-    ], [
+    ])], [
       AC_DEFINE(HAVE_GETHOSTBYNAME_R)
       AC_DEFINE(HAVE_GETHOSTBYNAME_R_5_ARG, 1,
         [Define this if gethostbyname_r takes 5 arguments])
       AC_MSG_RESULT(5)
-   ], [
-      AC_TRY_COMPILE([
+    ], [
+      AC_COMPILE_IFELSE([AC_LANG_PROGRAM([
 #include <netdb.h>
      ], [
        char *cp1;
        struct hostent *h1;
        struct hostent_data hd;
        (void) gethostbyname_r(cp1,h1,&hd);
-     ], [
+     ])], [
        AC_DEFINE(HAVE_GETHOSTBYNAME_R)
        AC_DEFINE(HAVE_GETHOSTBYNAME_R_3_ARG, 1,
          [Define this if gethostbyname_r takes 3 arguments])
@@ -476,6 +470,7 @@ AC_CHECK_FUNC(gethostbyname_r, [
 ])
 
 fi
+]) dnl end of checking getaddrinfo and gethostbyname_r
 
 AC_MSG_CHECKING(for F_SETFD in fcntl.h)
 AC_EGREP_CPP(yes,
@@ -518,7 +513,8 @@ if test "x$ac_cv_header_sys_event_h" = "xyes"; then
 	AC_CHECK_FUNCS(kqueue, [havekqueue=yes], )
 	if test "x$havekqueue" = "xyes" ; then
 		AC_MSG_CHECKING(for working kqueue)
-		AC_TRY_RUN(
+		AC_RUN_IFELSE(
+      [AC_LANG_PROGRAM([
 #ifdef HAVE_STDLIB_H
 #include <stdlib.h>
 #endif
@@ -531,50 +527,50 @@ if test "x$ac_cv_header_sys_event_h" = "xyes"; then
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
-
-int
-main(int argc, char **argv)
-{
+        ], [[
 	int kq;
 	int n;
-	int fd[[2]];
+	int fd[2];
 	struct kevent ev;
 	struct timespec ts;
-	char buf[[80000]];
+	char buf[80000];
 
 	if (pipe(fd) == -1)
-		exit(1);
-	if (fcntl(fd[[1]], F_SETFL, O_NONBLOCK) == -1)
-		exit(1);
+  		return 1;
+	if (fcntl(fd[1], F_SETFL, O_NONBLOCK) == -1)
+		return 1;
 
-	while ((n = write(fd[[1]], buf, sizeof(buf))) == sizeof(buf))
+	while ((n = write(fd[1], buf, sizeof(buf))) == sizeof(buf))
 		;
 
-        if ((kq = kqueue()) == -1)
-		exit(1);
+	if ((kq = kqueue()) == -1)
+		return 1;
 
 	memset(&ev, 0, sizeof(ev));
-	ev.ident = fd[[1]];
+	ev.ident = fd[1];
 	ev.filter = EVFILT_WRITE;
 	ev.flags = EV_ADD | EV_ENABLE;
 	n = kevent(kq, &ev, 1, NULL, 0, NULL);
 	if (n == -1)
-		exit(1);
+		return 1;
 
-	read(fd[[0]], buf, sizeof(buf));
+	read(fd[0], buf, sizeof(buf));
 
 	ts.tv_sec = 0;
 	ts.tv_nsec = 0;
 	n = kevent(kq, NULL, 0, &ev, 1, &ts);
 	if (n == -1 || n == 0)
-		exit(1);
+		return 1;
 
-	exit(0);
-}, [AC_MSG_RESULT(yes)
-    AC_DEFINE(HAVE_WORKING_KQUEUE, 1,
-		[Define if kqueue works correctly with pipes])
-    havekqueue=yes
-    ], AC_MSG_RESULT(no), AC_MSG_RESULT(no))
+	return 0;
+        ]]
+      )],
+      [AC_MSG_RESULT(yes)
+      AC_DEFINE(HAVE_WORKING_KQUEUE, 1,
+        [Define if kqueue works correctly with pipes])
+      havekqueue=yes
+      ], [AC_MSG_RESULT(no)], [AC_MSG_RESULT(no)]
+    )
 	fi
 fi
 AM_CONDITIONAL(KQUEUE_BACKEND, [test "x$havekqueue" = "xyes"])
@@ -590,7 +586,8 @@ fi
 if test "x$ac_cv_header_sys_epoll_h" = "xyes"; then
 	if test "x$haveepoll" = "xno" ; then
 		AC_MSG_CHECKING(for epoll system call)
-		AC_TRY_RUN(
+		AC_RUN_IFELSE(
+      [AC_LANG_PROGRAM([[
 #include <stdint.h>
 #include <sys/param.h>
 #include <sys/types.h>
@@ -603,21 +600,21 @@ epoll_create(int size)
 {
 	return (syscall(__NR_epoll_create, size));
 }
-
-int
-main(int argc, char **argv)
-{
+        ]],[[
 	int epfd;
 
 	epfd = epoll_create(256);
-	exit (epfd == -1 ? 1 : 0);
-}, [AC_MSG_RESULT(yes)
-    AC_DEFINE(HAVE_EPOLL, 1,
-	[Define if your system supports the epoll system calls])
-    needsignal=yes
-    have_epoll=yes
-    AC_LIBOBJ(epoll_sub)
-    ], AC_MSG_RESULT(no), AC_MSG_RESULT(no))
+	return (epfd == -1 ? 1 : 0);
+        ]]
+      )], 
+      [AC_MSG_RESULT(yes)
+      AC_DEFINE(HAVE_EPOLL, 1,
+	      [Define if your system supports the epoll system calls])
+      needsignal=yes
+      have_epoll=yes
+      AC_LIBOBJ(epoll_sub)
+      ], [AC_MSG_RESULT(no)], [AC_MSG_RESULT(no)]
+    )
 	fi
 fi
 AM_CONDITIONAL(EPOLL_BACKEND, [test "x$haveepoll" = "xyes"])
@@ -631,10 +628,16 @@ if test "x$haveeventports" = "xyes" ; then
 fi
 AM_CONDITIONAL(EVPORT_BACKEND, [test "x$haveeventports" = "xyes"])
 
+havewepoll=no
 if test "x$bwin32" = "xtrue"; then
 	needsignal=yes
+  if test "x$cygwin" = "xfalse"; then
+    havewepoll=yes
+    AC_DEFINE(HAVE_WEPOLL, 1,
+      [Define if your system supports the wepoll module])
+  fi
 fi
-
+AM_CONDITIONAL(WEPOLL_BACKEND, [test "x$havewepoll" = "xyes"])
 AM_CONDITIONAL(SIGNAL_SUPPORT, [test "x$needsignal" = "xyes"])
 
 AC_TYPE_PID_T
@@ -727,42 +730,51 @@ AC_CHECK_TYPES([struct linger],,,
 #ifdef HAVE_SYS_SOCKET_H
 #include <sys/socket.h>
 #endif
+#ifdef _WIN32
+#include <winsock2.h>
+#endif
 ])
 
 AC_MSG_CHECKING([for socklen_t])
-AC_TRY_COMPILE([
+AC_COMPILE_IFELSE(
+  [AC_LANG_PROGRAM([
  #include <sys/types.h>
  #ifdef _WIN32
  #include <ws2tcpip.h>
  #else
  #include <sys/socket.h>
- #endif],
-  [socklen_t x;],
-  AC_MSG_RESULT([yes]),
+ #endif
+    ],[socklen_t x;]
+  )],
+	[AC_MSG_RESULT([yes])],
   [AC_MSG_RESULT([no])
   AC_DEFINE(socklen_t, unsigned int,
-	[Define to unsigned int if you dont have it])]
+	  [Define to unsigned int if you dont have it])]
 )
 
-# __func__/__FUNCTION__ is not a macros in general
+dnl __func__/__FUNCTION__ is not a macros in general
 AC_MSG_CHECKING([whether our compiler supports __func__])
-AC_TRY_COMPILE([],
-  [ const char *cp = __func__; ],
-  [ AC_DEFINE(HAVE___func__, 1, [Define to 1 if compiler have __func__])
+AC_COMPILE_IFELSE(
+  [AC_LANG_PROGRAM([],
+    [ const char *cp = __func__; ]
+  )],
+	[ AC_DEFINE(HAVE___func__, 1, [Define to 1 if compiler have __func__])
     AC_MSG_RESULT([yes])
   ],
-  AC_MSG_RESULT([no])
+  [AC_MSG_RESULT([no])]
 )
 AC_MSG_CHECKING([whether our compiler supports __FUNCTION__])
-AC_TRY_COMPILE([],
-  [ const char *cp = __FUNCTION__; ],
-  [ AC_DEFINE(HAVE___FUNCTION__, 1, [Define to 1 if compiler have __FUNCTION__])
+AC_COMPILE_IFELSE(
+  [AC_LANG_PROGRAM([],
+    [ const char *cp = __FUNCTION__; ]
+  )],
+	[ AC_DEFINE(HAVE___FUNCTION__, 1, [Define to 1 if compiler have __FUNCTION__])
     AC_MSG_RESULT([yes])
   ],
-  AC_MSG_RESULT([no])
+  [AC_MSG_RESULT([no])]
 )
 
-# check if we can compile with pthreads
+dnl check if we can compile with pthreads
 have_pthreads=no
 if test x$bwin32 != xtrue && test "$enable_thread_support" != "no"; then
   ACX_PTHREAD([
@@ -778,103 +790,93 @@ fi
 AM_CONDITIONAL(THREADS, [test "$enable_thread_support" != "no"])
 AM_CONDITIONAL(PTHREADS, [test "$have_pthreads" != "no" && test "$enable_thread_support" != "no"])
 
-# check if we should compile locking into the library
+dnl check if we should compile locking into the library
 if test x$enable_thread_support = xno; then
    AC_DEFINE(DISABLE_THREAD_SUPPORT, 1,
 	[Define if libevent should not be compiled with thread support])
 fi
 
-# check if we should hard-code the mm functions.
+dnl check if we should hard-code the mm functions.
 if test x$enable_malloc_replacement = xno; then
   AC_DEFINE(DISABLE_MM_REPLACEMENT, 1,
         [Define if libevent should not allow replacing the mm functions])
 fi
 
-# check if we should hard-code debugging out
+dnl check if we should hard-code debugging out
 if test x$enable_debug_mode = xno; then
   AC_DEFINE(DISABLE_DEBUG_MODE, 1,
         [Define if libevent should build without support for a debug mode])
 fi
 
-# check if we should enable verbose debugging 
+dnl check if we should enable verbose debugging
 if test x$enable_verbose_debug = xyes; then
 	CFLAGS="$CFLAGS -DUSE_DEBUG"
 fi
 
-# check if we have and should use openssl
+dnl check if we have and should use OpenSSL
 AM_CONDITIONAL(OPENSSL, [test "$enable_openssl" != "no" && test "$have_openssl" = "yes"])
 
-# Add some more warnings which we use in development but not in the
-# released versions.  (Some relevant gcc versions can't handle these.)
+# check if we have and should use mbedtls
+AM_CONDITIONAL(MBEDTLS, [test "$enable_mbedtls" != "no" && test "$have_mbedtls" = "yes"])
+
+dnl enable some warnings by default
+AX_CHECK_COMPILE_FLAG([-Wall], [CFLAGS="$CFLAGS -Wall"],[],[-Werror])
+
+dnl Disable the strict-aliasing optimization, since it breaks
+dnl our sockaddr-handling code in strange ways.
+dnl See 52eb4951302554dd696d6a0120ad5d3f6cffb7bb.
+AX_CHECK_COMPILE_FLAG([-fno-strict-aliasing], [CFLAGS="$CFLAGS -fno-strict-aliasing"],[],[-Werror])
+
+dnl Add warnings which we use in development but not for releases.
 if test x$enable_gcc_warnings != xno && test "$GCC" = "yes"; then
 
-  AC_COMPILE_IFELSE([AC_LANG_PROGRAM([], [
-#if !defined(__GNUC__) || (__GNUC__ < 4)
-#error
-#endif])], have_gcc4=yes, have_gcc4=no)
+  dnl -W is the same as -Wextra
+  AX_CHECK_COMPILE_FLAG([-W], [CFLAGS="$CFLAGS -W"],[],[-Werror])
 
-  AC_COMPILE_IFELSE([AC_LANG_PROGRAM([], [
-#if !defined(__GNUC__) || (__GNUC__ < 4) || (__GNUC__ == 4 && __GNUC_MINOR__ < 2)
-#error
-#endif])], have_gcc42=yes, have_gcc42=no)
+  dnl The AX_CHECK_COMPILE_FLAG macro ignores warnings, so -Werror is used
+  dnl to convert warnings into errors and prevent the addition of unknown flags.
+  AX_CHECK_COMPILE_FLAG([-Waddress],[CFLAGS="$CFLAGS -Waddress"],[],[-Werror])
+  AX_CHECK_COMPILE_FLAG([-Wbad-function-cast],[CFLAGS="$CFLAGS -Wbad-function-cast"],[],[-Werror])
+  AX_CHECK_COMPILE_FLAG([-Wdeclaration-after-statement],[CFLAGS="$CFLAGS -Wdeclaration-after-statement"],[],[-Werror])
+  AX_CHECK_COMPILE_FLAG([-Wfloat-equal],[CFLAGS="$CFLAGS -Wfloat-equal"],[],[-Werror])
+  AX_CHECK_COMPILE_FLAG([-Winit-self],[CFLAGS="$CFLAGS -Winit-self"],[],[-Werror])
+  AX_CHECK_COMPILE_FLAG([-Wlogical-op],[CFLAGS="$CFLAGS -Wlogical-op"],[],[-Werror])
+  AX_CHECK_COMPILE_FLAG([-Wmissing-declarations],[CFLAGS="$CFLAGS -Wmissing-declarations"],[],[-Werror])
+  AX_CHECK_COMPILE_FLAG([-Wmissing-field-initializers],[CFLAGS="$CFLAGS -Wmissing-field-initializers"],[],[-Werror])
+  AX_CHECK_COMPILE_FLAG([-Wmissing-prototypes],[CFLAGS="$CFLAGS -Wmissing-prototypes"],[],[-Werror])
+  AX_CHECK_COMPILE_FLAG([-Wnested-externs],[CFLAGS="$CFLAGS -Wnested-externs"],[],[-Werror])
+  AX_CHECK_COMPILE_FLAG([-Wnormalized=id],[CFLAGS="$CFLAGS -Wnormalized=id"],[],[-Werror])
+  AX_CHECK_COMPILE_FLAG([-Woverride-init],[CFLAGS="$CFLAGS -Woverride-init"],[],[-Werror])
+  AX_CHECK_COMPILE_FLAG([-Wpointer-arith],[CFLAGS="$CFLAGS -Wpointer-arith"],[],[-Werror])
+  AX_CHECK_COMPILE_FLAG([-Wredundant-decls],[CFLAGS="$CFLAGS -Wredundant-decls"],[],[-Werror])
+  AX_CHECK_COMPILE_FLAG([-Wstrict-prototypes],[CFLAGS="$CFLAGS -Wstrict-prototypes"],[],[-Werror])
+  AX_CHECK_COMPILE_FLAG([-Wundef],[CFLAGS="$CFLAGS -Wundef"],[],[-Werror])
+  AX_CHECK_COMPILE_FLAG([-Wwrite-strings],[CFLAGS="$CFLAGS -Wwrite-strings"],[],[-Werror])
 
-  AC_COMPILE_IFELSE([AC_LANG_PROGRAM([], [
-#if !defined(__GNUC__) || (__GNUC__ < 4) || (__GNUC__ == 4 && __GNUC_MINOR__ < 5)
-#error
-#endif])], have_gcc45=yes, have_gcc45=no)
-
-  AC_COMPILE_IFELSE([AC_LANG_PROGRAM([], [
-#if !defined(__clang__)
-#error
-#endif])], have_clang=yes, have_clang=no)
-
-  # -W is the same as -Wextra
-  CFLAGS="$CFLAGS -W -Wfloat-equal -Wundef -Wpointer-arith -Wstrict-prototypes -Wmissing-prototypes -Wwrite-strings -Wredundant-decls -Wmissing-declarations -Wredundant-decls -Wnested-externs -Wbad-function-cast"
+  dnl Convert warnings into errors
   if test x$enable_gcc_warnings = xyes; then
-    CFLAGS="$CFLAGS -Werror"
+    AX_CHECK_COMPILE_FLAG([-Werror], [CFLAGS="$CFLAGS -Werror"])
   fi
 
-  CFLAGS="$CFLAGS -Wno-unused-parameter -Wstrict-aliasing"
+  dnl Disable warnings for unused paramaters
+  AX_CHECK_COMPILE_FLAG([-Wno-unused-parameter], [CFLAGS="$CFLAGS -Wno-unused-parameter"],[],[-Werror])
 
-  if test x$have_gcc4 = xyes ; then
-    # These warnings break gcc 3.3.5 and work on gcc 4.0.2
-    CFLAGS="$CFLAGS -Winit-self -Wmissing-field-initializers -Wdeclaration-after-statement"
-    #CFLAGS="$CFLAGS -Wold-style-definition"
-  fi
-
-  if test x$have_gcc42 = xyes ; then
-    # These warnings break gcc 4.0.2 and work on gcc 4.2
-    CFLAGS="$CFLAGS -Waddress"
-  fi
-
-  if test x$have_gcc42 = xyes && test x$have_clang = xno; then
-    # These warnings break gcc 4.0.2 and clang, but work on gcc 4.2
-    CFLAGS="$CFLAGS -Wnormalized=id -Woverride-init"
-  fi
-
-  if test x$have_gcc45 = xyes ; then
-    # These warnings work on gcc 4.5
-    CFLAGS="$CFLAGS -Wlogical-op"
-  fi
+  AC_COMPILE_IFELSE([AC_LANG_PROGRAM([], [
+  #if !defined(__clang__)
+  #error
+  #endif])], have_clang=yes, have_clang=no)
 
   if test x$have_clang = xyes; then
-    # Disable the unused-function warnings, because these trigger
-    # for minheap-internal.h related code.
-    CFLAGS="$CFLAGS -Wno-unused-function"
+    dnl Disable unused-function warnings. These trigger for minheap-internal.h.
+    AX_CHECK_COMPILE_FLAG([-Wno-unused-function], [CFLAGS="$CFLAGS -Wno-unused-function"],[],[-Werror])
 
-    # clang on macosx emits warnings for each directory specified which
-    # isn't "used" generating a lot of build noise (typically 3 warnings
-    # per file
     case "$host_os" in
-        darwin*)
-            CFLAGS="$CFLAGS -Qunused-arguments"
-        ;;
+      darwin*)
+        dnl Clang on macOS emits warnings for each directory specified which
+        dnl isn't "used", generating a lot of build noise.
+        AX_CHECK_COMPILE_FLAG([-Qunused-arguments], [CFLAGS="$CFLAGS -Qunused-arguments"],[],[-Werror])
     esac
   fi
-
-##This will break the world on some 64-bit architectures
-# CFLAGS="$CFLAGS -Winline"
-
 fi
 
 LIBEVENT_GC_SECTIONS=
@@ -952,5 +954,19 @@ AC_SUBST([LIBEVENT_GC_SECTIONS])
 
 AM_CONDITIONAL([INSTALL_LIBEVENT], [test "$enable_libevent_install" = "yes"])
 
-AC_CONFIG_FILES( [libevent.pc libevent_openssl.pc libevent_pthreads.pc libevent_core.pc libevent_extra.pc] )
+dnl Doxygen support
+DX_HTML_FEATURE(ON)
+DX_MAN_FEATURE(OFF)
+DX_RTF_FEATURE(OFF)
+DX_XML_FEATURE(OFF)
+DX_PDF_FEATURE(OFF)
+DX_PS_FEATURE(OFF)
+DX_CHM_FEATURE(OFF)
+DX_CHI_FEATURE(OFF)
+DX_INIT_DOXYGEN([libevent], [${top_srcdir}/Doxyfile], [doxygen])
+
+AM_CONDITIONAL([ENABLE_DOXYGEN], [test "$DX_FLAG_doc" = "1"])
+AM_CONDITIONAL([ENABLE_DOXYGEN_MAN], [test "$DX_FLAG_man" = "1"])
+
+AC_CONFIG_FILES( [libevent.pc libevent_mbedtls.pc libevent_openssl.pc libevent_pthreads.pc libevent_core.pc libevent_extra.pc] )
 AC_OUTPUT(Makefile)

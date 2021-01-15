@@ -39,8 +39,11 @@ enum class Status {
   // JWT is not in the form of Header.Payload.Signature
   JwtBadFormat,
 
-  // Jwt header is an invalid Base64url input or an invalid JSON.
-  JwtHeaderParseError,
+  // Jwt header is an invalid Base64url encoded.
+  JwtHeaderParseErrorBadBase64,
+
+  // Jwt header is an invalid JSON.
+  JwtHeaderParseErrorBadJson,
 
   // "alg" in the header is not a string.
   JwtHeaderBadAlg,
@@ -51,11 +54,38 @@ enum class Status {
   // "kid" in the header is not a string.
   JwtHeaderBadKid,
 
-  // Jwt payload is an invalid Base64url input or an invalid JSON.
-  JwtPayloadParseError,
+  // Jwt payload is an invalid Base64url encoded.
+  JwtPayloadParseErrorBadBase64,
+
+  // Jwt payload is an invalid JSON.
+  JwtPayloadParseErrorBadJson,
+
+  // Jwt payload field [iss] must be string.
+  JwtPayloadParseErrorIssNotString,
+
+  // Jwt payload field [sub] must be string.
+  JwtPayloadParseErrorSubNotString,
+
+  // Jwt payload field [iat] must be integer.
+  JwtPayloadParseErrorIatNotInteger,
+
+  // Jwt payload field [nbf] must be integer.
+  JwtPayloadParseErrorNbfNotInteger,
+
+  // Jwt payload field [exp] must be integer.
+  JwtPayloadParseErrorExpNotInteger,
+
+  // Jwt payload field [jti] must be string.
+  JwtPayloadParseErrorJtiNotString,
+
+  // Jwt payload field [aud] must be string or string list.
+  JwtPayloadParseErrorAudNotString,
 
   // Jwt signature is an invalid Base64url input.
-  JwtSignatureParseError,
+  JwtSignatureParseErrorBadBase64,
+
+  // Jwt ED25519 signature is wrong length
+  JwtEd25519SignatureWrongLength,
 
   // Issuer is not configured.
   JwtUnknownIssuer,
@@ -65,6 +95,9 @@ enum class Status {
 
   // Jwt verification fails.
   JwtVerificationFail,
+
+  // Found multiple Jwt tokens.
+  JwtMultipleTokens,
 
   // Jwks errors
 
@@ -97,6 +130,11 @@ enum class Status {
 
   // Jwks Oct key is an invalid Base64.
   JwksOctBadBase64,
+
+  // "x" field is invalid Base64
+  JwksOKPXBadBase64,
+  // "x" field is wrong length
+  JwksOKPXWrongLength,
 
   // Failed to fetch public key
   JwksFetchFail,
@@ -143,6 +181,19 @@ enum class Status {
   // "k" field is not string for an HMAC key
   JwksHMACKeyBadK,
 
+  // "alg" is not "EdDSA" for an OKP key
+  JwksOKPKeyBadAlg,
+  // "crv" field is missing for an OKP key
+  JwksOKPKeyMissingCrv,
+  // "crv" field is not string for an OKP key
+  JwksOKPKeyBadCrv,
+  // "crv" is not supported for an OKP key
+  JwksOKPKeyCrvUnsupported,
+  // "x" field is missing for an OKP key
+  JwksOKPKeyMissingX,
+  // "x" field is not string for an OKP key
+  JwksOKPKeyBadX,
+
   // X509 BIO_Write function fails
   JwksX509BioWriteError,
   // X509 parse pubkey fails
@@ -154,6 +205,8 @@ enum class Status {
   JwksPemNotImplementedKty,
   // Unable to parse public key
   JwksPemBadBase64,
+  // Failed to get raw ED25519 key from PEM
+  JwksPemGetRawEd25519Error,
 
   // Failed to create BIO
   JwksBioAllocError,
@@ -185,6 +238,10 @@ class WithStatus {
     if (status_ == Status::Ok) {
       status_ = status;
     }
+  }
+
+  void resetStatus(Status status) {
+    status_ = status;
   }
 
  private:

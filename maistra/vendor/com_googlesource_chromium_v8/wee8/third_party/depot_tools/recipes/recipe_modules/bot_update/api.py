@@ -30,8 +30,16 @@ class BotUpdateApi(recipe_api.RecipeApi):
     bot_update_path = self.resource('bot_update.py')
     kwargs.setdefault('infra_step', True)
 
-    with self.m.depot_tools.on_path():
-      return self.m.python(name, bot_update_path, cmd, **kwargs)
+    # If a Git HTTP request is constantly below GIT_HTTP_LOW_SPEED_LIMIT
+    # bytes/second for GIT_HTTP_LOW_SPEED_TIME seconds then such request will be
+    # aborted. Otherwise, it would wait for global timeout to be reached.
+    env = {
+        'GIT_HTTP_LOW_SPEED_LIMIT': '102400',  # in bytes
+        'GIT_HTTP_LOW_SPEED_TIME': 300,  # in seconds
+    }
+    with self.m.context(env=env):
+      with self.m.depot_tools.on_path():
+        return self.m.python(name, bot_update_path, cmd, **kwargs)
 
   @property
   def last_returned_properties(self):
@@ -86,9 +94,9 @@ class BotUpdateApi(recipe_api.RecipeApi):
                       gerrit_no_reset=False,
                       gerrit_no_rebase_patch_ref=False,
                       disable_syntax_validation=False,
-                      manifest_name=None,
                       patch_refs=None,
                       ignore_input_commit=False,
+                      add_blamelists=False,
                       set_output_commit=False,
                       step_test_data=None,
                       **kwargs):
@@ -103,10 +111,10 @@ class BotUpdateApi(recipe_api.RecipeApi):
       disable_syntax_validation: (legacy) Disables syntax validation for DEPS.
         Needed as migration paths for recipes dealing with older revisions,
         such as bisect.
-      manifest_name: The name of the manifest to upload to LogDog.  This must
-        be unique for the whole build.
       ignore_input_commit: if True, ignore api.buildbucket.gitiles_commit.
         Exists for historical reasons. Please do not use.
+      add_blamelists: if True, add blamelist pins for all of the repos that had
+        revisions specified in the gclient config.
       set_output_commit: if True, mark the checked out commit as the
         primary output commit of this build, i.e. call
         api.buildbucket.set_output_gitiles_commit.
@@ -189,6 +197,9 @@ class BotUpdateApi(recipe_api.RecipeApi):
       # This is necessary because existing builders rely on this behavior,
       # e.g. they want to force refs/heads/master at the config level.
       in_commit_repo_path = self._get_commit_repo_path(in_commit, cfg)
+      # The repo_path that comes back on Windows will have backslashes, which
+      # won't match the paths that the gclient configs and bot_update script use
+      in_commit_repo_path = in_commit_repo_path.replace(self.m.path.sep, '/')
       revisions[in_commit_repo_path] = (
           revisions.get(in_commit_repo_path) or in_commit_rev)
       parsed_solution_urls = set(
@@ -309,18 +320,21 @@ class BotUpdateApi(recipe_api.RecipeApi):
           step_text = result['step_text']
           step_result.presentation.step_text = step_text
 
-        # Export the step results as a Source Manifest to LogDog.
-        source_manifest = result.get('source_manifest', {})
-        if manifest_name:
-          if not patch:
-            # The param "patched" is purely cosmetic to mean "if false, this
-            # bot_update run exists purely to unpatch an existing patch".
-            manifest_name += '_unpatched'
-          self.m.source_manifest.set_json_manifest(
-              manifest_name, source_manifest)
+        if add_blamelists and 'manifest' in result:
+          blamelist_pins = []
+          for name in revisions:
+            m = result['manifest'][name]
+            pin = {'id': m['revision']}
+            pin['host'], pin['project'] = (
+                self.m.gitiles.parse_repo_url(m['repository']))
+            blamelist_pins.append(pin)
+
+          result.blamelist_pins = blamelist_pins
+          self.m.milo.show_blamelist_for(blamelist_pins)
 
         # Set output commit of the build.
-        if set_output_commit:
+        if (set_output_commit and
+            'got_revision' in self._last_returned_properties):
           # As of April 2019, got_revision describes the output commit,
           # the same commit that Build.output.gitiles_commit describes.
           # In particular, users tend to set got_revision to make Milo display
@@ -379,6 +393,7 @@ class BotUpdateApi(recipe_api.RecipeApi):
             else:
               # This is actual patch failure.
               self.m.tryserver.set_patch_failure_tryjob_result()
+              self.m.cq.set_do_not_retry_build()
               self.m.python.failing_step(
                   'Patch failure', 'See attached log. Try rebasing?')
           except self.m.step.StepFailure as e:

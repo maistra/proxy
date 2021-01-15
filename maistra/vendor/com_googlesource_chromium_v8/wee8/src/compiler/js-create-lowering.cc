@@ -28,6 +28,7 @@
 #include "src/objects/js-regexp-inl.h"
 #include "src/objects/objects-inl.h"
 #include "src/objects/template-objects.h"
+#include "torque-generated/exported-class-definitions.h"
 
 namespace v8 {
 namespace internal {
@@ -168,10 +169,10 @@ Reduction JSCreateLowering::ReduceJSCreateArguments(Node* node) {
         Node* effect = NodeProperties::GetEffectInput(node);
         Node* const arguments_frame =
             graph()->NewNode(simplified()->ArgumentsFrame());
-        Node* const arguments_length = graph()->NewNode(
-            simplified()->ArgumentsLength(
-                shared.internal_formal_parameter_count(), false),
-            arguments_frame);
+        Node* const arguments_length =
+            graph()->NewNode(simplified()->ArgumentsLength(
+                                 shared.internal_formal_parameter_count()),
+                             arguments_frame);
         // Allocate the elements backing store.
         bool has_aliased_arguments = false;
         Node* const elements = effect = AllocateAliasedArguments(
@@ -200,13 +201,15 @@ Reduction JSCreateLowering::ReduceJSCreateArguments(Node* node) {
         Node* effect = NodeProperties::GetEffectInput(node);
         Node* const arguments_frame =
             graph()->NewNode(simplified()->ArgumentsFrame());
-        Node* const arguments_length = graph()->NewNode(
-            simplified()->ArgumentsLength(
-                shared.internal_formal_parameter_count(), false),
-            arguments_frame);
+        Node* const arguments_length =
+            graph()->NewNode(simplified()->ArgumentsLength(
+                                 shared.internal_formal_parameter_count()),
+                             arguments_frame);
         // Allocate the elements backing store.
         Node* const elements = effect =
-            graph()->NewNode(simplified()->NewArgumentsElements(0),
+            graph()->NewNode(simplified()->NewArgumentsElements(
+                                 CreateArgumentsType::kUnmappedArguments,
+                                 shared.internal_formal_parameter_count()),
                              arguments_frame, arguments_length, effect);
         // Load the arguments object map.
         Node* const arguments_map =
@@ -228,16 +231,19 @@ Reduction JSCreateLowering::ReduceJSCreateArguments(Node* node) {
         Node* effect = NodeProperties::GetEffectInput(node);
         Node* const arguments_frame =
             graph()->NewNode(simplified()->ArgumentsFrame());
+        Node* const arguments_length =
+            graph()->NewNode(simplified()->ArgumentsLength(
+                                 shared.internal_formal_parameter_count()),
+                             arguments_frame);
         Node* const rest_length = graph()->NewNode(
-            simplified()->ArgumentsLength(
-                shared.internal_formal_parameter_count(), true),
+            simplified()->RestLength(shared.internal_formal_parameter_count()),
             arguments_frame);
-        // Allocate the elements backing store. Since NewArgumentsElements
-        // copies from the end of the arguments adapter frame, this is a suffix
-        // of the actual arguments.
+        // Allocate the elements backing store.
         Node* const elements = effect =
-            graph()->NewNode(simplified()->NewArgumentsElements(0),
-                             arguments_frame, rest_length, effect);
+            graph()->NewNode(simplified()->NewArgumentsElements(
+                                 CreateArgumentsType::kRestParameter,
+                                 shared.internal_formal_parameter_count()),
+                             arguments_frame, arguments_length, effect);
         // Load the JSArray object map.
         Node* const jsarray_map = jsgraph()->Constant(
             native_context().js_array_packed_elements_map());
@@ -256,10 +262,12 @@ Reduction JSCreateLowering::ReduceJSCreateArguments(Node* node) {
       }
     }
     UNREACHABLE();
-  } else if (outer_state->opcode() == IrOpcode::kFrameState) {
-    // Use inline allocation for all mapped arguments objects within inlined
-    // (i.e. non-outermost) frames, independent of the object size.
-    if (type == CreateArgumentsType::kMappedArguments) {
+  }
+  // Use inline allocation for all mapped arguments objects within inlined
+  // (i.e. non-outermost) frames, independent of the object size.
+  DCHECK_EQ(outer_state->opcode(), IrOpcode::kFrameState);
+  switch (type) {
+    case CreateArgumentsType::kMappedArguments: {
       Node* const callee = NodeProperties::GetValueInput(node, 0);
       Node* const context = NodeProperties::GetContextInput(node);
       Node* effect = NodeProperties::GetEffectInput(node);
@@ -277,6 +285,12 @@ Reduction JSCreateLowering::ReduceJSCreateArguments(Node* node) {
         return NoChange();
       }
       FrameStateInfo args_state_info = FrameStateInfoOf(args_state->op());
+      int length = args_state_info.parameter_count() - 1;  // Minus receiver.
+      // Check that the array allocated for arguments is not "large".
+      {
+        const int alloc_size = FixedArray::SizeFor(length);
+        if (alloc_size > kMaxRegularHeapObjectSize) return NoChange();
+      }
       // Prepare element backing store to be used by arguments object.
       bool has_aliased_arguments = false;
       Node* const elements = AllocateAliasedArguments(
@@ -288,7 +302,6 @@ Reduction JSCreateLowering::ReduceJSCreateArguments(Node* node) {
                                 : native_context().sloppy_arguments_map());
       // Actually allocate and initialize the arguments object.
       AllocationBuilder a(jsgraph(), effect, control);
-      int length = args_state_info.parameter_count() - 1;  // Minus receiver.
       STATIC_ASSERT(JSSloppyArgumentsObject::kSize == 5 * kTaggedSize);
       a.Allocate(JSSloppyArgumentsObject::kSize);
       a.Store(AccessBuilder::ForMap(), arguments_map);
@@ -300,7 +313,8 @@ Reduction JSCreateLowering::ReduceJSCreateArguments(Node* node) {
       RelaxControls(node);
       a.FinishAndChange(node);
       return Changed(node);
-    } else if (type == CreateArgumentsType::kUnmappedArguments) {
+    }
+    case CreateArgumentsType::kUnmappedArguments: {
       // Use inline allocation for all unmapped arguments objects within inlined
       // (i.e. non-outermost) frames, independent of the object size.
       Node* effect = NodeProperties::GetEffectInput(node);
@@ -316,6 +330,12 @@ Reduction JSCreateLowering::ReduceJSCreateArguments(Node* node) {
         return NoChange();
       }
       FrameStateInfo args_state_info = FrameStateInfoOf(args_state->op());
+      int length = args_state_info.parameter_count() - 1;  // Minus receiver.
+      // Check that the array allocated for arguments is not "large".
+      {
+        const int alloc_size = FixedArray::SizeFor(length);
+        if (alloc_size > kMaxRegularHeapObjectSize) return NoChange();
+      }
       // Prepare element backing store to be used by arguments object.
       Node* const elements = AllocateArguments(effect, control, args_state);
       effect = elements->op()->EffectOutputCount() > 0 ? elements : effect;
@@ -324,7 +344,6 @@ Reduction JSCreateLowering::ReduceJSCreateArguments(Node* node) {
           jsgraph()->Constant(native_context().strict_arguments_map());
       // Actually allocate and initialize the arguments object.
       AllocationBuilder a(jsgraph(), effect, control);
-      int length = args_state_info.parameter_count() - 1;  // Minus receiver.
       STATIC_ASSERT(JSStrictArgumentsObject::kSize == 4 * kTaggedSize);
       a.Allocate(JSStrictArgumentsObject::kSize);
       a.Store(AccessBuilder::ForMap(), arguments_map);
@@ -335,7 +354,8 @@ Reduction JSCreateLowering::ReduceJSCreateArguments(Node* node) {
       RelaxControls(node);
       a.FinishAndChange(node);
       return Changed(node);
-    } else if (type == CreateArgumentsType::kRestParameter) {
+    }
+    case CreateArgumentsType::kRestParameter: {
       int start_index = shared.internal_formal_parameter_count();
       // Use inline allocation for all unmapped arguments objects within inlined
       // (i.e. non-outermost) frames, independent of the object size.
@@ -378,8 +398,7 @@ Reduction JSCreateLowering::ReduceJSCreateArguments(Node* node) {
       return Changed(node);
     }
   }
-
-  return NoChange();
+  UNREACHABLE();
 }
 
 Reduction JSCreateLowering::ReduceJSCreateGeneratorObject(Node* node) {
@@ -915,14 +934,14 @@ Reduction JSCreateLowering::ReduceJSCreateBoundFunction(Node* node) {
 }
 
 Reduction JSCreateLowering::ReduceJSCreateClosure(Node* node) {
-  DCHECK_EQ(IrOpcode::kJSCreateClosure, node->opcode());
-  CreateClosureParameters const& p = CreateClosureParametersOf(node->op());
+  JSCreateClosureNode n(node);
+  CreateClosureParameters const& p = n.Parameters();
   SharedFunctionInfoRef shared(broker(), p.shared_info());
-  FeedbackCellRef feedback_cell(broker(), p.feedback_cell());
+  FeedbackCellRef feedback_cell = n.GetFeedbackCellRefChecked(broker());
   HeapObjectRef code(broker(), p.code());
-  Node* effect = NodeProperties::GetEffectInput(node);
-  Node* control = NodeProperties::GetControlInput(node);
-  Node* context = NodeProperties::GetContextInput(node);
+  Effect effect = n.effect();
+  Control control = n.control();
+  Node* context = n.context();
 
   // Use inline allocation of closures only for instantiation sites that have
   // seen more than one instantiation, this simplifies the generated code and
@@ -1084,9 +1103,10 @@ Reduction JSCreateLowering::ReduceJSCreatePromise(Node* node) {
 Reduction JSCreateLowering::ReduceJSCreateLiteralArrayOrObject(Node* node) {
   DCHECK(node->opcode() == IrOpcode::kJSCreateLiteralArray ||
          node->opcode() == IrOpcode::kJSCreateLiteralObject);
-  CreateLiteralParameters const& p = CreateLiteralParametersOf(node->op());
-  Node* effect = NodeProperties::GetEffectInput(node);
-  Node* control = NodeProperties::GetControlInput(node);
+  JSCreateLiteralOpNode n(node);
+  CreateLiteralParameters const& p = n.Parameters();
+  Effect effect = n.effect();
+  Control control = n.control();
   ProcessedFeedback const& feedback =
       broker()->GetFeedbackForArrayOrObjectLiteral(p.feedback());
   if (!feedback.IsInsufficient()) {
@@ -1109,8 +1129,8 @@ Reduction JSCreateLowering::ReduceJSCreateLiteralArrayOrObject(Node* node) {
 }
 
 Reduction JSCreateLowering::ReduceJSCreateEmptyLiteralArray(Node* node) {
-  DCHECK_EQ(IrOpcode::kJSCreateEmptyLiteralArray, node->opcode());
-  FeedbackParameter const& p = FeedbackParameterOf(node->op());
+  JSCreateEmptyLiteralArrayNode n(node);
+  FeedbackParameter const& p = n.Parameters();
   ProcessedFeedback const& feedback =
       broker()->GetFeedbackForArrayOrObjectLiteral(p.feedback());
   if (!feedback.IsInsufficient()) {
@@ -1164,10 +1184,10 @@ Reduction JSCreateLowering::ReduceJSCreateEmptyLiteralObject(Node* node) {
 }
 
 Reduction JSCreateLowering::ReduceJSCreateLiteralRegExp(Node* node) {
-  DCHECK_EQ(IrOpcode::kJSCreateLiteralRegExp, node->opcode());
-  CreateLiteralParameters const& p = CreateLiteralParametersOf(node->op());
-  Node* effect = NodeProperties::GetEffectInput(node);
-  Node* control = NodeProperties::GetControlInput(node);
+  JSCreateLiteralRegExpNode n(node);
+  CreateLiteralParameters const& p = n.Parameters();
+  Effect effect = n.effect();
+  Control control = n.control();
   ProcessedFeedback const& feedback =
       broker()->GetFeedbackForRegExpLiteral(p.feedback());
   if (!feedback.IsInsufficient()) {
@@ -1180,9 +1200,8 @@ Reduction JSCreateLowering::ReduceJSCreateLiteralRegExp(Node* node) {
 }
 
 Reduction JSCreateLowering::ReduceJSGetTemplateObject(Node* node) {
-  DCHECK_EQ(IrOpcode::kJSGetTemplateObject, node->opcode());
-  GetTemplateObjectParameters const& parameters =
-      GetTemplateObjectParametersOf(node->op());
+  JSGetTemplateObjectNode n(node);
+  GetTemplateObjectParameters const& parameters = n.Parameters();
   SharedFunctionInfoRef shared(broker(), parameters.shared());
   JSArrayRef template_object = shared.GetTemplateObject(
       TemplateObjectDescriptionRef(broker(), parameters.description()),
@@ -1421,9 +1440,9 @@ Node* JSCreateLowering::AllocateArguments(Node* effect, Node* control,
   a.AllocateArray(argument_count,
                   MapRef(broker(), factory()->fixed_array_map()));
   for (int i = 0; i < argument_count; ++i, ++parameters_it) {
-    DCHECK_NOT_NULL((*parameters_it).node);
+    DCHECK_NOT_NULL(parameters_it.node());
     a.Store(AccessBuilder::ForFixedArrayElement(), jsgraph()->Constant(i),
-            (*parameters_it).node);
+            parameters_it.node());
   }
   return a.Finish();
 }
@@ -1452,9 +1471,9 @@ Node* JSCreateLowering::AllocateRestArguments(Node* effect, Node* control,
   AllocationBuilder a(jsgraph(), effect, control);
   a.AllocateArray(num_elements, MapRef(broker(), factory()->fixed_array_map()));
   for (int i = 0; i < num_elements; ++i, ++parameters_it) {
-    DCHECK_NOT_NULL((*parameters_it).node);
+    DCHECK_NOT_NULL(parameters_it.node());
     a.Store(AccessBuilder::ForFixedArrayElement(), jsgraph()->Constant(i),
-            (*parameters_it).node);
+            parameters_it.node());
   }
   return a.Finish();
 }
@@ -1496,24 +1515,23 @@ Node* JSCreateLowering::AllocateAliasedArguments(
              jsgraph()->TheHoleConstant());
   }
   for (int i = mapped_count; i < argument_count; ++i, ++parameters_it) {
-    DCHECK_NOT_NULL((*parameters_it).node);
+    DCHECK_NOT_NULL(parameters_it.node());
     aa.Store(AccessBuilder::ForFixedArrayElement(), jsgraph()->Constant(i),
-             (*parameters_it).node);
+             parameters_it.node());
   }
   Node* arguments = aa.Finish();
 
   // Actually allocate the backing store.
   AllocationBuilder a(jsgraph(), arguments, control);
-  a.AllocateArray(mapped_count + 2,
-                  MapRef(broker(), factory()->sloppy_arguments_elements_map()));
-  a.Store(AccessBuilder::ForFixedArrayElement(), jsgraph()->Constant(0),
-          context);
-  a.Store(AccessBuilder::ForFixedArrayElement(), jsgraph()->Constant(1),
-          arguments);
+  a.AllocateSloppyArgumentElements(
+      mapped_count,
+      MapRef(broker(), factory()->sloppy_arguments_elements_map()));
+  a.Store(AccessBuilder::ForSloppyArgumentsElementsContext(), context);
+  a.Store(AccessBuilder::ForSloppyArgumentsElementsArguments(), arguments);
   for (int i = 0; i < mapped_count; ++i) {
     int idx = shared.context_header_size() + parameter_count - 1 - i;
-    a.Store(AccessBuilder::ForFixedArrayElement(), jsgraph()->Constant(i + 2),
-            jsgraph()->Constant(idx));
+    a.Store(AccessBuilder::ForSloppyArgumentsElementsMappedEntry(),
+            jsgraph()->Constant(i), jsgraph()->Constant(idx));
   }
   return a.Finish();
 }
@@ -1530,8 +1548,10 @@ Node* JSCreateLowering::AllocateAliasedArguments(
   // special in any way, we can just return an unmapped backing store.
   int parameter_count = shared.internal_formal_parameter_count();
   if (parameter_count == 0) {
-    return graph()->NewNode(simplified()->NewArgumentsElements(0),
-                            arguments_frame, arguments_length, effect);
+    return graph()->NewNode(
+        simplified()->NewArgumentsElements(
+            CreateArgumentsType::kUnmappedArguments, parameter_count),
+        arguments_frame, arguments_length, effect);
   }
 
   // From here on we are going to allocate a mapped (aka. aliased) elements
@@ -1545,17 +1565,17 @@ Node* JSCreateLowering::AllocateAliasedArguments(
   // then linked into the parameter map below, whereas mapped argument values
   // (i.e. the first {mapped_count} elements) are replaced with a hole instead.
   Node* arguments = effect =
-      graph()->NewNode(simplified()->NewArgumentsElements(mapped_count),
+      graph()->NewNode(simplified()->NewArgumentsElements(
+                           CreateArgumentsType::kMappedArguments, mapped_count),
                        arguments_frame, arguments_length, effect);
 
   // Actually allocate the backing store.
   AllocationBuilder a(jsgraph(), effect, control);
-  a.AllocateArray(mapped_count + 2,
-                  MapRef(broker(), factory()->sloppy_arguments_elements_map()));
-  a.Store(AccessBuilder::ForFixedArrayElement(), jsgraph()->Constant(0),
-          context);
-  a.Store(AccessBuilder::ForFixedArrayElement(), jsgraph()->Constant(1),
-          arguments);
+  a.AllocateSloppyArgumentElements(
+      mapped_count,
+      MapRef(broker(), factory()->sloppy_arguments_elements_map()));
+  a.Store(AccessBuilder::ForSloppyArgumentsElementsContext(), context);
+  a.Store(AccessBuilder::ForSloppyArgumentsElementsArguments(), arguments);
   for (int i = 0; i < mapped_count; ++i) {
     int idx = shared.context_header_size() + parameter_count - 1 - i;
     Node* value = graph()->NewNode(
@@ -1563,8 +1583,8 @@ Node* JSCreateLowering::AllocateAliasedArguments(
         graph()->NewNode(simplified()->NumberLessThan(), jsgraph()->Constant(i),
                          arguments_length),
         jsgraph()->Constant(idx), jsgraph()->TheHoleConstant());
-    a.Store(AccessBuilder::ForFixedArrayElement(), jsgraph()->Constant(i + 2),
-            value);
+    a.Store(AccessBuilder::ForSloppyArgumentsElementsMappedEntry(),
+            jsgraph()->Constant(i), value);
   }
   return a.Finish();
 }
@@ -1750,10 +1770,11 @@ Node* JSCreateLowering::AllocateFastLiteralElements(Node* effect, Node* control,
   if (elements_map.instance_type() == FIXED_DOUBLE_ARRAY_TYPE) {
     FixedDoubleArrayRef elements = boilerplate_elements.AsFixedDoubleArray();
     for (int i = 0; i < elements_length; ++i) {
-      if (elements.is_the_hole(i)) {
+      Float64 value = elements.get(i);
+      if (value.is_hole_nan()) {
         elements_values[i] = jsgraph()->TheHoleConstant();
       } else {
-        elements_values[i] = jsgraph()->Constant(elements.get_scalar(i));
+        elements_values[i] = jsgraph()->Constant(value.get_scalar());
       }
     }
   } else {

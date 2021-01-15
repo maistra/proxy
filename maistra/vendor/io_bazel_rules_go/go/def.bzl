@@ -12,6 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Public definitions for Go rules.
+
+All public Go rules, providers, and other definitions are imported and
+re-exported in this file. This allows the real location of definitions
+to change for easier maintenance.
+
+Definitions outside this file are private unless otherwise noted, and
+may change without notice.
+"""
+
 load(
     "@io_bazel_rules_go//go/private:context.bzl",
     _go_context = "go_context",
@@ -65,9 +75,52 @@ load(
     _nogo = "nogo_wrapper",
 )
 
+# TOOLS_NOGO is a list of all analysis passes in
+# golang.org/x/tools/go/analysis/passes.
+# This is not backward compatible, so use caution when depending on this --
+# new analyses may discover issues in existing builds.
+TOOLS_NOGO = [
+    "@org_golang_x_tools//go/analysis/passes/asmdecl:go_tool_library",
+    "@org_golang_x_tools//go/analysis/passes/assign:go_tool_library",
+    "@org_golang_x_tools//go/analysis/passes/atomic:go_tool_library",
+    "@org_golang_x_tools//go/analysis/passes/atomicalign:go_tool_library",
+    "@org_golang_x_tools//go/analysis/passes/bools:go_tool_library",
+    "@org_golang_x_tools//go/analysis/passes/buildssa:go_tool_library",
+    "@org_golang_x_tools//go/analysis/passes/buildtag:go_tool_library",
+    # TODO(#2396): pass raw cgo sources to cgocall and re-enable.
+    # "@org_golang_x_tools//go/analysis/passes/cgocall:go_tool_library",
+    "@org_golang_x_tools//go/analysis/passes/composite:go_tool_library",
+    "@org_golang_x_tools//go/analysis/passes/copylock:go_tool_library",
+    "@org_golang_x_tools//go/analysis/passes/ctrlflow:go_tool_library",
+    "@org_golang_x_tools//go/analysis/passes/deepequalerrors:go_tool_library",
+    "@org_golang_x_tools//go/analysis/passes/errorsas:go_tool_library",
+    "@org_golang_x_tools//go/analysis/passes/findcall:go_tool_library",
+    "@org_golang_x_tools//go/analysis/passes/httpresponse:go_tool_library",
+    "@org_golang_x_tools//go/analysis/passes/ifaceassert:go_tool_library",
+    "@org_golang_x_tools//go/analysis/passes/inspect:go_tool_library",
+    "@org_golang_x_tools//go/analysis/passes/loopclosure:go_tool_library",
+    "@org_golang_x_tools//go/analysis/passes/lostcancel:go_tool_library",
+    "@org_golang_x_tools//go/analysis/passes/nilfunc:go_tool_library",
+    "@org_golang_x_tools//go/analysis/passes/nilness:go_tool_library",
+    "@org_golang_x_tools//go/analysis/passes/pkgfact:go_tool_library",
+    "@org_golang_x_tools//go/analysis/passes/printf:go_tool_library",
+    "@org_golang_x_tools//go/analysis/passes/shadow:go_tool_library",
+    "@org_golang_x_tools//go/analysis/passes/shift:go_tool_library",
+    "@org_golang_x_tools//go/analysis/passes/sortslice:go_tool_library",
+    "@org_golang_x_tools//go/analysis/passes/stdmethods:go_tool_library",
+    "@org_golang_x_tools//go/analysis/passes/stringintconv:go_tool_library",
+    "@org_golang_x_tools//go/analysis/passes/structtag:go_tool_library",
+    "@org_golang_x_tools//go/analysis/passes/testinggoroutine:go_tool_library",
+    "@org_golang_x_tools//go/analysis/passes/tests:go_tool_library",
+    "@org_golang_x_tools//go/analysis/passes/unmarshal:go_tool_library",
+    "@org_golang_x_tools//go/analysis/passes/unreachable:go_tool_library",
+    "@org_golang_x_tools//go/analysis/passes/unsafeptr:go_tool_library",
+    "@org_golang_x_tools//go/analysis/passes/unusedresult:go_tool_library",
+]
+
 # Current version or next version to be tagged. Gazelle and other tools may
 # check this to determine compatibility.
-RULES_GO_VERSION = "0.20.3"
+RULES_GO_VERSION = "0.23.7"
 
 declare_toolchains = _declare_toolchains
 go_context = _go_context
@@ -77,46 +130,41 @@ go_tool_library = _go_tool_library
 go_toolchain = _go_toolchain
 nogo = _nogo
 
+# See go/providers.rst#GoLibrary for full documentation.
 GoLibrary = _GoLibrary
-"""See go/providers.rst#GoLibrary for full documentation."""
 
+# See go/providers.rst#GoSource for full documentation.
 GoSource = _GoSource
-"""See go/providers.rst#GoSource for full documentation."""
 
+# See go/providers.rst#GoPath for full documentation.
 GoPath = _GoPath
-"""See go/providers.rst#GoPath for full documentation."""
 
+# See go/providers.rst#GoArchive for full documentation.
 GoArchive = _GoArchive
-"""See go/providers.rst#GoArchive for full documentation."""
 
+# See go/providers.rst#GoArchiveData for full documentation.
 GoArchiveData = _GoArchiveData
-"""See go/providers.rst#GoArchiveData for full documentation."""
 
+# See go/providers.rst#GoSDK for full documentation.
 GoSDK = _GoSDK
-"""See go/providers.rst#GoSDK for full documentation."""
 
+# See go/core.rst#go_library for full documentation.
 go_library = _go_library_macro
-"""See go/core.rst#go_library for full documentation."""
 
+# See go/core.rst#go_binary for full documentation.
 go_binary = _go_binary_macro
-"""See go/core.rst#go_binary for full documentation."""
 
+# See go/core.rst#go_test for full documentation.
 go_test = _go_test_macro
-"""See go/core.rst#go_test for full documentation."""
 
+# See go/core.rst#go_test for full documentation.
 go_source = _go_source
-"""See go/core.rst#go_test for full documentation."""
 
+# See go/core.rst#go_rule for full documentation.
 go_rule = _go_rule
-"""See go/core.rst#go_rule for full documentation."""
 
+# See go/core.rst#go_path for full documentation.
 go_path = _go_path
-"""
-    go_path is a rule for creating `go build` compatible file layouts from a set of Bazel.
-    targets.
-        "deps": attr.label_list(providers=[GoLibrary]), # The set of go libraries to include the export
-        "mode": attr.string(default="link", values=["link", "copy"]) # Whether to copy files or produce soft links
-"""
 
 def go_vet_test(*args, **kwargs):
     fail("The go_vet_test rule has been removed. Please migrate to nogo instead, which supports vet tests.")

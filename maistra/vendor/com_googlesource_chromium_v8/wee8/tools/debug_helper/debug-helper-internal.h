@@ -19,7 +19,9 @@
 
 namespace d = v8::debug_helper;
 
-namespace v8_debug_helper_internal {
+namespace v8 {
+namespace internal {
+namespace debug_helper_internal {
 
 // A value that was read from the debuggee's memory.
 template <typename TValue>
@@ -119,7 +121,7 @@ class ObjectProperty : public PropertyBase {
 class ObjectPropertiesResult;
 struct ObjectPropertiesResultExtended : public d::ObjectPropertiesResult {
   // Back reference for cleanup.
-  v8_debug_helper_internal::ObjectPropertiesResult* base;
+  debug_helper_internal::ObjectPropertiesResult* base;
 };
 
 // Internal version of API class v8::debug_helper::ObjectPropertiesResult.
@@ -171,6 +173,37 @@ class ObjectPropertiesResult {
   std::vector<const char*> guessed_types_raw_;
 };
 
+class StackFrameResult;
+struct StackFrameResultExtended : public d::StackFrameResult {
+  // Back reference for cleanup.
+  debug_helper_internal::StackFrameResult* base;
+};
+
+// Internal version of API class v8::debug_helper::StackFrameResult.
+class StackFrameResult {
+ public:
+  StackFrameResult(std::vector<std::unique_ptr<ObjectProperty>> properties) {
+    properties_ = std::move(properties);
+  }
+
+  d::StackFrameResult* GetPublicView() {
+    public_view_.num_properties = properties_.size();
+    properties_raw_.clear();
+    for (const auto& property : properties_) {
+      properties_raw_.push_back(property->GetPublicView());
+    }
+    public_view_.properties = properties_raw_.data();
+    public_view_.base = this;
+    return &public_view_;
+  }
+
+ private:
+  std::vector<std::unique_ptr<ObjectProperty>> properties_;
+
+  StackFrameResultExtended public_view_;
+  std::vector<d::ObjectProperty*> properties_raw_;
+};
+
 class TqObjectVisitor;
 
 // Base class representing a V8 object in the debuggee's address space.
@@ -188,6 +221,14 @@ class TqObject {
  protected:
   uintptr_t address_;
 };
+
+// A helpful template so that generated code can be sure that a string type name
+// actually resolves to a type, by repeating the name as the template parameter
+// and the value.
+template <typename T>
+const char* CheckTypeName(const char* name) {
+  return name;
+}
 
 // In ptr-compr builds, returns whether the address looks like a compressed
 // pointer (zero-extended from 32 bits). Otherwise returns false because no
@@ -207,6 +248,8 @@ d::PropertyKind GetArrayKind(d::MemoryAccessResult mem_result);
 // Torque class definitions.
 extern const d::ClassList kObjectClassList;
 
-}  // namespace v8_debug_helper_internal
+}  // namespace debug_helper_internal
+}  // namespace internal
+}  // namespace v8
 
 #endif

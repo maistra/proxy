@@ -39,13 +39,17 @@ private:
 
 class WasmAccessLogConfigTest : public testing::TestWithParam<std::string> {};
 
-INSTANTIATE_TEST_SUITE_P(Runtimes, WasmAccessLogConfigTest,
-                         testing::Values("v8"
-#if defined(ENVOY_WASM_WAVM)
-                                         ,
-                                         "wavm"
+// NB: this is required by VC++ which can not handle the use of macros in the macro definitions
+// used by INSTANTIATE_TEST_SUITE_P.
+auto testing_values = testing::Values(
+#if defined(ENVOY_WASM_V8)
+    "v8",
 #endif
-                                         ));
+#if defined(ENVOY_WASM_WAVM)
+    "wavm",
+#endif
+    "null");
+INSTANTIATE_TEST_SUITE_P(Runtimes, WasmAccessLogConfigTest, testing_values);
 
 TEST_P(WasmAccessLogConfigTest, CreateWasmFromEmpty) {
   auto factory =
@@ -62,7 +66,7 @@ TEST_P(WasmAccessLogConfigTest, CreateWasmFromEmpty) {
   AccessLog::InstanceSharedPtr instance;
   EXPECT_THROW_WITH_MESSAGE(
       instance = factory->createAccessLogInstance(*message, std::move(filter), context),
-      Common::Wasm::WasmVmException, "Failed to create WASM VM with unspecified runtime.");
+      Common::Wasm::WasmException, "Unable to create Wasm access log ");
 }
 
 TEST_P(WasmAccessLogConfigTest, CreateWasmFromWASM) {
@@ -74,9 +78,18 @@ TEST_P(WasmAccessLogConfigTest, CreateWasmFromWASM) {
   envoy::extensions::access_loggers::wasm::v3::WasmAccessLog config;
   config.mutable_config()->mutable_vm_config()->set_runtime(
       absl::StrCat("envoy.wasm.runtime.", GetParam()));
-  config.mutable_config()->mutable_vm_config()->mutable_code()->mutable_local()->set_filename(
-      TestEnvironment::substitute(
-          "{{ test_rundir }}/test/extensions/access_loggers/wasm/test_data/logging.wasm"));
+  std::string code;
+  if (GetParam() != "null") {
+    code = TestEnvironment::readFileToStringForTest(TestEnvironment::substitute(
+        "{{ test_rundir }}/test/extensions/access_loggers/wasm/test_data/test_cpp.wasm"));
+  } else {
+    code = "AccessLoggerTestCpp";
+  }
+  config.mutable_config()->mutable_vm_config()->mutable_code()->mutable_local()->set_inline_bytes(
+      code);
+  // Test Any configuration.
+  ProtobufWkt::Struct some_proto;
+  config.mutable_config()->mutable_vm_config()->mutable_configuration()->PackFrom(some_proto);
 
   AccessLog::FilterPtr filter;
   Stats::IsolatedStoreImpl stats_store;
@@ -87,6 +100,16 @@ TEST_P(WasmAccessLogConfigTest, CreateWasmFromWASM) {
       factory->createAccessLogInstance(config, std::move(filter), context);
   EXPECT_NE(nullptr, instance);
   EXPECT_NE(nullptr, dynamic_cast<WasmAccessLog*>(instance.get()));
+  Http::TestRequestHeaderMapImpl request_header;
+  Http::TestResponseHeaderMapImpl response_header;
+  Http::TestResponseTrailerMapImpl response_trailer;
+  StreamInfo::MockStreamInfo log_stream_info;
+  instance->log(&request_header, &response_header, &response_trailer, log_stream_info);
+
+  filter = std::make_unique<NiceMock<AccessLog::MockFilter>>();
+  AccessLog::InstanceSharedPtr filter_instance =
+      factory->createAccessLogInstance(config, std::move(filter), context);
+  filter_instance->log(&request_header, &response_header, &response_trailer, log_stream_info);
 }
 
 } // namespace Wasm

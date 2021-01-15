@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package envoy.config.bootstrap.v2;
 
-import "envoy/api/v2/auth/cert.proto";
+import "envoy/api/v2/auth/secret.proto";
 import "envoy/api/v2/cluster.proto";
 import "envoy/api/v2/core/address.proto";
 import "envoy/api/v2/core/base.proto";
@@ -12,8 +12,7 @@ import "envoy/api/v2/core/socket_option.proto";
 import "envoy/api/v2/listener.proto";
 import "envoy/config/metrics/v2/stats.proto";
 import "envoy/config/overload/v2alpha/overload.proto";
-import "envoy/config/trace/v2/trace.proto";
-import "envoy/config/wasm/v2/wasm.proto";
+import "envoy/config/trace/v2/http_tracer.proto";
 
 import "google/protobuf/duration.proto";
 import "google/protobuf/struct.proto";
@@ -33,8 +32,8 @@ option (udpa.annotations.file_status).package_version_status = FROZEN;
 // of the Envoy v2 configuration. See the :ref:`v2 configuration overview
 // <config_overview_bootstrap>` for more detail.
 
-// Bootstrap :ref:`configuration overview <config_overview_v2_bootstrap>`.
-// [#next-free-field: 22]
+// Bootstrap :ref:`configuration overview <config_overview_bootstrap>`.
+// [#next-free-field: 21]
 message Bootstrap {
   message StaticResources {
     // Static :ref:`Listeners <envoy_api_msg_Listener>`. These listeners are
@@ -118,8 +117,11 @@ message Bootstrap {
   // Optional watchdog configuration.
   Watchdog watchdog = 8;
 
-  // Configuration for an external tracing provider. If not specified, no
-  // tracing will be performed.
+  // Configuration for an external tracing provider.
+  //
+  // .. attention::
+  //  This field has been deprecated in favor of :ref:`HttpConnectionManager.Tracing.provider
+  //  <envoy_api_field_config.filter.network.http_connection_manager.v2.HttpConnectionManager.Tracing.provider>`.
   trace.v2.Tracing tracing = 9;
 
   // Configuration for the runtime configuration provider (deprecated). If not
@@ -167,10 +169,10 @@ message Bootstrap {
   // when :ref:`dns_resolvers <envoy_api_field_Cluster.dns_resolvers>` and
   // :ref:`use_tcp_for_dns_lookups <envoy_api_field_Cluster.use_tcp_for_dns_lookups>` are
   // specified.
+  // Setting this value causes failure if the
+  // ``envoy.restart_features.use_apple_api_for_dns_lookups`` runtime value is true during
+  // server startup. Apple' API only uses UDP for DNS resolution.
   bool use_tcp_for_dns_lookups = 20;
-
-  // Configuration for an wasm service provider(s).
-  repeated wasm.v2.WasmService wasm_service = 21;
 }
 
 // Administration interface :ref:`operations documentation

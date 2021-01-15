@@ -194,11 +194,13 @@ void Simulator::CheckPCSComplianceAndRun() {
     saved_fpregisters[i] = dreg_bits(PopLowestIndexAsCode(&fpregister_list));
   }
   int64_t original_stack = sp();
+  int64_t original_fp = fp();
 #endif
   // Start the simulation!
   Run();
 #ifdef DEBUG
   DCHECK_EQ(original_stack, sp());
+  DCHECK_EQ(original_fp, fp());
   // Check that callee-saved registers have been preserved.
   register_list = kCalleeSaved;
   fpregister_list = kCalleeSavedV;
@@ -298,8 +300,10 @@ void Simulator::SetRedirectInstruction(Instruction* instruction) {
 Simulator::Simulator(Decoder<DispatchingDecoderVisitor>* decoder,
                      Isolate* isolate, FILE* stream)
     : decoder_(decoder),
+      guard_pages_(ENABLE_CONTROL_FLOW_INTEGRITY_BOOL),
       last_debugger_input_(nullptr),
       log_parameters_(NO_PARAM),
+      icount_for_stop_sim_at_(0),
       isolate_(isolate) {
   // Setup the decoder.
   decoder_->AppendVisitor(this);
@@ -314,6 +318,7 @@ Simulator::Simulator(Decoder<DispatchingDecoderVisitor>* decoder,
 
 Simulator::Simulator()
     : decoder_(nullptr),
+      guard_pages_(ENABLE_CONTROL_FLOW_INTEGRITY_BOOL),
       last_debugger_input_(nullptr),
       log_parameters_(NO_PARAM),
       isolate_(nullptr) {
@@ -361,6 +366,8 @@ void Simulator::ResetState() {
   // Reset debug helpers.
   breakpoints_.clear();
   break_on_next_ = false;
+
+  btype_ = DefaultBType;
 }
 
 Simulator::~Simulator() {
@@ -378,8 +385,24 @@ void Simulator::Run() {
   LogAllWrittenRegisters();
 
   pc_modified_ = false;
-  while (pc_ != kEndOfSimAddress) {
-    ExecuteInstruction();
+
+  if (::v8::internal::FLAG_stop_sim_at == 0) {
+    // Fast version of the dispatch loop without checking whether the simulator
+    // should be stopping at a particular executed instruction.
+    while (pc_ != kEndOfSimAddress) {
+      ExecuteInstruction();
+    }
+  } else {
+    // FLAG_stop_sim_at is at the non-default value. Stop in the debugger when
+    // we reach the particular instruction count.
+    while (pc_ != kEndOfSimAddress) {
+      icount_for_stop_sim_at_ =
+          base::AddWithWraparound(icount_for_stop_sim_at_, 1);
+      if (icount_for_stop_sim_at_ == ::v8::internal::FLAG_stop_sim_at) {
+        Debug();
+      }
+      ExecuteInstruction();
+    }
   }
 }
 
@@ -422,7 +445,7 @@ using SimulatorRuntimeDirectGetterCall = void (*)(int64_t arg0, int64_t arg1);
 using SimulatorRuntimeProfilingGetterCall = void (*)(int64_t arg0, int64_t arg1,
                                                      void* arg2);
 
-// Separate for fine-grained UBSan blacklisting. Casting any given C++
+// Separate for fine-grained UBSan blocklisting. Casting any given C++
 // function to {SimulatorRuntimeCall} is undefined behavior; but since
 // the target function can indeed be any function that's exposed via
 // the "fast C call" mechanism, we can't reconstruct its signature here.
@@ -1494,6 +1517,20 @@ void Simulator::VisitConditionalBranch(Instruction* instr) {
   }
 }
 
+Simulator::BType Simulator::GetBTypeFromInstruction(
+    const Instruction* instr) const {
+  switch (instr->Mask(UnconditionalBranchToRegisterMask)) {
+    case BLR:
+      return BranchAndLink;
+    case BR:
+      if (!PcIsInGuardedPage() || (instr->Rn() == 16) || (instr->Rn() == 17)) {
+        return BranchFromUnguardedOrToIP;
+      }
+      return BranchFromGuardedNotToIP;
+  }
+  return DefaultBType;
+}
+
 void Simulator::VisitUnconditionalBranchToRegister(Instruction* instr) {
   Instruction* target = reg<Instruction*>(instr->Rn());
   switch (instr->Mask(UnconditionalBranchToRegisterMask)) {
@@ -1513,6 +1550,7 @@ void Simulator::VisitUnconditionalBranchToRegister(Instruction* instr) {
     default:
       UNIMPLEMENTED();
   }
+  set_btype(GetBTypeFromInstruction(instr));
 }
 
 void Simulator::VisitTestBranch(Instruction* instr) {
@@ -2718,6 +2756,9 @@ void Simulator::VisitFPIntegerConvert(Instruction* instr) {
     case FCVTZU_xd:
       set_xreg(dst, FPToUInt64(dreg(src), FPZero));
       break;
+    case FJCVTZS:
+      set_wreg(dst, FPToFixedJS(dreg(src)));
+      break;
     case FMOV_ws:
       set_wreg(dst, sreg_bits(src));
       break;
@@ -3087,8 +3128,8 @@ bool Simulator::FPProcessNaNs(Instruction* instr) {
 
 // clang-format off
 #define PAUTH_SYSTEM_MODES(V)                            \
-  V(A1716, 17, xreg(16),                      kPACKeyIA) \
-  V(ASP,   30, xreg(31, Reg31IsStackPointer), kPACKeyIA)
+  V(B1716, 17, xreg(16),                      kPACKeyIB) \
+  V(BSP,   30, xreg(31, Reg31IsStackPointer), kPACKeyIB)
 // clang-format on
 
 void Simulator::VisitSystem(Instruction* instr) {
@@ -3096,6 +3137,7 @@ void Simulator::VisitSystem(Instruction* instr) {
   // range of immediates instead of indicating a different instruction. This
   // makes the decoding tricky.
   if (instr->Mask(SystemPAuthFMask) == SystemPAuthFixed) {
+    // The BType check for PACIBSP happens in CheckBType().
     switch (instr->Mask(SystemPAuthMask)) {
 #define DEFINE_PAUTH_FUNCS(SUFFIX, DST, MOD, KEY)                     \
   case PACI##SUFFIX:                                                  \
@@ -3145,6 +3187,11 @@ void Simulator::VisitSystem(Instruction* instr) {
     switch (instr->ImmHint()) {
       case NOP:
       case CSDB:
+      case BTI_jc:
+      case BTI:
+      case BTI_c:
+      case BTI_j:
+        // The BType checks happen in CheckBType().
         break;
       default:
         UNIMPLEMENTED();
@@ -3386,7 +3433,8 @@ void Simulator::Debug() {
 
         // stack / mem
         // ----------------------------------------------------------
-      } else if (strcmp(cmd, "stack") == 0 || strcmp(cmd, "mem") == 0) {
+      } else if (strcmp(cmd, "stack") == 0 || strcmp(cmd, "mem") == 0 ||
+                 strcmp(cmd, "dump") == 0) {
         int64_t* cur = nullptr;
         int64_t* end = nullptr;
         int next_arg = 1;
@@ -3418,20 +3466,23 @@ void Simulator::Debug() {
         }
         end = cur + words;
 
+        bool skip_obj_print = (strcmp(cmd, "dump") == 0);
         while (cur < end) {
           PrintF("  0x%016" PRIx64 ":  0x%016" PRIx64 " %10" PRId64,
                  reinterpret_cast<uint64_t>(cur), *cur, *cur);
-          Object obj(*cur);
-          Heap* current_heap = isolate_->heap();
-          if (obj.IsSmi() ||
-              IsValidHeapObject(current_heap, HeapObject::cast(obj))) {
-            PrintF(" (");
-            if (obj.IsSmi()) {
-              PrintF("smi %" PRId32, Smi::ToInt(obj));
-            } else {
-              obj.ShortPrint();
+          if (!skip_obj_print) {
+            Object obj(*cur);
+            Heap* current_heap = isolate_->heap();
+            if (obj.IsSmi() ||
+                IsValidHeapObject(current_heap, HeapObject::cast(obj))) {
+              PrintF(" (");
+              if (obj.IsSmi()) {
+                PrintF("smi %" PRId32, Smi::ToInt(obj));
+              } else {
+                obj.ShortPrint();
+              }
+              PrintF(")");
             }
-            PrintF(")");
           }
           PrintF("\n");
           cur++;
@@ -3440,13 +3491,12 @@ void Simulator::Debug() {
         // trace / t
         // -------------------------------------------------------------
       } else if (strcmp(cmd, "trace") == 0 || strcmp(cmd, "t") == 0) {
-        if ((log_parameters() & (LOG_DISASM | LOG_REGS)) !=
-            (LOG_DISASM | LOG_REGS)) {
-          PrintF("Enabling disassembly and registers tracing\n");
-          set_log_parameters(log_parameters() | LOG_DISASM | LOG_REGS);
+        if ((log_parameters() & LOG_ALL) != LOG_ALL) {
+          PrintF("Enabling disassembly, registers and memory write tracing\n");
+          set_log_parameters(log_parameters() | LOG_ALL);
         } else {
-          PrintF("Disabling disassembly and registers tracing\n");
-          set_log_parameters(log_parameters() & ~(LOG_DISASM | LOG_REGS));
+          PrintF("Disabling disassembly, registers and memory write tracing\n");
+          set_log_parameters(log_parameters() & ~LOG_ALL);
         }
 
         // break / b
@@ -3509,6 +3559,10 @@ void Simulator::Debug() {
             "mem\n"
             "    mem <address> [<words>]\n"
             "    Dump memory content, default dump 10 words\n"
+            "dump\n"
+            "    dump <address> [<words>]\n"
+            "    Dump memory content without pretty printing JS objects, "
+            "default dump 10 words\n"
             "trace / t\n"
             "    Toggle disassembly and register tracing\n"
             "break / b\n"

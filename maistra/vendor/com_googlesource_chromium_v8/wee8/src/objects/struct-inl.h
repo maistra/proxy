@@ -11,7 +11,7 @@
 #include "src/objects/objects-inl.h"
 #include "src/objects/oddball.h"
 #include "src/roots/roots-inl.h"
-#include "torque-generated/class-definitions-tq-inl.h"
+#include "torque-generated/class-definitions-inl.h"
 
 // Has to be the last include (doesn't have include guards):
 #include "src/objects/object-macros.h"
@@ -33,9 +33,6 @@ void Struct::InitializeBody(int object_size) {
     WRITE_FIELD(*this, offset, value);
   }
 }
-
-TQ_SMI_ACCESSORS(ClassPositions, start)
-TQ_SMI_ACCESSORS(ClassPositions, end)
 
 Object AccessorPair::get(AccessorComponent component) {
   return component == ACCESSOR_GETTER ? getter() : setter();

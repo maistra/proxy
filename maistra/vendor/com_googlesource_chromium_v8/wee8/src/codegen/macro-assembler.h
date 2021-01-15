@@ -40,7 +40,7 @@ enum AllocationFlags {
 #elif V8_TARGET_ARCH_ARM
 #include "src/codegen/arm/constants-arm.h"
 #include "src/codegen/arm/macro-assembler-arm.h"
-#elif V8_TARGET_ARCH_PPC
+#elif V8_TARGET_ARCH_PPC || V8_TARGET_ARCH_PPC64
 #include "src/codegen/ppc/constants-ppc.h"
 #include "src/codegen/ppc/macro-assembler-ppc.h"
 #elif V8_TARGET_ARCH_MIPS
@@ -60,8 +60,14 @@ enum AllocationFlags {
 namespace v8 {
 namespace internal {
 
-// Simulators only support C calls with up to kMaxCParameters parameters.
+// Maximum number of parameters supported in calls to C/C++. The C++ standard
+// defines a limit of 256 parameters but in simulator builds we provide only
+// limited support.
+#ifdef USE_SIMULATOR
 static constexpr int kMaxCParameters = 10;
+#else
+static constexpr int kMaxCParameters = 256;
+#endif
 
 class FrameScope {
  public:

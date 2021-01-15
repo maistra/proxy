@@ -18,6 +18,8 @@
 #include "test/test_common/printers.h"
 #include "test/test_common/test_time.h"
 
+#include "gtest/gtest.h"
+
 namespace Envoy {
 /**
  * A buffering response decoder used for testing.
@@ -61,50 +63,78 @@ using BufferingStreamDecoderPtr = std::unique_ptr<BufferingStreamDecoder>;
  */
 class RawConnectionDriver {
 public:
+  using DoWriteCallback = std::function<void(Network::ClientConnection&)>;
   using ReadCallback = std::function<void(Network::ClientConnection&, const Buffer::Instance&)>;
 
-  RawConnectionDriver(uint32_t port, Buffer::Instance& initial_data, ReadCallback data_callback,
-                      Network::Address::IpVersion version);
+  RawConnectionDriver(uint32_t port, DoWriteCallback write_request_callback,
+                      ReadCallback response_data_callback, Network::Address::IpVersion version,
+                      Event::Dispatcher& dispatcher,
+                      Network::TransportSocketPtr transport_socket = nullptr);
+  // Similar to the constructor above but accepts the request as a constructor argument.
+  RawConnectionDriver(uint32_t port, Buffer::Instance& request_data,
+                      ReadCallback response_data_callback, Network::Address::IpVersion version,
+                      Event::Dispatcher& dispatcher,
+                      Network::TransportSocketPtr transport_socket = nullptr);
   ~RawConnectionDriver();
   const Network::Connection& connection() { return *client_; }
-  bool connecting() { return callbacks_->connecting_; }
   void run(Event::Dispatcher::RunType run_type = Event::Dispatcher::RunType::Block);
   void close();
   Network::ConnectionEvent lastConnectionEvent() const {
     return callbacks_->last_connection_event_;
   }
+  // Wait until connected or closed().
+  void waitForConnection();
+
+  bool closed() { return callbacks_->closed(); }
 
 private:
   struct ForwardingFilter : public Network::ReadFilterBaseImpl {
     ForwardingFilter(RawConnectionDriver& parent, ReadCallback cb)
-        : parent_(parent), data_callback_(cb) {}
+        : parent_(parent), response_data_callback_(cb) {}
 
     // Network::ReadFilter
     Network::FilterStatus onData(Buffer::Instance& data, bool) override {
-      data_callback_(*parent_.client_, data);
+      response_data_callback_(*parent_.client_, data);
       data.drain(data.length());
       return Network::FilterStatus::StopIteration;
     }
 
     RawConnectionDriver& parent_;
-    ReadCallback data_callback_;
+    ReadCallback response_data_callback_;
   };
 
   struct ConnectionCallbacks : public Network::ConnectionCallbacks {
+    using WriteCb = std::function<void()>;
+
+    ConnectionCallbacks(WriteCb write_cb) : write_cb_(write_cb) {}
+    bool connected() const { return connected_; }
+    bool closed() const { return closed_; }
+
+    // Network::ConnectionCallbacks
     void onEvent(Network::ConnectionEvent event) override {
+      if (!connected_ && event == Network::ConnectionEvent::Connected) {
+        write_cb_();
+      }
+
       last_connection_event_ = event;
-      connecting_ = false;
+      closed_ |= (event == Network::ConnectionEvent::RemoteClose ||
+                  event == Network::ConnectionEvent::LocalClose);
+      connected_ |= (event == Network::ConnectionEvent::Connected);
     }
     void onAboveWriteBufferHighWatermark() override {}
-    void onBelowWriteBufferLowWatermark() override {}
+    void onBelowWriteBufferLowWatermark() override { write_cb_(); }
 
-    bool connecting_{true};
     Network::ConnectionEvent last_connection_event_;
+
+  private:
+    WriteCb write_cb_;
+    bool connected_{false};
+    bool closed_{false};
   };
 
   Stats::IsolatedStoreImpl stats_store_;
   Api::ApiPtr api_;
-  Event::DispatcherPtr dispatcher_;
+  Event::Dispatcher& dispatcher_;
   std::unique_ptr<ConnectionCallbacks> callbacks_;
   Network::ClientConnectionPtr client_;
 };
@@ -183,11 +213,29 @@ public:
     data_to_wait_for_ = data;
     exact_match_ = exact_match;
   }
-  void setLengthToWaitFor(size_t length) {
+
+  ABSL_MUST_USE_RESULT testing::AssertionResult waitForLength(size_t length,
+                                                              std::chrono::milliseconds timeout) {
     ASSERT(!wait_for_length_);
     length_to_wait_for_ = length;
     wait_for_length_ = true;
+
+    Event::TimerPtr timeout_timer =
+        dispatcher_.createTimer([this]() -> void { dispatcher_.exit(); });
+    timeout_timer->enableTimer(timeout);
+
+    dispatcher_.run(Event::Dispatcher::RunType::Block);
+
+    if (timeout_timer->enabled()) {
+      timeout_timer->disableTimer();
+      return testing::AssertionSuccess();
+    }
+
+    length_to_wait_for_ = 0;
+    wait_for_length_ = false;
+    return testing::AssertionFailure() << "Timed out waiting for " << length << " bytes of data\n";
   }
+
   const std::string& data() { return data_; }
   bool readLastByte() { return read_end_stream_; }
   void clearData(size_t count = std::string::npos) { data_.erase(0, count); }

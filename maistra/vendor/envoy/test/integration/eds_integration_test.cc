@@ -147,11 +147,6 @@ TEST_P(EdsIntegrationTest, Http2UpdatePriorities) {
   codec_client_type_ = envoy::type::v3::HTTP2;
   initializeTest(true);
 
-  fake_upstreams_[0]->set_allow_unexpected_disconnects(true);
-  fake_upstreams_[1]->set_allow_unexpected_disconnects(true);
-  fake_upstreams_[2]->set_allow_unexpected_disconnects(true);
-  fake_upstreams_[3]->set_allow_unexpected_disconnects(true);
-
   setEndpointsInPriorities(2, 2);
 
   setEndpointsInPriorities(4, 0);
@@ -164,7 +159,6 @@ TEST_P(EdsIntegrationTest, Http2UpdatePriorities) {
 TEST_P(EdsIntegrationTest, Http2HcClusterRewarming) {
   codec_client_type_ = envoy::type::v3::HTTP2;
   initializeTest(true);
-  fake_upstreams_[0]->set_allow_unexpected_disconnects(true);
   setEndpoints(1, 0, 0, false);
   EXPECT_EQ(1, test_server_->gauge("cluster.cluster_0.membership_total")->value());
   EXPECT_EQ(0, test_server_->gauge("cluster.cluster_0.membership_healthy")->value());
@@ -214,7 +208,6 @@ TEST_P(EdsIntegrationTest, Http2HcClusterRewarming) {
 // then fails health checking is removed.
 TEST_P(EdsIntegrationTest, RemoveAfterHcFail) {
   initializeTest(true);
-  fake_upstreams_[0]->set_allow_unexpected_disconnects(true);
   setEndpoints(1, 0, 0, false);
   EXPECT_EQ(1, test_server_->gauge("cluster.cluster_0.membership_total")->value());
   EXPECT_EQ(0, test_server_->gauge("cluster.cluster_0.membership_healthy")->value());
@@ -244,7 +237,6 @@ TEST_P(EdsIntegrationTest, EndpointWarmingSuccessfulHc) {
 
   // Endpoints are initially excluded.
   initializeTest(true);
-  fake_upstreams_[0]->set_allow_unexpected_disconnects(true);
   setEndpoints(1, 0, 0, false);
 
   EXPECT_EQ(1, test_server_->gauge("cluster.cluster_0.membership_total")->value());
@@ -267,7 +259,6 @@ TEST_P(EdsIntegrationTest, EndpointWarmingFailedHc) {
 
   // Endpoints are initially excluded.
   initializeTest(true);
-  fake_upstreams_[0]->set_allow_unexpected_disconnects(true);
   setEndpoints(1, 0, 0, false);
 
   EXPECT_EQ(1, test_server_->gauge("cluster.cluster_0.membership_total")->value());
@@ -390,7 +381,7 @@ TEST_P(EdsIntegrationTest, StatsReadyFilter) {
   BufferingStreamDecoderPtr response = IntegrationUtil::makeSingleRequest(
       lookupPort("http"), "GET", "/cluster1", "", downstream_protocol_, version_, "foo.com");
   ASSERT_TRUE(response->complete());
-  EXPECT_EQ("500", response->headers().Status()->value().getStringView());
+  EXPECT_EQ("500", response->headers().getStatusValue());
   EXPECT_EQ("EDS not ready", response->body());
 
   cleanupUpstreamAndDownstream();
@@ -401,7 +392,7 @@ TEST_P(EdsIntegrationTest, StatsReadyFilter) {
   response = IntegrationUtil::makeSingleRequest(lookupPort("http"), "GET", "/cluster1", "",
                                                 downstream_protocol_, version_, "foo.com");
   ASSERT_TRUE(response->complete());
-  EXPECT_EQ("200", response->headers().Status()->value().getStringView());
+  EXPECT_EQ("200", response->headers().getStatusValue());
   EXPECT_EQ("EDS is ready", response->body());
 
   cleanupUpstreamAndDownstream();

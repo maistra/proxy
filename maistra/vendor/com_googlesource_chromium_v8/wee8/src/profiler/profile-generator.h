@@ -17,7 +17,6 @@
 #include "include/v8-profiler.h"
 #include "src/base/platform/time.h"
 #include "src/builtins/builtins.h"
-#include "src/codegen/source-position.h"
 #include "src/logging/code-events.h"
 #include "src/profiler/strings-storage.h"
 #include "src/utils/allocation.h"
@@ -65,7 +64,6 @@ class CodeEntry {
                    int line_number = v8::CpuProfileNode::kNoLineNumberInfo,
                    int column_number = v8::CpuProfileNode::kNoColumnNumberInfo,
                    std::unique_ptr<SourcePositionTable> line_info = nullptr,
-                   Address instruction_start = kNullAddress,
                    bool is_shared_cross_origin = false);
 
   const char* name() const { return name_; }
@@ -135,9 +133,6 @@ class CodeEntry {
           inline_stacks);
   const std::vector<CodeEntryAndLineNumber>* GetInlineStack(
       int pc_offset) const;
-
-  void set_instruction_start(Address start) { instruction_start_ = start; }
-  Address instruction_start() const { return instruction_start_; }
 
   CodeEventListener::LogEventsAndTags tag() const {
     return TagField::decode(bit_field_);
@@ -223,7 +218,6 @@ class CodeEntry {
   int script_id_;
   int position_;
   std::unique_ptr<SourcePositionTable> line_info_;
-  Address instruction_start_;
   std::unique_ptr<RareData> rare_data_;
 
   DISALLOW_COPY_AND_ASSIGN(CodeEntry);
@@ -236,34 +230,9 @@ struct CodeEntryAndLineNumber {
 
 struct ProfileStackFrame {
   CodeEntryAndLineNumber entry;
-  Address native_context;
-  bool filterable;  // If true, the frame should be filtered by context (if a
-                    // filter is present).
 };
 
 typedef std::vector<ProfileStackFrame> ProfileStackTrace;
-
-// Filters stack frames from sources other than a target native context.
-class ContextFilter {
- public:
-  explicit ContextFilter(Address native_context_address)
-      : native_context_address_(native_context_address) {}
-
-  // Returns true if the stack frame passes a context check.
-  bool Accept(const ProfileStackFrame&);
-
-  // Invoked when a native context has changed address.
-  void OnMoveEvent(Address from_address, Address to_address);
-
-  // Update the context's tracked address based on VM-thread events.
-  void set_native_context_address(Address address) {
-    native_context_address_ = address;
-  }
-  Address native_context_address() const { return native_context_address_; }
-
- private:
-  Address native_context_address_;
-};
 
 class ProfileTree;
 
@@ -349,14 +318,11 @@ class V8_EXPORT_PRIVATE ProfileTree {
       const ProfileStackTrace& path,
       int src_line = v8::CpuProfileNode::kNoLineNumberInfo,
       bool update_stats = true,
-      ProfilingMode mode = ProfilingMode::kLeafNodeLineNumbers,
-      ContextFilter* context_filter = nullptr);
+      ProfilingMode mode = ProfilingMode::kLeafNodeLineNumbers);
   ProfileNode* root() const { return root_; }
   unsigned next_node_id() { return next_node_id_++; }
 
-  void Print() {
-    root_->Print(0);
-  }
+  void Print() const { root_->Print(0); }
 
   Isolate* isolate() const { return isolate_; }
 
@@ -414,18 +380,16 @@ class CpuProfile {
   base::TimeTicks start_time() const { return start_time_; }
   base::TimeTicks end_time() const { return end_time_; }
   CpuProfiler* cpu_profiler() const { return profiler_; }
-  ContextFilter* context_filter() const { return context_filter_.get(); }
 
   void UpdateTicksScale();
 
-  V8_EXPORT_PRIVATE void Print();
+  V8_EXPORT_PRIVATE void Print() const;
 
  private:
   void StreamPendingTraceEvents();
 
   const char* title_;
   const CpuProfilingOptions options_;
-  std::unique_ptr<ContextFilter> context_filter_;
   base::TimeTicks start_time_;
   base::TimeTicks end_time_;
   std::deque<SampleInfo> samples_;
@@ -449,7 +413,7 @@ class V8_EXPORT_PRIVATE CodeMap {
 
   void AddCode(Address addr, CodeEntry* entry, unsigned size);
   void MoveCode(Address from, Address to);
-  CodeEntry* FindEntry(Address addr);
+  CodeEntry* FindEntry(Address addr, Address* out_instruction_start = nullptr);
   void Print();
 
  private:
@@ -504,9 +468,6 @@ class V8_EXPORT_PRIVATE CpuProfilesCollection {
                                 bool update_stats,
                                 base::TimeDelta sampling_interval);
 
-  // Called from profile generator thread.
-  void UpdateNativeContextAddressForCurrentProfiles(Address from, Address to);
-
   // Limits the number of profiles that can be simultaneously collected.
   static const int kMaxSimultaneousProfiles = 100;
 
@@ -526,14 +487,16 @@ class V8_EXPORT_PRIVATE ProfileGenerator {
  public:
   explicit ProfileGenerator(CpuProfilesCollection* profiles, CodeMap* code_map);
 
-  void RecordTickSample(const TickSample& sample);
-
-  void UpdateNativeContextAddress(Address from, Address to);
+  // Use the CodeMap to turn the raw addresses recorded in the sample into
+  // code/function names. The symbolized stack is added to the relevant
+  // profiles in the CpuProfilesCollection.
+  void SymbolizeTickSample(const TickSample& sample);
 
   CodeMap* code_map() { return code_map_; }
 
  private:
-  CodeEntry* FindEntry(Address address);
+  CodeEntry* FindEntry(Address address,
+                       Address* out_instruction_start = nullptr);
   CodeEntry* EntryForVMState(StateTag tag);
 
   CpuProfilesCollection* profiles_;

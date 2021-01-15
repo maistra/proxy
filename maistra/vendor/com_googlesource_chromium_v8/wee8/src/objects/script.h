@@ -7,9 +7,11 @@
 
 #include <memory>
 
+#include "src/base/export-template.h"
 #include "src/objects/fixed-array.h"
 #include "src/objects/objects.h"
 #include "src/objects/struct.h"
+#include "torque-generated/bit-fields.h"
 
 // Has to be the last include (doesn't have include guards):
 #include "src/objects/object-macros.h"
@@ -19,8 +21,12 @@ namespace v8 {
 namespace internal {
 
 // Script describes a script which has been added to the VM.
-class Script : public Struct {
+class Script : public TorqueGeneratedScript<Script, Struct> {
  public:
+  // Script ID used for temporary scripts, which shouldn't be added to the
+  // script list.
+  static constexpr int kTemporaryScriptId = -2;
+
   NEVER_READ_ONLY_SPACE
   // Script types.
   enum Type {
@@ -40,30 +46,8 @@ class Script : public Struct {
     COMPILATION_STATE_COMPILED = 1
   };
 
-  // [source]: the script source.
-  DECL_ACCESSORS(source, Object)
-
-  // [name]: the script name.
-  DECL_ACCESSORS(name, Object)
-
-  // [id]: the script id.
-  DECL_INT_ACCESSORS(id)
-
-  // [line_offset]: script line offset in resource from where it was extracted.
-  DECL_INT_ACCESSORS(line_offset)
-
-  // [column_offset]: script column offset in resource from where it was
-  // extracted.
-  DECL_INT_ACCESSORS(column_offset)
-
-  // [context_data]: context data for the context this script was compiled in.
-  DECL_ACCESSORS(context_data, Object)
-
   // [type]: the script type.
   DECL_INT_ACCESSORS(type)
-
-  // [line_ends]: FixedArray of line ends positions.
-  DECL_ACCESSORS(line_ends, Object)
 
   DECL_ACCESSORS(eval_from_shared_or_wrapped_arguments, Object)
 
@@ -90,15 +74,6 @@ class Script : public Struct {
   // function infos created from this script.
   DECL_ACCESSORS(shared_function_infos, WeakFixedArray)
 
-  // [flags]: Holds an exciting bitfield.
-  DECL_INT_ACCESSORS(flags)
-
-  // [source_url]: sourceURL from magic comment
-  DECL_ACCESSORS(source_url, Object)
-
-  // [source_mapping_url]: sourceMappingURL magic comment
-  DECL_ACCESSORS(source_mapping_url, Object)
-
   // [wasm_breakpoint_infos]: the list of {BreakPointInfo} objects describing
   // all WebAssembly breakpoints for modules/instances managed via this script.
   // This must only be called if the type of this script is TYPE_WASM.
@@ -114,9 +89,6 @@ class Script : public Struct {
   // affected by breakpoints that are managed via this script.
   // This must only be called if the type of this script is TYPE_WASM.
   DECL_ACCESSORS(wasm_weak_instance_list, WeakArrayList)
-
-  // [host_defined_options]: Options defined by the embedder.
-  DECL_ACCESSORS(host_defined_options, FixedArray)
 
   // [compilation_type]: how the the script was compiled. Encoded in the
   // 'flags' field.
@@ -139,8 +111,6 @@ class Script : public Struct {
   inline v8::ScriptOriginOptions origin_options();
   inline void set_origin_options(ScriptOriginOptions origin_options);
 
-  DECL_CAST(Script)
-
   // If script source is an external string, check that the underlying
   // resource is accessible. Otherwise, always return true.
   inline bool HasValidSource();
@@ -154,7 +124,9 @@ class Script : public Struct {
   bool ContainsAsmModule();
 
   // Init line_ends array with source code positions of line ends.
-  V8_EXPORT_PRIVATE static void InitLineEnds(Handle<Script> script);
+  template <typename LocalIsolate>
+  EXPORT_TEMPLATE_DECLARE(V8_EXPORT_PRIVATE)
+  static void InitLineEnds(LocalIsolate* isolate, Handle<Script> script);
 
   // Carries information about a source position.
   struct PositionInfo {
@@ -192,8 +164,9 @@ class Script : public Struct {
 
   // Look through the list of existing shared function infos to find one
   // that matches the function literal.  Return empty handle if not found.
+  template <typename LocalIsolate>
   MaybeHandle<SharedFunctionInfo> FindSharedFunctionInfo(
-      Isolate* isolate, const FunctionLiteral* fun);
+      LocalIsolate* isolate, int function_literal_id);
 
   // Iterate over all script objects on the heap.
   class V8_EXPORT_PRIVATE Iterator {
@@ -210,20 +183,11 @@ class Script : public Struct {
   DECL_PRINTER(Script)
   DECL_VERIFIER(Script)
 
-  DEFINE_FIELD_OFFSET_CONSTANTS(HeapObject::kHeaderSize,
-                                TORQUE_GENERATED_SCRIPT_FIELDS)
-
  private:
   // Bit positions in the flags field.
-  static const int kCompilationTypeBit = 0;
-  static const int kCompilationStateBit = 1;
-  static const int kREPLModeBit = 2;
-  static const int kOriginOptionsShift = 3;
-  static const int kOriginOptionsSize = 4;
-  static const int kOriginOptionsMask = ((1 << kOriginOptionsSize) - 1)
-                                        << kOriginOptionsShift;
+  DEFINE_TORQUE_GENERATED_SCRIPT_FLAGS()
 
-  OBJECT_CONSTRUCTORS(Script, Struct);
+  TQ_OBJECT_CONSTRUCTORS(Script)
 };
 
 }  // namespace internal

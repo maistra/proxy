@@ -69,8 +69,9 @@ class CompilerDispatcherTest : public TestWithNativeContext {
   static base::Optional<CompilerDispatcher::JobId> EnqueueUnoptimizedCompileJob(
       CompilerDispatcher* dispatcher, Isolate* isolate,
       Handle<SharedFunctionInfo> shared) {
+    UnoptimizedCompileState state(isolate);
     std::unique_ptr<ParseInfo> outer_parse_info =
-        test::OuterParseInfoForShared(isolate, shared);
+        test::OuterParseInfoForShared(isolate, shared, &state);
     AstValueFactory* ast_value_factory =
         outer_parse_info->GetOrCreateAstValueFactory();
     AstNodeFactory ast_node_factory(ast_value_factory,
@@ -78,10 +79,11 @@ class CompilerDispatcherTest : public TestWithNativeContext {
 
     const AstRawString* function_name =
         ast_value_factory->GetOneByteString("f");
-    DeclarationScope* script_scope = new (outer_parse_info->zone())
-        DeclarationScope(outer_parse_info->zone(), ast_value_factory);
+    DeclarationScope* script_scope =
+        outer_parse_info->zone()->New<DeclarationScope>(
+            outer_parse_info->zone(), ast_value_factory);
     DeclarationScope* function_scope =
-        new (outer_parse_info->zone()) DeclarationScope(
+        outer_parse_info->zone()->New<DeclarationScope>(
             outer_parse_info->zone(), script_scope, FUNCTION_SCOPE);
     function_scope->set_start_position(shared->StartPosition());
     function_scope->set_end_position(shared->EndPosition());
@@ -138,6 +140,11 @@ class MockPlatform : public v8::Platform {
   }
 
   bool IdleTasksEnabled(v8::Isolate* isolate) override { return true; }
+
+  std::unique_ptr<JobHandle> PostJob(
+      TaskPriority priority, std::unique_ptr<JobTask> job_state) override {
+    UNREACHABLE();
+  }
 
   double MonotonicallyIncreasingTime() override {
     time_ += time_step_;

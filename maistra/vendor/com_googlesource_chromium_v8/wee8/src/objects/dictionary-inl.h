@@ -5,10 +5,9 @@
 #ifndef V8_OBJECTS_DICTIONARY_INL_H_
 #define V8_OBJECTS_DICTIONARY_INL_H_
 
-#include "src/objects/dictionary.h"
-
 #include "src/execution/isolate-utils-inl.h"
 #include "src/numbers/hash-seed-inl.h"
+#include "src/objects/dictionary.h"
 #include "src/objects/hash-table-inl.h"
 #include "src/objects/objects-inl.h"
 #include "src/objects/oddball.h"
@@ -54,10 +53,9 @@ PropertyDetails Dictionary<Derived, Shape>::DetailsAt(InternalIndex entry) {
 }
 
 template <typename Derived, typename Shape>
-void Dictionary<Derived, Shape>::DetailsAtPut(Isolate* isolate,
-                                              InternalIndex entry,
+void Dictionary<Derived, Shape>::DetailsAtPut(InternalIndex entry,
                                               PropertyDetails value) {
-  Shape::DetailsAtPut(isolate, Derived::cast(*this), entry, value);
+  Shape::DetailsAtPut(Derived::cast(*this), entry, value);
 }
 
 template <typename Derived, typename Shape>
@@ -128,16 +126,15 @@ void NumberDictionary::set_requires_slow_elements() {
 }
 
 template <typename Derived, typename Shape>
-void Dictionary<Derived, Shape>::ClearEntry(Isolate* isolate,
-                                            InternalIndex entry) {
+void Dictionary<Derived, Shape>::ClearEntry(InternalIndex entry) {
   Object the_hole = this->GetReadOnlyRoots().the_hole_value();
   PropertyDetails details = PropertyDetails::Empty();
-  Derived::cast(*this).SetEntry(isolate, entry, the_hole, the_hole, details);
+  Derived::cast(*this).SetEntry(entry, the_hole, the_hole, details);
 }
 
 template <typename Derived, typename Shape>
-void Dictionary<Derived, Shape>::SetEntry(Isolate* isolate, InternalIndex entry,
-                                          Object key, Object value,
+void Dictionary<Derived, Shape>::SetEntry(InternalIndex entry, Object key,
+                                          Object value,
                                           PropertyDetails details) {
   DCHECK(Dictionary::kEntrySize == 2 || Dictionary::kEntrySize == 3);
   DCHECK(!key.IsName() || details.dictionary_index() > 0);
@@ -146,7 +143,7 @@ void Dictionary<Derived, Shape>::SetEntry(Isolate* isolate, InternalIndex entry,
   WriteBarrierMode mode = this->GetWriteBarrierMode(no_gc);
   this->set(index + Derived::kEntryKeyIndex, key, mode);
   this->set(index + Derived::kEntryValueIndex, value, mode);
-  if (Shape::kHasDetails) DetailsAtPut(isolate, entry, details);
+  if (Shape::kHasDetails) DetailsAtPut(entry, details);
 }
 
 template <typename Derived, typename Shape>
@@ -167,7 +164,7 @@ PropertyDetails BaseDictionaryShape<Key>::DetailsAt(Dictionary dict,
 
 template <typename Key>
 template <typename Dictionary>
-void BaseDictionaryShape<Key>::DetailsAtPut(Isolate* isolate, Dictionary dict,
+void BaseDictionaryShape<Key>::DetailsAtPut(Dictionary dict,
                                             InternalIndex entry,
                                             PropertyDetails value) {
   STATIC_ASSERT(Dictionary::kEntrySize == 3);
@@ -179,8 +176,8 @@ Object GlobalDictionaryShape::Unwrap(Object object) {
   return PropertyCell::cast(object).name();
 }
 
-RootIndex GlobalDictionaryShape::GetMapRootIndex() {
-  return RootIndex::kGlobalDictionaryMap;
+Handle<Map> GlobalDictionary::GetMap(ReadOnlyRoots roots) {
+  return roots.global_dictionary_map_handle();
 }
 
 Name NameDictionary::NameAt(InternalIndex entry) {
@@ -192,8 +189,8 @@ Name NameDictionary::NameAt(const Isolate* isolate, InternalIndex entry) {
   return Name::cast(KeyAt(isolate, entry));
 }
 
-RootIndex NameDictionaryShape::GetMapRootIndex() {
-  return RootIndex::kNameDictionaryMap;
+Handle<Map> NameDictionary::GetMap(ReadOnlyRoots roots) {
+  return roots.name_dictionary_map_handle();
 }
 
 PropertyCell GlobalDictionary::CellAt(InternalIndex entry) {
@@ -205,15 +202,6 @@ PropertyCell GlobalDictionary::CellAt(const Isolate* isolate,
                                       InternalIndex entry) {
   DCHECK(KeyAt(isolate, entry).IsPropertyCell(isolate));
   return PropertyCell::cast(KeyAt(isolate, entry));
-}
-
-bool GlobalDictionaryShape::IsLive(ReadOnlyRoots roots, Object k) {
-  DCHECK_NE(roots.the_hole_value(), k);
-  return k != roots.undefined_value();
-}
-
-bool GlobalDictionaryShape::IsKey(ReadOnlyRoots roots, Object k) {
-  return IsLive(roots, k) && !PropertyCell::cast(k).value().IsTheHole(roots);
 }
 
 Name GlobalDictionary::NameAt(InternalIndex entry) {
@@ -234,12 +222,16 @@ Object GlobalDictionary::ValueAt(const Isolate* isolate, InternalIndex entry) {
   return CellAt(isolate, entry).value(isolate);
 }
 
-void GlobalDictionary::SetEntry(Isolate* isolate, InternalIndex entry,
-                                Object key, Object value,
+void GlobalDictionary::SetEntry(InternalIndex entry, Object key, Object value,
                                 PropertyDetails details) {
   DCHECK_EQ(key, PropertyCell::cast(value).name());
   set(EntryToIndex(entry) + kEntryKeyIndex, value);
-  DetailsAtPut(isolate, entry, details);
+  DetailsAtPut(entry, details);
+}
+
+void GlobalDictionary::ClearEntry(InternalIndex entry) {
+  Object the_hole = this->GetReadOnlyRoots().the_hole_value();
+  set(EntryToIndex(entry) + kEntryKeyIndex, the_hole);
 }
 
 void GlobalDictionary::ValueAtPut(InternalIndex entry, Object value) {
@@ -251,8 +243,8 @@ bool NumberDictionaryBaseShape::IsMatch(uint32_t key, Object other) {
   return key == static_cast<uint32_t>(other.Number());
 }
 
-uint32_t NumberDictionaryBaseShape::Hash(Isolate* isolate, uint32_t key) {
-  return ComputeSeededHash(key, HashSeed(isolate));
+uint32_t NumberDictionaryBaseShape::Hash(ReadOnlyRoots roots, uint32_t key) {
+  return ComputeSeededHash(key, HashSeed(roots));
 }
 
 uint32_t NumberDictionaryBaseShape::HashForObject(ReadOnlyRoots roots,
@@ -267,12 +259,17 @@ Handle<Object> NumberDictionaryBaseShape::AsHandle(Isolate* isolate,
   return isolate->factory()->NewNumberFromUint(key);
 }
 
-RootIndex NumberDictionaryShape::GetMapRootIndex() {
-  return RootIndex::kNumberDictionaryMap;
+Handle<Object> NumberDictionaryBaseShape::AsHandle(LocalIsolate* isolate,
+                                                   uint32_t key) {
+  return isolate->factory()->NewNumberFromUint<AllocationType::kOld>(key);
 }
 
-RootIndex SimpleNumberDictionaryShape::GetMapRootIndex() {
-  return RootIndex::kSimpleNumberDictionaryMap;
+Handle<Map> NumberDictionary::GetMap(ReadOnlyRoots roots) {
+  return roots.number_dictionary_map_handle();
+}
+
+Handle<Map> SimpleNumberDictionary::GetMap(ReadOnlyRoots roots) {
+  return roots.simple_number_dictionary_map_handle();
 }
 
 bool NameDictionaryShape::IsMatch(Handle<Name> key, Object other) {
@@ -281,7 +278,7 @@ bool NameDictionaryShape::IsMatch(Handle<Name> key, Object other) {
   return *key == other;
 }
 
-uint32_t NameDictionaryShape::Hash(Isolate* isolate, Handle<Name> key) {
+uint32_t NameDictionaryShape::Hash(ReadOnlyRoots roots, Handle<Name> key) {
   return key->Hash();
 }
 
@@ -305,6 +302,12 @@ Handle<Object> NameDictionaryShape::AsHandle(Isolate* isolate,
   return key;
 }
 
+Handle<Object> NameDictionaryShape::AsHandle(LocalIsolate* isolate,
+                                             Handle<Name> key) {
+  DCHECK(key->IsUniqueName());
+  return key;
+}
+
 template <typename Dictionary>
 PropertyDetails GlobalDictionaryShape::DetailsAt(Dictionary dict,
                                                  InternalIndex entry) {
@@ -313,14 +316,13 @@ PropertyDetails GlobalDictionaryShape::DetailsAt(Dictionary dict,
 }
 
 template <typename Dictionary>
-void GlobalDictionaryShape::DetailsAtPut(Isolate* isolate, Dictionary dict,
-                                         InternalIndex entry,
+void GlobalDictionaryShape::DetailsAtPut(Dictionary dict, InternalIndex entry,
                                          PropertyDetails value) {
   DCHECK(entry.is_found());
   PropertyCell cell = dict.CellAt(entry);
   if (cell.property_details().IsReadOnly() != value.IsReadOnly()) {
     cell.dependent_code().DeoptimizeDependentCodeGroup(
-        isolate, DependentCode::kPropertyCellChangedGroup);
+        DependentCode::kPropertyCellChangedGroup);
   }
   cell.set_property_details(value);
 }

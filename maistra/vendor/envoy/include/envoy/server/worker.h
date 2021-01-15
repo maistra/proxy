@@ -51,9 +51,8 @@ public:
    * Initialize stats for this worker's dispatcher, if available. The worker will output
    * thread-specific stats under the given scope.
    * @param scope the scope to contain the new per-dispatcher stats created here.
-   * @param prefix the stats prefix to identify this dispatcher.
    */
-  virtual void initializeStats(Stats::Scope& scope, const std::string& prefix) PURE;
+  virtual void initializeStats(Stats::Scope& scope) PURE;
 
   /**
    * Stop the worker thread.
@@ -101,11 +100,12 @@ public:
   virtual ~WorkerFactory() = default;
 
   /**
+   * @param index supplies the index of the worker, in the range of [0, concurrency).
    * @param overload_manager supplies the server's overload manager.
    * @param worker_name supplies the name of the worker, used for per-worker stats.
    * @return WorkerPtr a new worker.
    */
-  virtual WorkerPtr createWorker(OverloadManager& overload_manager,
+  virtual WorkerPtr createWorker(uint32_t index, OverloadManager& overload_manager,
                                  const std::string& worker_name) PURE;
 };
 

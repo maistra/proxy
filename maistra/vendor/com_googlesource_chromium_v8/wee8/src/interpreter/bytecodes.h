@@ -100,6 +100,8 @@ namespace interpreter {
     OperandType::kIdx, OperandType::kIdx)                                      \
   V(LdaNamedPropertyNoFeedback, AccumulatorUse::kWrite, OperandType::kReg,     \
     OperandType::kIdx)                                                         \
+  V(LdaNamedPropertyFromSuper, AccumulatorUse::kReadWrite, OperandType::kReg,  \
+    OperandType::kIdx, OperandType::kIdx)                                      \
   V(LdaKeyedProperty, AccumulatorUse::kReadWrite, OperandType::kReg,           \
     OperandType::kIdx)                                                         \
                                                                                \
@@ -332,9 +334,6 @@ namespace interpreter {
   V(ForInNext, AccumulatorUse::kWrite, OperandType::kReg, OperandType::kReg,   \
     OperandType::kRegPair, OperandType::kIdx)                                  \
   V(ForInStep, AccumulatorUse::kWrite, OperandType::kReg)                      \
-                                                                               \
-  /* Perform a stack guard check */                                            \
-  V(StackCheck, AccumulatorUse::kNone)                                         \
                                                                                \
   /* Update the pending message */                                             \
   V(SetPendingMessage, AccumulatorUse::kReadWrite)                             \
@@ -644,10 +643,11 @@ class V8_EXPORT_PRIVATE Bytecodes final : public AllStatic {
   }
 
   // Return true if |bytecode| is a jump without effects,
-  // e.g.  any jump excluding those that include type coercion like
-  // JumpIfTrueToBoolean.
+  // e.g. any jump excluding those that include type coercion like
+  // JumpIfTrueToBoolean, and JumpLoop due to having an implicit StackCheck.
   static constexpr bool IsJumpWithoutEffects(Bytecode bytecode) {
-    return IsJump(bytecode) && !IsJumpIfToBoolean(bytecode);
+    return IsJump(bytecode) && !IsJumpIfToBoolean(bytecode) &&
+           bytecode != Bytecode::kJumpLoop;
   }
 
   // Returns true if the bytecode is a switch.

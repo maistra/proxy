@@ -111,29 +111,33 @@ function assert_exhaustion(action) {
   throw new Error("Wasm resource exhaustion expected");
 }
 
-function assert_return(action, expected) {
+function assert_return(action, ...expected) {
   let actual = action();
-  if (!Object.is(actual, expected)) {
-    throw new Error("Wasm return value " + expected + " expected, got " + actual);
-  };
-}
-
-function assert_return_canonical_nan(action) {
-  let actual = action();
-  // Note that JS can't reliably distinguish different NaN values,
-  // so there's no good way to test that it's a canonical NaN.
-  if (!Number.isNaN(actual)) {
-    throw new Error("Wasm return value NaN expected, got " + actual);
-  };
-}
-
-function assert_return_arithmetic_nan(action) {
-  // Note that JS can't reliably distinguish different NaN values,
-  // so there's no good way to test for specific bitpatterns here.
-  let actual = action();
-  if (!Number.isNaN(actual)) {
-    throw new Error("Wasm return value NaN expected, got " + actual);
-  };
+  if (actual === undefined) {
+    actual = [];
+  } else if (!Array.isArray(actual)) {
+    actual = [actual];
+  }
+  if (actual.length !== expected.length) {
+    throw new Error(expected.length + " value(s) expected, got " + actual.length);
+  }
+  for (let i = 0; i < actual.length; ++i) {
+    switch (expected[i]) {
+      case "nan:canonical":
+      case "nan:arithmetic":
+      case "nan:any":
+        // Note that JS can't reliably distinguish different NaN values,
+        // so there's no good way to test that it's a canonical NaN.
+        if (!Number.isNaN(actual[i])) {
+          throw new Error("Wasm return value NaN expected, got " + actual[i]);
+        };
+        return;
+      default:
+        if (!Object.is(actual[i], expected[i])) {
+          throw new Error("Wasm return value " + expected[i] + " expected, got " + actual[i]);
+        };
+    }
+  }
 }
 
 // table_init.wast:5
@@ -2142,3 +2146,6 @@ assert_trap(() => call($24, "test", [14]));
 
 // table_init.wast:1752
 assert_trap(() => call($24, "test", [15]));
+
+// table_init.wast:1754
+let $25 = instance("\x00\x61\x73\x6d\x01\x00\x00\x00\x01\x84\x80\x80\x80\x00\x01\x60\x00\x00\x03\x82\x80\x80\x80\x00\x01\x00\x04\x84\x80\x80\x80\x00\x01\x70\x00\x01\x09\xc4\x81\x80\x80\x00\x41\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x01\x00\x00\x0a\x92\x80\x80\x80\x00\x01\x8c\x80\x80\x80\x00\x00\x41\x00\x41\x00\x41\x00\xfc\x0c\x40\x00\x0b");

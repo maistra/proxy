@@ -17,11 +17,6 @@
 namespace v8 {
 namespace internal {
 
-std::atomic_uint TracingFlags::runtime_stats{0};
-std::atomic_uint TracingFlags::gc{0};
-std::atomic_uint TracingFlags::gc_stats{0};
-std::atomic_uint TracingFlags::ic_stats{0};
-
 StatsTable::StatsTable(Counters* counters)
     : lookup_function_(nullptr),
       create_histogram_function_(nullptr),
@@ -319,6 +314,11 @@ void Counters::ResetCreateHistogramFunction(CreateHistogramCallback f) {
 base::TimeTicks (*RuntimeCallTimer::Now)() =
     &base::TimeTicks::HighResolutionNow;
 
+base::TimeTicks RuntimeCallTimer::NowCPUTime() {
+  base::ThreadTicks ticks = base::ThreadTicks::Now();
+  return base::TimeTicks::FromInternalValue(ticks.ToInternalValue());
+}
+
 class RuntimeCallStatEntries {
  public:
   void Print(std::ostream& os) {
@@ -454,6 +454,11 @@ RuntimeCallStats::RuntimeCallStats(ThreadType thread_type)
   for (int i = 0; i < kNumberOfCounters; i++) {
     this->counters_[i] = RuntimeCallCounter(kNames[i]);
   }
+  if (FLAG_rcs_cpu_time) {
+    CHECK(base::ThreadTicks::IsSupported());
+    base::ThreadTicks::WaitUntilInitialized();
+    RuntimeCallTimer::Now = &RuntimeCallTimer::NowCPUTime;
+  }
 }
 
 namespace {
@@ -550,6 +555,17 @@ void RuntimeCallStats::Print(std::ostream& os) {
     entries.Add(GetCounter(i));
   }
   entries.Print(os);
+}
+
+void RuntimeCallStats::EnumerateCounters(
+    debug::RuntimeCallCounterCallback callback) {
+  if (current_timer_.Value() != nullptr) {
+    current_timer_.Value()->Snapshot();
+  }
+  for (int i = 0; i < kNumberOfCounters; i++) {
+    RuntimeCallCounter* counter = GetCounter(i);
+    callback(counter->name(), counter->count(), counter->time());
+  }
 }
 
 void RuntimeCallStats::Reset() {

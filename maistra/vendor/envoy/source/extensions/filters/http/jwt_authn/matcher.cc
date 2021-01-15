@@ -42,7 +42,7 @@ public:
     matches &= Http::HeaderUtility::matchHeaders(headers, config_headers_);
     if (!config_query_parameters_.empty()) {
       Http::Utility::QueryParams query_parameters =
-          Http::Utility::parseQueryString(headers.Path()->value().getStringView());
+          Http::Utility::parseQueryString(headers.getPathValue());
       matches &= ConfigUtility::matchQueryParams(query_parameters, config_query_parameters_);
     }
     return matches;
@@ -66,8 +66,7 @@ public:
         path_matcher_(Matchers::PathMatcher::createPrefix(prefix_, !case_sensitive_)) {}
 
   bool matches(const Http::RequestHeaderMap& headers) const override {
-    if (BaseMatcherImpl::matchRoute(headers) &&
-        path_matcher_->match(headers.Path()->value().getStringView())) {
+    if (BaseMatcherImpl::matchRoute(headers) && path_matcher_->match(headers.getPathValue())) {
       ENVOY_LOG(debug, "Prefix requirement '{}' matched.", prefix_);
       return true;
     }
@@ -90,8 +89,7 @@ public:
         path_matcher_(Matchers::PathMatcher::createExact(path_, !case_sensitive_)) {}
 
   bool matches(const Http::RequestHeaderMap& headers) const override {
-    if (BaseMatcherImpl::matchRoute(headers) &&
-        path_matcher_->match(headers.Path()->value().getStringView())) {
+    if (BaseMatcherImpl::matchRoute(headers) && path_matcher_->match(headers.getPathValue())) {
       ENVOY_LOG(debug, "Path requirement '{}' matched.", path_);
       return true;
     }
@@ -145,6 +143,22 @@ private:
   std::string regex_str_;
 };
 
+/**
+ * Perform a match against an HTTP CONNECT request.
+ */
+class ConnectMatcherImpl : public BaseMatcherImpl {
+public:
+  ConnectMatcherImpl(const RequirementRule& rule) : BaseMatcherImpl(rule) {}
+
+  bool matches(const Http::RequestHeaderMap& headers) const override {
+    if (Http::HeaderUtility::isConnect(headers) && BaseMatcherImpl::matchRoute(headers)) {
+      ENVOY_LOG(debug, "CONNECT requirement matched.");
+      return true;
+    }
+
+    return false;
+  }
+};
 } // namespace
 
 MatcherConstPtr Matcher::create(const RequirementRule& rule) {
@@ -156,8 +170,8 @@ MatcherConstPtr Matcher::create(const RequirementRule& rule) {
   case RouteMatch::PathSpecifierCase::kHiddenEnvoyDeprecatedRegex:
   case RouteMatch::PathSpecifierCase::kSafeRegex:
     return std::make_unique<RegexMatcherImpl>(rule);
-  // path specifier is required.
-  case RouteMatch::PathSpecifierCase::PATH_SPECIFIER_NOT_SET:
+  case RouteMatch::PathSpecifierCase::kConnectMatcher:
+    return std::make_unique<ConnectMatcherImpl>(rule);
   default:
     NOT_REACHED_GCOVR_EXCL_LINE;
   }

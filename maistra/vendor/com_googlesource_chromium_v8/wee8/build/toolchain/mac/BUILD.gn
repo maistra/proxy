@@ -33,6 +33,17 @@ declare_args() {
   # https://reviews.llvm.org/rL368199 but that has not yet made it into a public
   # lldb release.
   mac_deterministic_build = false
+
+  # This controls whether whole module optimization is enabled when building
+  # Swift modules. If enabled, the compiler will compile the module as one
+  # unit, generating just one single object file. Otherwise, it will generate
+  # one object file per .swift file. If unspecified, will default to "true"
+  # for official builds, and "false" for all other builds.
+  swift_whole_module_optimization = -1
+}
+
+if (swift_whole_module_optimization == -1) {
+  swift_whole_module_optimization = is_official_build
 }
 
 if (current_toolchain == default_toolchain) {
@@ -94,6 +105,8 @@ template("mac_toolchain") {
 
     _cc = "${prefix}clang"
     _cxx = "${prefix}clang++"
+
+    swiftmodule_switch = "-Wl,-add_ast_path,"
 
     # When the invoker has explicitly overridden use_goma or cc_wrapper in the
     # toolchain args, use those values, otherwise default to the global one.
@@ -233,7 +246,7 @@ template("mac_toolchain") {
     tool("objc") {
       depfile = "{{output}}.d"
       precompiled_header_type = "gcc"
-      command = "$cc -MMD -MF $depfile {{defines}} {{include_dirs}} {{cflags}} {{cflags_objc}} -c {{source}} -o {{output}}"
+      command = "$cc -MMD -MF $depfile {{defines}} {{include_dirs}} {{framework_dirs}} {{cflags}} {{cflags_objc}} -c {{source}} -o {{output}}"
       depsformat = "gcc"
       description = "OBJC {{output}}"
       outputs = [ "$object_subdir/{{source_name_part}}.o" ]
@@ -242,7 +255,7 @@ template("mac_toolchain") {
     tool("objcxx") {
       depfile = "{{output}}.d"
       precompiled_header_type = "gcc"
-      command = "$cxx -MMD -MF $depfile {{defines}} {{include_dirs}} {{cflags}} {{cflags_objcc}} -c {{source}} -o {{output}}"
+      command = "$cxx -MMD -MF $depfile {{defines}} {{include_dirs}} {{framework_dirs}} {{cflags}} {{cflags_objcc}} -c {{source}} -o {{output}}"
       depsformat = "gcc"
       description = "OBJCXX {{output}}"
       outputs = [ "$object_subdir/{{source_name_part}}.o" ]
@@ -265,7 +278,7 @@ template("mac_toolchain") {
 
       # Specify explicit path for libtool.
       libtool = mac_bin_path + "libtool"
-      command = "rm -f {{output}} && TOOL_VERSION=${tool_versions.filter_libtool} python $script $libtool -static {{arflags}} -o {{output}} -filelist $rspfile"
+      command = "rm -f {{output}} && TOOL_VERSION=${tool_versions.filter_libtool} python $script $libtool -static -D {{arflags}} -o {{output}} -filelist $rspfile"
       description = "LIBTOOL-STATIC {{output}}"
       outputs = [ "{{output_dir}}/{{target_output_name}}{{output_extension}}" ]
       default_output_dir = "{{target_out_dir}}"
@@ -304,10 +317,10 @@ template("mac_toolchain") {
         link_command += " -Wl,-install_name,@rpath/\"{{target_output_name}}{{output_extension}}\" "
       }
       link_command += dsym_switch
-      link_command += "{{ldflags}} -o \"$dylib\" -Wl,-filelist,\"$rspfile\" {{libs}} {{solibs}}"
+      link_command += "{{ldflags}} -o \"$dylib\" -Wl,-filelist,\"$rspfile\" {{frameworks}} {{swiftmodules}} {{solibs}} {{libs}}"
 
       replace_command = "if ! cmp -s \"$temporary_tocname\" \"$tocname\"; then mv \"$temporary_tocname\" \"$tocname\""
-      extract_toc_command = "{ $otool -l \"$dylib\" | grep LC_ID_DYLIB -A 5; $nm -gP \"$dylib\" | cut -f1-2 -d' ' | grep -v U\$\$; true; }"
+      extract_toc_command = "{ $otool -l \"$dylib\" | grep LC_ID_DYLIB -A 5; $nm -gPp \"$dylib\" | cut -f1-2 -d' ' | grep -v U\$\$; true; }"
 
       command = "if $does_reexport_command ; then $link_command && $extract_toc_command > \"$tocname\"; else $link_command && $extract_toc_command > \"$temporary_tocname\" && $replace_command ; fi; fi"
 
@@ -356,7 +369,7 @@ template("mac_toolchain") {
         link_command += " -Wl,-install_name,@rpath/{{target_output_name}}{{output_extension}}"
       }
       link_command += dsym_switch
-      link_command += " {{solibs}} {{libs}}"
+      link_command += " {{frameworks}} {{swiftmodules}} {{solibs}} {{libs}}"
       command = link_command
 
       rspfile_content = "{{inputs_newline}}"
@@ -392,7 +405,7 @@ template("mac_toolchain") {
       # do for command-line arguments. Thus any source names with spaces, or
       # label names with spaces (which GN bases the output paths on) will be
       # corrupted by this process. Don't use spaces for source files or labels.
-      command = "$linker_driver $ld $dsym_switch {{ldflags}} -o \"$outfile\" -Wl,-filelist,\"$rspfile\" {{solibs}} {{libs}}"
+      command = "$linker_driver $ld $dsym_switch {{ldflags}} -o \"$outfile\" -Wl,-filelist,\"$rspfile\" {{frameworks}} {{swiftmodules}} {{solibs}} {{libs}}"
       description = "LINK $outfile"
       rspfile_content = "{{inputs_newline}}"
       outputs = [ outfile ]
@@ -421,30 +434,59 @@ template("mac_toolchain") {
 
     tool("copy_bundle_data") {
       # copy_command use hardlink if possible but this does not work with
-      # directories. If source is a directory, instead use "pax" to create
-      # the same tree structure using hardlinks to individual files (this
-      # preserve symbolic links too) as recommended in the replies to the
-      # question at http://serverfault.com/q/209888/43689 ("cp -al" isn't
-      # available on macOS).
+      # directories. Also when running EG2 tests from Xcode, Xcode tries to
+      # copy some files into the application bundle which fails if source
+      # and destination are hardlinked together.
       #
-      # According to the man page for pax, the commands to use to clone
-      # olddir to newdir using pax are the following:
-      #
-      #   $ mkdir newdir
-      #   $ cd olddir
-      #   $ pax -rwl . ../newdir
-      #
-      # The _copydir command does exactly that but use an absolute path
-      # constructed using shell variable $OLDPWD (automatically set when
-      # cd is used) as computing the relative path is a bit complex and
-      # using pwd would requires a sub-shell to be created.
-      _copydir = "mkdir -p {{output}} && cd {{source}} && " +
-                 "pax -rwl . \"\$OLDPWD\"/{{output}}"
-      command = "rm -rf {{output}} && if [[ -d {{source}} ]]; then " +
-                _copydir + "; else " + copy_command + "; fi"
+      # Instead use clonefile to copy the files which is as efficient as
+      # hardlink but ensure the file have distinct metadata (thus avoid the
+      # error with ditto, see https://crbug.com/1042182).
+      command =
+          "rm -rf {{output}} && cp -fRc {{source}} {{output}} 2>/dev/null " +
+          "|| (rm -rf {{output}} && cp -fR {{source}} {{output}})"
 
       description = "COPY_BUNDLE_DATA {{source}} {{output}}"
       pool = ":bundle_pool($default_toolchain)"
+    }
+
+    tool("swift") {
+      _tool = rebase_path("//build/apple/swiftc.py", root_build_dir)
+
+      depfile = "{{target_out_dir}}/{{module_name}}.d"
+      depsformat = "gcc"
+
+      outputs = [
+        # The module needs to be the first output listed. The blank line after
+        # the module is required to prevent `gn format` from changing the file
+        # order.
+        "{{target_gen_dir}}/{{module_name}}.swiftmodule",
+
+        "{{target_gen_dir}}/{{module_name}}.h",
+        "{{target_gen_dir}}/{{module_name}}.swiftdoc",
+        "{{target_gen_dir}}/{{module_name}}.swiftsourceinfo",
+      ]
+
+      if (swift_whole_module_optimization) {
+        _extra_flags = "-whole-module-optimization"
+        _objects_dir = "{{target_out_dir}}"
+
+        outputs += [ "$_objects_dir/{{module_name}}.o" ]
+      } else {
+        _extra_flags = ""
+        _objects_dir = "{{target_out_dir}}/{{label_name}}"
+
+        partial_outputs = [ "$_objects_dir/{{source_name_part}}.o" ]
+      }
+
+      command =
+          "$_tool -module-name {{module_name}} " +
+          "-object-dir $_objects_dir " +
+          "-module-path {{target_gen_dir}}/{{module_name}}.swiftmodule " +
+          "-header-path {{target_gen_dir}}/{{module_name}}.h " +
+          "-depfile {{target_out_dir}}/{{module_name}}.d " +
+          "-depfile-filter {{target_gen_dir}}/{{module_name}}.swiftmodule " +
+          "-bridge-header {{bridge_header}} $_extra_flags " +
+          "{{swiftflags}} {{include_dirs}} {{module_dirs}} {{inputs}}"
     }
 
     # xcassets are only used on iOS, not macOS. We want to minimize the number
@@ -484,6 +526,13 @@ template("mac_toolchain") {
 mac_toolchain("clang_arm") {
   toolchain_args = {
     current_cpu = "arm"
+    current_os = "mac"
+  }
+}
+
+mac_toolchain("clang_arm64") {
+  toolchain_args = {
+    current_cpu = "arm64"
     current_os = "mac"
   }
 }

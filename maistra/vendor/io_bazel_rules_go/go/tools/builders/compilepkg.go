@@ -294,6 +294,9 @@ func compileArchive(
 		imports["unsafe"] = nil
 	}
 	if coverMode != "" {
+		if coverMode == "atomic" {
+			imports["sync/atomic"] = nil
+		}
 		const coverdataPath = "github.com/bazelbuild/rules_go/go/tools/coverdata"
 		var coverdata *archive
 		for i := range deps {
@@ -321,7 +324,7 @@ func compileArchive(
 		ctx, cancel := context.WithCancel(context.Background())
 		nogoChan = make(chan error)
 		go func() {
-			nogoChan <- runNogo(ctx, nogoPath, goSrcs, deps, packagePath, importcfgPath, outFactsPath)
+			nogoChan <- runNogo(ctx, workDir, nogoPath, goSrcs, deps, packagePath, importcfgPath, outFactsPath)
 		}()
 		defer func() {
 			if nogoChan != nil {
@@ -412,7 +415,7 @@ func compileGo(goenv *env, srcs []string, packagePath, importcfgPath, asmHdrPath
 	return goenv.runCommand(args)
 }
 
-func runNogo(ctx context.Context, nogoPath string, srcs []string, deps []archive, packagePath, importcfgPath, outFactsPath string) error {
+func runNogo(ctx context.Context, workDir string, nogoPath string, srcs []string, deps []archive, packagePath, importcfgPath, outFactsPath string) error {
 	args := []string{nogoPath}
 	args = append(args, "-p", packagePath)
 	args = append(args, "-importcfg", importcfgPath)
@@ -424,11 +427,21 @@ func runNogo(ctx context.Context, nogoPath string, srcs []string, deps []archive
 	args = append(args, "-x", outFactsPath)
 	args = append(args, srcs...)
 
-	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+	paramFile := filepath.Join(workDir, "nogo.param")
+	params := strings.Join(args[1:], "\n")
+	if err := ioutil.WriteFile(paramFile, []byte(params), 0666); err != nil {
+		return fmt.Errorf("error writing nogo paramfile: %v", err)
+	}
+
+	cmd := exec.CommandContext(ctx, args[0], "-param="+paramFile)
 	out := &bytes.Buffer{}
 	cmd.Stdout, cmd.Stderr = out, out
 	if err := cmd.Run(); err != nil {
-		if _, ok := err.(*exec.ExitError); ok {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			if !exitErr.Exited() {
+				cmdLine := strings.Join(args, " ")
+				return fmt.Errorf("nogo command '%s' exited unexpectedly: %s", cmdLine, exitErr.String())
+			}
 			return errors.New(out.String())
 		} else {
 			if out.Len() != 0 {

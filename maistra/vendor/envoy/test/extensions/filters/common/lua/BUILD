@@ -1,5 +1,3 @@
-licenses(["notice"])  # Apache 2
-
 load(
     "//bazel:envoy_build_system.bzl",
     "envoy_cc_test",
@@ -7,12 +5,15 @@ load(
     "envoy_package",
 )
 
+licenses(["notice"])  # Apache 2
+
 envoy_package()
 
 envoy_cc_test(
     name = "lua_test",
     srcs = ["lua_test.cc"],
     deps = [
+        "//source/common/thread_local:thread_local_lib",
         "//source/extensions/filters/common/lua:lua_lib",
         "//test/mocks:common_lib",
         "//test/mocks/thread_local:thread_local_mocks",

@@ -13,11 +13,12 @@
 // limitations under the License.
 
 #include "jwt_verify_lib/verify.h"
+
 #include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "jwt_verify_lib/check_audience.h"
-
 #include "openssl/bn.h"
+#include "common.h"
 #include "openssl/ecdsa.h"
 #include "openssl/err.h"
 #include "openssl/evp.h"
@@ -65,6 +66,42 @@ bool verifySignatureRSA(RSA* key, const EVP_MD* md, absl::string_view signature,
                         absl::string_view signed_data) {
   return verifySignatureRSA(key, md, castToUChar(signature), signature.length(),
                             castToUChar(signed_data), signed_data.length());
+}
+
+bool verifySignatureRSAPSS(RSA* key, const EVP_MD* md, const uint8_t* signature,
+                           size_t signature_len, const uint8_t* signed_data,
+                           size_t signed_data_len) {
+  if (key == nullptr || md == nullptr || signature == nullptr ||
+      signed_data == nullptr) {
+    return false;
+  }
+  bssl::UniquePtr<EVP_PKEY> evp_pkey(EVP_PKEY_new());
+  if (EVP_PKEY_set1_RSA(evp_pkey.get(), key) != 1) {
+    return false;
+  }
+
+  bssl::UniquePtr<EVP_MD_CTX> md_ctx(EVP_MD_CTX_create());
+  // pctx is owned by md_ctx, no need to free it separately.
+  EVP_PKEY_CTX* pctx;
+  if (EVP_DigestVerifyInit(md_ctx.get(), &pctx, md, nullptr, evp_pkey.get()) ==
+          1 &&
+      EVP_PKEY_CTX_set_rsa_padding(pctx, RSA_PKCS1_PSS_PADDING) == 1 &&
+      EVP_PKEY_CTX_set_rsa_mgf1_md(pctx, md) == 1 &&
+      EVP_DigestVerify(md_ctx.get(), signature, signature_len, signed_data,
+                       signed_data_len) == 1) {
+    return true;
+  }
+
+  ERR_clear_error();
+  return false;
+}
+
+bool verifySignatureRSAPSS(RSA* key, const EVP_MD* md,
+                           absl::string_view signature,
+                           absl::string_view signed_data) {
+  return verifySignatureRSAPSS(key, md, castToUChar(signature),
+                               signature.length(), castToUChar(signed_data),
+                               signed_data.length());
 }
 
 bool verifySignatureEC(EC_KEY* key, const EVP_MD* md, const uint8_t* signature,
@@ -157,22 +194,32 @@ bool verifySignatureOct(absl::string_view key, const EVP_MD* md,
                             castToUChar(signed_data), signed_data.length());
 }
 
-}  // namespace
+Status verifySignatureEd25519(absl::string_view key,
+                              absl::string_view signature,
+                              absl::string_view signed_data) {
+  if (signature.length() != ED25519_SIGNATURE_LEN) {
+    return Status::JwtEd25519SignatureWrongLength;
+  }
 
-Status verifyJwt(const Jwt& jwt, const Jwks& jwks) {
-  return verifyJwt(jwt, jwks, absl::ToUnixSeconds(absl::Now()));
+  bssl::UniquePtr<EVP_MD_CTX> ctx(EVP_MD_CTX_new());
+  bssl::UniquePtr<EVP_PKEY> pkey(EVP_PKEY_new_raw_public_key(EVP_PKEY_ED25519, NULL, castToUChar(key), key.length()));
+  int res = EVP_DigestVerifyInit(ctx.get(), NULL, NULL, NULL, pkey.get());
+  if (res == 1) {
+    res = EVP_DigestVerify(ctx.get(), castToUChar(signature), signature.length(), castToUChar(signed_data), signed_data.length());
+  }
+
+  if (res == 1) {
+    return Status::Ok;
+  }
+
+  ERR_clear_error();
+  return Status::JwtVerificationFail;
 }
 
-Status verifyJwt(const Jwt& jwt, const Jwks& jwks, uint64_t now) {
-  // First check that the JWT has not expired (exp) and is active (nbf).
-  if (now < jwt.nbf_) {
-    return Status::JwtNotYetValid;
-  }
-  if (jwt.exp_ && now > jwt.exp_) {
-    return Status::JwtExpired;
-  }
+}  // namespace
 
-  // Second verify signature.z
+Status verifyJwtWithoutTimeChecking(const Jwt& jwt, const Jwks& jwks) {
+  // Verify signature
   std::string signed_data =
       jwt.header_str_base64url_ + '.' + jwt.payload_str_base64url_;
   bool kid_alg_matched = false;
@@ -208,19 +255,27 @@ Status verifyJwt(const Jwt& jwt, const Jwks& jwks, uint64_t now) {
       }
     } else if (jwk->kty_ == "RSA") {
       const EVP_MD* md;
-      if (jwt.alg_ == "RS384") {
+      if (jwt.alg_ == "RS384" || jwt.alg_ == "PS384") {
         md = EVP_sha384();
-      } else if (jwt.alg_ == "RS512") {
+      } else if (jwt.alg_ == "RS512" || jwt.alg_ == "PS512") {
         md = EVP_sha512();
       } else {
         // default to SHA256
         md = EVP_sha256();
       }
 
-      if (verifySignatureRSA(jwk->rsa_.get(), md, jwt.signature_,
-                             signed_data)) {
-        // Verification succeeded.
-        return Status::Ok;
+      if (jwt.alg_.compare(0, 2, "RS") == 0) {
+        if (verifySignatureRSA(jwk->rsa_.get(), md, jwt.signature_,
+                               signed_data)) {
+          // Verification succeeded.
+          return Status::Ok;
+        }
+      } else if (jwt.alg_.compare(0, 2, "PS") == 0) {
+        if (verifySignatureRSAPSS(jwk->rsa_.get(), md, jwt.signature_,
+                                  signed_data)) {
+          // Verification succeeded.
+          return Status::Ok;
+        }
       }
     } else if (jwk->kty_ == "oct") {
       const EVP_MD* md;
@@ -237,12 +292,38 @@ Status verifyJwt(const Jwt& jwt, const Jwks& jwks, uint64_t now) {
         // Verification succeeded.
         return Status::Ok;
       }
+    } else if (jwk->kty_ == "OKP" && jwk->crv_ == "Ed25519") {
+      Status status = verifySignatureEd25519(jwk->okp_key_raw_, jwt.signature_,
+                                             signed_data);
+      // For verification failures keep going and try the rest of the keys in
+      // the JWKS. Otherwise status is either OK or an error with the JWT and we
+      // can return immediately.
+      if (status == Status::Ok ||
+          status == Status::JwtEd25519SignatureWrongLength) {
+        return status;
+      }
     }
   }
 
   // Verification failed.
   return kid_alg_matched ? Status::JwtVerificationFail
                          : Status::JwksKidAlgMismatch;
+}
+
+Status verifyJwt(const Jwt& jwt, const Jwks& jwks) {
+  return verifyJwt(jwt, jwks, absl::ToUnixSeconds(absl::Now()));
+}
+
+Status verifyJwt(const Jwt& jwt, const Jwks& jwks, uint64_t now) {
+  // First check that the JWT has not expired (exp) and is active (nbf).
+  if (now < jwt.nbf_) {
+    return Status::JwtNotYetValid;
+  }
+  if (jwt.exp_ && now > jwt.exp_) {
+    return Status::JwtExpired;
+  }
+
+  return verifyJwtWithoutTimeChecking(jwt, jwks);
 }
 
 Status verifyJwt(const Jwt& jwt, const Jwks& jwks,

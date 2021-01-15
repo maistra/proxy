@@ -11,6 +11,7 @@
 #include "src/compiler/common-operator.h"
 #include "src/compiler/linkage.h"
 #include "src/compiler/schedule.h"
+#include "src/objects/tagged-index.h"
 
 namespace v8 {
 namespace internal {
@@ -46,12 +47,6 @@ class SwitchInfo {
     }
   }
 
-  // Ensure that comparison order of if-cascades is preserved.
-  std::vector<CaseInfo> CasesSortedByOriginalOrder() const {
-    std::vector<CaseInfo> result(cases_.begin(), cases_.end());
-    std::stable_sort(result.begin(), result.end());
-    return result;
-  }
   std::vector<CaseInfo> CasesSortedByValue() const {
     std::vector<CaseInfo> result(cases_.begin(), cases_.end());
     std::stable_sort(result.begin(), result.end(),
@@ -314,6 +309,19 @@ class OperandGenerator {
         return Constant(OpParameter<int32_t>(node->op()));
       case IrOpcode::kInt64Constant:
         return Constant(OpParameter<int64_t>(node->op()));
+      case IrOpcode::kTaggedIndexConstant: {
+        // Unencoded index value.
+        intptr_t value =
+            static_cast<intptr_t>(OpParameter<int32_t>(node->op()));
+        DCHECK(TaggedIndex::IsValid(value));
+        // Generate it as 32/64-bit constant in a tagged form.
+        Address tagged_index = TaggedIndex::FromIntptr(value).ptr();
+        if (kSystemPointerSize == kInt32Size) {
+          return Constant(static_cast<int32_t>(tagged_index));
+        } else {
+          return Constant(static_cast<int64_t>(tagged_index));
+        }
+      }
       case IrOpcode::kFloat32Constant:
         return Constant(OpParameter<float>(node->op()));
       case IrOpcode::kRelocatableInt32Constant:
@@ -348,6 +356,8 @@ class OperandGenerator {
           case MachineRepresentation::kCompressed:
           case MachineRepresentation::kCompressedPointer:
             return Constant(static_cast<int32_t>(0));
+          case MachineRepresentation::kWord64:
+            return Constant(static_cast<int64_t>(0));
           case MachineRepresentation::kFloat64:
             return Constant(static_cast<double>(0));
           case MachineRepresentation::kFloat32:

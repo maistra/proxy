@@ -65,12 +65,11 @@ TNode<JSArrayBuffer> TypedArrayBuiltinsAssembler::AllocateEmptyOnHeapBuffer(
 
   StoreObjectFieldNoWriteBarrier(buffer, JSArrayBuffer::kByteLengthOffset,
                                  byte_length);
-  StoreObjectFieldNoWriteBarrier(buffer, JSArrayBuffer::kBackingStoreOffset,
-                                 IntPtrConstant(0));
-  if (V8_ARRAY_BUFFER_EXTENSION_BOOL) {
+  StoreJSArrayBufferBackingStore(
+      buffer,
+      EncodeExternalPointer(ReinterpretCast<RawPtrT>(IntPtrConstant(0))));
     StoreObjectFieldNoWriteBarrier(buffer, JSArrayBuffer::kExtensionOffset,
                                    IntPtrConstant(0));
-  }
   for (int offset = JSArrayBuffer::kHeaderSize;
        offset < JSArrayBuffer::kSizeWithEmbedderFields; offset += kTaggedSize) {
     StoreObjectFieldNoWriteBarrier(buffer, offset, SmiConstant(0));
@@ -89,8 +88,8 @@ TF_BUILTIN(TypedArrayConstructor, TypedArrayBuiltinsAssembler) {
   TNode<Context> context = CAST(Parameter(Descriptor::kContext));
   TNode<JSFunction> target = CAST(Parameter(Descriptor::kJSTarget));
   TNode<Object> new_target = CAST(Parameter(Descriptor::kJSNewTarget));
-  TNode<IntPtrT> argc =
-      ChangeInt32ToIntPtr(Parameter(Descriptor::kJSActualArgumentsCount));
+  TNode<IntPtrT> argc = ChangeInt32ToIntPtr(
+      UncheckedCast<Int32T>(Parameter(Descriptor::kJSActualArgumentsCount)));
   CodeStubArguments args(this, argc);
   TNode<Object> arg1 = args.GetOptionalArgumentValue(0);
   TNode<Object> arg2 = args.GetOptionalArgumentValue(1);
@@ -232,28 +231,6 @@ TNode<JSFunction> TypedArrayBuiltinsAssembler::GetDefaultConstructor(
       LoadContextElement(LoadNativeContext(context), context_slot.value()));
 }
 
-TNode<JSArrayBuffer> TypedArrayBuiltinsAssembler::GetBuffer(
-    TNode<Context> context, TNode<JSTypedArray> array) {
-  Label call_runtime(this), done(this);
-  TVARIABLE(Object, var_result);
-
-  TNode<JSArrayBuffer> buffer = LoadJSArrayBufferViewBuffer(array);
-  GotoIf(IsDetachedBuffer(buffer), &call_runtime);
-  TNode<RawPtrT> backing_store = LoadJSArrayBufferBackingStore(buffer);
-  GotoIf(WordEqual(backing_store, IntPtrConstant(0)), &call_runtime);
-  var_result = buffer;
-  Goto(&done);
-
-  BIND(&call_runtime);
-  {
-    var_result = CallRuntime(Runtime::kTypedArrayGetBuffer, context, array);
-    Goto(&done);
-  }
-
-  BIND(&done);
-  return CAST(var_result.value());
-}
-
 TNode<JSTypedArray> TypedArrayBuiltinsAssembler::ValidateTypedArray(
     TNode<Context> context, TNode<Object> obj, const char* method_name) {
   // If it is not a typed array, throw
@@ -378,13 +355,6 @@ void TypedArrayBuiltinsAssembler::DispatchTypedArrayByElementsKind(
   BIND(&next);
 }
 
-TNode<BoolT> TypedArrayBuiltinsAssembler::IsSharedArrayBuffer(
-    TNode<JSArrayBuffer> buffer) {
-  TNode<Uint32T> bitfield =
-      LoadObjectField<Uint32T>(buffer, JSArrayBuffer::kBitFieldOffset);
-  return IsSetWord32<JSArrayBuffer::IsSharedBit>(bitfield);
-}
-
 void TypedArrayBuiltinsAssembler::SetJSTypedArrayOnHeapDataPtr(
     TNode<JSTypedArray> holder, TNode<ByteArray> base, TNode<UintPtrT> offset) {
   offset = UintPtrAdd(UintPtrConstant(ByteArray::kHeaderSize - kHeapObjectTag),
@@ -404,8 +374,8 @@ void TypedArrayBuiltinsAssembler::SetJSTypedArrayOnHeapDataPtr(
   }
 
   StoreObjectField(holder, JSTypedArray::kBasePointerOffset, base);
-  StoreObjectFieldNoWriteBarrier<UintPtrT>(
-      holder, JSTypedArray::kExternalPointerOffset, offset);
+  StoreJSTypedArrayExternalPointer(
+      holder, EncodeExternalPointer(ReinterpretCast<RawPtrT>(offset)));
 }
 
 void TypedArrayBuiltinsAssembler::SetJSTypedArrayOffHeapDataPtr(
@@ -414,8 +384,7 @@ void TypedArrayBuiltinsAssembler::SetJSTypedArrayOffHeapDataPtr(
                                  SmiConstant(0));
 
   base = RawPtrAdd(base, Signed(offset));
-  StoreObjectFieldNoWriteBarrier<RawPtrT>(
-      holder, JSTypedArray::kExternalPointerOffset, base);
+  StoreJSTypedArrayExternalPointer(holder, EncodeExternalPointer(base));
 }
 
 void TypedArrayBuiltinsAssembler::StoreJSTypedArrayElementFromNumeric(
@@ -512,49 +481,5 @@ TF_BUILTIN(TypedArrayPrototypeToStringTag, TypedArrayBuiltinsAssembler) {
   BIND(&return_undefined);
   Return(UndefinedConstant());
 }
-
-void TypedArrayBuiltinsAssembler::GenerateTypedArrayPrototypeIterationMethod(
-    TNode<Context> context, TNode<Object> receiver, const char* method_name,
-    IterationKind kind) {
-  Label throw_bad_receiver(this, Label::kDeferred);
-
-  GotoIf(TaggedIsSmi(receiver), &throw_bad_receiver);
-  GotoIfNot(IsJSTypedArray(CAST(receiver)), &throw_bad_receiver);
-
-  // Check if the {receiver}'s JSArrayBuffer was detached.
-  ThrowIfArrayBufferViewBufferIsDetached(context, CAST(receiver), method_name);
-
-  Return(CreateArrayIterator(context, receiver, kind));
-
-  BIND(&throw_bad_receiver);
-  ThrowTypeError(context, MessageTemplate::kNotTypedArray, method_name);
-}
-
-// ES #sec-%typedarray%.prototype.values
-TF_BUILTIN(TypedArrayPrototypeValues, TypedArrayBuiltinsAssembler) {
-  TNode<Context> context = CAST(Parameter(Descriptor::kContext));
-  TNode<Object> receiver = CAST(Parameter(Descriptor::kReceiver));
-  GenerateTypedArrayPrototypeIterationMethod(context, receiver,
-                                             "%TypedArray%.prototype.values()",
-                                             IterationKind::kValues);
-}
-
-// ES #sec-%typedarray%.prototype.entries
-TF_BUILTIN(TypedArrayPrototypeEntries, TypedArrayBuiltinsAssembler) {
-  TNode<Context> context = CAST(Parameter(Descriptor::kContext));
-  TNode<Object> receiver = CAST(Parameter(Descriptor::kReceiver));
-  GenerateTypedArrayPrototypeIterationMethod(context, receiver,
-                                             "%TypedArray%.prototype.entries()",
-                                             IterationKind::kEntries);
-}
-
-// ES #sec-%typedarray%.prototype.keys
-TF_BUILTIN(TypedArrayPrototypeKeys, TypedArrayBuiltinsAssembler) {
-  TNode<Context> context = CAST(Parameter(Descriptor::kContext));
-  TNode<Object> receiver = CAST(Parameter(Descriptor::kReceiver));
-  GenerateTypedArrayPrototypeIterationMethod(
-      context, receiver, "%TypedArray%.prototype.keys()", IterationKind::kKeys);
-}
-
 }  // namespace internal
 }  // namespace v8

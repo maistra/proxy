@@ -10,9 +10,10 @@ namespace Tls {
 namespace Test {
 
 std::vector<uint8_t> generateClientHello(uint16_t tls_min_version, uint16_t tls_max_version,
-		                         const std::string& sni_name, const std::string& alpn) {
+                                         const std::string& sni_name, const std::string& alpn) {
   // TODO (dmitri-d) add an implementation of TLS_with_buffers_method to bssl_wrapper
   bssl::UniquePtr<SSL_CTX> ctx(SSL_CTX_new(TLS_method()));
+
 
   SSL_CTX_set_min_proto_version(ctx.get(), tls_min_version);
   SSL_CTX_set_max_proto_version(ctx.get(), tls_max_version);

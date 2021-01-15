@@ -603,8 +603,7 @@ FILE* OS::OpenTemporaryFile() {
 
 
 // Open log file in binary mode to avoid /n -> /r/n conversion.
-const char* const OS::LogFileOpenMode = "wb";
-
+const char* const OS::LogFileOpenMode = "wb+";
 
 // Print (debug) message to console.
 void OS::Print(const char* format, ...) {
@@ -1393,6 +1392,34 @@ void Thread::SetThreadLocal(LocalStorageKey key, void* value) {
 }
 
 void OS::AdjustSchedulingParams() {}
+
+// static
+void* Stack::GetStackStart() {
+#if defined(V8_TARGET_ARCH_X64)
+  return reinterpret_cast<void*>(
+      reinterpret_cast<NT_TIB64*>(NtCurrentTeb())->StackBase);
+#elif defined(V8_TARGET_ARCH_32_BIT)
+  return reinterpret_cast<void*>(
+      reinterpret_cast<NT_TIB*>(NtCurrentTeb())->StackBase);
+#elif defined(V8_TARGET_ARCH_ARM64)
+  // Windows 8 and later, see
+  // https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentthreadstacklimits
+  ULONG_PTR lowLimit, highLimit;
+  ::GetCurrentThreadStackLimits(&lowLimit, &highLimit);
+  return reinterpret_cast<void*>(highLimit);
+#else
+#error Unsupported GetStackStart.
+#endif
+}
+
+// static
+void* Stack::GetCurrentStackPosition() {
+#if V8_CC_MSVC
+  return _AddressOfReturnAddress();
+#else
+  return __builtin_frame_address(0);
+#endif
+}
 
 }  // namespace base
 }  // namespace v8

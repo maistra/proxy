@@ -93,11 +93,14 @@ def _ParseArgs(args):
       help='Optional path to the base module\'s R.txt file, only used with '
       'language split dimension.')
   parser.add_argument(
-      '--base-whitelist-rtxt-path',
+      '--base-allowlist-rtxt-path',
       help='Optional path to an R.txt file, string resources '
       'listed there _and_ in --base-module-rtxt-path will '
       'be kept in the base bundle module, even if language'
       ' splitting is enabled.')
+  parser.add_argument('--warnings-as-errors',
+                      action='store_true',
+                      help='Treat all warnings as errors.')
 
   parser.add_argument('--keystore-path', help='Keystore path')
   parser.add_argument('--keystore-password', help='Keystore password')
@@ -140,17 +143,17 @@ def _ParseArgs(args):
         parser.error('Invalid split dimension "%s" (expected one of: %s)' % (
             dim, ', '.join(x.lower() for x in _ALL_SPLIT_DIMENSIONS)))
 
-  # As a special case, --base-whitelist-rtxt-path can be empty to indicate
-  # that the module doesn't need such a whitelist. That's because it is easier
+  # As a special case, --base-allowlist-rtxt-path can be empty to indicate
+  # that the module doesn't need such a allowlist. That's because it is easier
   # to check this condition here than through GN rules :-(
-  if options.base_whitelist_rtxt_path == '':
+  if options.base_allowlist_rtxt_path == '':
     options.base_module_rtxt_path = None
 
-  # Check --base-module-rtxt-path and --base-whitelist-rtxt-path usage.
+  # Check --base-module-rtxt-path and --base-allowlist-rtxt-path usage.
   if options.base_module_rtxt_path:
-    if not options.base_whitelist_rtxt_path:
+    if not options.base_allowlist_rtxt_path:
       parser.error(
-          '--base-module-rtxt-path requires --base-whitelist-rtxt-path')
+          '--base-module-rtxt-path requires --base-allowlist-rtxt-path')
     if 'language' not in options.split_dimensions:
       parser.error('--base-module-rtxt-path is only valid with '
                    'language-based splits.')
@@ -238,9 +241,13 @@ def _RewriteLanguageAssetPath(src_path):
   locale = src_path[len(_LOCALES_SUBDIR):-4]
   android_locale = resource_utils.ToAndroidLocaleName(locale)
 
-  # The locale format is <lang>-<region> or <lang>. Extract the language.
+  # The locale format is <lang>-<region> or <lang> or BCP-47 (e.g b+sr+Latn).
+  # Extract the language.
   pos = android_locale.find('-')
-  if pos >= 0:
+  if android_locale.startswith('b+'):
+    # If locale is in BCP-47 the language is the second tag (e.g. b+sr+Latn)
+    android_language = android_locale.split('+')[1]
+  elif pos >= 0:
     android_language = android_locale[:pos]
   else:
     android_language = android_locale
@@ -304,18 +311,18 @@ def _SplitModuleForAssetTargeting(src_module_zip, tmp_dir, split_dimensions):
     return tmp_zip
 
 
-def _GenerateBaseResourcesWhitelist(base_module_rtxt_path,
-                                    base_whitelist_rtxt_path):
-  """Generate a whitelist of base master resource ids.
+def _GenerateBaseResourcesAllowList(base_module_rtxt_path,
+                                    base_allowlist_rtxt_path):
+  """Generate a allowlist of base master resource ids.
 
   Args:
     base_module_rtxt_path: Path to base module R.txt file.
-    base_whitelist_rtxt_path: Path to base whitelist R.txt file.
+    base_allowlist_rtxt_path: Path to base allowlist R.txt file.
   Returns:
     list of resource ids.
   """
-  ids_map = resource_utils.GenerateStringResourcesWhitelist(
-      base_module_rtxt_path, base_whitelist_rtxt_path)
+  ids_map = resource_utils.GenerateStringResourcesAllowList(
+      base_module_rtxt_path, base_allowlist_rtxt_path)
   return ids_map.keys()
 
 
@@ -394,8 +401,8 @@ def main(args):
 
     base_master_resource_ids = None
     if options.base_module_rtxt_path:
-      base_master_resource_ids = _GenerateBaseResourcesWhitelist(
-          options.base_module_rtxt_path, options.base_whitelist_rtxt_path)
+      base_master_resource_ids = _GenerateBaseResourcesAllowList(
+          options.base_module_rtxt_path, options.base_allowlist_rtxt_path)
 
     bundle_config = _GenerateBundleConfigJson(
         options.uncompressed_assets, options.compress_shared_libraries,
@@ -414,17 +421,21 @@ def main(args):
     with open(tmp_bundle_config, 'w') as f:
       f.write(bundle_config)
 
-    cmd_args = [
-        build_utils.JAVA_PATH, '-jar', bundletool.BUNDLETOOL_JAR_PATH,
-        'build-bundle', '--modules=' + ','.join(module_zips),
-        '--output=' + tmp_unsigned_bundle, '--config=' + tmp_bundle_config
+    cmd_args = build_utils.JavaCmd(options.warnings_as_errors) + [
+        '-jar',
+        bundletool.BUNDLETOOL_JAR_PATH,
+        'build-bundle',
+        '--modules=' + ','.join(module_zips),
+        '--output=' + tmp_unsigned_bundle,
+        '--config=' + tmp_bundle_config,
     ]
 
     build_utils.CheckOutput(
         cmd_args,
         print_stdout=True,
         print_stderr=True,
-        stderr_filter=build_utils.FilterReflectiveAccessJavaWarnings)
+        stderr_filter=build_utils.FilterReflectiveAccessJavaWarnings,
+        fail_on_output=options.warnings_as_errors)
 
     if options.keystore_path:
       # NOTE: As stated by the public documentation, apksigner cannot be used
@@ -439,7 +450,9 @@ def main(args):
           tmp_unsigned_bundle,
           options.key_name,
       ]
-      build_utils.CheckOutput(signing_cmd_args, print_stderr=True)
+      build_utils.CheckOutput(signing_cmd_args,
+                              print_stderr=True,
+                              fail_on_output=options.warnings_as_errors)
 
     shutil.move(tmp_bundle, options.out_bundle)
 

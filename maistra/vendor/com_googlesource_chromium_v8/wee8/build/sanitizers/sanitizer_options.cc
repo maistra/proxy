@@ -42,25 +42,25 @@ void _sanitizer_options_link_helper() { }
 //   detect_stack_use_after_return=1 - use fake stack to delay the reuse of
 //     stack allocations and detect stack-use-after-return errors.
 //   symbolize=1 - enable in-process symbolization.
-#if defined(OS_LINUX)
+#if defined(OS_LINUX) || defined(OS_CHROMEOS)
 const char kAsanDefaultOptions[] =
     "check_printf=1 use_sigaltstack=1 strip_path_prefix=/../../ "
     "fast_unwind_on_fatal=1 detect_stack_use_after_return=1 "
     "symbolize=1 detect_leaks=0 allow_user_segv_handler=1 ";
 
-#elif defined(OS_MACOSX)
+#elif defined(OS_APPLE)
 const char* kAsanDefaultOptions =
     "check_printf=1 use_sigaltstack=1 strip_path_prefix=/../../ "
-    "fast_unwind_on_fatal=1 detect_stack_use_after_return=1 "
-    "detect_odr_violation=0 ";
+    "fast_unwind_on_fatal=1 detect_stack_use_after_return=1 ";
 
 #elif defined(OS_WIN)
 const char* kAsanDefaultOptions =
     "check_printf=1 use_sigaltstack=1 strip_path_prefix=\\..\\..\\ "
     "fast_unwind_on_fatal=1 detect_stack_use_after_return=1 ";
-#endif  // OS_LINUX
+#endif  // defined(OS_LINUX) || defined(OS_CHROMEOS)
 
-#if defined(OS_LINUX) || defined(OS_MACOSX) || defined(OS_WIN)
+#if defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_APPLE) || \
+    defined(OS_WIN)
 // Allow NaCl to override the default asan options.
 extern const char* kAsanDefaultOptionsNaCl;
 __attribute__((weak)) const char* kAsanDefaultOptionsNaCl = nullptr;
@@ -76,10 +76,11 @@ extern char kASanDefaultSuppressions[];
 SANITIZER_HOOK_ATTRIBUTE const char *__asan_default_suppressions() {
   return kASanDefaultSuppressions;
 }
-#endif  // OS_LINUX || OS_MACOSX || OS_WIN
+#endif  // defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_APPLE) ||
+        // defined(OS_WIN)
 #endif  // ADDRESS_SANITIZER
 
-#if defined(THREAD_SANITIZER) && defined(OS_LINUX)
+#if defined(THREAD_SANITIZER) && (defined(OS_LINUX) || defined(OS_CHROMEOS))
 // Default options for ThreadSanitizer in various configurations:
 //   detect_deadlocks=1 - enable deadlock (lock inversion) detection.
 //   second_deadlock_stack=1 - more verbose deadlock reports.
@@ -95,7 +96,7 @@ SANITIZER_HOOK_ATTRIBUTE const char *__asan_default_suppressions() {
 const char kTsanDefaultOptions[] =
     "detect_deadlocks=1 second_deadlock_stack=1 report_signal_unsafe=0 "
     "report_thread_leaks=0 print_suppressions=1 history_size=7 "
-    "strict_memcmp=0 strip_path_prefix=/../../ ";
+    "strip_path_prefix=/../../ ";
 
 SANITIZER_HOOK_ATTRIBUTE const char *__tsan_default_options() {
   return kTsanDefaultOptions;
@@ -107,16 +108,14 @@ SANITIZER_HOOK_ATTRIBUTE const char *__tsan_default_suppressions() {
   return kTSanDefaultSuppressions;
 }
 
-#endif  // THREAD_SANITIZER && OS_LINUX
+#endif  // defined(THREAD_SANITIZER) && (defined(OS_LINUX) ||
+        // defined(OS_CHROMEOS))
 
 #if defined(MEMORY_SANITIZER)
 // Default options for MemorySanitizer:
-//   intercept_memcmp=0 - do not detect uninitialized memory in memcmp() calls.
-//     Pending cleanup, see http://crbug.com/523428
 //   strip_path_prefix=/../../ - prefixes up to and including this
 //     substring will be stripped from source file paths in symbolized reports.
-const char kMsanDefaultOptions[] =
-    "intercept_memcmp=0 strip_path_prefix=/../../ ";
+const char kMsanDefaultOptions[] = "strip_path_prefix=/../../ ";
 
 SANITIZER_HOOK_ATTRIBUTE const char *__msan_default_options() {
   return kMsanDefaultOptions;

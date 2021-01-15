@@ -13,9 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	"golang.org/x/tools/internal/lsp/cmd"
 	"golang.org/x/tools/internal/span"
-	"golang.org/x/tools/internal/tool"
+	"golang.org/x/tools/internal/testenv"
 )
 
 func (r *runner) Format(t *testing.T, spn span.Span) {
@@ -25,25 +24,19 @@ func (r *runner) Format(t *testing.T, spn span.Span) {
 	expect := string(r.data.Golden(tag, filename, func() ([]byte, error) {
 		cmd := exec.Command("gofmt", filename)
 		contents, _ := cmd.Output() // ignore error, sometimes we have intentionally ungofmt-able files
-		contents = []byte(normalizePaths(r.data, fixFileHeader(string(contents))))
+		contents = []byte(r.Normalize(fixFileHeader(string(contents))))
 		return contents, nil
 	}))
 	if expect == "" {
 		//TODO: our error handling differs, for now just skip unformattable files
 		t.Skip("Unformattable file")
 	}
-	app := cmd.New("gopls-test", r.data.Config.Dir, r.data.Config.Env)
-	got := CaptureStdOut(t, func() {
-		_ = tool.Run(r.ctx, app, append([]string{"-remote=internal", "format"}, filename))
-	})
-	got = normalizePaths(r.data, got)
+	got, _ := r.NormalizeGoplsCmd(t, "format", filename)
 	if expect != got {
 		t.Errorf("format failed for %s expected:\n%s\ngot:\n%s", filename, expect, got)
 	}
 	// now check we can build a valid unified diff
-	unified := CaptureStdOut(t, func() {
-		_ = tool.Run(r.ctx, app, append([]string{"-remote=internal", "format", "-d"}, filename))
-	})
+	unified, _ := r.NormalizeGoplsCmd(t, "format", "-d", filename)
 	checkUnified(t, filename, expect, unified)
 }
 
@@ -58,9 +51,7 @@ func fixFileHeader(s string) string {
 }
 
 func checkUnified(t *testing.T, filename string, expect string, patch string) {
-	if testing.Short() {
-		t.Skip("running patch is expensive")
-	}
+	testenv.NeedsTool(t, "patch")
 	if strings.Count(patch, "\n+++ ") > 1 {
 		// TODO(golang/go/#34580)
 		t.Skip("multi-file patch tests not supported yet")

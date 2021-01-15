@@ -10,6 +10,7 @@ go_library(
     ],
     importpath = "golang.org/x/tools/go/analysis",
     visibility = ["//visibility:public"],
+    deps = ["//internal/analysisinternal:go_default_library"],
 )
 
 go_tool_library(
@@ -22,4 +23,5 @@ go_tool_library(
     ],
     importpath = "golang.org/x/tools/go/analysis",
     visibility = ["//visibility:public"],
+    deps = ["//internal/analysisinternal:go_tool_library"],
 )

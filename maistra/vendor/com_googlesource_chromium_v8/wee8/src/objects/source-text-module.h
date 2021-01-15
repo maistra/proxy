@@ -7,6 +7,7 @@
 
 #include "src/objects/module.h"
 #include "src/objects/promise.h"
+#include "torque-generated/bit-fields.h"
 
 // Has to be the last include (doesn't have include guards):
 #include "src/objects/object-macros.h"
@@ -59,6 +60,11 @@ class SourceTextModule
   static Handle<JSModuleNamespace> GetModuleNamespace(
       Isolate* isolate, Handle<SourceTextModule> module, int module_request);
 
+  // Get the import.meta object of [module].  If it doesn't exist yet, it is
+  // created and passed to the embedder callback for initialization.
+  V8_EXPORT_PRIVATE static MaybeHandle<JSObject> GetImportMeta(
+      Isolate* isolate, Handle<SourceTextModule> module);
+
   using BodyDescriptor =
       SubclassBodyDescriptor<Module::BodyDescriptor,
                              FixedBodyDescriptor<kCodeOffset, kSize, kSize>>;
@@ -69,8 +75,9 @@ class SourceTextModule
 
   // Appends a tuple of module and generator to the async parent modules
   // ArrayList.
-  inline void AddAsyncParentModule(Isolate* isolate,
-                                   Handle<SourceTextModule> module);
+  inline static void AddAsyncParentModule(Isolate* isolate,
+                                          Handle<SourceTextModule> module,
+                                          Handle<SourceTextModule> parent);
 
   // Returns a SourceTextModule, the
   // ith parent in depth first traversal order of a given async child.
@@ -84,16 +91,8 @@ class SourceTextModule
   inline void IncrementPendingAsyncDependencies();
   inline void DecrementPendingAsyncDependencies();
 
-  // TODO(neis): Don't store those in the module object?
-  DECL_INT_ACCESSORS(dfs_index)
-  DECL_INT_ACCESSORS(dfs_ancestor_index)
-
-  // Storage for boolean flags.
-  DECL_INT_ACCESSORS(flags)
-
   // Bits for flags.
-  static const int kAsyncBit = 0;
-  static const int kAsyncEvaluatingBit = 1;
+  DEFINE_TORQUE_GENERATED_SOURCE_TEXT_MODULE_FLAGS()
 
   // async_evaluating, top_level_capability, pending_async_dependencies, and
   // async_parent_modules are used exclusively during evaluation of async
@@ -106,9 +105,6 @@ class SourceTextModule
   // The top level promise capability of this module. Will only be defined
   // for cycle roots.
   DECL_ACCESSORS(top_level_capability, HeapObject)
-
-  // The number of currently evaluating async dependencies of this module.
-  DECL_INT_ACCESSORS(pending_async_dependencies)
 
   // The parent modules of a given async dependency, use async_parent_modules()
   // to retrieve the ArrayList representation.
@@ -196,7 +192,8 @@ class SourceTextModuleInfo : public FixedArray {
  public:
   DECL_CAST(SourceTextModuleInfo)
 
-  static Handle<SourceTextModuleInfo> New(Isolate* isolate, Zone* zone,
+  template <typename LocalIsolate>
+  static Handle<SourceTextModuleInfo> New(LocalIsolate* isolate, Zone* zone,
                                           SourceTextModuleDescriptor* descr);
 
   inline FixedArray module_requests() const;
@@ -217,7 +214,8 @@ class SourceTextModuleInfo : public FixedArray {
 #endif
 
  private:
-  friend class Factory;
+  template <typename Impl>
+  friend class FactoryBase;
   friend class SourceTextModuleDescriptor;
   enum {
     kModuleRequestsIndex,
@@ -245,13 +243,9 @@ class SourceTextModuleInfoEntry
   DECL_PRINTER(SourceTextModuleInfoEntry)
   DECL_VERIFIER(SourceTextModuleInfoEntry)
 
-  DECL_INT_ACCESSORS(module_request)
-  DECL_INT_ACCESSORS(cell_index)
-  DECL_INT_ACCESSORS(beg_pos)
-  DECL_INT_ACCESSORS(end_pos)
-
+  template <typename LocalIsolate>
   static Handle<SourceTextModuleInfoEntry> New(
-      Isolate* isolate, Handle<PrimitiveHeapObject> export_name,
+      LocalIsolate* isolate, Handle<PrimitiveHeapObject> export_name,
       Handle<PrimitiveHeapObject> local_name,
       Handle<PrimitiveHeapObject> import_name, int module_request,
       int cell_index, int beg_pos, int end_pos);

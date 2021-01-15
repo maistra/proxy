@@ -4,10 +4,6 @@
 #
 # See LICENSE for copying information.
 
-# 'foreign' means that we're not enforcing GNU package rules strictly.
-# '1.9' means that we need automake 1.9 or later (and we do).
-AUTOMAKE_OPTIONS = foreign 1.9 subdir-objects
-
 ACLOCAL_AMFLAGS = -I m4
 
 # This is the "Release" of the Libevent ABI.  It takes precedence over
@@ -105,7 +101,9 @@ LIBEVENT_PKGCONFIG=libevent.pc libevent_core.pc libevent_extra.pc
 # included from other files.
 PLATFORM_DEPENDENT_SRC = \
 	arc4random.c \
-	epoll_sub.c
+	epoll_sub.c \
+	bufferevent_ssl.c \
+	test/regress_ssl.c
 
 CMAKE_FILES = \
 	cmake/AddCompilerFlags.cmake \
@@ -113,8 +111,6 @@ CMAKE_FILES = \
 	cmake/CheckConstExists.cmake \
 	cmake/CheckFileOffsetBits.c \
 	cmake/CheckFileOffsetBits.cmake \
-	cmake/CheckFunctionExistsEx.c \
-	cmake/CheckFunctionExistsEx.cmake \
 	cmake/CheckFunctionKeywords.cmake \
 	cmake/CheckPrototypeDefinition.c.in \
 	cmake/CheckPrototypeDefinition.cmake \
@@ -122,10 +118,12 @@ CMAKE_FILES = \
 	cmake/CodeCoverage.cmake \
 	cmake/COPYING-CMAKE-SCRIPTS \
 	cmake/Copyright.txt \
-	cmake/FindGit.cmake \
-	cmake/LibeventConfigBuildTree.cmake.in \
+	cmake/FindMbedTLS.cmake \
 	cmake/LibeventConfig.cmake.in \
 	cmake/LibeventConfigVersion.cmake.in \
+	cmake/Macros.cmake \
+	cmake/Uninstall.cmake.in \
+	cmake/UseDoxygen.cmake \
 	cmake/VersionViaGit.cmake \
 	event-config.h.cmake \
 	evconfig-private.h.cmake \
@@ -159,6 +157,10 @@ if OPENSSL
 LIBEVENT_LIBS_LA += libevent_openssl.la
 LIBEVENT_PKGCONFIG += libevent_openssl.pc
 endif
+if MBEDTLS
+LIBEVENT_LIBS_LA += libevent_mbedtls.la
+LIBEVENT_PKGCONFIG += libevent_mbedtls.pc
+endif
 
 if INSTALL_LIBEVENT
 lib_LTLIBRARIES = $(LIBEVENT_LIBS_LA)
@@ -180,6 +182,7 @@ include test/include.am
 
 if BUILD_WIN32
 
+SYS_CORE_LIBS = -liphlpapi
 SYS_LIBS = -lws2_32 -lshell32 -ladvapi32
 SYS_SRC = win32select.c buffer_iocp.c event_iocp.c \
 	bufferevent_async.c
@@ -191,6 +194,7 @@ endif
 
 else
 
+SYS_CORE_LIBS =
 SYS_LIBS =
 SYS_SRC =
 SYS_INCLUDES =
@@ -217,6 +221,10 @@ SYS_SRC += epoll.c
 endif
 if EVPORT_BACKEND
 SYS_SRC += evport.c
+endif
+if WEPOLL_BACKEND
+SYS_SRC += epoll.c
+SYS_SRC += wepoll.c
 endif
 if SIGNAL_SUPPORT
 SYS_SRC += signal.c
@@ -268,11 +276,11 @@ AM_LDFLAGS = $(LIBEVENT_LDFLAGS)
 GENERIC_LDFLAGS = -version-info $(VERSION_INFO) $(RELEASE) $(NO_UNDEFINED) $(AM_LDFLAGS)
 
 libevent_la_SOURCES = $(CORE_SRC) $(EXTRAS_SRC)
-libevent_la_LIBADD = @LTLIBOBJS@ $(SYS_LIBS)
+libevent_la_LIBADD = @LTLIBOBJS@ $(SYS_LIBS) $(SYS_CORE_LIBS)
 libevent_la_LDFLAGS = $(GENERIC_LDFLAGS)
 
 libevent_core_la_SOURCES = $(CORE_SRC)
-libevent_core_la_LIBADD = @LTLIBOBJS@ $(SYS_LIBS)
+libevent_core_la_LIBADD = @LTLIBOBJS@ $(SYS_LIBS) $(SYS_CORE_LIBS)
 libevent_core_la_LDFLAGS = $(GENERIC_LDFLAGS)
 
 if PTHREADS
@@ -286,10 +294,17 @@ libevent_extra_la_LIBADD = $(MAYBE_CORE) $(SYS_LIBS)
 libevent_extra_la_LDFLAGS = $(GENERIC_LDFLAGS)
 
 if OPENSSL
-libevent_openssl_la_SOURCES = bufferevent_openssl.c
+libevent_openssl_la_SOURCES = bufferevent_openssl.c bufferevent_ssl.c
 libevent_openssl_la_LIBADD = $(MAYBE_CORE) $(OPENSSL_LIBS)
 libevent_openssl_la_LDFLAGS = $(GENERIC_LDFLAGS)
 libevent_openssl_la_CPPFLAGS = $(AM_CPPFLAGS) $(OPENSSL_INCS)
+endif
+
+if MBEDTLS
+libevent_mbedtls_la_SOURCES = bufferevent_mbedtls.c bufferevent_ssl.c
+libevent_mbedtls_la_LIBADD = $(MAYBE_CORE) $(MBEDTLS_LIBS)
+libevent_mbedtls_la_LDFLAGS = $(GENERIC_LDFLAGS)
+libevent_mbedtls_la_CPPFLAGS = $(AM_CPPFLAGS) $(MBEDTLS_INCS)
 endif
 
 noinst_HEADERS +=				\
@@ -321,7 +336,10 @@ noinst_HEADERS +=				\
 	strlcpy-internal.h			\
 	time-internal.h				\
 	util-internal.h				\
-	openssl-compat.h
+	openssl-compat.h			\
+	mbedtls-compat.h			\
+	ssl-compat.h			    \
+	wepoll.h
 
 EVENT1_HDRS = \
 	include/evdns.h \
@@ -338,9 +356,7 @@ endif
 
 verify: check
 
-doxygen: FORCE
-	doxygen $(srcdir)/Doxyfile
-FORCE:
+include doxygen.am
 
 DISTCLEANFILES += *~ libevent.pc libevent_core.pc libevent_extra.pc ./include/event2/event-config.h
 

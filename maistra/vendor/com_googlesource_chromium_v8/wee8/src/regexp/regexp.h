@@ -6,6 +6,7 @@
 #define V8_REGEXP_REGEXP_H_
 
 #include "src/objects/js-regexp.h"
+#include "src/regexp/regexp-error.h"
 
 namespace v8 {
 namespace internal {
@@ -26,7 +27,7 @@ struct RegExpCompileData {
 
   // Either the generated code as produced by the compiler or a trampoline
   // to the interpreter.
-  Object code;
+  Handle<Object> code;
 
   // True, iff the pattern is a 'simple' atom with zero captures. In other
   // words, the pattern consists of a string with no metacharacters and special
@@ -42,7 +43,11 @@ struct RegExpCompileData {
 
   // The error message. Only used if an error occurred during parsing or
   // compilation.
-  Handle<String> error;
+  RegExpError error = RegExpError::kNone;
+
+  // The position at which the error was detected. Only used if an
+  // error occurred.
+  int error_pos = 0;
 
   // The number of capture groups, without the global capture \0.
   int capture_count = 0;
@@ -69,6 +74,13 @@ class RegExp final : public AllStatic {
       Isolate* isolate, Handle<JSRegExp> re, Handle<String> pattern,
       JSRegExp::Flags flags, uint32_t backtrack_limit);
 
+  // Ensures that a regexp is fully compiled and ready to be executed on a
+  // subject string.  Returns true on success. Return false on failure, and
+  // then an exception will be pending.
+  V8_WARN_UNUSED_RESULT static bool EnsureFullyCompiled(Isolate* isolate,
+                                                        Handle<JSRegExp> re,
+                                                        Handle<String> subject);
+
   enum CallOrigin : int {
     kFromRuntime = 0,
     kFromJs = 1,
@@ -92,16 +104,6 @@ class RegExp final : public AllStatic {
     RE_EXCEPTION = kInternalRegExpException,
   };
 
-  // Prepare a RegExp for being executed one or more times (using
-  // IrregexpExecOnce) on the subject.
-  // This ensures that the regexp is compiled for the subject, and that
-  // the subject is flat.
-  // Returns the number of integer spaces required by IrregexpExecOnce
-  // as its "registers" argument.  If the regexp cannot be compiled,
-  // an exception is set as pending, and this function returns negative.
-  static int IrregexpPrepare(Isolate* isolate, Handle<JSRegExp> regexp,
-                             Handle<String> subject);
-
   // Set last match info.  If match is nullptr, then setting captures is
   // omitted.
   static Handle<RegExpMatchInfo> SetLastMatchInfo(
@@ -119,6 +121,14 @@ class RegExp final : public AllStatic {
                                                    RegExpNode* node);
 
   static const int kRegExpTooLargeToOptimize = 20 * KB;
+
+  V8_WARN_UNUSED_RESULT
+  static MaybeHandle<Object> ThrowRegExpException(Isolate* isolate,
+                                                  Handle<JSRegExp> re,
+                                                  Handle<String> pattern,
+                                                  RegExpError error);
+  static void ThrowRegExpException(Isolate* isolate, Handle<JSRegExp> re,
+                                   RegExpError error_text);
 };
 
 // Uses a special global mode of irregexp-generated code to perform a global

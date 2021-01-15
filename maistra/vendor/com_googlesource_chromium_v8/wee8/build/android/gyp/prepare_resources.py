@@ -4,8 +4,8 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-"""Process Android resource directories to generate .resources.zip, R.txt and
-.srcjar files."""
+"""Process Android resource directories to generate .resources.zip and R.txt
+files."""
 
 import argparse
 import collections
@@ -19,16 +19,9 @@ from util import build_utils
 from util import jar_info_utils
 from util import manifest_utils
 from util import md5_check
+from util import resources_parser
 from util import resource_utils
 
-_AAPT_IGNORE_PATTERN = ':'.join([
-    '*OWNERS',  # Allow OWNERS files within res/
-    '*.py',  # PRESUBMIT.py sometimes exist.
-    '*.pyc',
-    '*~',  # Some editors create these as temp files.
-    '.*',  # Never makes sense to include dot(files/dirs).
-    '*.d.stamp', # Ignore stamp files
-    ])
 
 def _ParseArgs(args):
   """Parses command line options.
@@ -37,9 +30,6 @@ def _ParseArgs(args):
     An options object as from argparse.ArgumentParser.parse_args()
   """
   parser, input_opts, output_opts = resource_utils.ResourceArgsParser()
-
-  input_opts.add_argument(
-      '--aapt-path', required=True, help='Path to the Android aapt tool')
 
   input_opts.add_argument(
       '--res-sources-path',
@@ -65,9 +55,6 @@ def _ParseArgs(args):
       help='Path to a zip archive containing all resources from '
       '--resource-dirs, merged into a single directory tree.')
 
-  output_opts.add_argument('--srcjar-out',
-                    help='Path to .srcjar to contain the generated R.java.')
-
   output_opts.add_argument('--r-text-out',
                     help='Path to store the generated R.txt file.')
 
@@ -81,8 +68,8 @@ def _ParseArgs(args):
   resource_utils.HandleCommonOptions(options)
 
   with open(options.res_sources_path) as f:
-    options.sources = [line.strip() for line in f.readlines()]
-  options.resource_dirs = resource_utils.ExtractResourceDirsFromFileList(
+    options.sources = f.read().splitlines()
+  options.resource_dirs = resource_utils.DeduceResourceDirsFromFileList(
       options.sources)
 
   return options
@@ -150,32 +137,9 @@ def _GenerateRTxt(options, dep_subdirs, gen_dir):
     gen_dir: Locates where the aapt-generated files will go. In particular
       the output file is always generated as |{gen_dir}/R.txt|.
   """
-  # NOTE: This uses aapt rather than aapt2 because 'aapt2 compile' does not
-  # support the --output-text-symbols option yet (https://crbug.com/820460).
-  package_command = [
-      options.aapt_path,
-      'package',
-      '-m',
-      '-M',
-      manifest_utils.EMPTY_ANDROID_MANIFEST_PATH,
-      '--no-crunch',
-      '--auto-add-overlay',
-      '--no-version-vectors',
-  ]
-  for j in options.include_resources:
-    package_command += ['-I', j]
-
   ignore_pattern = resource_utils.AAPT_IGNORE_PATTERN
   if options.strip_drawables:
     ignore_pattern += ':*drawable*'
-  package_command += [
-      '--output-text-symbols',
-      gen_dir,
-      '-J',
-      gen_dir,  # Required for R.txt generation.
-      '--ignore-assets',
-      ignore_pattern
-  ]
 
   # Adding all dependencies as sources is necessary for @type/foo references
   # to symbols within dependencies to resolve. However, it has the side-effect
@@ -183,15 +147,10 @@ def _GenerateRTxt(options, dep_subdirs, gen_dir):
   # E.g.: It enables an arguably incorrect usage of
   # "mypackage.R.id.lib_symbol" where "libpackage.R.id.lib_symbol" would be
   # more correct. This is just how Android works.
-  for d in dep_subdirs:
-    package_command += ['-S', d]
+  resource_dirs = dep_subdirs + options.resource_dirs
 
-  for d in options.resource_dirs:
-    package_command += ['-S', d]
-
-  # Only creates an R.txt
-  build_utils.CheckOutput(
-      package_command, print_stdout=False, print_stderr=False)
+  resources_parser.RTxtGenerator(resource_dirs, ignore_pattern).WriteRTxtFile(
+      os.path.join(gen_dir, 'R.txt'))
 
 
 def _OnStaleMd5(options):
@@ -209,39 +168,8 @@ def _OnStaleMd5(options):
       _GenerateRTxt(options, dep_subdirs, build.gen_dir)
       r_txt_path = build.r_txt_path
 
-      # 'aapt' doesn't generate any R.txt file if res/ was empty.
-      if not os.path.exists(r_txt_path):
-        build_utils.Touch(r_txt_path)
-
     if options.r_text_out:
       shutil.copyfile(r_txt_path, options.r_text_out)
-
-    if options.srcjar_out:
-      package = options.custom_package
-      if not package and options.android_manifest:
-        _, manifest_node, _ = manifest_utils.ParseManifest(
-            options.android_manifest)
-        package = manifest_utils.GetPackage(manifest_node)
-
-      # Don't create a .java file for the current resource target when no
-      # package name was provided (either by manifest or build rules).
-      if package:
-        # All resource IDs should be non-final here, but the
-        # onResourcesLoaded() method should only be generated if
-        # --shared-resources is used.
-        rjava_build_options = resource_utils.RJavaBuildOptions()
-        rjava_build_options.ExportAllResources()
-        rjava_build_options.ExportAllStyleables()
-        if options.shared_resources:
-          rjava_build_options.GenerateOnResourcesLoaded()
-
-        # Not passing in custom_root_package_name or parent to keep
-        # file names unique.
-        resource_utils.CreateRJavaFiles(
-            build.srcjar_dir, package, r_txt_path, options.extra_res_packages,
-            options.extra_r_text_files, rjava_build_options, options.srcjar_out)
-
-      build_utils.ZipDir(options.srcjar_out, build.srcjar_dir)
 
     if options.resource_zip_out:
       ignore_pattern = resource_utils.AAPT_IGNORE_PATTERN
@@ -260,7 +188,6 @@ def main(args):
   possible_output_paths = [
     options.resource_zip_out,
     options.r_text_out,
-    options.srcjar_out,
   ]
   output_paths = [x for x in possible_output_paths if x]
 
@@ -273,13 +200,11 @@ def main(args):
   ]
 
   possible_input_paths = [
-    options.aapt_path,
     options.android_manifest,
   ]
   possible_input_paths += options.include_resources
   input_paths = [x for x in possible_input_paths if x]
   input_paths.extend(options.dependencies_res_zips)
-  input_paths.extend(options.extra_r_text_files)
 
   # Resource files aren't explicitly listed in GN. Listing them in the depfile
   # ensures the target will be marked stale when resource files are removed.

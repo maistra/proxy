@@ -47,6 +47,9 @@ static PropagationMode GetPropagationMode(opentracing::string_view s) {
   if (s == "trace_context") {
     return PropagationMode::trace_context;
   }
+  if (s == "cloud_trace") {
+    return PropagationMode::cloud_trace;
+  }
   std::ostringstream oss;
   oss << "invalid propagation mode " << s;
   throw std::runtime_error{oss.str()};
@@ -102,6 +105,10 @@ opentracing::expected<LightStepTracerOptions> MakeTracerOptions(
       tracer_configuration.propagation_modes().size());
   for (auto& propagation_mode : tracer_configuration.propagation_modes()) {
     options.propagation_modes.push_back(GetPropagationMode(propagation_mode));
+  }
+
+  for (auto& tag : tracer_configuration.tags()) {
+    options.tags.emplace(tag.first, tag.second);
   }
 
   return options;

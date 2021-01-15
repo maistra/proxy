@@ -131,8 +131,7 @@ void V8InspectorImpl::unmuteExceptions(int contextGroupId) {
 
 V8ConsoleMessageStorage* V8InspectorImpl::ensureConsoleMessageStorage(
     int contextGroupId) {
-  ConsoleStorageMap::iterator storageIt =
-      m_consoleStorageMap.find(contextGroupId);
+  auto storageIt = m_consoleStorageMap.find(contextGroupId);
   if (storageIt == m_consoleStorageMap.end())
     storageIt = m_consoleStorageMap
                     .insert(std::make_pair(
@@ -144,8 +143,7 @@ V8ConsoleMessageStorage* V8InspectorImpl::ensureConsoleMessageStorage(
 }
 
 bool V8InspectorImpl::hasConsoleMessageStorage(int contextGroupId) {
-  ConsoleStorageMap::iterator storageIt =
-      m_consoleStorageMap.find(contextGroupId);
+  auto storageIt = m_consoleStorageMap.find(contextGroupId);
   return storageIt != m_consoleStorageMap.end();
 }
 
@@ -155,8 +153,7 @@ std::unique_ptr<V8StackTrace> V8InspectorImpl::createStackTrace(
 }
 
 std::unique_ptr<V8InspectorSession> V8InspectorImpl::connect(
-    int contextGroupId, V8Inspector::Channel* channel,
-    const StringView& state) {
+    int contextGroupId, V8Inspector::Channel* channel, StringView state) {
   int sessionId = ++m_lastSessionId;
   std::unique_ptr<V8InspectorSessionImpl> session =
       V8InspectorSessionImpl::create(this, contextGroupId, sessionId, channel,
@@ -175,10 +172,10 @@ InspectedContext* V8InspectorImpl::getContext(int groupId,
                                               int contextId) const {
   if (!groupId || !contextId) return nullptr;
 
-  ContextsByGroupMap::const_iterator contextGroupIt = m_contexts.find(groupId);
+  auto contextGroupIt = m_contexts.find(groupId);
   if (contextGroupIt == m_contexts.end()) return nullptr;
 
-  ContextByIdMap::iterator contextIt = contextGroupIt->second->find(contextId);
+  auto contextIt = contextGroupIt->second->find(contextId);
   if (contextIt == contextGroupIt->second->end()) return nullptr;
 
   return contextIt->second.get();
@@ -195,10 +192,10 @@ v8::MaybeLocal<v8::Context> V8InspectorImpl::contextById(int contextId) {
 
 void V8InspectorImpl::contextCreated(const V8ContextInfo& info) {
   int contextId = ++m_lastContextId;
-  InspectedContext* context = new InspectedContext(this, info, contextId);
+  auto* context = new InspectedContext(this, info, contextId);
   m_contextIdToGroupIdMap[contextId] = info.contextGroupId;
 
-  ContextsByGroupMap::iterator contextIt = m_contexts.find(info.contextGroupId);
+  auto contextIt = m_contexts.find(info.contextGroupId);
   if (contextIt == m_contexts.end())
     contextIt = m_contexts
                     .insert(std::make_pair(
@@ -225,7 +222,7 @@ void V8InspectorImpl::contextDestroyed(v8::Local<v8::Context> context) {
 void V8InspectorImpl::contextCollected(int groupId, int contextId) {
   m_contextIdToGroupIdMap.erase(contextId);
 
-  ConsoleStorageMap::iterator storageIt = m_consoleStorageMap.find(groupId);
+  auto storageIt = m_consoleStorageMap.find(groupId);
   if (storageIt != m_consoleStorageMap.end())
     storageIt->second->contextDestroyed(contextId);
 
@@ -256,9 +253,9 @@ void V8InspectorImpl::idleStarted() { m_isolate->SetIdle(true); }
 void V8InspectorImpl::idleFinished() { m_isolate->SetIdle(false); }
 
 unsigned V8InspectorImpl::exceptionThrown(
-    v8::Local<v8::Context> context, const StringView& message,
-    v8::Local<v8::Value> exception, const StringView& detailedMessage,
-    const StringView& url, unsigned lineNumber, unsigned columnNumber,
+    v8::Local<v8::Context> context, StringView message,
+    v8::Local<v8::Value> exception, StringView detailedMessage, StringView url,
+    unsigned lineNumber, unsigned columnNumber,
     std::unique_ptr<V8StackTrace> stackTrace, int scriptId) {
   int groupId = contextGroupId(context);
   if (!groupId || m_muteExceptionsMap[groupId]) return 0;
@@ -277,7 +274,7 @@ unsigned V8InspectorImpl::exceptionThrown(
 
 void V8InspectorImpl::exceptionRevoked(v8::Local<v8::Context> context,
                                        unsigned exceptionId,
-                                       const StringView& message) {
+                                       StringView message) {
   int groupId = contextGroupId(context);
   if (!groupId) return;
 
@@ -292,8 +289,7 @@ std::unique_ptr<V8StackTrace> V8InspectorImpl::captureStackTrace(
   return m_debugger->captureStackTrace(fullStack);
 }
 
-V8StackTraceId V8InspectorImpl::storeCurrentStackTrace(
-    const StringView& description) {
+V8StackTraceId V8InspectorImpl::storeCurrentStackTrace(StringView description) {
   return m_debugger->storeCurrentStackTrace(description);
 }
 
@@ -305,7 +301,7 @@ void V8InspectorImpl::externalAsyncTaskFinished(const V8StackTraceId& parent) {
   m_debugger->externalAsyncTaskFinished(parent);
 }
 
-void V8InspectorImpl::asyncTaskScheduled(const StringView& taskName, void* task,
+void V8InspectorImpl::asyncTaskScheduled(StringView taskName, void* task,
                                          bool recurring) {
   if (!task) return;
   m_debugger->asyncTaskScheduled(taskName, task, recurring);
@@ -332,7 +328,7 @@ void V8InspectorImpl::allAsyncTasksCanceled() {
 
 V8Inspector::Counters::Counters(v8::Isolate* isolate) : m_isolate(isolate) {
   CHECK(m_isolate);
-  V8InspectorImpl* inspector =
+  auto* inspector =
       static_cast<V8InspectorImpl*>(v8::debug::GetInspector(m_isolate));
   CHECK(inspector);
   CHECK(!inspector->m_counters);
@@ -341,7 +337,7 @@ V8Inspector::Counters::Counters(v8::Isolate* isolate) : m_isolate(isolate) {
 }
 
 V8Inspector::Counters::~Counters() {
-  V8InspectorImpl* inspector =
+  auto* inspector =
       static_cast<V8InspectorImpl*>(v8::debug::GetInspector(m_isolate));
   CHECK(inspector);
   inspector->m_counters = nullptr;
@@ -467,12 +463,12 @@ class V8InspectorImpl::EvaluateScope::TerminateTask : public v8::Task {
 
 protocol::Response V8InspectorImpl::EvaluateScope::setTimeout(double timeout) {
   if (m_isolate->IsExecutionTerminating()) {
-    return protocol::Response::Error("Execution was terminated");
+    return protocol::Response::ServerError("Execution was terminated");
   }
   m_cancelToken.reset(new CancelToken());
   v8::debug::GetCurrentPlatform()->CallDelayedOnWorkerThread(
       std::make_unique<TerminateTask>(m_isolate, m_cancelToken), timeout);
-  return protocol::Response::OK();
+  return protocol::Response::Success();
 }
 
 }  // namespace v8_inspector

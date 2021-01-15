@@ -28,19 +28,6 @@ LINKMODE_C_ARCHIVE = "c-archive"
 
 LINKMODES = [LINKMODE_NORMAL, LINKMODE_PLUGIN, LINKMODE_C_SHARED, LINKMODE_C_ARCHIVE, LINKMODE_PIE]
 
-def new_mode(goos, goarch, static = False, race = False, msan = False, pure = False, link = LINKMODE_NORMAL, debug = False, strip = False):
-    return struct(
-        static = static,
-        race = race,
-        msan = msan,
-        pure = pure,
-        link = link,
-        debug = debug,
-        strip = strip,
-        goos = goos,
-        goarch = goarch,
-    )
-
 def mode_string(mode):
     result = [mode.goos, mode.goarch]
     if mode.static:
@@ -77,62 +64,45 @@ def _ternary(*values):
         fail("Invalid value {}".format(v))
     fail("_ternary failed to produce a final result from {}".format(values))
 
-def get_mode(ctx, host_only, go_toolchain, go_context_data):
-    aspect_cross_compile = False
-    goos = go_toolchain.default_goos
-    attr_goos = getattr(ctx.attr, "goos", "auto")
-    if goos != attr_goos and attr_goos != "auto":
-        goos = attr_goos
-        aspect_cross_compile = True
-    goarch = go_toolchain.default_goarch
-    attr_goarch = getattr(ctx.attr, "goarch", "auto")
-    if goarch != attr_goarch and attr_goarch != "auto":
-        goarch = attr_goarch
-        aspect_cross_compile = True
-
-    # We have to build in pure mode if we don't have a C toolchain.
-    # If we're cross-compiling using the aspect, we might have a C toolchain
-    # for the wrong platform, so also force pure mode then.
-    force_pure = "on" if not go_context_data.cgo_tools or aspect_cross_compile else "auto"
-
-    force_race = "off" if host_only else "auto"
-
-    linkmode = getattr(ctx.attr, "linkmode", LINKMODE_NORMAL)
-    if linkmode in [LINKMODE_C_SHARED, LINKMODE_C_ARCHIVE, LINKMODE_PIE]:
-        if not go_context_data.cgo_tools:
-            fail("linkmode is {}, but no C/C++ toolchain is configured".format(linkmode))
-        force_pure = "off"
-
+def get_mode(ctx, go_toolchain, cgo_context_info, go_config_info):
     static = _ternary(
-        getattr(ctx.attr, "static", None),
-        "static" in ctx.features,
-    )
-    race = _ternary(
-        getattr(ctx.attr, "race", None),
-        force_race,
-        "race" in ctx.features,
-    )
-    msan = _ternary(
-        getattr(ctx.attr, "msan", None),
-        "msan" in ctx.features,
+        "on" if "static" in ctx.features else "auto",
+        go_config_info.static if go_config_info else "off",
     )
     pure = _ternary(
-        getattr(ctx.attr, "pure", None),
-        force_pure,
-        "pure" in ctx.features,
+        "on" if not cgo_context_info else "auto",
+        go_config_info.pure if go_config_info else "off",
     )
-    if race and pure:
-        # You are not allowed to compile in race mode with pure enabled
-        race = False
-    debug = ctx.var["COMPILATION_MODE"] == "dbg"
-    strip_mode = "sometimes"
-    if go_context_data:
-        strip_mode = go_context_data.strip
-    strip = False
-    if strip_mode == "always":
-        strip = True
-    elif strip_mode == "sometimes":
-        strip = not debug
+    race = _ternary(
+        "on" if ("race" in ctx.features and not pure) else "auto",
+        go_config_info.race if go_config_info else "off",
+    )
+    msan = _ternary(
+        "on" if ("msan" in ctx.features and not pure) else "auto",
+        go_config_info.msan if go_config_info else "off",
+    )
+    strip = go_config_info.strip if go_config_info else False
+    stamp = go_config_info.stamp if go_config_info else False
+    debug = go_config_info.debug if go_config_info else False
+    linkmode = go_config_info.linkmode if go_config_info else LINKMODE_NORMAL
+    goos = go_toolchain.default_goos
+    goarch = go_toolchain.default_goarch
+
+    # TODO(jayconrod): check for more invalid and contradictory settings.
+    if pure and race:
+        fail("race instrumentation can't be enabled when cgo is disabled. Check that pure is not set to \"off\" and a C/C++ toolchain is configured.")
+    if pure and msan:
+        fail("msan instrumentation can't be enabled when cgo is disabled. Check that pure is not set to \"off\" and a C/C++ toolchain is configured.")
+
+    tags = list(go_config_info.tags) if go_config_info else []
+    if "gotags" in ctx.var:
+        tags.extend(ctx.var["gotags"].split(","))
+    if cgo_context_info:
+        tags.extend(cgo_context_info.tags)
+    if race:
+        tags.append("race")
+    if msan:
+        tags.append("msan")
 
     return struct(
         static = static,
@@ -140,10 +110,12 @@ def get_mode(ctx, host_only, go_toolchain, go_context_data):
         msan = msan,
         pure = pure,
         link = linkmode,
-        debug = debug,
         strip = strip,
+        stamp = stamp,
+        debug = debug,
         goos = goos,
         goarch = goarch,
+        tags = tags,
     )
 
 def installsuffix(mode):

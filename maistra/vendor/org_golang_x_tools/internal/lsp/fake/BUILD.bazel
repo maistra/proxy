@@ -1,0 +1,35 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "client.go",
+        "doc.go",
+        "edit.go",
+        "editor.go",
+        "proxy.go",
+        "sandbox.go",
+        "workdir.go",
+    ],
+    importpath = "golang.org/x/tools/internal/lsp/fake",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//internal/gocommand:go_default_library",
+        "//internal/jsonrpc2:go_default_library",
+        "//internal/lsp/protocol:go_default_library",
+        "//internal/proxydir:go_default_library",
+        "//internal/span:go_default_library",
+        "//txtar:go_default_library",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = [
+        "edit_test.go",
+        "editor_test.go",
+        "workdir_test.go",
+    ],
+    embed = [":go_default_library"],
+    deps = ["//internal/lsp/protocol:go_default_library"],
+)

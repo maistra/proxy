@@ -1,0 +1,2 @@
+# DO NOT EDIT: automatically generated WORKSPACE file for pip_import rule
+workspace(name = "thrift_pip3")

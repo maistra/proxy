@@ -32,6 +32,10 @@ import("//build/config/win/visual_studio_version.gni")
 #       Whether a .tlb file should be added to outputs. Defaults to false.
 #
 #   deps (optional)
+#
+#   defines (optional)
+#       Build time defines to be passed to midl.exe as /D parameter.
+#
 #   visibility (optional)
 
 template("midl") {
@@ -51,7 +55,7 @@ template("midl") {
   } else {
     # midl.py expects 'gen' to be replaced with 'midl'.
     generated_dir = rebase_path("//third_party/win_build_output") + "/midl/" +
-                    rebase_path(rebase_path(out_dir, root_build_dir), "gen")
+                    rebase_path(out_dir, root_gen_dir)
   }
 
   if (defined(invoker.dynamic_guid)) {
@@ -119,6 +123,8 @@ template("midl") {
       dlldata_file,
       interface_identifier_file,
       proxy_file,
+      rebase_path("//third_party/llvm-build/Release+Asserts/bin/clang-cl.exe",
+                  root_build_dir),
       "{{source}}",
       "/char",
       "signed",
@@ -126,6 +132,12 @@ template("midl") {
       idl_target_platform,
       "/Oicf",
     ]
+
+    if (defined(invoker.defines)) {
+      foreach(define, invoker.defines) {
+        args += [ "/D" + define ]
+      }
+    }
 
     forward_variables_from(invoker, [ "deps" ])
   }

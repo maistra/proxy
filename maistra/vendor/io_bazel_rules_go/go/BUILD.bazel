@@ -2,6 +2,7 @@ filegroup(
     name = "all_files",
     testonly = True,
     srcs = glob(["**"]) + [
+        "//go/config:all_files",
         "//go/platform:all_files",
         "//go/toolchain:all_files",
         "//go/tools:all_files",
@@ -12,7 +13,11 @@ filegroup(
 
 filegroup(
     name = "all_rules",
-    srcs = glob(["*.bzl"]) + ["//go/private:all_rules"],
+    srcs = glob(["*.bzl"]) + [
+        "//go/platform:all_rules",
+        "//go/private:all_rules",
+        "//go/toolchain:all_rules",
+    ],
     visibility = ["//visibility:public"],
 )
 

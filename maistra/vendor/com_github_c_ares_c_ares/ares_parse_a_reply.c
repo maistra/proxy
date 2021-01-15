@@ -86,7 +86,10 @@ int ares_parse_a_reply(const unsigned char *abuf, int alen,
   next = ai.nodes;
   while (next)
     {
-      ++naddrs;
+      if (next->ai_family == AF_INET)
+        {
+          ++naddrs;
+        }
       next = next->ai_next;
     }
 
@@ -160,7 +163,7 @@ int ares_parse_a_reply(const unsigned char *abuf, int alen,
             {
               hostent->h_addr_list[i] = (char *)&addrs[i];
               memcpy(hostent->h_addr_list[i],
-                     &(((struct sockaddr_in *)next->ai_addr)->sin_addr),
+                     &(CARES_INADDR_CAST(struct sockaddr_in *, next->ai_addr)->sin_addr),
                      sizeof(struct in_addr));
               if (naddrttls && i < *naddrttls)
                 {
@@ -170,7 +173,7 @@ int ares_parse_a_reply(const unsigned char *abuf, int alen,
                     addrttls[i].ttl = next->ai_ttl;
 
                   memcpy(&addrttls[i].ipaddr,
-                         &(((struct sockaddr_in *)next->ai_addr)->sin_addr),
+                         &(CARES_INADDR_CAST(struct sockaddr_in *, next->ai_addr)->sin_addr),
                          sizeof(struct in_addr));
                 }
               ++i;

@@ -9,12 +9,18 @@
 #include "src/codegen/safepoint-table.h"
 #include "src/deoptimizer/deoptimizer.h"
 #include "src/execution/frame-constants.h"
+#include "src/execution/pointer-authentication.h"
 
 namespace v8 {
 namespace internal {
 
-const bool Deoptimizer::kSupportsFixedDeoptExitSize = true;
-const int Deoptimizer::kDeoptExitSize = kInstrSize;
+const bool Deoptimizer::kSupportsFixedDeoptExitSizes = true;
+const int Deoptimizer::kNonLazyDeoptExitSize = kInstrSize;
+#ifdef V8_ENABLE_CONTROL_FLOW_INTEGRITY
+const int Deoptimizer::kLazyDeoptExitSize = 2 * kInstrSize;
+#else
+const int Deoptimizer::kLazyDeoptExitSize = 1 * kInstrSize;
+#endif
 
 #define __ masm->
 
@@ -284,10 +290,15 @@ void Deoptimizer::GenerateDeoptimizationEntries(MacroAssembler* masm,
   RestoreRegList(masm, saved_registers, last_output_frame,
                  FrameDescription::registers_offset());
 
-  Register continuation = x7;
+  UseScratchRegisterScope temps(masm);
+  temps.Exclude(x17);
+  Register continuation = x17;
   __ Ldr(continuation, MemOperand(last_output_frame,
                                   FrameDescription::continuation_offset()));
   __ Ldr(lr, MemOperand(last_output_frame, FrameDescription::pc_offset()));
+#ifdef V8_ENABLE_CONTROL_FLOW_INTEGRITY
+  __ Autibsp();
+#endif
   __ Br(continuation);
 }
 
@@ -297,6 +308,9 @@ Float32 RegisterValues::GetFloatRegister(unsigned n) const {
 }
 
 void FrameDescription::SetCallerPc(unsigned offset, intptr_t value) {
+  Address new_context =
+      static_cast<Address>(GetTop()) + offset + kPCOnStackSize;
+  value = PointerAuthentication::SignAndCheckPC(value, new_context);
   SetFrameSlot(offset, value);
 }
 
@@ -307,6 +321,14 @@ void FrameDescription::SetCallerFp(unsigned offset, intptr_t value) {
 void FrameDescription::SetCallerConstantPool(unsigned offset, intptr_t value) {
   // No embedded constant pool support.
   UNREACHABLE();
+}
+
+void FrameDescription::SetPc(intptr_t pc) {
+  if (ENABLE_CONTROL_FLOW_INTEGRITY_BOOL) {
+    CHECK(
+        Deoptimizer::IsValidReturnAddress(PointerAuthentication::StripPAC(pc)));
+  }
+  pc_ = pc;
 }
 
 #undef __

@@ -1,0 +1,29 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "methods.go",
+        "proto.go",
+        "source.go",
+        "type.go",
+        "value.go",
+        "value_union.go",
+        "value_unsafe.go",
+    ],
+    importpath = "google.golang.org/protobuf/reflect/protoreflect",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//encoding/protowire:go_default_library",
+        "//internal/pragma:go_default_library",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = [
+        "proto_test.go",
+        "value_test.go",
+    ],
+    embed = [":go_default_library"],
+)

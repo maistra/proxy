@@ -12,22 +12,23 @@
 #include "src/base/macros.h"
 #include "src/common/checks.h"
 #include "src/common/globals.h"
-#include "src/handles/factory-handles.h"
 #include "src/zone/zone.h"
 
 namespace v8 {
 namespace internal {
 
 // Forward declarations.
-class DeferredHandles;
 class HandleScopeImplementer;
 class Isolate;
+class LocalHeap;
+class LocalIsolate;
 template <typename T>
 class MaybeHandle;
 class Object;
 class OrderedHashMap;
 class OrderedHashSet;
 class OrderedNameDictionary;
+class RootVisitor;
 class SmallOrderedHashMap;
 class SmallOrderedHashSet;
 class SmallOrderedNameDictionary;
@@ -39,6 +40,8 @@ class HandleBase {
  public:
   V8_INLINE explicit HandleBase(Address* location) : location_(location) {}
   V8_INLINE explicit HandleBase(Address object, Isolate* isolate);
+  V8_INLINE explicit HandleBase(Address object, LocalIsolate* isolate);
+  V8_INLINE explicit HandleBase(Address object, LocalHeap* local_heap);
 
   // Check if this handle refers to the exact same object as the other handle.
   V8_INLINE bool is_identical_to(const HandleBase that) const {
@@ -56,6 +59,8 @@ class HandleBase {
   V8_INLINE Address address() const { return bit_cast<Address>(location_); }
 
   // Returns the address to where the raw pointer is stored.
+  // TODO(leszeks): This should probably be a const Address*, to encourage using
+  // PatchValue for modifying the handle's value.
   V8_INLINE Address* location() const {
     SLOW_DCHECK(location_ == nullptr || IsDereferenceAllowed());
     return location_;
@@ -99,7 +104,7 @@ class Handle final : public HandleBase {
     T* operator->() { return &object_; }
 
    private:
-    friend class Handle;
+    friend class Handle<T>;
     explicit ObjectRef(T object) : object_(object) {}
 
     T object_;
@@ -119,6 +124,8 @@ class Handle final : public HandleBase {
   }
 
   V8_INLINE Handle(T object, Isolate* isolate);
+  V8_INLINE Handle(T object, LocalIsolate* isolate);
+  V8_INLINE Handle(T object, LocalHeap* local_heap);
 
   // Allocate a new handle for the object, do not canonicalize.
   V8_INLINE static Handle<T> New(T object, Isolate* isolate);
@@ -142,12 +149,19 @@ class Handle final : public HandleBase {
   template <typename S>
   inline static const Handle<T> cast(Handle<S> that);
 
-  // TODO(yangguo): Values that contain empty handles should be declared as
+  // Consider declaring values that contain empty handles as
   // MaybeHandle to force validation before being used as handles.
   static const Handle<T> null() { return Handle<T>(); }
 
   // Location equality.
   bool equals(Handle<T> other) const { return address() == other.address(); }
+
+  // Patches this Handle's value, in-place, with a new value. All handles with
+  // the same location will see this update.
+  void PatchValue(T new_value) {
+    SLOW_DCHECK(location_ != nullptr && IsDereferenceAllowed());
+    *location_ = new_value.ptr();
+  }
 
   // Provide function object for location equality comparison.
   struct equal_to {
@@ -176,119 +190,6 @@ template <typename T>
 inline std::ostream& operator<<(std::ostream& os, Handle<T> handle);
 
 // ----------------------------------------------------------------------------
-// A fake Handle that simply wraps an object reference. This is used for
-// off-thread Objects, where we want a class that behaves like Handle for the
-// purposes of operator->, casting, etc., but isn't a GC root and doesn't
-// require access to the Isolate.
-template <typename T>
-class OffThreadHandle {
- public:
-  OffThreadHandle() = default;
-
-  template <typename U>
-  explicit OffThreadHandle(U obj) : obj_(obj) {}
-
-  // Constructor for handling automatic up casting. We rely on the compiler
-  // making sure that the assignment to obj_ is legitimate.
-  template <typename U>
-  // NOLINTNEXTLINE
-  OffThreadHandle<T>(OffThreadHandle<U> other) : obj_(*other) {}
-
-  T operator*() const { return obj_; }
-  T* operator->() { return &obj_; }
-  const T* operator->() const { return &obj_; }
-
-  template <typename U>
-  static OffThreadHandle<T> cast(OffThreadHandle<U> other) {
-    return OffThreadHandle<T>(T::cast(*other));
-  }
-
-  bool is_null() const {
-    // TODO(leszeks): This will only work for HeapObjects, figure out a way to
-    // make is_null work for Object and Smi too.
-    return obj_.is_null();
-  }
-
-  bool ToHandle(OffThreadHandle<T>* out) {
-    if (is_null()) return false;
-
-    *out = *this;
-    return true;
-  }
-  OffThreadHandle<T> ToHandleChecked() {
-    DCHECK(!is_null());
-    return *this;
-  }
-
- private:
-  T obj_;
-};
-
-// A helper class which wraps an normal or off-thread handle, and returns one
-// or the other depending on the factory type.
-template <typename T>
-class HandleOrOffThreadHandle {
- public:
-  HandleOrOffThreadHandle() = default;
-
-  template <typename U>
-  HandleOrOffThreadHandle(Handle<U> handle)  // NOLINT
-      : value_(bit_cast<Address>(static_cast<Handle<T>>(handle).location())) {
-#ifdef DEBUG
-    which_ = kHandle;
-#endif
-  }
-
-  template <typename U>
-  HandleOrOffThreadHandle(OffThreadHandle<U> handle)  // NOLINT
-      : value_(static_cast<OffThreadHandle<T>>(handle)->ptr()) {
-#ifdef DEBUG
-    which_ = kOffThreadHandle;
-#endif
-  }
-
-  // To minimize the impact of these handles on main-thread callers, we allow
-  // them to implicitly convert to Handles.
-  template <typename U>
-  operator Handle<U>() {
-    return get<class Factory>();
-  }
-
-  template <typename FactoryType>
-  inline FactoryHandle<FactoryType, T> get() {
-    return get_for(Tag<FactoryType>());
-  }
-
-  inline bool is_null() const { return value_ == 0; }
-
-#ifdef DEBUG
-  inline bool is_initialized() { return which_ != kUninitialized; }
-#endif
-
- private:
-  // Tagged overloads because we can't specialize the above getter
-  // without also specializing the class.
-  template <typename FactoryType>
-  struct Tag {};
-
-  V8_INLINE Handle<T> get_for(Tag<class Factory>) {
-    DCHECK_NE(which_, kOffThreadHandle);
-    return Handle<T>(reinterpret_cast<Address*>(value_));
-  }
-  V8_INLINE OffThreadHandle<T> get_for(Tag<class OffThreadFactory>) {
-    DCHECK_NE(which_, kHandle);
-    return OffThreadHandle<T>(T::unchecked_cast(Object(value_)));
-  }
-
-  // Either handle.location() or off_thread_handle->ptr().
-  Address value_;
-
-#ifdef DEBUG
-  enum { kUninitialized, kHandle, kOffThreadHandle } which_;
-#endif
-};
-
-// ----------------------------------------------------------------------------
 // A stack-allocated class that governs a number of local handles.
 // After a handle scope has been created, all local handles will be
 // allocated within that handle scope until either the handle scope is
@@ -305,6 +206,15 @@ class HandleScope {
  public:
   explicit inline HandleScope(Isolate* isolate);
   inline HandleScope(HandleScope&& other) V8_NOEXCEPT;
+
+  // Allow placement new.
+  void* operator new(size_t size, void* storage) {
+    return ::operator new(size, storage);
+  }
+
+  // Prevent heap allocation or illegal handle scopes.
+  void* operator new(size_t size) = delete;
+  void operator delete(void* size_t) = delete;
 
   inline ~HandleScope();
 
@@ -341,10 +251,6 @@ class HandleScope {
   static const int kCheckHandleThreshold = 30 * 1024;
 
  private:
-  // Prevent heap allocation or illegal handle scopes.
-  void* operator new(size_t size);
-  void operator delete(void* size_t);
-
   Isolate* isolate_;
   Address* prev_next_;
   Address* prev_limit_;
@@ -362,10 +268,10 @@ class HandleScope {
 #endif
 
   friend class v8::HandleScope;
-  friend class DeferredHandles;
-  friend class DeferredHandleScope;
   friend class HandleScopeImplementer;
   friend class Isolate;
+  friend class LocalHandles;
+  friend class PersistentHandles;
 
   DISALLOW_COPY_AND_ASSIGN(HandleScope);
 };
@@ -374,6 +280,9 @@ class HandleScope {
 template <typename V, class AllocationPolicy>
 class IdentityMap;
 class RootIndexMap;
+class OptimizedCompilationInfo;
+
+using CanonicalHandlesMap = IdentityMap<Address*, ZoneAllocationPolicy>;
 
 // A CanonicalHandleScope does not open a new HandleScope. It changes the
 // existing HandleScope so that Handles created within are canonicalized.
@@ -382,64 +291,33 @@ class RootIndexMap;
 // the same CanonicalHandleScope, but not across nested ones.
 class V8_EXPORT_PRIVATE CanonicalHandleScope final {
  public:
-  explicit CanonicalHandleScope(Isolate* isolate);
+  // If we passed a compilation info as parameter, we created the
+  // CanonicalHandlesMap on said compilation info's zone(). If so, in the
+  // CanonicalHandleScope destructor we hand off the canonical handle map to the
+  // compilation info. The compilation info is responsible for the disposal. If
+  // we don't have a compilation info, we create a zone in this constructor. To
+  // properly dispose of said zone, we need to first free the identity_map_
+  // which is done manually even though identity_map_ is a unique_ptr.
+  explicit CanonicalHandleScope(Isolate* isolate,
+                                OptimizedCompilationInfo* info = nullptr);
   ~CanonicalHandleScope();
 
  private:
   Address* Lookup(Address object);
 
+  std::unique_ptr<CanonicalHandlesMap> DetachCanonicalHandles();
+
   Isolate* isolate_;
-  Zone zone_;
+  OptimizedCompilationInfo* info_;
+  Zone* zone_;
   RootIndexMap* root_index_map_;
-  IdentityMap<Address*, ZoneAllocationPolicy>* identity_map_;
+  std::unique_ptr<CanonicalHandlesMap> identity_map_;
   // Ordinary nested handle scopes within the current one are not canonical.
   int canonical_level_;
   // We may have nested canonical scopes. Handles are canonical within each one.
   CanonicalHandleScope* prev_canonical_scope_;
 
   friend class HandleScope;
-};
-
-// A DeferredHandleScope is a HandleScope in which handles are not destroyed
-// when the DeferredHandleScope is left. Instead the DeferredHandleScope has to
-// be detached with {Detach}, and the result of {Detach} has to be destroyed
-// explicitly. A DeferredHandleScope should only be used with the following
-// design pattern:
-// 1) Open a HandleScope (not a DeferredHandleScope).
-//    HandleScope scope(isolate_);
-// 2) Create handles.
-//    Handle<Object> h1 = handle(object1, isolate);
-//    Handle<Object> h2 = handle(object2, isolate);
-// 3) Open a DeferredHandleScope.
-//    DeferredHandleScope deferred_scope(isolate);
-// 4) Reopen handles which should be in the DeferredHandleScope, e.g only h1.
-//    h1 = handle(*h1, isolate);
-// 5) Detach the DeferredHandleScope.
-//    DeferredHandles* deferred_handles = deferred_scope.Detach();
-// 6) Destroy the deferred handles.
-//    delete deferred_handles;
-//
-// Note: A DeferredHandleScope must not be opened within a DeferredHandleScope.
-class V8_EXPORT_PRIVATE DeferredHandleScope final {
- public:
-  explicit DeferredHandleScope(Isolate* isolate);
-  // The DeferredHandles object returned stores the Handles created
-  // since the creation of this DeferredHandleScope.  The Handles are
-  // alive as long as the DeferredHandles object is alive.
-  std::unique_ptr<DeferredHandles> Detach();
-  ~DeferredHandleScope();
-
- private:
-  Address* prev_limit_;
-  Address* prev_next_;
-  HandleScopeImplementer* impl_;
-
-#ifdef DEBUG
-  bool handles_detached_ = false;
-  int prev_level_;
-#endif
-
-  friend class HandleScopeImplementer;
 };
 
 // Seal off the current HandleScope so that new handles can only be created

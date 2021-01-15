@@ -5,7 +5,7 @@
 #include "common/http/message_impl.h"
 #include "common/router/shadow_writer_impl.h"
 
-#include "test/mocks/upstream/mocks.h"
+#include "test/mocks/upstream/cluster_manager.h"
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -33,7 +33,7 @@ public:
             [&](Http::RequestMessagePtr& inner_message, Http::AsyncClient::Callbacks& callbacks,
                 const Http::AsyncClient::RequestOptions&) -> Http::AsyncClient::Request* {
               EXPECT_EQ(message, inner_message);
-              EXPECT_EQ(shadowed_host, message->headers().Host()->value().getStringView());
+              EXPECT_EQ(shadowed_host, message->headers().getHostValue());
               callback_ = &callbacks;
               return &request_;
             }));

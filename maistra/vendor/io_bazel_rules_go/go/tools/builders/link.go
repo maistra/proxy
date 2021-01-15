@@ -50,6 +50,7 @@ func link(args []string) error {
 	flags.Var(&xdefs, "X", "A string variable to replace in the linked binary (repeated).")
 	flags.Var(&xstamps, "Xstamp", "Like -X but the values are looked up in the -stamp file.")
 	flags.Var(&stamps, "stamp", "The name of a file with stamping values.")
+	conflictErrMsg := flags.String("conflict_err", "", "Error message about conflicts to report if there's a link error.")
 	if err := flags.Parse(builderArgs); err != nil {
 		return err
 	}
@@ -142,7 +143,15 @@ func link(args []string) error {
 	goargs = append(goargs, toolArgs...)
 	goargs = append(goargs, *main)
 	if err := goenv.runCommand(goargs); err != nil {
+		if *conflictErrMsg != "" {
+			// TODO(#1374): this should always be reported above.
+			err = fmt.Errorf("%v\n%s", err, *conflictErrMsg)
+		}
 		return err
+	}
+	if *conflictErrMsg != "" {
+		// TODO(#1374): this should always be reported above.
+		fmt.Fprintf(os.Stderr, "%s\nThis will be an error in the future.\n", *conflictErrMsg)
 	}
 
 	if *buildmode == "c-archive" {

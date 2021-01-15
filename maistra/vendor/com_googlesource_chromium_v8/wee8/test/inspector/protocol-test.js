@@ -129,6 +129,14 @@ InspectorTest.decodeBase64 = function(base64) {
   return bytes;
 }
 
+InspectorTest.trimErrorMessage = function(message) {
+  if (!message.error || !message.error.data)
+    return message;
+  message.error.data = message.error.data.replace(/at position \d+/,
+                                                  'at <some position>');
+  return message;
+}
+
 InspectorTest.ContextGroup = class {
   constructor() {
     this.id = utils.createContextGroup();
@@ -287,7 +295,9 @@ InspectorTest.Session = class {
       if (location.lineNumber != 0) {
         InspectorTest.log('Unexpected wasm line number: ' + location.lineNumber);
       }
-      InspectorTest.log(`Script ${script.url} byte offset ${location.columnNumber}: Wasm opcode 0x${script.bytecode[location.columnNumber].toString(16)}`);
+      let wasm_opcode = script.bytecode[location.columnNumber].toString(16);
+      if (wasm_opcode.length % 2) wasm_opcode = '0' + wasm_opcode;
+      InspectorTest.log(`Script ${script.url} byte offset ${location.columnNumber}: Wasm opcode 0x${wasm_opcode}`);
     } else {
       var lines = script.scriptSource.split('\n');
       var line = lines[location.lineNumber];

@@ -13,12 +13,7 @@
 # limitations under the License.
 
 load(
-    "@bazel_skylib//lib:shell.bzl",
-    "shell",
-)
-load(
     "@io_bazel_rules_go//go/private:common.bzl",
-    "as_iterable",
     "as_set",
     "has_shared_lib_extension",
 )
@@ -146,6 +141,11 @@ def emit_link(
         tool_args.add("-w")
     tool_args.add_joined("-extldflags", extldflags, join_with = " ")
 
+    conflict_err = _check_conflicts(arcs)
+    if conflict_err:
+        # Error is reported if the linker command fails.
+        builder_args.add("-conflict_err", conflict_err)
+
     inputs_direct = stamp_inputs + [go.sdk.package_list]
     if go.coverage_enabled and go.coverdata:
         inputs_direct.append(go.coverdata.data.file)
@@ -192,3 +192,41 @@ def _extract_extldflags(gc_linkopts, extldflags):
         else:
             filtered_gc_linkopts.append(opt)
     return filtered_gc_linkopts, extldflags
+
+def _check_conflicts(arcs):
+    importmap_to_label = {}
+    for arc in arcs:
+        if arc.importmap in importmap_to_label:
+            return """package conflict error: {}: multiple copies of package passed to linker:
+	{}
+	{}
+Set "importmap" to different paths or use 'bazel cquery' to ensure only one
+package with this path is linked.""".format(
+                arc.importmap,
+                importmap_to_label[arc.importmap],
+                arc.label,
+            )
+        importmap_to_label[arc.importmap] = arc.label
+    for arc in arcs:
+        for dep_importmap, dep_label in zip(arc._dep_importmaps, arc._dep_labels):
+            if dep_importmap not in importmap_to_label:
+                return "package conflict error: {}: package needed by {} was not passed to linker".format(
+                    dep_importmap,
+                    arc.label,
+                )
+            if importmap_to_label[dep_importmap] != dep_label:
+                err = """package conflict error: {}: package imports {}
+	  was compiled with: {}
+	but was linked with: {}""".format(
+                    arc.importmap,
+                    dep_importmap,
+                    dep_label,
+                    importmap_to_label[dep_importmap],
+                )
+                if importmap_to_label[dep_importmap].name.endswith("_test"):
+                    err += """
+This sometimes happens when an external test (package ending with _test)
+imports a package that imports the library being tested. This is not supported."""
+                err += "\nSee https://github.com/bazelbuild/rules_go/issues/1877."
+                return err
+    return None

@@ -7,7 +7,8 @@
 #include "envoy/access_log/access_log.h"
 #include "envoy/api/api.h"
 #include "envoy/common/mutex_tracer.h"
-#include "envoy/config/trace/v3/trace.pb.h"
+#include "envoy/common/random_generator.h"
+#include "envoy/config/trace/v3/http_tracer.pb.h"
 #include "envoy/event/timer.h"
 #include "envoy/grpc/context.h"
 #include "envoy/http/context.h"
@@ -133,11 +134,6 @@ public:
    * @return the server's CLI options.
    */
   virtual const Options& options() PURE;
-
-  /**
-   * @return RandomGenerator& the random generator for the server.
-   */
-  virtual Runtime::RandomGenerator& random() PURE;
 
   /**
    * @return Runtime::Loader& the singleton runtime loader for the server.

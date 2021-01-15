@@ -270,7 +270,7 @@ std::vector<CPUInfo::CacheInfo> GetCacheSizesFromKVFS() {
       else if (f && suffix != "K")
         PrintErrorAndDie("Invalid cache size format: Expected bytes ", suffix);
       else if (suffix == "K")
-        info.size *= 1000;
+        info.size *= 1024;
     }
     if (!ReadFromFile(StrCat(FPath, "type"), &info.type))
       PrintErrorAndDie("Failed to read from file ", FPath, "type");
@@ -429,11 +429,20 @@ std::string GetSystemName() {
 #endif
   return str;
 #else // defined(BENCHMARK_OS_WINDOWS)
+#ifndef HOST_NAME_MAX
 #ifdef BENCHMARK_HAS_SYSCTL // BSD/Mac Doesnt have HOST_NAME_MAX defined
+#define HOST_NAME_MAX 64
+#elif defined(BENCHMARK_OS_NACL)
 #define HOST_NAME_MAX 64
 #elif defined(BENCHMARK_OS_QNX)
 #define HOST_NAME_MAX 154
+#elif defined(BENCHMARK_OS_RTEMS)
+#define HOST_NAME_MAX 256
+#else
+#warning "HOST_NAME_MAX not defined. using 64"
+#define HOST_NAME_MAX 64
 #endif
+#endif // def HOST_NAME_MAX
   char hostname[HOST_NAME_MAX];
   int retVal = gethostname(hostname, HOST_NAME_MAX);
   if (retVal != 0) return std::string("");

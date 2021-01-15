@@ -3,7 +3,9 @@
 // found in the LICENSE file.
 
 #include "src/api/api-inl.h"
+#include "src/execution/frames-inl.h"
 #include "src/flags/flags.h"
+#include "src/heap/read-only-spaces.h"
 #include "src/heap/spaces.h"
 #include "test/cctest/cctest.h"
 #include "tools/debug_helper/debug-helper.h"
@@ -33,7 +35,7 @@ class MemoryFailureRegion {
 // Implement the memory-reading callback. This one just fetches memory from the
 // current process, but a real implementation for a debugging extension would
 // fetch memory from the debuggee process or crash dump.
-d::MemoryAccessResult ReadMemory(uintptr_t address, uint8_t* destination,
+d::MemoryAccessResult ReadMemory(uintptr_t address, void* destination,
                                  size_t byte_count) {
   if (address >= memory_fail_start && address <= memory_fail_end) {
     // Simulate failure to read debuggee memory.
@@ -122,6 +124,7 @@ class StringResource : public v8::String::ExternalStringResource {
 TEST(GetObjectProperties) {
   CcTest::InitializeVM();
   v8::Isolate* isolate = CcTest::isolate();
+  i::Isolate* i_isolate = reinterpret_cast<i::Isolate*>(isolate);
   v8::HandleScope scope(isolate);
   LocalContext context;
   // Claim we don't know anything about the heap layout.
@@ -181,10 +184,7 @@ TEST(GetObjectProperties) {
 
     // Provide a heap first page so the API can be more sure.
     heap_addresses.read_only_space_first_page =
-        reinterpret_cast<uintptr_t>(reinterpret_cast<i::Isolate*>(isolate)
-                                        ->heap()
-                                        ->read_only_space()
-                                        ->first_page());
+        i_isolate->heap()->read_only_space()->FirstPageAddress();
     props =
         d::GetObjectProperties(properties_or_hash, &ReadMemory, heap_addresses);
     CHECK(props->type_check_result ==
@@ -373,10 +373,25 @@ TEST(GetObjectProperties) {
       ReadProp<i::Tagged_t>(*props, "shared_function_info"), &ReadMemory,
       heap_addresses);
   const d::ObjectProperty& flags = FindProp(*props, "flags");
-  CheckStructProp(*flags.struct_fields[0], "v8::internal::FunctionKind",
-                  "function_kind", 0, 5, 0);
+  CHECK_GE(flags.num_struct_fields, 3);
+  CheckStructProp(*flags.struct_fields[0], "FunctionKind", "function_kind", 0,
+                  5, 0);
   CheckStructProp(*flags.struct_fields[1], "bool", "is_native", 0, 1, 5);
   CheckStructProp(*flags.struct_fields[2], "bool", "is_strict", 0, 1, 6);
+
+  // Get data about a different bitfield struct which is contained within a smi.
+  Handle<i::JSFunction> function = Handle<i::JSFunction>::cast(o);
+  Handle<i::SharedFunctionInfo> shared(function->shared(), i_isolate);
+  Handle<i::DebugInfo> debug_info =
+      i_isolate->debug()->GetOrCreateDebugInfo(shared);
+  props =
+      d::GetObjectProperties(debug_info->ptr(), &ReadMemory, heap_addresses);
+  const d::ObjectProperty& debug_flags = FindProp(*props, "flags");
+  CHECK_GE(debug_flags.num_struct_fields, 5);
+  CheckStructProp(*debug_flags.struct_fields[0], "bool", "has_break_info", 0, 1,
+                  i::kSmiTagSize + i::kSmiShiftSize);
+  CheckStructProp(*debug_flags.struct_fields[4], "bool", "can_break_at_entry",
+                  0, 1, i::kSmiTagSize + i::kSmiShiftSize + 4);
 }
 
 TEST(ListObjectClasses) {
@@ -394,6 +409,45 @@ TEST(ListObjectClasses) {
   CHECK_NE(class_set.find("v8::internal::HeapObject"), class_set.end());
   CHECK_NE(class_set.find("v8::internal::String"), class_set.end());
   CHECK_NE(class_set.find("v8::internal::JSRegExp"), class_set.end());
+}
+
+static void FrameIterationCheck(
+    v8::Local<v8::String> name,
+    const v8::PropertyCallbackInfo<v8::Value>& info) {
+  i::StackFrameIterator iter(reinterpret_cast<i::Isolate*>(info.GetIsolate()));
+  for (int i = 0; !iter.done(); i++) {
+    i::StackFrame* frame = iter.frame();
+    CHECK(i != 0 || (frame->type() == i::StackFrame::EXIT));
+    d::StackFrameResultPtr props = d::GetStackFrame(frame->fp(), &ReadMemory);
+    if (frame->is_java_script()) {
+      JavaScriptFrame* js_frame = JavaScriptFrame::cast(frame);
+      CHECK_EQ(props->num_properties, 1);
+      CheckProp(*props->properties[0], "v8::internal::JSFunction",
+                "currently_executing_jsfunction", js_frame->function().ptr());
+    } else {
+      CHECK_EQ(props->num_properties, 0);
+    }
+    iter.Advance();
+  }
+}
+
+THREADED_TEST(GetFrameStack) {
+  LocalContext env;
+  v8::Isolate* isolate = env->GetIsolate();
+  v8::HandleScope scope(isolate);
+  v8::Local<v8::ObjectTemplate> obj = v8::ObjectTemplate::New(isolate);
+  obj->SetAccessor(v8_str("xxx"), FrameIterationCheck);
+  CHECK(env->Global()
+            ->Set(env.local(), v8_str("obj"),
+                  obj->NewInstance(env.local()).ToLocalChecked())
+            .FromJust());
+  v8::Script::Compile(env.local(), v8_str("function foo() {"
+                                          "  return obj.xxx;"
+                                          "}"
+                                          "foo();"))
+      .ToLocalChecked()
+      ->Run(env.local())
+      .ToLocalChecked();
 }
 
 }  // namespace internal

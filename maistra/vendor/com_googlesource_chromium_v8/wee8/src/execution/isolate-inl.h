@@ -7,6 +7,7 @@
 
 #include "src/execution/isolate.h"
 #include "src/objects/cell-inl.h"
+#include "src/objects/js-function.h"
 #include "src/objects/objects-inl.h"
 #include "src/objects/oddball.h"
 #include "src/objects/property-cell.h"
@@ -81,6 +82,18 @@ void Isolate::clear_scheduled_exception() {
 
 bool Isolate::is_catchable_by_javascript(Object exception) {
   return exception != ReadOnlyRoots(heap()).termination_exception();
+}
+
+bool Isolate::is_catchable_by_wasm(Object exception) {
+  if (!is_catchable_by_javascript(exception)) return false;
+  if (!exception.IsJSObject()) return true;
+  // We don't allocate, but the LookupIterator interface expects a handle.
+  DisallowHeapAllocation no_gc;
+  HandleScope handle_scope(this);
+  LookupIterator it(this, handle(JSReceiver::cast(exception), this),
+                    factory()->wasm_uncatchable_symbol(),
+                    LookupIterator::OWN_SKIP_INTERCEPTOR);
+  return !JSReceiver::HasProperty(&it).FromJust();
 }
 
 void Isolate::FireBeforeCallEnteredCallback() {

@@ -13,10 +13,6 @@
 # limitations under the License.
 
 load(
-    "@io_bazel_rules_go//go/private:context.bzl",
-    "go_context",
-)
-load(
     "@io_bazel_rules_go//go/private:providers.bzl",
     "GoArchive",
     "GoPath",
@@ -170,7 +166,7 @@ go_path = rule(
         "_go_path": attr.label(
             default = "@io_bazel_rules_go//go/tools/builders:go_path",
             executable = True,
-            cfg = "host",
+            cfg = "exec",
         ),
     },
 )

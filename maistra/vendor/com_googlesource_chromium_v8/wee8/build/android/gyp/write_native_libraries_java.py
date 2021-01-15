@@ -26,6 +26,7 @@ def _FormatLibraryName(library_name):
 def main():
   parser = argparse.ArgumentParser()
 
+  build_utils.AddDepfileOption(parser)
   parser.add_argument('--final', action='store_true', help='Use final fields.')
   parser.add_argument(
       '--enable-chromium-linker',
@@ -35,8 +36,6 @@ def main():
       '--load-library-from-apk',
       action='store_true',
       help='Load libaries from APK without uncompressing.')
-  parser.add_argument(
-      '--enable-chromium-linker-tests', action='store_true', help='Run tests.')
   parser.add_argument(
       '--use-modern-linker', action='store_true', help='To use ModernLinker.')
   parser.add_argument(
@@ -64,9 +63,7 @@ def main():
 
   options = parser.parse_args(build_utils.ExpandFileArgs(sys.argv[1:]))
 
-  assert (options.enable_chromium_linker
-          or not options.load_library_from_apk), (
-              'Must set --enable-chromium-linker to load library from APK.')
+  assert (options.enable_chromium_linker or not options.load_library_from_apk)
 
   native_libraries_list = []
   if options.main_component_library:
@@ -89,7 +86,6 @@ def main():
       'MAYBE_FINAL': 'final ' if options.final else '',
       'USE_LINKER': bool_str(options.enable_chromium_linker),
       'USE_LIBRARY_IN_ZIP_FILE': bool_str(options.load_library_from_apk),
-      'ENABLE_LINKER_TESTS': bool_str(options.enable_chromium_linker_tests),
       'USE_MODERN_LINKER': bool_str(options.use_modern_linker),
       'LIBRARIES': ','.join(native_libraries_list),
       'VERSION_NUMBER': options.version_number,
@@ -101,6 +97,12 @@ def main():
           zip_file=srcjar_file,
           zip_path='org/chromium/base/library_loader/NativeLibraries.java',
           data=NATIVE_LIBRARIES_TEMPLATE.format(**format_dict))
+
+  if options.depfile:
+    assert options.native_libraries_list
+    build_utils.WriteDepfile(options.depfile,
+                             options.output,
+                             inputs=[options.native_libraries_list])
 
 
 if __name__ == '__main__':

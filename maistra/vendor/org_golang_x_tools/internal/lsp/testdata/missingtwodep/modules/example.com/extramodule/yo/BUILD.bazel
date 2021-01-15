@@ -1,0 +1,8 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["y.go"],
+    importpath = "golang.org/x/tools/internal/lsp/testdata/missingtwodep/modules/example.com/extramodule/yo",
+    visibility = ["//:__subpackages__"],
+)

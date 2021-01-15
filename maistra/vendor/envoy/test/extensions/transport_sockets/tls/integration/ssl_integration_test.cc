@@ -19,6 +19,7 @@
 #include "extensions/transport_sockets/tls/context_config_impl.h"
 #include "extensions/transport_sockets/tls/context_manager_impl.h"
 
+#include "test/integration/autonomous_upstream.h"
 #include "test/integration/integration.h"
 #include "test/integration/utility.h"
 #include "test/test_common/network_utility.h"
@@ -34,7 +35,10 @@ namespace Ssl {
 void SslIntegrationTestBase::initialize() {
   config_helper_.addSslConfig(ConfigHelper::ServerSslOptions()
                                   .setRsaCert(server_rsa_cert_)
+                                  .setRsaCertOcspStaple(server_rsa_cert_ocsp_staple_)
                                   .setEcdsaCert(server_ecdsa_cert_)
+                                  .setEcdsaCertOcspStaple(server_ecdsa_cert_ocsp_staple_)
+                                  .setOcspStapleRequired(ocsp_staple_required_)
                                   .setTlsV13(server_tlsv1_3_)
                                   .setExpectClientEcdsaCert(client_ecdsa_cert_));
   HttpIntegrationTest::initialize();
@@ -60,10 +64,8 @@ SslIntegrationTestBase::makeSslClientConnection(const ClientSslTransportOptions&
             " -showcerts -debug -msg -CAfile "
             "{{ test_rundir }}/test/config/integration/certs/cacert.pem "
             "-servername lyft.com -cert "
-            //"{{ test_rundir }}/test/config/integration/certs/client_ecdsacert.pem "
             "{{ test_rundir }}/test/config/integration/certs/clientcert.pem "
             "-key "
-            //"{{ test_rundir }}/test/config/integration/certs/client_ecdsakey.pem ",
             "{{ test_rundir }}/test/config/integration/certs/clientkey.pem ",
         version_);
     ENVOY_LOG_MISC(debug, "Executing {}", s_client_cmd);
@@ -176,7 +178,104 @@ TEST_P(SslIntegrationTest, AdminCertEndpoint) {
   BufferingStreamDecoderPtr response = IntegrationUtil::makeSingleRequest(
       lookupPort("admin"), "GET", "/certs", "", downstreamProtocol(), version_);
   EXPECT_TRUE(response->complete());
-  EXPECT_EQ("200", response->headers().Status()->value().getStringView());
+  EXPECT_EQ("200", response->headers().getStatusValue());
+}
+
+class RawWriteSslIntegrationTest : public SslIntegrationTest {
+protected:
+  std::unique_ptr<Http::TestRequestHeaderMapImpl>
+  testFragmentedRequestWithBufferLimit(std::list<std::string> request_chunks,
+                                       uint32_t buffer_limit) {
+    autonomous_upstream_ = true;
+    config_helper_.setBufferLimits(buffer_limit, buffer_limit);
+    initialize();
+
+    // write_request_cb will write each of the items in request_chunks as a separate SSL_write.
+    auto write_request_cb = [&request_chunks](Network::ClientConnection& client) {
+      if (!request_chunks.empty()) {
+        Buffer::OwnedImpl buffer(request_chunks.front());
+        client.write(buffer, false);
+        request_chunks.pop_front();
+      }
+    };
+
+    auto client_transport_socket_factory_ptr =
+        createClientSslTransportSocketFactory({}, *context_manager_, *api_);
+    std::string response;
+    auto connection = createConnectionDriver(
+        lookupPort("http"), write_request_cb,
+        [&](Network::ClientConnection&, const Buffer::Instance& data) -> void {
+          response.append(data.toString());
+        },
+        client_transport_socket_factory_ptr->createTransportSocket({}));
+
+    // Drive the connection until we get a response.
+    while (response.empty()) {
+      connection->run(Event::Dispatcher::RunType::NonBlock);
+    }
+    EXPECT_THAT(response, testing::HasSubstr("HTTP/1.1 200 OK\r\n"));
+
+    connection->close();
+    return reinterpret_cast<AutonomousUpstream*>(fake_upstreams_.front().get())
+        ->lastRequestHeaders();
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(IpVersions, RawWriteSslIntegrationTest,
+                         testing::ValuesIn(TestEnvironment::getIpVersionsForTest()),
+                         TestUtility::ipTestParamsToString);
+
+// Regression test for https://github.com/envoyproxy/envoy/issues/12304
+TEST_P(RawWriteSslIntegrationTest, HighWatermarkReadResumptionProcessingHeaders) {
+  // The raw writer will perform a separate SSL_write for each of the chunks below. Chunk sizes were
+  // picked such that the connection's high watermark will trigger while processing the last SSL
+  // record containing the request headers. Verify that read resumption works correctly after
+  // hitting the receive buffer high watermark.
+  std::list<std::string> request_chunks = {
+      "GET / HTTP/1.1\r\nHost: host\r\n",
+      "key1:" + std::string(14000, 'a') + "\r\n",
+      "key2:" + std::string(16000, 'b') + "\r\n\r\n",
+  };
+
+  std::unique_ptr<Http::TestRequestHeaderMapImpl> upstream_headers =
+      testFragmentedRequestWithBufferLimit(request_chunks, 15 * 1024);
+  ASSERT_TRUE(upstream_headers != nullptr);
+  EXPECT_EQ(upstream_headers->Host()->value(), "host");
+  EXPECT_EQ(std::string(14000, 'a'),
+            upstream_headers->get(Envoy::Http::LowerCaseString("key1"))[0].value().getStringView());
+  EXPECT_EQ(std::string(16000, 'b'),
+            upstream_headers->get(Envoy::Http::LowerCaseString("key2"))[0].value().getStringView());
+}
+
+// Regression test for https://github.com/envoyproxy/envoy/issues/12304
+TEST_P(RawWriteSslIntegrationTest, HighWatermarkReadResumptionProcesingBody) {
+  // The raw writer will perform a separate SSL_write for each of the chunks below. Chunk sizes were
+  // picked such that the connection's high watermark will trigger while processing the last SSL
+  // record containing the POST body. Verify that read resumption works correctly after hitting the
+  // receive buffer high watermark.
+  std::list<std::string> request_chunks = {
+      "POST / HTTP/1.1\r\nHost: host\r\ncontent-length: 30000\r\n\r\n",
+      std::string(14000, 'a'),
+      std::string(16000, 'a'),
+  };
+
+  std::unique_ptr<Http::TestRequestHeaderMapImpl> upstream_headers =
+      testFragmentedRequestWithBufferLimit(request_chunks, 15 * 1024);
+  ASSERT_TRUE(upstream_headers != nullptr);
+}
+
+// Regression test for https://github.com/envoyproxy/envoy/issues/12304
+TEST_P(RawWriteSslIntegrationTest, HighWatermarkReadResumptionProcesingLargerBody) {
+  std::list<std::string> request_chunks = {
+      "POST / HTTP/1.1\r\nHost: host\r\ncontent-length: 150000\r\n\r\n",
+  };
+  for (int i = 0; i < 10; ++i) {
+    request_chunks.push_back(std::string(15000, 'a'));
+  }
+
+  std::unique_ptr<Http::TestRequestHeaderMapImpl> upstream_headers =
+      testFragmentedRequestWithBufferLimit(request_chunks, 16 * 1024);
+  ASSERT_TRUE(upstream_headers != nullptr);
 }
 
 // Validate certificate selection across different certificate types and client TLS versions.
@@ -288,7 +387,8 @@ TEST_P(SslCertficateIntegrationTest, ServerEcdsaClientRsaOnly) {
   server_rsa_cert_ = false;
   server_ecdsa_cert_ = true;
   initialize();
-  auto codec_client = makeRawHttpConnection(makeSslClientConnection(rsaOnlyClientOptions()));
+  auto codec_client =
+      makeRawHttpConnection(makeSslClientConnection(rsaOnlyClientOptions()), absl::nullopt);
   EXPECT_FALSE(codec_client->connected());
   const std::string counter_name = listenerStatPrefix("ssl.connection_error");
   Stats::CounterSharedPtr counter = test_server_->counter(counter_name);
@@ -315,7 +415,8 @@ TEST_P(SslCertficateIntegrationTest, ServerRsaClientEcdsaOnly) {
   client_ecdsa_cert_ = true;
   initialize();
   EXPECT_FALSE(
-      makeRawHttpConnection(makeSslClientConnection(ecdsaOnlyClientOptions()))->connected());
+      makeRawHttpConnection(makeSslClientConnection(ecdsaOnlyClientOptions()), absl::nullopt)
+          ->connected());
   const std::string counter_name = listenerStatPrefix("ssl.connection_error");
   Stats::CounterSharedPtr counter = test_server_->counter(counter_name);
   test_server_->waitForCounterGe(counter_name, 1);
@@ -346,6 +447,60 @@ TEST_P(SslCertficateIntegrationTest, ServerRsaEcdsaClientEcdsaOnly) {
   testRouterRequestAndResponseWithBody(1024, 512, false, false, &creator);
   checkStats();
 }
+
+// Server has an RSA certificate with an OCSP response works.
+TEST_P(SslCertficateIntegrationTest, ServerRsaOnlyOcspResponse) {
+  server_rsa_cert_ = true;
+  server_rsa_cert_ocsp_staple_ = true;
+  ConnectionCreationFunction creator = [&]() -> Network::ClientConnectionPtr {
+    return makeSslClientConnection(rsaOnlyClientOptions());
+  };
+  testRouterRequestAndResponseWithBody(1024, 512, false, false, &creator);
+  checkStats();
+}
+
+// Server has an ECDSA certificate with an OCSP response works.
+TEST_P(SslCertficateIntegrationTest, ServerEcdsaOnlyOcspResponse) {
+  server_ecdsa_cert_ = true;
+  server_ecdsa_cert_ocsp_staple_ = true;
+  client_ecdsa_cert_ = true;
+  ConnectionCreationFunction creator = [&]() -> Network::ClientConnectionPtr {
+    return makeSslClientConnection(ecdsaOnlyClientOptions());
+  };
+  testRouterRequestAndResponseWithBody(1024, 512, false, false, &creator);
+  checkStats();
+}
+
+// Server has two certificates one with and one without OCSP response works under optional policy.
+TEST_P(SslCertficateIntegrationTest, BothEcdsaAndRsaOnlyRsaOcspResponse) {
+  server_rsa_cert_ = true;
+  server_rsa_cert_ocsp_staple_ = true;
+  server_ecdsa_cert_ = true;
+  client_ecdsa_cert_ = true;
+  ConnectionCreationFunction creator = [&]() -> Network::ClientConnectionPtr {
+    return makeSslClientConnection(ecdsaOnlyClientOptions());
+  };
+  testRouterRequestAndResponseWithBody(1024, 512, false, false, &creator);
+  checkStats();
+}
+
+// Server has ECDSA and RSA certificates with OCSP responses and stapling required policy works.
+TEST_P(SslCertficateIntegrationTest, BothEcdsaAndRsaWithOcspResponseStaplingRequired) {
+  server_rsa_cert_ = true;
+  server_rsa_cert_ocsp_staple_ = true;
+  server_ecdsa_cert_ = true;
+  server_ecdsa_cert_ocsp_staple_ = true;
+  ocsp_staple_required_ = true;
+  client_ecdsa_cert_ = true;
+  ConnectionCreationFunction creator = [&]() -> Network::ClientConnectionPtr {
+    return makeSslClientConnection(ecdsaOnlyClientOptions());
+  };
+  testRouterRequestAndResponseWithBody(1024, 512, false, false, &creator);
+  checkStats();
+}
+
+// TODO(zuercher): write an additional OCSP integration test that validates behavior with an
+// expired OCSP response. (Requires OCSP client-side support in upstream TLS.)
 
 // TODO(mattklein123): Move this into a dedicated integration test for the tap transport socket as
 // well as add more tests.
@@ -396,10 +551,8 @@ public:
   envoy::extensions::transport_sockets::tap::v3::Tap
   createTapConfig(const envoy::config::core::v3::TransportSocket& inner_transport) {
     envoy::extensions::transport_sockets::tap::v3::Tap tap_config;
-    tap_config.mutable_common_config()
-        ->mutable_static_config()
-        ->mutable_match_config()
-        ->set_any_match(true);
+    tap_config.mutable_common_config()->mutable_static_config()->mutable_match()->set_any_match(
+        true);
     auto* output_config =
         tap_config.mutable_common_config()->mutable_static_config()->mutable_output_config();
     if (max_rx_bytes_.has_value()) {
@@ -438,7 +591,7 @@ TEST_P(SslTapIntegrationTest, TwoRequestsWithBinaryProto) {
   // First request (ID will be +1 since the client will also bump).
   const uint64_t first_id = Network::ConnectionImpl::nextGlobalIdForTest() + 1;
   codec_client_ = makeHttpConnection(creator());
-  Http::TestHeaderMapImpl post_request_headers{
+  Http::TestRequestHeaderMapImpl post_request_headers{
       {":method", "POST"},    {":path", "/test/long/url"}, {":scheme", "http"},
       {":authority", "host"}, {"x-lyft-user-id", "123"},   {"x-forwarded-for", "10.0.0.1"}};
   auto response =
@@ -446,7 +599,7 @@ TEST_P(SslTapIntegrationTest, TwoRequestsWithBinaryProto) {
   EXPECT_TRUE(upstream_request_->complete());
   EXPECT_EQ(128, upstream_request_->bodyLength());
   ASSERT_TRUE(response->complete());
-  EXPECT_EQ("200", response->headers().Status()->value().getStringView());
+  EXPECT_EQ("200", response->headers().getStatusValue());
   EXPECT_EQ(256, response->body().size());
   checkStats();
   envoy::config::core::v3::Address expected_local_address;
@@ -476,7 +629,7 @@ TEST_P(SslTapIntegrationTest, TwoRequestsWithBinaryProto) {
   // Verify a second request hits a different file.
   const uint64_t second_id = Network::ConnectionImpl::nextGlobalIdForTest() + 1;
   codec_client_ = makeHttpConnection(creator());
-  Http::TestHeaderMapImpl get_request_headers{
+  Http::TestRequestHeaderMapImpl get_request_headers{
       {":method", "GET"},     {":path", "/test/long/url"}, {":scheme", "http"},
       {":authority", "host"}, {"x-lyft-user-id", "123"},   {"x-forwarded-for", "10.0.0.1"}};
   response =
@@ -484,7 +637,7 @@ TEST_P(SslTapIntegrationTest, TwoRequestsWithBinaryProto) {
   EXPECT_TRUE(upstream_request_->complete());
   EXPECT_EQ(128, upstream_request_->bodyLength());
   ASSERT_TRUE(response->complete());
-  EXPECT_EQ("200", response->headers().Status()->value().getStringView());
+  EXPECT_EQ("200", response->headers().getStatusValue());
   EXPECT_EQ(256, response->body().size());
   checkStats();
   codec_client_->close();

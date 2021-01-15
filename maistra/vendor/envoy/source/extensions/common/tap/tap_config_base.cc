@@ -5,9 +5,11 @@
 #include "envoy/data/tap/v3/wrapper.pb.h"
 
 #include "common/common/assert.h"
+#include "common/common/fmt.h"
+#include "common/config/version_converter.h"
 #include "common/protobuf/utility.h"
 
-#include "extensions/common/tap/tap_matcher.h"
+#include "extensions/common/matcher/matcher.h"
 
 #include "absl/container/fixed_array.h"
 
@@ -15,6 +17,8 @@ namespace Envoy {
 namespace Extensions {
 namespace Common {
 namespace Tap {
+
+using namespace Matcher;
 
 bool Utility::addBufferToProtoBytes(envoy::data::tap::v3::Body& output_body,
                                     uint32_t max_buffered_bytes, const Buffer::Instance& data,
@@ -55,9 +59,9 @@ TapConfigBaseImpl::TapConfigBaseImpl(envoy::config::tap::v3::TapConfig&& proto_c
   sink_format_ = proto_config.output_config().sinks()[0].format();
   switch (proto_config.output_config().sinks()[0].output_sink_type_case()) {
   case envoy::config::tap::v3::OutputSink::OutputSinkTypeCase::kStreamingAdmin:
+    ASSERT(admin_streamer != nullptr, "admin output must be configured via admin");
     // TODO(mattklein123): Graceful failure, error message, and test if someone specifies an
-    // admin stream output without configuring via /tap or the wrong format.
-    RELEASE_ASSERT(admin_streamer != nullptr, "admin output must be configured via admin");
+    // admin stream output with the wrong format.
     RELEASE_ASSERT(sink_format_ == envoy::config::tap::v3::OutputSink::JSON_BODY_AS_BYTES ||
                        sink_format_ == envoy::config::tap::v3::OutputSink::JSON_BODY_AS_STRING,
                    "admin output only supports JSON formats");
@@ -72,7 +76,20 @@ TapConfigBaseImpl::TapConfigBaseImpl(envoy::config::tap::v3::TapConfig&& proto_c
     NOT_REACHED_GCOVR_EXCL_LINE;
   }
 
-  buildMatcher(proto_config.match_config(), matchers_);
+  envoy::config::common::matcher::v3::MatchPredicate match;
+  if (proto_config.has_match()) {
+    // Use the match field whenever it is set.
+    match = proto_config.match();
+  } else if (proto_config.has_match_config()) {
+    // Fallback to use the deprecated match_config field and upgrade (wire cast) it to the new
+    // MatchPredicate which is backward compatible with the old MatchPredicate originally
+    // introduced in the Tap filter.
+    Config::VersionConverter::upgrade(proto_config.match_config(), match);
+  } else {
+    throw EnvoyException(fmt::format("Neither match nor match_config is set in TapConfig: {}",
+                                     proto_config.DebugString()));
+  }
+  buildMatcher(match, matchers_);
 }
 
 const Matcher& TapConfigBaseImpl::rootMatcher() const {

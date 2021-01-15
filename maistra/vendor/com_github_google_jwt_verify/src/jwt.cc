@@ -12,16 +12,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "jwt_verify_lib/jwt.h"
+
 #include <algorithm>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_split.h"
 #include "google/protobuf/util/json_util.h"
-#include "jwt_verify_lib/jwt.h"
 #include "jwt_verify_lib/struct_utils.h"
 
 namespace google {
 namespace jwt_verify {
+
+namespace {
+
+bool isImplemented(absl::string_view alg) {
+  static const absl::flat_hash_set<absl::string_view> implemented_algs = {
+      {"ES256"}, {"ES384"}, {"ES512"}, {"HS256"}, {"HS384"},
+      {"HS512"}, {"RS256"}, {"RS384"}, {"RS512"}, {"PS256"},
+      {"PS384"}, {"PS512"}, {"EdDSA"},
+  };
+
+  return implemented_algs.find(alg) != implemented_algs.end();
+}
+
+}  // namespace
 
 Jwt::Jwt(const Jwt& instance) { *this = instance; }
 
@@ -45,14 +61,14 @@ Status Jwt::parseFromString(const std::string& jwt) {
   // Parse header json
   header_str_base64url_ = std::string(jwt_split[0]);
   if (!absl::WebSafeBase64Unescape(header_str_base64url_, &header_str_)) {
-    return Status::JwtHeaderParseError;
+    return Status::JwtHeaderParseErrorBadBase64;
   }
 
   ::google::protobuf::util::JsonParseOptions options;
   const auto header_status = ::google::protobuf::util::JsonStringToMessage(
       header_str_, &header_pb_, options);
   if (!header_status.ok()) {
-    return Status::JwtHeaderParseError;
+    return Status::JwtHeaderParseErrorBadJson;
   }
 
   StructUtils header_getter(header_pb_);
@@ -61,9 +77,7 @@ Status Jwt::parseFromString(const std::string& jwt) {
     return Status::JwtHeaderBadAlg;
   }
 
-  if (alg_ != "ES256" && alg_ != "ES384" && alg_ != "ES512" &&
-      alg_ != "HS256" && alg_ != "HS384" && alg_ != "HS512" &&
-      alg_ != "RS256" && alg_ != "RS384" && alg_ != "RS512") {
+  if (!isImplemented(alg_)) {
     return Status::JwtHeaderNotImplementedAlg;
   }
 
@@ -75,47 +89,49 @@ Status Jwt::parseFromString(const std::string& jwt) {
   // Parse payload json
   payload_str_base64url_ = std::string(jwt_split[1]);
   if (!absl::WebSafeBase64Unescape(payload_str_base64url_, &payload_str_)) {
-    return Status::JwtPayloadParseError;
+    return Status::JwtPayloadParseErrorBadBase64;
   }
 
   const auto payload_status = ::google::protobuf::util::JsonStringToMessage(
       payload_str_, &payload_pb_, options);
   if (!payload_status.ok()) {
-    return Status::JwtPayloadParseError;
+    return Status::JwtPayloadParseErrorBadJson;
   }
 
   StructUtils payload_getter(payload_pb_);
   if (payload_getter.GetString("iss", &iss_) == StructUtils::WRONG_TYPE) {
-    return Status::JwtPayloadParseError;
+    return Status::JwtPayloadParseErrorIssNotString;
   }
   if (payload_getter.GetString("sub", &sub_) == StructUtils::WRONG_TYPE) {
-    return Status::JwtPayloadParseError;
+    return Status::JwtPayloadParseErrorSubNotString;
   }
+
   if (payload_getter.GetInt64("iat", &iat_) == StructUtils::WRONG_TYPE) {
-    return Status::JwtPayloadParseError;
+    return Status::JwtPayloadParseErrorIatNotInteger;
   }
   if (payload_getter.GetInt64("nbf", &nbf_) == StructUtils::WRONG_TYPE) {
-    return Status::JwtPayloadParseError;
+    return Status::JwtPayloadParseErrorNbfNotInteger;
   }
   if (payload_getter.GetInt64("exp", &exp_) == StructUtils::WRONG_TYPE) {
-    return Status::JwtPayloadParseError;
+    return Status::JwtPayloadParseErrorExpNotInteger;
   }
 
   if (payload_getter.GetString("jti", &jti_) == StructUtils::WRONG_TYPE) {
-    return Status::JwtPayloadParseError;
+    return Status::JwtPayloadParseErrorJtiNotString;
   }
 
   // "aud" can be either string array or string.
-  // Try as string array, read it as empty array if doesn't exist.
+  // GetStringList function will try to read as string, if fails,
+  // try to read as string array.
   if (payload_getter.GetStringList("aud", &audiences_) ==
       StructUtils::WRONG_TYPE) {
-    return Status::JwtPayloadParseError;
+    return Status::JwtPayloadParseErrorAudNotString;
   }
 
   // Set up signature
   if (!absl::WebSafeBase64Unescape(jwt_split[2], &signature_)) {
     // Signature is a bad Base64url input.
-    return Status::JwtSignatureParseError;
+    return Status::JwtSignatureParseErrorBadBase64;
   }
   return Status::Ok;
 }

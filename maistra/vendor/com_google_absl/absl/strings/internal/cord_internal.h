@@ -21,6 +21,8 @@
 #include <cstdint>
 #include <type_traits>
 
+#include "absl/base/internal/invoke.h"
+#include "absl/container/internal/compressed_tuple.h"
 #include "absl/meta/type_traits.h"
 #include "absl/strings/string_view.h"
 
@@ -83,6 +85,17 @@ struct CordRepConcat;
 struct CordRepSubstring;
 struct CordRepExternal;
 
+// Various representations that we allow
+enum CordRepKind {
+  CONCAT        = 0,
+  EXTERNAL      = 1,
+  SUBSTRING     = 2,
+
+  // We have different tags for different sized flat arrays,
+  // starting with FLAT
+  FLAT          = 3,
+};
+
 struct CordRep {
   // The following three fields have to be less than 32 bytes since
   // that is the smallest supported flat node size.
@@ -114,35 +127,84 @@ struct CordRepSubstring : public CordRep {
   CordRep* child;
 };
 
-// TODO(strel): replace the following logic (and related functions in cord.cc)
-// with container_internal::Layout.
-
-// Alignment requirement for CordRepExternal so that the type erased releaser
-// will be stored at a suitably aligned address.
-constexpr size_t ExternalRepAlignment() {
-#if defined(__STDCPP_DEFAULT_NEW_ALIGNMENT__)
-  return __STDCPP_DEFAULT_NEW_ALIGNMENT__;
-#else
-  return alignof(max_align_t);
-#endif
-}
-
-// Type for function pointer that will invoke and destroy the type-erased
-// releaser function object. Accepts a pointer to the releaser and the
-// `string_view` that were passed in to `NewExternalRep` below. The return value
-// is the size of the `Releaser` type.
-using ExternalReleaserInvoker = size_t (*)(void*, absl::string_view);
+// Type for function pointer that will invoke the releaser function and also
+// delete the `CordRepExternalImpl` corresponding to the passed in
+// `CordRepExternal`.
+using ExternalReleaserInvoker = void (*)(CordRepExternal*);
 
 // External CordReps are allocated together with a type erased releaser. The
 // releaser is stored in the memory directly following the CordRepExternal.
-struct alignas(ExternalRepAlignment()) CordRepExternal : public CordRep {
+struct CordRepExternal : public CordRep {
   const char* base;
   // Pointer to function that knows how to call and destroy the releaser.
   ExternalReleaserInvoker releaser_invoker;
 };
 
-// TODO(strel): look into removing, it doesn't seem like anything relies on this
-static_assert(sizeof(CordRepConcat) == sizeof(CordRepSubstring), "");
+struct Rank1 {};
+struct Rank0 : Rank1 {};
+
+template <typename Releaser, typename = ::absl::base_internal::invoke_result_t<
+                                 Releaser, absl::string_view>>
+void InvokeReleaser(Rank0, Releaser&& releaser, absl::string_view data) {
+  ::absl::base_internal::invoke(std::forward<Releaser>(releaser), data);
+}
+
+template <typename Releaser,
+          typename = ::absl::base_internal::invoke_result_t<Releaser>>
+void InvokeReleaser(Rank1, Releaser&& releaser, absl::string_view) {
+  ::absl::base_internal::invoke(std::forward<Releaser>(releaser));
+}
+
+// We use CompressedTuple so that we can benefit from EBCO.
+template <typename Releaser>
+struct CordRepExternalImpl
+    : public CordRepExternal,
+      public ::absl::container_internal::CompressedTuple<Releaser> {
+  // The extra int arg is so that we can avoid interfering with copy/move
+  // constructors while still benefitting from perfect forwarding.
+  template <typename T>
+  CordRepExternalImpl(T&& releaser, int)
+      : CordRepExternalImpl::CompressedTuple(std::forward<T>(releaser)) {
+    this->releaser_invoker = &Release;
+  }
+
+  ~CordRepExternalImpl() {
+    InvokeReleaser(Rank0{}, std::move(this->template get<0>()),
+                   absl::string_view(base, length));
+  }
+
+  static void Release(CordRepExternal* rep) {
+    delete static_cast<CordRepExternalImpl*>(rep);
+  }
+};
+
+enum {
+  kMaxInline = 15,
+  // Tag byte & kMaxInline means we are storing a pointer.
+  kTreeFlag = 1 << 4,
+  // Tag byte & kProfiledFlag means we are profiling the Cord.
+  kProfiledFlag = 1 << 5
+};
+
+// If the data has length <= kMaxInline, we store it in `as_chars`, and
+// store the size in `tagged_size`.
+// Else we store it in a tree and store a pointer to that tree in
+// `as_tree.rep` and store a tag in `tagged_size`.
+struct AsTree {
+  absl::cord_internal::CordRep* rep;
+  char padding[kMaxInline + 1 - sizeof(absl::cord_internal::CordRep*) - 1];
+  char tagged_size;
+};
+union InlineData {
+  constexpr InlineData() : as_chars{} {}
+  explicit constexpr InlineData(AsTree tree) : as_tree(tree) {}
+
+  AsTree as_tree;
+  char as_chars[kMaxInline + 1];
+};
+static_assert(sizeof(InlineData) == kMaxInline + 1, "");
+static_assert(sizeof(AsTree) == sizeof(InlineData), "");
+static_assert(offsetof(AsTree, tagged_size) == kMaxInline, "");
 
 }  // namespace cord_internal
 ABSL_NAMESPACE_END

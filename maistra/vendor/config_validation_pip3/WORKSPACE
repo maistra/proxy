@@ -1,0 +1,2 @@
+# DO NOT EDIT: automatically generated WORKSPACE file for pip_import rule
+workspace(name = "config_validation_pip3")

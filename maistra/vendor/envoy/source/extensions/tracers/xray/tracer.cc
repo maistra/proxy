@@ -9,9 +9,7 @@
 
 #include "common/common/assert.h"
 #include "common/common/fmt.h"
-#include "common/common/hex.h"
-#include "common/protobuf/message_validator_impl.h"
-#include "common/runtime/runtime_impl.h"
+#include "common/protobuf/utility.h"
 
 #include "source/extensions/tracers/xray/daemon.pb.validate.h"
 
@@ -35,10 +33,9 @@ constexpr auto XRaySerializationVersion = "1";
 //
 // For more details see:
 // https://docs.aws.amazon.com/xray/latest/devguide/xray-api-segmentdocuments.html#api-segmentdocuments-fields
-std::string generateTraceId(SystemTime point_in_time) {
+std::string generateTraceId(SystemTime point_in_time, Random::RandomGenerator& random) {
   using std::chrono::seconds;
   using std::chrono::time_point_cast;
-  Runtime::RandomGeneratorImpl rng;
   const auto epoch = time_point_cast<seconds>(point_in_time).time_since_epoch().count();
   std::string out;
   out.reserve(35);
@@ -47,7 +44,7 @@ std::string generateTraceId(SystemTime point_in_time) {
   // epoch in seconds represented as 8 hexadecimal characters
   out += Hex::uint32ToHex(epoch);
   out.push_back('-');
-  std::string uuid = rng.uuid();
+  std::string uuid = random.uuid();
   // unique id represented as 24 hexadecimal digits and no dashes
   uuid.erase(std::remove(uuid.begin(), uuid.end(), '-'), uuid.end());
   ASSERT(uuid.length() >= 24);
@@ -56,8 +53,6 @@ std::string generateTraceId(SystemTime point_in_time) {
 }
 
 } // namespace
-
-void Span::setId(uint64_t id) { id_ = Hex::uint64ToHex(id); }
 
 void Span::finishSpan() {
   using std::chrono::time_point_cast;
@@ -70,23 +65,31 @@ void Span::finishSpan() {
 
   daemon::Segment s;
   s.set_name(name());
-  s.set_id(Id());
+  s.set_id(id());
   s.set_trace_id(traceId());
   s.set_start_time(time_point_cast<SecondsWithFraction>(startTime()).time_since_epoch().count());
   s.set_end_time(
       time_point_cast<SecondsWithFraction>(time_source_.systemTime()).time_since_epoch().count());
+  s.set_origin(origin());
   s.set_parent_id(parentId());
-  using KeyValue = Protobuf::Map<std::string, std::string>::value_type;
+
+  auto* aws = s.mutable_aws()->mutable_fields();
+  for (const auto& field : aws_metadata_) {
+    aws->insert({field.first, field.second});
+  }
+
+  auto* request_fields = s.mutable_http()->mutable_request()->mutable_fields();
+  for (const auto& field : http_request_annotations_) {
+    request_fields->insert({field.first, field.second});
+  }
+
+  auto* response_fields = s.mutable_http()->mutable_response()->mutable_fields();
+  for (const auto& field : http_response_annotations_) {
+    response_fields->insert({field.first, field.second});
+  }
+
   for (const auto& item : custom_annotations_) {
-    s.mutable_annotations()->insert(KeyValue{item.first, item.second});
-  }
-
-  for (const auto& item : http_request_annotations_) {
-    s.mutable_http()->mutable_request()->insert(KeyValue{item.first, item.second});
-  }
-
-  for (const auto& item : http_response_annotations_) {
-    s.mutable_http()->mutable_response()->insert(KeyValue{item.first, item.second});
+    s.mutable_annotations()->insert({item.first, item.second});
   }
 
   const std::string json = MessageUtil::getJsonStringFromMessage(
@@ -97,19 +100,17 @@ void Span::finishSpan() {
 
 void Span::injectContext(Http::RequestHeaderMap& request_headers) {
   const std::string xray_header_value =
-      fmt::format("Root={};Parent={};Sampled={}", traceId(), Id(), sampled() ? "1" : "0");
+      fmt::format("Root={};Parent={};Sampled={}", traceId(), id(), sampled() ? "1" : "0");
   request_headers.setCopy(Http::LowerCaseString(XRayTraceHeader), xray_header_value);
 }
 
 Tracing::SpanPtr Span::spawnChild(const Tracing::Config&, const std::string& operation_name,
                                   Envoy::SystemTime start_time) {
-  auto child_span = std::make_unique<XRay::Span>(time_source_, broker_);
-  const auto ticks = time_source_.monotonicTime().time_since_epoch().count();
-  child_span->setId(ticks);
+  auto child_span = std::make_unique<XRay::Span>(time_source_, random_, broker_);
   child_span->setName(name());
   child_span->setOperation(operation_name);
   child_span->setStartTime(start_time);
-  child_span->setParentId(Id());
+  child_span->setParentId(id());
   child_span->setTraceId(traceId());
   child_span->setSampled(sampled());
   return child_span;
@@ -118,14 +119,14 @@ Tracing::SpanPtr Span::spawnChild(const Tracing::Config&, const std::string& ope
 Tracing::SpanPtr Tracer::startSpan(const std::string& operation_name, Envoy::SystemTime start_time,
                                    const absl::optional<XRayHeader>& xray_header) {
 
-  const auto ticks = time_source_.monotonicTime().time_since_epoch().count();
-  auto span_ptr = std::make_unique<XRay::Span>(time_source_, *daemon_broker_);
-  span_ptr->setId(ticks);
+  auto span_ptr = std::make_unique<XRay::Span>(time_source_, random_, *daemon_broker_);
   span_ptr->setName(segment_name_);
   span_ptr->setOperation(operation_name);
   // Even though we have a TimeSource member in the tracer, we assume the start_time argument has a
   // more precise value than calling the systemTime() at this point in time.
   span_ptr->setStartTime(start_time);
+  span_ptr->setOrigin(origin_);
+  span_ptr->setAwsMetadata(aws_metadata_);
 
   if (xray_header) { // there's a previous span that this span should be based-on
     span_ptr->setParentId(xray_header->parent_id_);
@@ -141,17 +142,17 @@ Tracing::SpanPtr Tracer::startSpan(const std::string& operation_name, Envoy::Sys
       break;
     }
   } else {
-    span_ptr->setTraceId(generateTraceId(time_source_.systemTime()));
+    span_ptr->setTraceId(generateTraceId(time_source_.systemTime(), random_));
   }
   return span_ptr;
 }
 
 XRay::SpanPtr Tracer::createNonSampledSpan() const {
-  auto span_ptr = std::make_unique<XRay::Span>(time_source_, *daemon_broker_);
-  const auto ticks = time_source_.monotonicTime().time_since_epoch().count();
-  span_ptr->setId(ticks);
+  auto span_ptr = std::make_unique<XRay::Span>(time_source_, random_, *daemon_broker_);
   span_ptr->setName(segment_name_);
-  span_ptr->setTraceId(generateTraceId(time_source_.systemTime()));
+  span_ptr->setOrigin(origin_);
+  span_ptr->setTraceId(generateTraceId(time_source_.systemTime(), random_));
+  span_ptr->setAwsMetadata(aws_metadata_);
   span_ptr->setSampled(false);
   return span_ptr;
 }
@@ -179,20 +180,30 @@ void Span::setTag(absl::string_view name, absl::string_view value) {
   }
 
   if (name == HttpUrl) {
-    http_request_annotations_.emplace(SpanUrl, value);
+    http_request_annotations_.emplace(SpanUrl, ValueUtil::stringValue(std::string(value)));
   } else if (name == HttpMethod) {
-    http_request_annotations_.emplace(SpanMethod, value);
+    http_request_annotations_.emplace(SpanMethod, ValueUtil::stringValue(std::string(value)));
   } else if (name == HttpUserAgent) {
-    http_request_annotations_.emplace(SpanUserAgent, value);
+    http_request_annotations_.emplace(SpanUserAgent, ValueUtil::stringValue(std::string(value)));
   } else if (name == HttpStatusCode) {
-    http_response_annotations_.emplace(SpanStatus, value);
+    uint64_t status_code;
+    if (!absl::SimpleAtoi(value, &status_code)) {
+      ENVOY_LOG(debug, "{} must be a number, given: {}", HttpStatusCode, value);
+      return;
+    }
+    http_response_annotations_.emplace(SpanStatus, ValueUtil::numberValue(status_code));
   } else if (name == HttpResponseSize) {
-    http_response_annotations_.emplace(SpanContentLength, value);
+    uint64_t response_size;
+    if (!absl::SimpleAtoi(value, &response_size)) {
+      ENVOY_LOG(debug, "{} must be a number, given: {}", HttpResponseSize, value);
+      return;
+    }
+    http_response_annotations_.emplace(SpanContentLength, ValueUtil::numberValue(response_size));
   } else if (name == PeerAddress) {
-    http_request_annotations_.emplace(SpanClientIp, value);
+    http_request_annotations_.emplace(SpanClientIp, ValueUtil::stringValue(std::string(value)));
     // In this case, PeerAddress refers to the client's actual IP address, not
-    // the address specified in the the HTTP X-Forwarded-For header.
-    http_request_annotations_.emplace(SpanXForwardedFor, "false");
+    // the address specified in the HTTP X-Forwarded-For header.
+    http_request_annotations_.emplace(SpanXForwardedFor, ValueUtil::boolValue(false));
   } else {
     custom_annotations_.emplace(name, value);
   }

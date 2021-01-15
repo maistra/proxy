@@ -1,0 +1,33 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_test")
+
+go_test(
+    name = "go_default_test",
+    srcs = [
+        "gen_test.go",
+        "registry_test.go",
+    ],
+    deps = [
+        "//cmd/protoc-gen-go/testdata/annotations:go_default_library",
+        "//cmd/protoc-gen-go/testdata/comments:go_default_library",
+        "//cmd/protoc-gen-go/testdata/extensions/base:go_default_library",
+        "//cmd/protoc-gen-go/testdata/extensions/ext:go_default_library",
+        "//cmd/protoc-gen-go/testdata/extensions/extra:go_default_library",
+        "//cmd/protoc-gen-go/testdata/extensions/proto3:go_default_library",
+        "//cmd/protoc-gen-go/testdata/fieldnames:go_default_library",
+        "//cmd/protoc-gen-go/testdata/import_public:go_default_library",
+        "//cmd/protoc-gen-go/testdata/import_public/sub:go_default_library",
+        "//cmd/protoc-gen-go/testdata/import_public/sub2:go_default_library",
+        "//cmd/protoc-gen-go/testdata/imports:go_default_library",
+        "//cmd/protoc-gen-go/testdata/imports/fmt:go_default_library",
+        "//cmd/protoc-gen-go/testdata/imports/test_a_1:go_default_library",
+        "//cmd/protoc-gen-go/testdata/imports/test_a_2:go_default_library",
+        "//cmd/protoc-gen-go/testdata/imports/test_b_1:go_default_library",
+        "//cmd/protoc-gen-go/testdata/issue780_oneof_conflict:go_default_library",
+        "//cmd/protoc-gen-go/testdata/nopackage:go_default_library",
+        "//cmd/protoc-gen-go/testdata/proto2:go_default_library",
+        "//cmd/protoc-gen-go/testdata/proto3:go_default_library",
+        "//internal/filedesc:go_default_library",
+        "//reflect/protoreflect:go_default_library",
+        "//reflect/protoregistry:go_default_library",
+    ],
+)

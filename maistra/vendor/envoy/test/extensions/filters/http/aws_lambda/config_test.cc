@@ -4,7 +4,8 @@
 #include "extensions/filters/http/aws_lambda/aws_lambda_filter.h"
 #include "extensions/filters/http/aws_lambda/config.h"
 
-#include "test/mocks/server/mocks.h"
+#include "test/mocks/server/factory_context.h"
+#include "test/mocks/server/instance.h"
 #include "test/test_common/utility.h"
 
 #include "gmock/gmock.h"
@@ -96,6 +97,39 @@ TEST(AwsLambdaFilterConfigTest, ValidPerRouteConfigCreatesFilter) {
       std::static_pointer_cast<const FilterSettings>(route_specific_config_ptr);
   EXPECT_TRUE(filter_settings_ptr->payloadPassthrough());
   EXPECT_EQ(InvocationMode::Synchronous, filter_settings_ptr->invocationMode());
+}
+
+TEST(AwsLambdaFilterConfigTest, InvalidARNThrows) {
+  const std::string yaml = R"EOF(
+arn: "arn:aws:lambda:region:424242:fun"
+  )EOF";
+
+  LambdaConfig proto_config;
+  TestUtility::loadFromYamlAndValidate(yaml, proto_config);
+
+  testing::NiceMock<Server::Configuration::MockFactoryContext> context;
+  AwsLambdaFilterFactory factory;
+
+  EXPECT_THROW(factory.createFilterFactoryFromProto(proto_config, "stats", context),
+               EnvoyException);
+}
+
+TEST(AwsLambdaFilterConfigTest, PerRouteConfigWithInvalidARNThrows) {
+  const std::string yaml = R"EOF(
+  invoke_config:
+    arn: "arn:aws:lambda:region:424242:fun"
+    payload_passthrough: true
+  )EOF";
+
+  LambdaPerRouteConfig proto_config;
+  TestUtility::loadFromYamlAndValidate(yaml, proto_config);
+
+  testing::NiceMock<Server::Configuration::MockServerFactoryContext> context;
+  AwsLambdaFilterFactory factory;
+
+  EXPECT_THROW(factory.createRouteSpecificFilterConfig(
+                   proto_config, context, ProtobufMessage::getStrictValidationVisitor()),
+               EnvoyException);
 }
 
 TEST(AwsLambdaFilterConfigTest, AsynchrnousPerRouteConfig) {

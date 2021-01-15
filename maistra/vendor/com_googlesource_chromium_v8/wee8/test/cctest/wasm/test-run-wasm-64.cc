@@ -907,7 +907,7 @@ WASM_EXEC_TEST(CallI64Return) {
   CHECK_EQ(0xBCD12340000000B, r.Call());
 }
 
-void TestI64Binop(ExecutionTier execution_tier, WasmOpcode opcode,
+void TestI64Binop(TestExecutionTier execution_tier, WasmOpcode opcode,
                   int64_t expected, int64_t a, int64_t b) {
   {
     WasmRunner<int64_t> r(execution_tier);
@@ -923,7 +923,7 @@ void TestI64Binop(ExecutionTier execution_tier, WasmOpcode opcode,
   }
 }
 
-void TestI64Cmp(ExecutionTier execution_tier, WasmOpcode opcode,
+void TestI64Cmp(TestExecutionTier execution_tier, WasmOpcode opcode,
                 int64_t expected, int64_t a, int64_t b) {
   {
     WasmRunner<int32_t> r(execution_tier);
@@ -1419,7 +1419,7 @@ WASM_EXEC_TEST(StoreMem_offset_oob_i64) {
                                    WASM_LOAD_MEM(machineTypes[m], WASM_ZERO)),
           WASM_ZERO);
 
-    byte memsize = ValueTypes::MemSize(machineTypes[m]);
+    byte memsize = machineTypes[m].MemSize();
     uint32_t boundary = num_bytes - 8 - memsize;
     CHECK_EQ(0, r.Call(boundary));  // in bounds.
     CHECK_EQ(0, memcmp(&memory[0], &memory[8 + boundary], memsize));
@@ -1482,7 +1482,7 @@ WASM_EXEC_TEST(UnalignedInt64Store) {
     for (size_t i = 0; i < sizeof(__buf); i++) vec.push_back(__buf[i]); \
   } while (false)
 
-static void CompileCallIndirectMany(ExecutionTier tier, ValueType param) {
+static void CompileCallIndirectMany(TestExecutionTier tier, ValueType param) {
   // Make sure we don't run out of registers when compiling indirect calls
   // with many many parameters.
   TestSignatures sigs;
@@ -1511,7 +1511,7 @@ WASM_EXEC_TEST(Compile_Wasm_CallIndirect_Many_i64) {
   CompileCallIndirectMany(execution_tier, kWasmI64);
 }
 
-static void Run_WasmMixedCall_N(ExecutionTier execution_tier, int start) {
+static void Run_WasmMixedCall_N(TestExecutionTier execution_tier, int start) {
   const int kExpected = 6333;
   const int kElemSize = 8;
   TestSignatures sigs;
@@ -1536,9 +1536,9 @@ static void Run_WasmMixedCall_N(ExecutionTier execution_tier, int start) {
     // Build the selector function.
     // =========================================================================
     FunctionSig::Builder b(&zone, 1, num_params);
-    b.AddReturn(ValueTypes::ValueTypeFor(result));
+    b.AddReturn(ValueType::For(result));
     for (int i = 0; i < num_params; i++) {
-      b.AddParam(ValueTypes::ValueTypeFor(memtypes[i]));
+      b.AddParam(ValueType::For(memtypes[i]));
     }
     WasmFunctionCompiler& t = r.NewFunction(b.Build());
     BUILD(t, WASM_GET_LOCAL(which));
@@ -1558,7 +1558,7 @@ static void Run_WasmMixedCall_N(ExecutionTier execution_tier, int start) {
     ADD_CODE(code, WASM_CALL_FUNCTION0(t.function_index()));
 
     // Store the result in a local.
-    byte local_index = r.AllocateLocal(ValueTypes::ValueTypeFor(result));
+    byte local_index = r.AllocateLocal(ValueType::For(result));
     ADD_CODE(code, kExprLocalSet, local_index);
 
     // Store the result in memory.
@@ -1575,7 +1575,7 @@ static void Run_WasmMixedCall_N(ExecutionTier execution_tier, int start) {
       r.builder().RandomizeMemory();
       CHECK_EQ(kExpected, r.Call());
 
-      int size = ValueTypes::MemSize(result);
+      int size = result.MemSize();
       for (int i = 0; i < size; i++) {
         int base = (which + 1) * kElemSize;
         byte expected = r.builder().raw_mem_at<byte>(base + i);

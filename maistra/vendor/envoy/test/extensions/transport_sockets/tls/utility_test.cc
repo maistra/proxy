@@ -15,7 +15,6 @@
 #include "gtest/gtest.h"
 #include "openssl/x509v3.h"
 
-
 namespace Envoy {
 namespace Extensions {
 namespace TransportSockets {
@@ -25,7 +24,7 @@ namespace {
 TEST(UtilityTest, TestGetSubjectAlternateNamesWithDNS) {
   bssl::UniquePtr<X509> cert = readCertFromFile(TestEnvironment::substitute(
       "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/san_dns_cert.pem"));
-  const std::vector<std::string> &subject_alt_names = Utility::getSubjectAltNames(*cert, GEN_DNS);
+  const auto& subject_alt_names = Utility::getSubjectAltNames(*cert, GEN_DNS);
   EXPECT_EQ(1, subject_alt_names.size());
 }
 
@@ -33,22 +32,21 @@ TEST(UtilityTest, TestMultipleGetSubjectAlternateNamesWithDNS) {
   bssl::UniquePtr<X509> cert = readCertFromFile(TestEnvironment::substitute(
       "{{ test_rundir "
       "}}/test/extensions/transport_sockets/tls/test_data/san_multiple_dns_cert.pem"));
-  const std::vector<std::string> &subject_alt_names = Utility::getSubjectAltNames(*cert, GEN_DNS);
+  const auto& subject_alt_names = Utility::getSubjectAltNames(*cert, GEN_DNS);
   EXPECT_EQ(2, subject_alt_names.size());
 }
 
 TEST(UtilityTest, TestGetSubjectAlternateNamesWithUri) {
   bssl::UniquePtr<X509> cert = readCertFromFile(TestEnvironment::substitute(
       "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/san_uri_cert.pem"));
-  const std::vector<std::string> &subject_alt_names = Utility::getSubjectAltNames(*cert, GEN_URI);
+  const auto& subject_alt_names = Utility::getSubjectAltNames(*cert, GEN_URI);
   EXPECT_EQ(1, subject_alt_names.size());
 }
 
 TEST(UtilityTest, TestGetSubjectAlternateNamesWithNoSAN) {
   bssl::UniquePtr<X509> cert = readCertFromFile(TestEnvironment::substitute(
       "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/no_san_cert.pem"));
-  const std::vector<std::string> &uri_subject_alt_names =
-      Utility::getSubjectAltNames(*cert, GEN_URI);
+  const auto& uri_subject_alt_names = Utility::getSubjectAltNames(*cert, GEN_URI);
   EXPECT_EQ(0, uri_subject_alt_names.size());
 }
 
@@ -128,6 +126,17 @@ TEST(UtilityTest, GetLastCryptoError) {
 
   // We consumed the last error, so back to not having an error to get.
   EXPECT_FALSE(Utility::getLastCryptoError().has_value());
+}
+
+TEST(UtilityTest, TestGetCertificationExtensionValue) {
+  bssl::UniquePtr<X509> cert = readCertFromFile(TestEnvironment::substitute(
+      "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/extensions_cert.pem"));
+  EXPECT_EQ("\xc\x9Something", Utility::getCertificateExtensionValue(*cert, "1.2.3.4.5.6.7.8"));
+  EXPECT_EQ("\x30\x3\x1\x1\xFF", Utility::getCertificateExtensionValue(*cert, "1.2.3.4.5.6.7.9"));
+  EXPECT_EQ("", Utility::getCertificateExtensionValue(*cert, "1.2.3.4.5.6.7.10"));
+  EXPECT_EQ("", Utility::getCertificateExtensionValue(*cert, "1.2.3.4"));
+  EXPECT_EQ("", Utility::getCertificateExtensionValue(*cert, ""));
+  EXPECT_EQ("", Utility::getCertificateExtensionValue(*cert, "foo"));
 }
 
 } // namespace

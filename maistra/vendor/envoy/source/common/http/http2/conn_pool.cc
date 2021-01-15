@@ -6,25 +6,26 @@
 #include "envoy/upstream/upstream.h"
 
 #include "common/http/http2/codec_impl.h"
-#include "common/http/http2/conn_pool_legacy.h"
+#include "common/runtime/runtime_features.h"
 
 namespace Envoy {
 namespace Http {
 namespace Http2 {
 
-ConnPoolImpl::ConnPoolImpl(Event::Dispatcher& dispatcher, Upstream::HostConstSharedPtr host,
-                           Upstream::ResourcePriority priority,
+ConnPoolImpl::ConnPoolImpl(Event::Dispatcher& dispatcher, Random::RandomGenerator& random_generator,
+                           Upstream::HostConstSharedPtr host, Upstream::ResourcePriority priority,
                            const Network::ConnectionSocket::OptionsSharedPtr& options,
                            const Network::TransportSocketOptionsSharedPtr& transport_socket_options)
-    : ConnPoolImplBase(std::move(host), std::move(priority), dispatcher, options,
-                       transport_socket_options) {}
+    : HttpConnPoolImplBase(std::move(host), std::move(priority), dispatcher, options,
+                           transport_socket_options, Protocol::Http2),
+      random_generator_(random_generator) {}
 
 ConnPoolImpl::~ConnPoolImpl() { destructAllConnections(); }
 
-ConnPoolImplBase::ActiveClientPtr ConnPoolImpl::instantiateActiveClient() {
+Envoy::ConnectionPool::ActiveClientPtr ConnPoolImpl::instantiateActiveClient() {
   return std::make_unique<ActiveClient>(*this);
 }
-void ConnPoolImpl::onGoAway(ActiveClient& client) {
+void ConnPoolImpl::onGoAway(ActiveClient& client, Http::GoAwayErrorCode) {
   ENVOY_CONN_LOG(debug, "remote goaway", *client.codec_client_);
   host_->cluster().stats().upstream_cx_close_notify_.inc();
   if (client.state_ != ActiveClient::State::DRAINING) {
@@ -37,7 +38,7 @@ void ConnPoolImpl::onGoAway(ActiveClient& client) {
 }
 
 void ConnPoolImpl::onStreamDestroy(ActiveClient& client) {
-  onRequestClosed(client, false);
+  onStreamClosed(client, false);
 
   // If we are destroying this stream because of a disconnect, do not check for drain here. We will
   // wait until the connection has been fully drained of streams and then check in the connection
@@ -59,14 +60,14 @@ void ConnPoolImpl::onStreamReset(ActiveClient& client, Http::StreamResetReason r
   }
 }
 
-uint64_t ConnPoolImpl::maxRequestsPerConnection() {
+uint64_t ConnPoolImpl::maxStreamsPerConnection() {
   uint64_t max_streams_config = host_->cluster().maxRequestsPerConnection();
   return (max_streams_config != 0) ? max_streams_config : DEFAULT_MAX_STREAMS;
 }
 
 ConnPoolImpl::ActiveClient::ActiveClient(ConnPoolImpl& parent)
-    : ConnPoolImplBase::ActiveClient(
-          parent, parent.maxRequestsPerConnection(),
+    : Envoy::Http::ActiveClient(
+          parent, parent.maxStreamsPerConnection(),
           parent.host_->cluster().http2Options().max_concurrent_streams().value()) {
   codec_client_->setCodecClientCallbacks(*this);
   codec_client_->setCodecConnectionCallbacks(*this);
@@ -74,11 +75,7 @@ ConnPoolImpl::ActiveClient::ActiveClient(ConnPoolImpl& parent)
   parent.host_->cluster().stats().upstream_cx_http2_total_.inc();
 }
 
-bool ConnPoolImpl::ActiveClient::hasActiveRequests() const {
-  return codec_client_->numActiveRequests() > 0;
-}
-
-bool ConnPoolImpl::ActiveClient::closingWithIncompleteRequest() const {
+bool ConnPoolImpl::ActiveClient::closingWithIncompleteStream() const {
   return closed_with_active_rq_;
 }
 
@@ -88,23 +85,17 @@ RequestEncoder& ConnPoolImpl::ActiveClient::newStreamEncoder(ResponseDecoder& re
 
 CodecClientPtr ProdConnPoolImpl::createCodecClient(Upstream::Host::CreateConnectionData& data) {
   CodecClientPtr codec{new CodecClientProd(CodecClient::Type::HTTP2, std::move(data.connection_),
-                                           data.host_description_, dispatcher_)};
+                                           data.host_description_, dispatcher_, random_generator_)};
   return codec;
 }
 
 ConnectionPool::InstancePtr
-allocateConnPool(Event::Dispatcher& dispatcher, Upstream::HostConstSharedPtr host,
-                 Upstream::ResourcePriority priority,
+allocateConnPool(Event::Dispatcher& dispatcher, Random::RandomGenerator& random_generator,
+                 Upstream::HostConstSharedPtr host, Upstream::ResourcePriority priority,
                  const Network::ConnectionSocket::OptionsSharedPtr& options,
                  const Network::TransportSocketOptionsSharedPtr& transport_socket_options) {
-  if (Runtime::runtimeFeatureEnabled(
-          "envoy.reloadable_features.new_http2_connection_pool_behavior")) {
-    return std::make_unique<Http::Http2::ProdConnPoolImpl>(dispatcher, host, priority, options,
-                                                           transport_socket_options);
-  } else {
-    return std::make_unique<Http::Legacy::Http2::ProdConnPoolImpl>(
-        dispatcher, host, priority, options, transport_socket_options);
-  }
+  return std::make_unique<Http::Http2::ProdConnPoolImpl>(
+      dispatcher, random_generator, host, priority, options, transport_socket_options);
 }
 
 } // namespace Http2

@@ -22,6 +22,7 @@ package main
 import (
 	"bytes"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
@@ -39,7 +40,7 @@ import (
 // are run without sandboxing, since temp directories may be inside the
 // exec root.
 func skipIfWorkspaceVisible(t *testing.T, dir string) {
-	if parent, err := wspace.Find(dir); err == nil {
+	if parent, err := wspace.FindRepoRoot(dir); err == nil {
 		t.Skipf("WORKSPACE visible in parent %q of tmp %q", parent, dir)
 	}
 }
@@ -601,6 +602,7 @@ go_proto_library(
 		}, {
 			args: []string{"fix", "-go_prefix", "example.com/repo"},
 			want: `
+load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 load("@io_bazel_rules_go//proto:def.bzl", "go_proto_library")
 
@@ -648,6 +650,7 @@ func TestRemoveProtoDeletesRules(t *testing.T) {
 		{
 			Path: config.DefaultValidBuildFileNames[0],
 			Content: `
+load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 load("@io_bazel_rules_go//proto:def.bzl", "go_proto_library")
 
@@ -712,6 +715,7 @@ func TestAddServiceConvertsToGrpc(t *testing.T) {
 		{
 			Path: config.DefaultValidBuildFileNames[0],
 			Content: `
+load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 load("@io_bazel_rules_go//proto:def.bzl", "go_proto_library")
 
@@ -741,7 +745,7 @@ go_library(
 
 option go_package = "example.com/repo";
 
-service {}
+service TestService {}
 `,
 		},
 	}
@@ -757,6 +761,7 @@ service {}
 	testtools.CheckFiles(t, dir, []testtools.FileSpec{{
 		Path: config.DefaultValidBuildFileNames[0],
 		Content: `
+load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 load("@io_bazel_rules_go//proto:def.bzl", "go_proto_library")
 
@@ -790,6 +795,7 @@ func TestProtoImportPrefix(t *testing.T) {
 		{
 			Path: config.DefaultValidBuildFileNames[0],
 			Content: `
+load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 load("@io_bazel_rules_go//proto:def.bzl", "go_proto_library")
 
@@ -831,6 +837,7 @@ go_library(
 	testtools.CheckFiles(t, dir, []testtools.FileSpec{{
 		Path: config.DefaultValidBuildFileNames[0],
 		Content: `
+load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 load("@io_bazel_rules_go//proto:def.bzl", "go_proto_library")
 
@@ -1032,6 +1039,7 @@ func TestDeleteProtoWithDeps(t *testing.T) {
 		{
 			Path: "foo/BUILD.bazel",
 			Content: `
+load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@io_bazel_rules_go//proto:def.bzl", "go_proto_library")
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
@@ -1803,6 +1811,14 @@ func TestImportReposFromDepToEmptyMacro(t *testing.T) {
 
 	testtools.CheckFiles(t, dir, []testtools.FileSpec{
 		{
+			Path: "WORKSPACE",
+			Content: `
+load("//:repositories.bzl", "go_repositories")
+
+# gazelle:repository_macro repositories.bzl%go_repositories
+go_repositories()
+`,
+		}, {
 			Path: "repositories.bzl",
 			Content: `
 load("@bazel_gazelle//:deps.bzl", "go_repository")
@@ -2397,6 +2413,7 @@ func TestGoGrpcProtoFlag(t *testing.T) {
 		}, {
 			Path: "BUILD.bazel",
 			Content: `
+load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@io_bazel_rules_go//proto:def.bzl", "go_proto_library")
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
@@ -2432,6 +2449,7 @@ message Bar {};
 		}, {
 			Path: "service/BUILD.bazel",
 			Content: `
+load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@io_bazel_rules_go//proto:def.bzl", "go_proto_library")
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
@@ -2463,7 +2481,7 @@ syntax = "proto3";
 
 option go_package = "example.com/repo/service";
 
-service {}
+service TestService {}
 `,
 		},
 	}
@@ -2479,6 +2497,7 @@ service {}
 		{
 			Path: "BUILD.bazel",
 			Content: `
+load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@io_bazel_rules_go//proto:def.bzl", "go_proto_library")
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
@@ -2507,6 +2526,7 @@ go_library(
 		{
 			Path: "service/BUILD.bazel",
 			Content: `
+load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@io_bazel_rules_go//proto:def.bzl", "go_proto_library")
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
@@ -2833,7 +2853,7 @@ func TestGoImportVisibility(t *testing.T) {
 			Content: `
 go_repository(
 		name = "com_example_m_logging",
-    importpath = "example.com/m/logging",		
+    importpath = "example.com/m/logging",
 )
 `,
 		}, {
@@ -2874,4 +2894,303 @@ go_test(
 )
 `,
 	}})
+}
+
+func TestImportCollision(t *testing.T) {
+	files := []testtools.FileSpec{
+		{
+			Path: "WORKSPACE",
+		},
+		{
+			Path: "go.mod",
+			Content: `
+module example.com/importcases
+
+go 1.13
+
+require (
+	github.com/Selvatico/go-mocket v1.0.7
+	github.com/selvatico/go-mocket v1.0.7
+)
+`,
+		},
+	}
+	dir, cleanup := testtools.CreateFiles(t, files)
+	defer cleanup()
+
+	args := []string{"update-repos", "--from_file=go.mod"}
+	errMsg := "imports github.com/Selvatico/go-mocket and github.com/selvatico/go-mocket resolve to the same repository rule name com_github_selvatico_go_mocket"
+	if err := runGazelle(dir, args); err == nil {
+		t.Fatal("expected error, got nil")
+	} else if err.Error() != errMsg {
+		t.Error(fmt.Sprintf("want %s, got %s", errMsg, err.Error()))
+	}
+}
+
+func TestImportCollisionWithReplace(t *testing.T) {
+	files := []testtools.FileSpec{
+		{
+			Path:    "WORKSPACE",
+			Content: "# gazelle:repo bazel_gazelle",
+		},
+		{
+			Path: "go.mod",
+			Content: `
+module github.com/linzhp/go_examples/importcases
+
+go 1.13
+
+require (
+	github.com/Selvatico/go-mocket v1.0.7
+	github.com/selvatico/go-mocket v0.0.0-00010101000000-000000000000
+)
+
+replace github.com/selvatico/go-mocket => github.com/Selvatico/go-mocket v1.0.7
+`,
+		},
+	}
+	dir, cleanup := testtools.CreateFiles(t, files)
+	defer cleanup()
+
+	args := []string{"update-repos", "--from_file=go.mod"}
+	if err := runGazelle(dir, args); err != nil {
+		t.Fatal(err)
+	}
+	testtools.CheckFiles(t, dir, []testtools.FileSpec{
+		{
+			Path: "WORKSPACE",
+			Content: `
+load("@bazel_gazelle//:deps.bzl", "go_repository")
+
+# gazelle:repo bazel_gazelle
+
+go_repository(
+    name = "com_github_selvatico_go_mocket",
+    importpath = "github.com/selvatico/go-mocket",
+    replace = "github.com/Selvatico/go-mocket",
+    sum = "h1:sXuFMnMfVL9b/Os8rGXPgbOFbr4HJm8aHsulD/uMTUk=",
+    version = "v1.0.7",
+)
+`,
+		},
+	})
+}
+
+// TestUpdateReposWithGlobalBuildTags is a regresion test for issue #711.
+// It also ensures that existings build_tags get merged with requested build_tags.
+func TestUpdateReposWithGlobalBuildTags(t *testing.T) {
+	files := []testtools.FileSpec{
+		{
+			Path: "WORKSPACE",
+			Content: `
+load("@bazel_gazelle//:deps.bzl", "go_repository")
+
+# gazelle:repo bazel_gazelle
+
+go_repository(
+    name = "com_github_selvatico_go_mocket",
+    build_tags = [
+        "bar",
+    ],
+    importpath = "github.com/selvatico/go-mocket",
+    replace = "github.com/Selvatico/go-mocket",
+    sum = "h1:sXuFMnMfVL9b/Os8rGXPgbOFbr4HJm8aHsulD/uMTUk=",
+    version = "v1.0.7",
+)
+`,
+		},
+		{
+			Path: "go.mod",
+			Content: `
+module github.com/linzhp/go_examples/importcases
+
+go 1.13
+
+require (
+	github.com/Selvatico/go-mocket v1.0.7
+	github.com/selvatico/go-mocket v0.0.0-00010101000000-000000000000
+)
+
+replace github.com/selvatico/go-mocket => github.com/Selvatico/go-mocket v1.0.7
+`,
+		},
+	}
+	dir, cleanup := testtools.CreateFiles(t, files)
+	defer cleanup()
+
+	args := []string{"update-repos", "--from_file=go.mod", "--build_tags=bar,foo"}
+	if err := runGazelle(dir, args); err != nil {
+		t.Fatal(err)
+	}
+	testtools.CheckFiles(t, dir, []testtools.FileSpec{
+		{
+			Path: "WORKSPACE",
+			Content: `
+load("@bazel_gazelle//:deps.bzl", "go_repository")
+
+# gazelle:repo bazel_gazelle
+
+go_repository(
+    name = "com_github_selvatico_go_mocket",
+    build_tags = [
+        "bar",
+        "foo",
+    ],
+    importpath = "github.com/selvatico/go-mocket",
+    replace = "github.com/Selvatico/go-mocket",
+    sum = "h1:sXuFMnMfVL9b/Os8rGXPgbOFbr4HJm8aHsulD/uMTUk=",
+    version = "v1.0.7",
+)
+`,
+		},
+	})
+}
+
+func TestMatchProtoLibrary(t *testing.T) {
+	files := []testtools.FileSpec{
+		{
+			Path: "WORKSPACE",
+		},
+		{
+			Path: "proto/BUILD.bazel",
+			Content: `
+load("@rules_proto//proto:defs.bzl", "proto_library")
+# gazelle:prefix example.com/foo
+
+proto_library(
+	name = "existing_proto",
+	srcs = ["foo.proto"],
+)
+`,
+		},
+		{
+			Path:    "proto/foo.proto",
+			Content: `syntax = "proto3";`,
+		},
+	}
+	dir, cleanup := testtools.CreateFiles(t, files)
+	defer cleanup()
+
+	args := []string{"update"}
+	if err := runGazelle(dir, args); err != nil {
+		t.Fatal(err)
+	}
+
+	testtools.CheckFiles(t, dir, []testtools.FileSpec{
+		{
+			Path: "proto/BUILD.bazel",
+			Content: `
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+load("@io_bazel_rules_go//proto:def.bzl", "go_proto_library")
+load("@rules_proto//proto:defs.bzl", "proto_library")
+# gazelle:prefix example.com/foo
+
+proto_library(
+    name = "existing_proto",
+    srcs = ["foo.proto"],
+    visibility = ["//visibility:public"],
+)
+
+go_proto_library(
+    name = "foo_go_proto",
+    importpath = "example.com/foo",
+    proto = ":existing_proto",
+    visibility = ["//visibility:public"],
+)
+
+go_library(
+    name = "go_default_library",
+    embed = [":foo_go_proto"],
+    importpath = "example.com/foo",
+    visibility = ["//visibility:public"],
+)`,
+		},
+	})
+}
+
+func TestConfigLang(t *testing.T) {
+	// Gazelle is run with "-lang=proto".
+	files := []testtools.FileSpec{
+		{Path: "WORKSPACE"},
+
+		// Verify that Gazelle does not create a BUILD file.
+		{Path: "foo/foo.go", Content: "package foo"},
+
+		// Verify that Gazelle only creates the proto rule.
+		{Path: "pb/pb.go", Content: "package pb"},
+		{Path: "pb/pb.proto", Content: `syntax = "proto3";`},
+
+		// Verify that Gazelle does create a BUILD file, because of the override.
+		{Path: "bar/BUILD.bazel", Content: "# gazelle:lang"},
+		{Path: "bar/bar.go", Content: "package bar"},
+		{Path: "baz/BUILD.bazel", Content: "# gazelle:lang go,proto"},
+		{Path: "baz/baz.go", Content: "package baz"},
+	}
+
+	dir, cleanup := testtools.CreateFiles(t, files)
+	defer cleanup()
+
+	args := []string{"-lang", "proto"}
+	if err := runGazelle(dir, args); err != nil {
+		t.Fatal(err)
+	}
+
+	testtools.CheckFiles(t, dir, []testtools.FileSpec{{
+		Path:     filepath.Join("foo", "BUILD.bazel"),
+		NotExist: true,
+	}, {
+		Path: filepath.Join("pb", "BUILD.bazel"),
+		Content: `
+load("@rules_proto//proto:defs.bzl", "proto_library")
+
+proto_library(
+    name = "pb_proto",
+    srcs = ["pb.proto"],
+    visibility = ["//visibility:public"],
+)`,
+	},
+		{
+			Path: filepath.Join("bar", "BUILD.bazel"),
+			Content: `
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+# gazelle:lang
+
+go_library(
+    name = "go_default_library",
+    srcs = ["bar.go"],
+    importpath = "",
+    visibility = ["//visibility:public"],
+)`,
+		},
+		{
+			Path: filepath.Join("baz", "BUILD.bazel"),
+			Content: `
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+# gazelle:lang go,proto
+
+go_library(
+    name = "go_default_library",
+    srcs = ["baz.go"],
+    importpath = "",
+    visibility = ["//visibility:public"],
+)`,
+		}})
+}
+
+func TestUpdateRepos_LangFilter(t *testing.T) {
+	dir, cleanup := testtools.CreateFiles(t, []testtools.FileSpec{
+		{Path: "WORKSPACE"},
+	})
+	defer cleanup()
+
+	args := []string{"update-repos", "-lang=proto", "github.com/sirupsen/logrus@v1.3.0"}
+	err := runGazelle(dir, args)
+	if err == nil {
+		t.Fatal("expected an error, got none")
+	}
+	if !strings.Contains(err.Error(), "no languages can update repositories") {
+		t.Fatalf("unexpected error: %+v", err)
+	}
 }

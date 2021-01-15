@@ -13,7 +13,7 @@ struct MockTracer : public ot::Tracer {
   TracerOptions opts;
 
   MockTracer(TracerOptions opts_, std::shared_ptr<Writer> & /* writer */,
-             std::shared_ptr<SampleProvider> /* sampler */)
+             std::shared_ptr<RulesSampler> /* sampler */)
       : opts(opts_) {}
 
   std::unique_ptr<ot::Span> StartSpanWithOptions(ot::string_view /* operation_name */,
@@ -59,11 +59,12 @@ struct MockTracer : public ot::Tracer {
   void Close() noexcept override {}
 };
 
-TEST_CASE("tracer") {
+TEST_CASE("tracer factory") {
   TracerFactory<MockTracer> factory;
 
-  SECTION("can be created with valid config") {
+  SECTION("can create a tracer with valid config") {
     // Checks all combinations.
+    auto sampling_rules = GENERATE("[]", "[{\"sample_rate\":0.42}]");
     auto propagation_style_inject =
         GENERATE(values<std::pair<std::string, std::set<PropagationStyle>>>(
             {{"[\"Datadog\"]", {PropagationStyle::Datadog}},
@@ -90,6 +91,8 @@ TEST_CASE("tracer") {
         "agent_host": "www.omfgdogs.com",
         "agent_port": 80,
         "type": "db",
+        "sampling_rules": )"
+          << sampling_rules << R"(,
         "propagation_style_extract": )"
           << propagation_style_extract.first << R"(,
         "propagation_style_inject": )"
@@ -111,6 +114,7 @@ TEST_CASE("tracer") {
     REQUIRE(tracer->opts.agent_port == 80);
     REQUIRE(tracer->opts.service == "my-service");
     REQUIRE(tracer->opts.type == "db");
+    REQUIRE(tracer->opts.sampling_rules == sampling_rules);
     REQUIRE(tracer->opts.extract == propagation_style_extract.second);
     REQUIRE(tracer->opts.inject == propagation_style_inject.second);
     REQUIRE(tracer->opts.report_hostname == report_hostname);
@@ -118,7 +122,7 @@ TEST_CASE("tracer") {
     REQUIRE(tracer->opts.analytics_rate == analytics_rate);
   }
 
-  SECTION("can be created without optional fields") {
+  SECTION("can create a tracer without optional fields") {
     std::string input{R"(
       {
         "service": "my-service"
@@ -161,7 +165,9 @@ TEST_CASE("tracer") {
     )"};  // Missing service
     std::string error = "";
     auto result = factory.MakeTracer(input.c_str(), error);
-    REQUIRE(error == "configuration argument 'service' is missing");
+    REQUIRE(
+        error ==
+        "tracer option 'service' has not been set via config or DD_SERVICE environment variable");
     REQUIRE(!result);
     REQUIRE(result.error() == std::make_error_code(std::errc::invalid_argument));
   }
@@ -244,6 +250,42 @@ TEST_CASE("tracer") {
   }
 
   SECTION("injected environment variables") {
+    SECTION("DD_ENV overrides default") {
+      ::setenv("DD_ENV", "injected-env", 0);
+      std::string input{R"(
+      {
+        "service": "my-service",
+        "environment": "env"
+      }
+      )"};
+      std::string error = "";
+      auto result = factory.MakeTracer(input.c_str(), error);
+      ::unsetenv("DD_ENV");
+
+      REQUIRE(error == "");
+      REQUIRE(result->get() != nullptr);
+      auto tracer = dynamic_cast<MockTracer *>(result->get());
+      REQUIRE(tracer->opts.service == "my-service");
+      REQUIRE(tracer->opts.environment == "injected-env");
+    }
+
+    SECTION("DD_SERVICE overrides default") {
+      ::setenv("DD_SERVICE", "injected-service", 0);
+      std::string input{R"(
+      {
+        "service": "my-service"
+      }
+      )"};
+      std::string error = "";
+      auto result = factory.MakeTracer(input.c_str(), error);
+      ::unsetenv("DD_SERVICE");
+
+      REQUIRE(error == "");
+      REQUIRE(result->get() != nullptr);
+      auto tracer = dynamic_cast<MockTracer *>(result->get());
+      REQUIRE(tracer->opts.service == "injected-service");
+    }
+
     SECTION("DD_AGENT_HOST overrides default") {
       ::setenv("DD_AGENT_HOST", "injected-hostname", 0);
       std::string input{R"(
@@ -303,6 +345,7 @@ TEST_CASE("tracer") {
       REQUIRE(tracer->opts.service == "my-service");
       REQUIRE(tracer->opts.type == "web");
     }
+
     SECTION("DD_TRACE_AGENT_PORT overrides default") {
       ::setenv("DD_TRACE_AGENT_PORT", "1234", 0);
       std::string input{R"(
@@ -322,7 +365,6 @@ TEST_CASE("tracer") {
       REQUIRE(tracer->opts.service == "my-service");
       REQUIRE(tracer->opts.type == "web");
     }
-
     SECTION("DD_TRACE_AGENT_PORT overrides configuration") {
       ::setenv("DD_TRACE_AGENT_PORT", "1234", 0);
       std::string input{R"(
@@ -377,6 +419,63 @@ TEST_CASE("tracer") {
       REQUIRE(!result);
       REQUIRE(result.error() == std::make_error_code(std::errc::invalid_argument));
     }
+
+    SECTION("DD_TRACE_SAMPLING_RULES overrides configuration") {
+      std::string sampling_rules = R"([{"sample_rate":0.99}])";
+      ::setenv("DD_TRACE_SAMPLING_RULES", sampling_rules.c_str(), 0);
+
+      std::string input{R"(
+      {
+        "service": "my-service",
+        "sampling_rules": [{"sample_rate":0.42}]
+      }
+      )"};
+      std::string error = "";
+      auto result = factory.MakeTracer(input.c_str(), error);
+      ::unsetenv("DD_TRACE_SAMPLING_RULES");
+
+      REQUIRE(error == "");
+      REQUIRE(result->get() != nullptr);
+      auto tracer = dynamic_cast<MockTracer *>(result->get());
+      REQUIRE(tracer->opts.sampling_rules == sampling_rules);
+    }
+
+    SECTION("DD_TRACE_AGENT_URL overrides default") {
+      ::setenv("DD_TRACE_AGENT_URL", "/path/to/trace-agent.socket", 0);
+      std::string input{R"(
+      {
+        "service": "my-service"
+      }
+      )"};
+      std::string error = "";
+      auto result = factory.MakeTracer(input.c_str(), error);
+      ::unsetenv("DD_TRACE_AGENT_URL");
+
+      REQUIRE(error == "");
+      REQUIRE(result->get() != nullptr);
+      auto tracer = dynamic_cast<MockTracer *>(result->get());
+      REQUIRE(tracer->opts.service == "my-service");
+      REQUIRE(tracer->opts.agent_url == "/path/to/trace-agent.socket");
+    }
+    SECTION("DD_TRACE_AGENT_URL overrides configuration") {
+      ::setenv("DD_TRACE_AGENT_URL", "/path/to/trace-agent.socket", 0);
+      std::string input{R"(
+      {
+        "service": "my-service",
+        "agent_url": "/configured/trace-agent.socket"
+      }
+      )"};
+      std::string error = "";
+      auto result = factory.MakeTracer(input.c_str(), error);
+      ::unsetenv("DD_TRACE_AGENT_URL");
+
+      REQUIRE(error == "");
+      REQUIRE(result->get() != nullptr);
+      auto tracer = dynamic_cast<MockTracer *>(result->get());
+      REQUIRE(tracer->opts.service == "my-service");
+      REQUIRE(tracer->opts.agent_url == "/path/to/trace-agent.socket");
+    }
+
     SECTION("DD_TRACE_REPORT_HOSTNAME overrides default") {
       ::setenv("DD_TRACE_REPORT_HOSTNAME", "true", 0);
       std::string input{R"(
@@ -410,6 +509,7 @@ TEST_CASE("tracer") {
       auto tracer = dynamic_cast<MockTracer *>(result->get());
       REQUIRE(!tracer->opts.report_hostname);
     }
+
     SECTION("DD_TRACE_ANALYTICS_ENABLED overrides default") {
       ::setenv("DD_TRACE_ANALYTICS_ENABLED", "true", 0);
       std::string input{R"(

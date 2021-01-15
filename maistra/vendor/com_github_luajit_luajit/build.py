@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import argparse
 import os
@@ -26,14 +26,31 @@ def main():
       os.environ["HOST_CFLAGS"] = "-fno-sanitize=memory"
       os.environ["HOST_LDFLAGS"] = "-fno-sanitize=memory"
 
-    # Blacklist LuaJIT from ASAN for now.
+    # Remove LuaJIT from ASAN for now.
     # TODO(htuch): Remove this when https://github.com/envoyproxy/envoy/issues/6084 is resolved.
-    if "ENVOY_CONFIG_ASAN" in os.environ:
-      os.environ["TARGET_CFLAGS"] += " -fsanitize-blacklist=%s/com_github_luajit_luajit/clang-asan-blacklist.txt" % os.environ["PWD"]
-      with open("clang-asan-blacklist.txt", "w") as f:
+    if "ENVOY_CONFIG_ASAN" in os.environ or "ENVOY_CONFIG_MSAN" in os.environ:
+      os.environ["TARGET_CFLAGS"] += " -fsanitize-blacklist=%s/com_github_luajit_luajit/clang-asan-blocklist.txt" % os.environ["PWD"]
+      with open("clang-asan-blocklist.txt", "w") as f:
         f.write("fun:*\n")
 
-    os.system('make V=1 PREFIX="{}" install'.format(args.prefix))
+    os.system('make -j{} V=1 PREFIX="{}" install'.format(os.cpu_count(), args.prefix))
 
-main()
+def win_main():
+    src_dir = os.path.dirname(os.path.realpath(__file__))
+    dst_dir = os.getcwd() + "/luajit"
+    shutil.copytree(src_dir, os.path.basename(src_dir))
+    os.chdir(os.path.basename(src_dir) + "/src")
+    os.system('msvcbuild.bat gc64 ' + os.getenv('WINDOWS_DBG_BUILD', '') + ' static')
+    os.makedirs(dst_dir + "/lib", exist_ok=True)
+    shutil.copy("lua51.lib", dst_dir + "/lib")
+    os.makedirs(dst_dir + "/include/luajit-2.1", exist_ok=True)
+    for header in ["lauxlib.h", "luaconf.h", "lua.h", "lua.hpp", "luajit.h", "lualib.h"]:
+      shutil.copy(header, dst_dir + "/include/luajit-2.1")
+    os.makedirs(dst_dir + "/bin", exist_ok=True)
+    shutil.copy("luajit.exe", dst_dir + "/bin")
+
+if os.name == 'nt':
+  win_main()
+else:
+  main()
 

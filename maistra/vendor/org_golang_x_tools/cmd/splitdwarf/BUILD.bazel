@@ -6,6 +6,9 @@ go_library(
     importpath = "golang.org/x/tools/cmd/splitdwarf",
     visibility = ["//visibility:private"],
     deps = select({
+        "@io_bazel_rules_go//go/platform:aix": [
+            "//cmd/splitdwarf/internal/macho:go_default_library",
+        ],
         "@io_bazel_rules_go//go/platform:android": [
             "//cmd/splitdwarf/internal/macho:go_default_library",
         ],
@@ -16,6 +19,9 @@ go_library(
             "//cmd/splitdwarf/internal/macho:go_default_library",
         ],
         "@io_bazel_rules_go//go/platform:freebsd": [
+            "//cmd/splitdwarf/internal/macho:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:illumos": [
             "//cmd/splitdwarf/internal/macho:go_default_library",
         ],
         "@io_bazel_rules_go//go/platform:ios": [

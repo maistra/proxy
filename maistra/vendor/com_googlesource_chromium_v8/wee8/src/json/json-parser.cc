@@ -267,7 +267,7 @@ void JsonParser<Char>::ReportUnexpectedToken(JsonToken token) {
 
   Handle<Script> script(factory->NewScript(original_source_));
   if (isolate()->NeedsSourcePositionsForProfiling()) {
-    Script::InitLineEnds(script);
+    Script::InitLineEnds(isolate(), script);
   }
   // We should sent compile error event because we compile JSON object in
   // separated source file.
@@ -335,7 +335,7 @@ uc32 JsonParser<Char>::ScanUnicodeCharacter() {
   uc32 value = 0;
   for (int i = 0; i < 4; i++) {
     int digit = HexValue(NextCharacter());
-    if (V8_UNLIKELY(digit < 0)) return -1;
+    if (V8_UNLIKELY(digit < 0)) return kInvalidUnicodeCharacter;
     value = value * 16 + digit;
   }
   return value;
@@ -838,7 +838,7 @@ MaybeHandle<Object> JsonParser<Char>::ParseJsonValue() {
             Map maybe_feedback = JSObject::cast(*element_stack.back()).map();
             // Don't consume feedback from objects with a map that's detached
             // from the transition tree.
-            if (!maybe_feedback.GetBackPointer().IsUndefined(isolate_)) {
+            if (!maybe_feedback.IsDetached(isolate_)) {
               feedback = handle(maybe_feedback, isolate_);
               if (feedback->is_deprecated()) {
                 feedback = Map::Update(isolate_, feedback);
@@ -1173,7 +1173,7 @@ JsonString JsonParser<Char>::ScanJsonString(bool needs_internalization) {
 
         case EscapeKind::kUnicode: {
           uc32 value = ScanUnicodeCharacter();
-          if (value == -1) {
+          if (value == kInvalidUnicodeCharacter) {
             AllowHeapAllocation allow_before_exception;
             ReportUnexpectedCharacter(CurrentCharacter());
             return JsonString();

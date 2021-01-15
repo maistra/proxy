@@ -61,33 +61,15 @@ int set_strict_cipher_list(SSL_CTX* ctx, const char* str) {
     }
 
     if (!found && str1.compare("-ALL") && str1.compare("ALL")) {
-      delete dup;
+      free(dup);
       return 0;
     }
 
     token = std::strtok(NULL, ":[]|");
   }
 
-  delete dup;
+  free(dup);
   return 1;
-}
-
-std::string getSerialNumberFromCertificate(X509* cert) {
-  ASN1_INTEGER* serial_number = X509_get_serialNumber(cert);
-  BIGNUM* num_bn(BN_new());
-  ASN1_INTEGER_to_BN(serial_number, num_bn);
-  char* char_serial_number = BN_bn2hex(num_bn);
-  BN_free(num_bn);
-  if (char_serial_number != nullptr) {
-    std::string serial_number(char_serial_number);
-
-    // openssl is uppercase, boringssl is lowercase. So convert
-    std::transform(serial_number.begin(), serial_number.end(), serial_number.begin(), ::tolower);
-
-    OPENSSL_free(char_serial_number);
-    return serial_number;
-  }
-  return "";
 }
 
 STACK_OF(X509)* SSL_get_peer_full_cert_chain(const SSL *ssl) {
@@ -115,15 +97,6 @@ void allowRenegotiation(SSL* ssl) {
   // SSL_set_renegotiate_mode(ssl, mode);
 }
 
-bssl::UniquePtr<STACK_OF(X509_NAME)> initX509Names() {
-  bssl::UniquePtr<STACK_OF(X509_NAME)> list(
-      sk_X509_NAME_new([](const X509_NAME* const* a, const X509_NAME* const* b) -> int {
-        return X509_NAME_cmp(*a, *b);
-      }));
-
-  return list;
-}
-
 EVP_MD_CTX* newEVP_MD_CTX() {
   EVP_MD_CTX* md(EVP_MD_CTX_new());
   return md;
@@ -144,19 +117,6 @@ int ssl_session_to_bytes(const SSL_SESSION* in, uint8_t** out_data, size_t* out_
 
   return 1;
 }
-
-X509* getVerifyCallbackCert(X509_STORE_CTX* store_ctx, void* arg) {
-
-  X509* x509 = X509_STORE_CTX_get_current_cert(store_ctx);
-
-  if (x509 == nullptr) {
-    x509 = X509_STORE_CTX_get0_cert(store_ctx);
-  }
-
-  return x509;
-}
-
-int ssl_session_is_resumable(const SSL_SESSION* session) { return 1; }
 
 void ssl_ctx_add_client_CA(SSL_CTX* ctx, X509* x) { SSL_CTX_add_client_CA(ctx, x); }
 

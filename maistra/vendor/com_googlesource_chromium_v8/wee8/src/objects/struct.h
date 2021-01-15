@@ -7,7 +7,7 @@
 
 #include "src/objects/heap-object.h"
 #include "src/objects/objects.h"
-#include "torque-generated/class-definitions-tq.h"
+#include "torque-generated/class-definitions.h"
 
 // Has to be the last include (doesn't have include guards):
 #include "src/objects/object-macros.h"
@@ -68,9 +68,6 @@ class AccessorPair : public TorqueGeneratedAccessorPair<AccessorPair, Struct> {
 class ClassPositions
     : public TorqueGeneratedClassPositions<ClassPositions, Struct> {
  public:
-  DECL_INT_ACCESSORS(start)
-  DECL_INT_ACCESSORS(end)
-
   // Dispatched behavior.
   DECL_PRINTER(ClassPositions)
   void BriefPrintDetails(std::ostream& os);

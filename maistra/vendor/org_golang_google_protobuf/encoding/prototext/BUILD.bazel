@@ -1,0 +1,54 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "decode.go",
+        "doc.go",
+        "encode.go",
+    ],
+    importpath = "google.golang.org/protobuf/encoding/prototext",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//encoding/protowire:go_default_library",
+        "//internal/encoding/messageset:go_default_library",
+        "//internal/encoding/text:go_default_library",
+        "//internal/errors:go_default_library",
+        "//internal/fieldnum:go_default_library",
+        "//internal/flags:go_default_library",
+        "//internal/mapsort:go_default_library",
+        "//internal/pragma:go_default_library",
+        "//internal/set:go_default_library",
+        "//proto:go_default_library",
+        "//reflect/protoreflect:go_default_library",
+        "//reflect/protoregistry:go_default_library",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = [
+        "decode_test.go",
+        "encode_test.go",
+        "other_test.go",
+    ],
+    embed = [":go_default_library"],
+    deps = [
+        "//internal/detrand:go_default_library",
+        "//internal/flags:go_default_library",
+        "//internal/testprotos/test:go_default_library",
+        "//internal/testprotos/test/weak1:go_default_library",
+        "//internal/testprotos/textpb2:go_default_library",
+        "//internal/testprotos/textpb3:go_default_library",
+        "//proto:go_default_library",
+        "//reflect/protoregistry:go_default_library",
+        "//testing/protopack:go_default_library",
+        "//types/known/anypb:go_default_library",
+        "//types/known/durationpb:go_default_library",
+        "//types/known/emptypb:go_default_library",
+        "//types/known/structpb:go_default_library",
+        "//types/known/timestamppb:go_default_library",
+        "//types/known/wrapperspb:go_default_library",
+        "@com_github_google_go_cmp//cmp:go_default_library",
+    ],
+)

@@ -62,6 +62,10 @@ class InstructionOperandConverter {
     return static_cast<int8_t>(InputInt32(index));
   }
 
+  uint8_t InputUint8(size_t index) {
+    return bit_cast<uint8_t>(InputInt8(index));
+  }
+
   int16_t InputInt16(size_t index) {
     return static_cast<int16_t>(InputInt32(index));
   }
@@ -255,6 +259,12 @@ class OutOfLineCode : public ZoneObject {
 
 inline bool HasCallDescriptorFlag(Instruction* instr,
                                   CallDescriptor::Flag flag) {
+  STATIC_ASSERT(CallDescriptor::kFlagsBitsEncodedInInstructionCode == 10);
+#ifdef DEBUG
+  static constexpr int kInstructionCodeFlagsMask =
+      ((1 << CallDescriptor::kFlagsBitsEncodedInInstructionCode) - 1);
+  DCHECK_EQ(static_cast<int>(flag) & kInstructionCodeFlagsMask, flag);
+#endif
   return MiscField::decode(instr->opcode()) & flag;
 }
 

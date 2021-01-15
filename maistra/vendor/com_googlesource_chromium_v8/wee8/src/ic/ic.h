@@ -37,8 +37,9 @@ class IC {
 
   State state() const { return state_; }
 
-  // Compute the current IC state based on the target stub, receiver and name.
-  void UpdateState(Handle<Object> receiver, Handle<Object> name);
+  // Compute the current IC state based on the target stub, lookup_start_object
+  // and name.
+  void UpdateState(Handle<Object> lookup_start_object, Handle<Object> name);
 
   bool RecomputeHandlerForName(Handle<Object> name);
   void MarkRecomputeHandler(Handle<Object> name) {
@@ -82,6 +83,8 @@ class IC {
   // Configure the vector for POLYMORPHIC.
   void ConfigureVectorState(Handle<Name> name, MapHandles const& maps,
                             MaybeObjectHandles* handlers);
+  void ConfigureVectorState(
+      Handle<Name> name, std::vector<MapAndHandler> const& maps_and_handlers);
 
   char TransitionMarkFromState(IC::State state);
   void TraceIC(const char* type, Handle<Object> name);
@@ -119,8 +122,8 @@ class IC {
   }
   bool ShouldRecomputeHandler(Handle<String> name);
 
-  Handle<Map> receiver_map() { return receiver_map_; }
-  inline void update_receiver_map(Handle<Object> receiver);
+  Handle<Map> lookup_start_object_map() { return lookup_start_object_map_; }
+  inline void update_lookup_start_object_map(Handle<Object> object);
 
   void TargetMaps(MapHandles* list) {
     FindTargetMaps();
@@ -132,10 +135,6 @@ class IC {
   Map FirstTargetMap() {
     FindTargetMaps();
     return !target_maps_.empty() ? *target_maps_[0] : Map();
-  }
-
-  State saved_state() const {
-    return state() == RECOMPUTE_HANDLER ? old_state_ : state();
   }
 
   const FeedbackNexus* nexus() const { return &nexus_; }
@@ -154,7 +153,7 @@ class IC {
   State old_state_;  // For saving if we marked as prototype failure.
   State state_;
   FeedbackSlotKind kind_;
-  Handle<Map> receiver_map_;
+  Handle<Map> lookup_start_object_map_;
 
   MapHandles target_maps_;
   bool target_maps_set_;
@@ -182,9 +181,10 @@ class LoadIC : public IC {
     return ShouldThrowReferenceError(kind());
   }
 
-  V8_WARN_UNUSED_RESULT MaybeHandle<Object> Load(Handle<Object> object,
-                                                 Handle<Name> name,
-                                                 bool update_feedback = true);
+  // If receiver is empty, use object as the receiver.
+  V8_WARN_UNUSED_RESULT MaybeHandle<Object> Load(
+      Handle<Object> object, Handle<Name> name, bool update_feedback = true,
+      Handle<Object> receiver = Handle<Object>());
 
  protected:
   // Update the inline cache and the global stub cache based on the
@@ -312,12 +312,13 @@ class KeyedStoreIC : public StoreIC {
   Handle<Map> ComputeTransitionedMap(Handle<Map> map,
                                      TransitionMode transition_mode);
 
-  Handle<Object> StoreElementHandler(Handle<Map> receiver_map,
-                                     KeyedAccessStoreMode store_mode);
+  Handle<Object> StoreElementHandler(
+      Handle<Map> receiver_map, KeyedAccessStoreMode store_mode,
+      MaybeHandle<Object> prev_validity_cell = MaybeHandle<Object>());
 
-  void StoreElementPolymorphicHandlers(MapHandles* receiver_maps,
-                                       MaybeObjectHandles* handlers,
-                                       KeyedAccessStoreMode store_mode);
+  void StoreElementPolymorphicHandlers(
+      std::vector<MapAndHandler>* receiver_maps_and_handlers,
+      KeyedAccessStoreMode store_mode);
 
   friend class IC;
 };

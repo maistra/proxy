@@ -14,9 +14,10 @@ go_library(
     visibility = ["//:__subpackages__"],
     deps = [
         "//go/ast/astutil:go_default_library",
-        "//go/packages:go_default_library",
+        "//internal/gocommand:go_default_library",
         "//internal/gopathwalk:go_default_library",
-        "//internal/module:go_default_library",
+        "@org_golang_x_mod//module:go_default_library",
+        "@org_golang_x_mod//semver:go_default_library",
     ],
 )
 
@@ -26,7 +27,9 @@ go_test(
         "fix_test.go",
         "imports_test.go",
         "mod_112_test.go",
+        "mod_114_test.go",
         "mod_cache_test.go",
+        "mod_pre114_test.go",
         "mod_test.go",
         "proxy_112_test.go",
         "proxy_113_test.go",
@@ -35,8 +38,10 @@ go_test(
     embed = [":go_default_library"],
     deps = [
         "//go/packages/packagestest:go_default_library",
-        "//internal/module:go_default_library",
+        "//internal/gocommand:go_default_library",
+        "//internal/gopathwalk:go_default_library",
         "//internal/testenv:go_default_library",
-        "//internal/txtar:go_default_library",
+        "//txtar:go_default_library",
+        "@org_golang_x_mod//module:go_default_library",
     ],
 )

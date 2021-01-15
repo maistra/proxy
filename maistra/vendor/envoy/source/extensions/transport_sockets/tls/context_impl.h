@@ -27,10 +27,18 @@
 #include "openssl/x509v3.h"
 
 namespace Envoy {
+#ifndef OPENSSL_IS_BORINGSSL
+#error Envoy requires BoringSSL
+#endif
 
 namespace Extensions {
 namespace TransportSockets {
 namespace Tls {
+
+namespace Ocsp {
+  class OcspResponseWrapper {};
+  using OcspResponseWrapperPtr = std::unique_ptr<OcspResponseWrapper>;
+}
 
 #define ALL_SSL_STATS(COUNTER, GAUGE, HISTOGRAM)                                                   \
   COUNTER(connection_error)                                                                        \
@@ -40,7 +48,11 @@ namespace Tls {
   COUNTER(fail_verify_no_cert)                                                                     \
   COUNTER(fail_verify_error)                                                                       \
   COUNTER(fail_verify_san)                                                                         \
-  COUNTER(fail_verify_cert_hash)
+  COUNTER(fail_verify_cert_hash)                                                                   \
+  COUNTER(ocsp_staple_failed)                                                                      \
+  COUNTER(ocsp_staple_omitted)                                                                     \
+  COUNTER(ocsp_staple_responses)                                                                   \
+  COUNTER(ocsp_staple_requests)
 
 /**
  * Wrapper struct for SSL stats. @see stats_macros.h
@@ -84,7 +96,7 @@ public:
    * @param pattern the pattern to match against (*.example.com)
    * @return true if the san matches pattern
    */
-  static bool dnsNameMatch(const std::string& dns_name, const char* pattern);
+  static bool dnsNameMatch(const absl::string_view dns_name, const absl::string_view pattern);
 
   SslStats& stats() { return stats_; }
 
@@ -98,8 +110,12 @@ public:
   size_t daysUntilFirstCertExpires() const override;
   Envoy::Ssl::CertificateDetailsPtr getCaCertInformation() const override;
   std::vector<Envoy::Ssl::CertificateDetailsPtr> getCertChainInformation() const override;
-
+  absl::optional<uint64_t> secondsUntilFirstOcspResponseExpires() const override {
+    return absl::nullopt;
+  }
   std::vector<Ssl::PrivateKeyMethodProviderSharedPtr> getPrivateKeyMethodProviders();
+
+  bool verifyCertChain(X509& leaf_cert, STACK_OF(X509) & intermediates, std::string& error_details);
 
 protected:
   ContextImpl(Stats::Scope& scope, const Envoy::Ssl::ContextConfig& config,
@@ -116,6 +132,11 @@ protected:
 
   // A SSL_CTX_set_cert_verify_callback for custom cert validation.
   static int verifyCallback(X509_STORE_CTX* store_ctx, void* arg);
+
+  // Called by verifyCallback to do the actual cert chain verification.
+  int doVerifyCertChain(X509_STORE_CTX* store_ctx, Ssl::SslExtendedSocketInfo* ssl_extended_info,
+                        X509& leaf_cert,
+                        const Network::TransportSocketOptions* transport_socket_options);
 
   Envoy::Ssl::ClientValidationStatus
   verifyCertificate(X509* cert, const std::vector<std::string>& verify_san_list,
@@ -143,6 +164,7 @@ protected:
   static bool verifyCertificateSpkiList(X509* cert,
                                         const std::vector<std::vector<uint8_t>>& expected_hashes);
 
+  bool parseAndSetAlpn(const std::vector<std::string>& alpn, SSL& ssl);
   std::vector<uint8_t> parseAlpnProtocols(const std::string& alpn_protocols);
   static SslStats generateStats(Stats::Scope& scope);
 
@@ -150,8 +172,9 @@ protected:
   void incCounter(const Stats::StatName name, absl::string_view value,
                   const Stats::StatName fallback) const;
 
-
-  Envoy::Ssl::CertificateDetailsPtr certificateDetails(X509* cert, const std::string& path) const;
+  Envoy::Ssl::CertificateDetailsPtr
+  certificateDetails(X509* cert, const std::string& path,
+                     const Ocsp::OcspResponseWrapper* ocsp_response) const;
 
   struct TlsContext {
     // Each certificate specified for the context has its own SSL_CTX. SSL_CTXs
@@ -161,13 +184,15 @@ protected:
     bssl::UniquePtr<SSL_CTX> ssl_ctx_;
     bssl::UniquePtr<X509> cert_chain_;
     std::string cert_chain_file_path_;
+    Ocsp::OcspResponseWrapperPtr ocsp_response_;
     bool is_ecdsa_{};
+    bool is_must_staple_{};
     Ssl::PrivateKeyMethodProviderSharedPtr private_key_method_provider_{};
 
     std::string getCertChainFileName() const { return cert_chain_file_path_; };
     void addClientValidationContext(const Envoy::Ssl::CertificateValidationContextConfig& config,
                                     bool require_client_cert);
-    // bool isCipherEnabled(uint16_t cipher_id, uint16_t client_version);
+    bool isCipherEnabled(uint16_t cipher_id, uint16_t client_version);
     Envoy::Ssl::PrivateKeyMethodProviderSharedPtr getPrivateKeyMethodProvider() {
       return private_key_method_provider_;
     }
@@ -201,6 +226,7 @@ protected:
   const Stats::StatName ssl_versions_;
   const Stats::StatName ssl_curves_;
   const Stats::StatName ssl_sigalgs_;
+  const Ssl::HandshakerCapabilities capabilities_;
 };
 
 using ContextImplSharedPtr = std::shared_ptr<ContextImpl>;
@@ -224,6 +250,8 @@ private:
   bool session_keys_single_use_{false};
 };
 
+enum class OcspStapleAction { Staple, NoStaple, Fail, ClientNotCapable };
+
 class ServerContextImpl : public ContextImpl, public Envoy::Ssl::ServerContext {
 public:
   ServerContextImpl(Stats::Scope& scope, const Envoy::Ssl::ServerContextConfig& config,
@@ -236,12 +264,13 @@ private:
                          unsigned int inlen);
   int sessionTicketProcess(SSL* ssl, uint8_t* key_name, uint8_t* iv, EVP_CIPHER_CTX* ctx,
                            HMAC_CTX* hmac_ctx, int encrypt);
+  OcspStapleAction ocspStapleAction(const ServerContextImpl::TlsContext& ctx,
+                                    bool client_ocsp_capable);
 
   SessionContextID generateHashForSessionContextId(const std::vector<std::string>& server_names);
-  // bool isClientEcdsaCapable(SSL *ssl);
-  // int cert_cb(SSL* ssl, void *param);
 
   const std::vector<Envoy::Ssl::ServerContextConfig::SessionTicketKey> session_ticket_keys_;
+  const Ssl::ServerContextConfig::OcspStaplePolicy ocsp_staple_policy_;
 };
 
 } // namespace Tls

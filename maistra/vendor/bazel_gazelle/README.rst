@@ -12,6 +12,7 @@ Gazelle build file generator
 .. _update: #fix-and-update
 .. _Avoiding conflicts with proto rules: https://github.com/bazelbuild/rules_go/blob/master/proto/core.rst#avoiding-conflicts
 .. _gazelle rule: #bazel-rule
+.. _doublestar.Match: https://github.com/bmatcuk/doublestar#match
 .. _Extending Gazelle: extend.rst
 .. _Supported languages: extend.rst#supported-languages
 .. _extended: `Extending Gazelle`_
@@ -72,20 +73,20 @@ should look like this:
 
     http_archive(
         name = "io_bazel_rules_go",
+        sha256 = "6a68e269802911fa419abb940c850734086869d7fe9bc8e12aaf60a09641c818",
         urls = [
-            "https://storage.googleapis.com/bazel-mirror/github.com/bazelbuild/rules_go/releases/download/v0.19.5/rules_go-v0.19.5.tar.gz",
-            "https://github.com/bazelbuild/rules_go/releases/download/v0.19.5/rules_go-v0.19.5.tar.gz",
+            "https://mirror.bazel.build/github.com/bazelbuild/rules_go/releases/download/v0.23.0/rules_go-v0.23.0.tar.gz",
+            "https://github.com/bazelbuild/rules_go/releases/download/v0.23.0/rules_go-v0.23.0.tar.gz",
         ],
-        sha256 = "513c12397db1bc9aa46dd62f02dd94b49a9b5d17444d49b5a04c5a89f3053c1c",
     )
 
     http_archive(
         name = "bazel_gazelle",
+        sha256 = "d8c45ee70ec39a57e7a05e5027c32b1576cc7f16d9dd37135b0eddde45cf1b10",
         urls = [
-            "https://storage.googleapis.com/bazel-mirror/github.com/bazelbuild/bazel-gazelle/releases/download/0.18.2/bazel-gazelle-0.18.2.tar.gz",
-            "https://github.com/bazelbuild/bazel-gazelle/releases/download/0.18.2/bazel-gazelle-0.18.2.tar.gz",
+            "https://storage.googleapis.com/bazel-mirror/github.com/bazelbuild/bazel-gazelle/releases/download/v0.20.0/bazel-gazelle-v0.20.0.tar.gz",
+            "https://github.com/bazelbuild/bazel-gazelle/releases/download/v0.20.0/bazel-gazelle-v0.20.0.tar.gz",
         ],
-        sha256 = "7fc87f4170011201b1690326e8c16c5d802836e3a0d617d8f75c3af2b23180c4",
     )
 
     load("@io_bazel_rules_go//go:deps.bzl", "go_rules_dependencies", "go_register_toolchains")
@@ -188,6 +189,10 @@ you're using a compatible version.
 | 0.17.0              | 0.13.0                       | n/a                          |
 +---------------------+------------------------------+------------------------------+
 | 0.18.0              | 0.19.0                       | n/a                          |
++---------------------+------------------------------+------------------------------+
+| 0.19.0              | 0.19.0                       | n/a                          |
++---------------------+------------------------------+------------------------------+
+| 0.20.0              | 0.20.0                       | n/a                          |
 +---------------------+------------------------------+------------------------------+
 
 Usage
@@ -299,14 +304,15 @@ The following flags are accepted:
 | Bazel may still filter sources with these tags. Use                                                   |
 | ``bazel build --define gotags=foo,bar`` to set tags at build time.                                    |
 +--------------------------------------------------------------+----------------------------------------+
-| :flag:`-exclude path`                                        |                                        |
+| :flag:`-exclude pattern`                                     |                                        |
 +--------------------------------------------------------------+----------------------------------------+
-| Prevents Gazelle from processing a file or directory. If the path refers to                           |
-| a source file, Gazelle won't include it in any rules. If the path refers to                           |
-| a directory, Gazelle won't recurse into it.                                                           |
+| Prevents Gazelle from processing a file or directory if the given                                     |
+| `doublestar.Match`_ pattern matches. If the pattern refers to a source file,                          |
+| Gazelle won't include it in any rules. If the pattern refers to a directory,                          |
+| Gazelle won't recurse into it.                                                                        |
 |                                                                                                       |
-| This option may be repeated. Paths must be slash-separated, relative to the                           |
-| repository root. This is equivalent to the ``# gazelle:exclude path``                                 |
+| This option may be repeated. Patterns must be slash-separated, relative to the                        |
+| repository root. This is equivalent to the ``# gazelle:exclude pattern``                              |
 | directive.                                                                                            |
 +--------------------------------------------------------------+----------------------------------------+
 | :flag:`-external external|vendored`                          | :value:`external`                      |
@@ -383,6 +389,12 @@ The following flags are accepted:
 | directory containing the WORKSPACE file.                                                              |
 |                                                                                                       |
 | Gazelle will not process packages outside this directory.                                             |
++--------------------------------------------------------------+----------------------------------------+
+| :flag:`-lang lang1,lang2,...`                                | :value:`""`                            |
++--------------------------------------------------------------+----------------------------------------+
+| Selects languages for which to compose rules.                                                         |
+|                                                                                                       |
+| By default, all languages that this Gazelle was built with are processed.                             |
 +--------------------------------------------------------------+----------------------------------------+
 .. _Predefined plugins: https://github.com/bazelbuild/rules_go/blob/master/proto/core.rst#predefined-plugins
 
@@ -523,14 +535,13 @@ The following directives are recognized:
 | Bazel may still filter sources with these tags. Use                                        |
 | ``bazel build --define gotags=foo,bar`` to set tags at build time.                         |
 +---------------------------------------------------+----------------------------------------+
-| :direc:`# gazelle:exclude path`                   | n/a                                    |
+| :direc:`# gazelle:exclude pattern`                | n/a                                    |
 +---------------------------------------------------+----------------------------------------+
-| Prevents Gazelle from processing a file or directory. If the path refers to                |
-| a source file, Gazelle won't include it in any rules. If the path refers to                |
-| a directory, Gazelle won't recurse into it. The path may refer to something                |
-| withinin a subdirectory, for example, a testdata directory somewhere in a                  |
-| vendor tree. This directive may be repeated to exclude multiple paths, one                 |
-| per line.                                                                                  |
+| Prevents Gazelle from processing a file or directory if the given                          |
+| `doublestar.Match`_ pattern matches. If the pattern refers to a source file,               |
+| Gazelle won't include it in any rules. If the pattern refers to a directory,               |
+| Gazelle won't recurse into it. This directive may be repeated to exclude                   |
+| multiple patterns, one per line.                                                           |
 +---------------------------------------------------+----------------------------------------+
 | :direc:`# gazelle:follow path`                    | n/a                                    |
 +---------------------------------------------------+----------------------------------------+
@@ -700,6 +711,11 @@ The following directives are recognized:
 | By default, internal packages are only visible to its siblings. This directive adds a label|
 | internal packages should be visible to additionally. This directive can be used several    |
 | times, adding a list of labels.                                                            |
++---------------------------------------------------+----------------------------------------+
+| :direc:`# gazelle:lang lang1,lang2,...`           | n/a                                    |
++---------------------------------------------------+----------------------------------------+
+| Sets the language selection flag for this and descendent packages, which gazelle to        |
+| process just the languages named in this directive.                                        |
 +---------------------------------------------------+----------------------------------------+
 
 Gazelle also reads directives from the WORKSPACE file. They may be used to

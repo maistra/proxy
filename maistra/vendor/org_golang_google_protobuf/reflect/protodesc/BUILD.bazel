@@ -1,0 +1,41 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "desc.go",
+        "desc_init.go",
+        "desc_resolve.go",
+        "desc_validate.go",
+        "proto.go",
+    ],
+    importpath = "google.golang.org/protobuf/reflect/protodesc",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//encoding/protowire:go_default_library",
+        "//internal/encoding/defval:go_default_library",
+        "//internal/errors:go_default_library",
+        "//internal/filedesc:go_default_library",
+        "//internal/flags:go_default_library",
+        "//internal/pragma:go_default_library",
+        "//internal/strs:go_default_library",
+        "//proto:go_default_library",
+        "//reflect/protoreflect:go_default_library",
+        "//reflect/protoregistry:go_default_library",
+        "//types/descriptorpb:go_default_library",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = ["file_test.go"],
+    embed = [":go_default_library"],
+    deps = [
+        "//encoding/prototext:go_default_library",
+        "//internal/flags:go_default_library",
+        "//proto:go_default_library",
+        "//reflect/protoreflect:go_default_library",
+        "//reflect/protoregistry:go_default_library",
+        "//types/descriptorpb:go_default_library",
+    ],
+)

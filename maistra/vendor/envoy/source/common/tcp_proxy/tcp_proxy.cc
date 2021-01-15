@@ -22,27 +22,13 @@
 #include "common/common/utility.h"
 #include "common/config/well_known_names.h"
 #include "common/network/application_protocol.h"
+#include "common/network/proxy_protocol_filter_state.h"
 #include "common/network/transport_socket_options_impl.h"
 #include "common/network/upstream_server_name.h"
 #include "common/router/metadatamatchcriteria_impl.h"
 
 namespace Envoy {
 namespace TcpProxy {
-namespace {
-
-Tcp::ConnectionPool::PoolFailureReason
-httpToTcpFailure(Http::ConnectionPool::PoolFailureReason reason) {
-  switch (reason) {
-  case Http::ConnectionPool::PoolFailureReason::Overflow:
-    return Tcp::ConnectionPool::PoolFailureReason::Overflow;
-  case Http::ConnectionPool::PoolFailureReason::ConnectionFailure:
-    // TODO(alyssawilk) It's unclear which this is.
-    return Tcp::ConnectionPool::PoolFailureReason::LocalConnectionFailure;
-  }
-  return Tcp::ConnectionPool::PoolFailureReason::LocalConnectionFailure;
-}
-
-} // namespace
 
 const std::string& PerConnectionCluster::key() {
   CONSTRUCT_ON_FIRST_USE(std::string, "envoy.tcp_proxy.cluster");
@@ -125,6 +111,11 @@ Config::SharedConfig::SharedConfig(
   if (config.has_tunneling_config()) {
     tunneling_config_ = config.tunneling_config();
   }
+  if (config.has_max_downstream_connection_duration()) {
+    const uint64_t connection_duration =
+        DurationUtil::durationToMilliseconds(config.max_downstream_connection_duration());
+    max_downstream_connection_duration_ = std::chrono::milliseconds(connection_duration);
+  }
 }
 
 Config::Config(const envoy::extensions::filters::network::tcp_proxy::v3::TcpProxy& config,
@@ -132,7 +123,7 @@ Config::Config(const envoy::extensions::filters::network::tcp_proxy::v3::TcpProx
     : max_connect_attempts_(PROTOBUF_GET_WRAPPED_OR_DEFAULT(config, max_connect_attempts, 1)),
       upstream_drain_manager_slot_(context.threadLocal().allocateSlot()),
       shared_config_(std::make_shared<SharedConfig>(config, context)),
-      random_generator_(context.random()) {
+      random_generator_(context.api().randomGenerator()) {
 
   upstream_drain_manager_slot_->set([](Event::Dispatcher&) {
     ThreadLocal::ThreadLocalObjectSharedPtr drain_manager =
@@ -324,6 +315,9 @@ void Filter::DownstreamCallbacks::onBelowWriteBufferLowWatermark() {
 }
 
 void Filter::UpstreamCallbacks::onEvent(Network::ConnectionEvent event) {
+  if (event == Network::ConnectionEvent::Connected) {
+    return;
+  }
   if (drainer_ == nullptr) {
     parent_->onUpstreamEvent(event);
   } else {
@@ -421,10 +415,32 @@ Network::FilterStatus Filter::initializeUpstreamConnection() {
   }
 
   if (downstreamConnection()) {
+    if (!read_callbacks_->connection()
+             .streamInfo()
+             .filterState()
+             ->hasData<Network::ProxyProtocolFilterState>(
+                 Network::ProxyProtocolFilterState::key())) {
+      read_callbacks_->connection().streamInfo().filterState()->setData(
+          Network::ProxyProtocolFilterState::key(),
+          std::make_unique<Network::ProxyProtocolFilterState>(Network::ProxyProtocolData{
+              downstreamConnection()->remoteAddress(), downstreamConnection()->localAddress()}),
+          StreamInfo::FilterState::StateType::ReadOnly,
+          StreamInfo::FilterState::LifeSpan::Connection);
+    }
     transport_socket_options_ = Network::TransportSocketOptionsUtility::fromFilterState(
         downstreamConnection()->streamInfo().filterState());
   }
 
+  if (!maybeTunnel(cluster_name)) {
+    // Either cluster is unknown or there are no healthy hosts. tcpConnPoolForCluster() increments
+    // cluster->stats().upstream_cx_none_healthy in the latter case.
+    getStreamInfo().setResponseFlag(StreamInfo::ResponseFlag::NoHealthyUpstream);
+    onInitFailure(UpstreamFailureReason::NoHealthyUpstream);
+  }
+  return Network::FilterStatus::StopIteration;
+}
+
+bool Filter::maybeTunnel(const std::string& cluster_name) {
   if (!config_->tunnelingConfig()) {
     Tcp::ConnectionPool::Instance* conn_pool = cluster_manager_.tcpConnPoolForCluster(
         cluster_name, Upstream::ResourcePriority::Default, this);
@@ -443,28 +459,40 @@ Network::FilterStatus Filter::initializeUpstreamConnection() {
       }
       // Because we never return open connections to the pool, this either has a handle waiting on
       // connection completion, or onPoolFailure has been invoked. Either way, stop iteration.
-      return Network::FilterStatus::StopIteration;
+      return true;
     }
   } else {
+    auto* cluster = cluster_manager_.get(cluster_name);
+    if (!cluster) {
+      return false;
+    }
+    // TODO(snowp): Ideally we should prevent this from being configured, but that's tricky to get
+    // right since whether a cluster is invalid depends on both the tcp_proxy config + cluster
+    // config.
+    if ((cluster->info()->features() & Upstream::ClusterInfo::Features::HTTP2) == 0) {
+      ENVOY_LOG(error, "Attempted to tunnel over HTTP/1.1, this is not supported. Set "
+                       "http2_protocol_options on the cluster.");
+      return false;
+    }
     Http::ConnectionPool::Instance* conn_pool = cluster_manager_.httpConnPoolForCluster(
-        cluster_name, Upstream::ResourcePriority::Default, Http::Protocol::Http2, this);
+        cluster_name, Upstream::ResourcePriority::Default, absl::nullopt, this);
     if (conn_pool) {
       upstream_ = std::make_unique<HttpUpstream>(*upstream_callbacks_,
                                                  config_->tunnelingConfig()->hostname());
       HttpUpstream* http_upstream = static_cast<HttpUpstream*>(upstream_.get());
-      upstream_handle_ = std::make_shared<HttpConnectionHandle>(
-          conn_pool->newStream(http_upstream->responseDecoder(), *this));
-      return Network::FilterStatus::StopIteration;
+      Http::ConnectionPool::Cancellable* cancellable =
+          conn_pool->newStream(http_upstream->responseDecoder(), *this);
+      if (cancellable) {
+        ASSERT(upstream_handle_.get() == nullptr);
+        upstream_handle_ = std::make_shared<HttpConnectionHandle>(cancellable);
+      }
+      return true;
     }
   }
-  // Either cluster is unknown or there are no healthy hosts. tcpConnPoolForCluster() increments
-  // cluster->stats().upstream_cx_none_healthy in the latter case.
-  getStreamInfo().setResponseFlag(StreamInfo::ResponseFlag::NoHealthyUpstream);
-  onInitFailure(UpstreamFailureReason::NoHealthyUpstream);
-  return Network::FilterStatus::StopIteration;
-}
 
-void Filter::onPoolFailure(Tcp::ConnectionPool::PoolFailureReason reason,
+  return false;
+}
+void Filter::onPoolFailure(ConnectionPool::PoolFailureReason reason,
                            Upstream::HostDescriptionConstSharedPtr host) {
   upstream_handle_.reset();
 
@@ -472,16 +500,16 @@ void Filter::onPoolFailure(Tcp::ConnectionPool::PoolFailureReason reason,
   getStreamInfo().onUpstreamHostSelected(host);
 
   switch (reason) {
-  case Tcp::ConnectionPool::PoolFailureReason::Overflow:
-  case Tcp::ConnectionPool::PoolFailureReason::LocalConnectionFailure:
+  case ConnectionPool::PoolFailureReason::Overflow:
+  case ConnectionPool::PoolFailureReason::LocalConnectionFailure:
     upstream_callbacks_->onEvent(Network::ConnectionEvent::LocalClose);
     break;
 
-  case Tcp::ConnectionPool::PoolFailureReason::RemoteConnectionFailure:
+  case ConnectionPool::PoolFailureReason::RemoteConnectionFailure:
     upstream_callbacks_->onEvent(Network::ConnectionEvent::RemoteClose);
     break;
 
-  case Tcp::ConnectionPool::PoolFailureReason::Timeout:
+  case ConnectionPool::PoolFailureReason::Timeout:
     onConnectTimeout();
     break;
 
@@ -498,8 +526,7 @@ void Filter::onPoolReadyBase(Upstream::HostDescriptionConstSharedPtr& host,
   getStreamInfo().onUpstreamHostSelected(host);
   getStreamInfo().setUpstreamLocalAddress(local_address);
   getStreamInfo().setUpstreamSslConnection(ssl_info);
-  // Simulate the event that onPoolReady represents.
-  upstream_callbacks_->onEvent(Network::ConnectionEvent::Connected);
+  onUpstreamConnection();
   read_callbacks_->continueReading();
 }
 
@@ -514,9 +541,9 @@ void Filter::onPoolReady(Tcp::ConnectionPool::ConnectionDataPtr&& conn_data,
       latched_data->connection().streamInfo().filterState());
 }
 
-void Filter::onPoolFailure(Http::ConnectionPool::PoolFailureReason failure, absl::string_view,
+void Filter::onPoolFailure(ConnectionPool::PoolFailureReason failure, absl::string_view,
                            Upstream::HostDescriptionConstSharedPtr host) {
-  onPoolFailure(httpToTcpFailure(failure), host);
+  onPoolFailure(failure, host);
 }
 
 void Filter::onPoolReady(Http::RequestEncoder& request_encoder,
@@ -529,6 +556,25 @@ void Filter::onPoolReady(Http::RequestEncoder& request_encoder,
 
   onPoolReadyBase(host, latched_encoder->getStream().connectionLocalAddress(),
                   info.downstreamSslConnection());
+}
+
+const Router::MetadataMatchCriteria* Filter::metadataMatchCriteria() {
+  const Router::MetadataMatchCriteria* route_criteria =
+      (route_ != nullptr) ? route_->metadataMatchCriteria() : nullptr;
+
+  const auto& request_metadata = getStreamInfo().dynamicMetadata().filter_metadata();
+  const auto filter_it = request_metadata.find(Envoy::Config::MetadataFilters::get().ENVOY_LB);
+
+  if (filter_it != request_metadata.end() && route_criteria != nullptr) {
+    metadata_match_criteria_ = route_criteria->mergeMatchCriteria(filter_it->second);
+    return metadata_match_criteria_.get();
+  } else if (filter_it != request_metadata.end()) {
+    metadata_match_criteria_ =
+        std::make_unique<Router::MetadataMatchCriteriaImpl>(filter_it->second);
+    return metadata_match_criteria_.get();
+  } else {
+    return route_criteria;
+  }
 }
 
 void Filter::onConnectTimeout() {
@@ -553,6 +599,15 @@ Network::FilterStatus Filter::onData(Buffer::Instance& data, bool end_stream) {
   ASSERT(0 == data.length());
   resetIdleTimer(); // TODO(ggreenway) PERF: do we need to reset timer on both send and receive?
   return Network::FilterStatus::StopIteration;
+}
+
+Network::FilterStatus Filter::onNewConnection() {
+  if (config_->maxDownstreamConnectionDuration()) {
+    connection_duration_timer_ = read_callbacks_->connection().dispatcher().createTimer(
+        [this]() -> void { onMaxDownstreamConnectionDuration(); });
+    connection_duration_timer_->enableTimer(config_->maxDownstreamConnectionDuration().value());
+  }
+  return initializeUpstreamConnection();
 }
 
 void Filter::onDownstreamEvent(Network::ConnectionEvent event) {
@@ -611,31 +666,34 @@ void Filter::onUpstreamEvent(Network::ConnectionEvent event) {
         read_callbacks_->connection().close(Network::ConnectionCloseType::FlushWrite);
       }
     }
-  } else if (event == Network::ConnectionEvent::Connected) {
-    // Re-enable downstream reads now that the upstream connection is established
-    // so we have a place to send downstream data to.
-    read_callbacks_->connection().readDisable(false);
+  }
+}
 
-    read_callbacks_->upstreamHost()->outlierDetector().putResult(
-        Upstream::Outlier::Result::LocalOriginConnectSuccessFinal);
+void Filter::onUpstreamConnection() {
+  connecting_ = false;
+  // Re-enable downstream reads now that the upstream connection is established
+  // so we have a place to send downstream data to.
+  read_callbacks_->connection().readDisable(false);
 
-    getStreamInfo().setRequestedServerName(read_callbacks_->connection().requestedServerName());
-    ENVOY_LOG(debug, "TCP:onUpstreamEvent(), requestedServerName: {}",
-              getStreamInfo().requestedServerName());
+  read_callbacks_->upstreamHost()->outlierDetector().putResult(
+      Upstream::Outlier::Result::LocalOriginConnectSuccessFinal);
 
-    if (config_->idleTimeout()) {
-      // The idle_timer_ can be moved to a Drainer, so related callbacks call into
-      // the UpstreamCallbacks, which has the same lifetime as the timer, and can dispatch
-      // the call to either TcpProxy or to Drainer, depending on the current state.
-      idle_timer_ = read_callbacks_->connection().dispatcher().createTimer(
-          [upstream_callbacks = upstream_callbacks_]() { upstream_callbacks->onIdleTimeout(); });
-      resetIdleTimer();
-      read_callbacks_->connection().addBytesSentCallback([this](uint64_t) { resetIdleTimer(); });
-      if (upstream_) {
-        upstream_->addBytesSentCallback([upstream_callbacks = upstream_callbacks_](uint64_t) {
-          upstream_callbacks->onBytesSent();
-        });
-      }
+  getStreamInfo().setRequestedServerName(read_callbacks_->connection().requestedServerName());
+  ENVOY_LOG(debug, "TCP:onUpstreamEvent(), requestedServerName: {}",
+            getStreamInfo().requestedServerName());
+
+  if (config_->idleTimeout()) {
+    // The idle_timer_ can be moved to a Drainer, so related callbacks call into
+    // the UpstreamCallbacks, which has the same lifetime as the timer, and can dispatch
+    // the call to either TcpProxy or to Drainer, depending on the current state.
+    idle_timer_ = read_callbacks_->connection().dispatcher().createTimer(
+        [upstream_callbacks = upstream_callbacks_]() { upstream_callbacks->onIdleTimeout(); });
+    resetIdleTimer();
+    read_callbacks_->connection().addBytesSentCallback([this](uint64_t) { resetIdleTimer(); });
+    if (upstream_) {
+      upstream_->addBytesSentCallback([upstream_callbacks = upstream_callbacks_](uint64_t) {
+        upstream_callbacks->onBytesSent();
+      });
     }
   }
 }
@@ -645,6 +703,13 @@ void Filter::onIdleTimeout() {
   config_->stats().idle_timeout_.inc();
 
   // This results in also closing the upstream connection.
+  read_callbacks_->connection().close(Network::ConnectionCloseType::NoFlush);
+}
+
+void Filter::onMaxDownstreamConnectionDuration() {
+  ENVOY_CONN_LOG(debug, "max connection duration reached", read_callbacks_->connection());
+  getStreamInfo().setResponseFlag(StreamInfo::ResponseFlag::DurationTimeout);
+  config_->stats().max_downstream_connection_duration_.inc();
   read_callbacks_->connection().close(Network::ConnectionCloseType::NoFlush);
 }
 

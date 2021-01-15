@@ -148,7 +148,7 @@ class GitApi(recipe_api.RecipeApi):
              to a local path, may cause problem with scripts that do
              "git fetch origin" or "git push origin".
            * arbitrary refs such refs/whatever/not-fetched-by-default-to-cache
-       progress (bool): wether to show progress for fetch or not
+       progress (bool): whether to show progress for fetch or not
       tags (bool): Also fetch tags.
 
     Returns: If the checkout was successful, this returns the commit hash of
@@ -195,12 +195,12 @@ class GitApi(recipe_api.RecipeApi):
       if use_git_cache:
         with self.m.context(env={'PATH': path}):
           self('cache', 'populate', '-c',
-               self.m.infra_paths.default_git_cache_dir, url,
+               self.m.path['cache'].join('git'), url,
                name='populate cache',
                can_fail_build=can_fail_build)
           dir_cmd = self(
               'cache', 'exists', '--quiet',
-              '--cache-dir', self.m.infra_paths.default_git_cache_dir, url,
+              '--cache-dir', self.m.path['cache'].join('git'), url,
               can_fail_build=can_fail_build,
               stdout=self.m.raw_io.output(),
               step_test_data=lambda:

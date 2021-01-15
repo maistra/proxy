@@ -5,33 +5,25 @@
 [![Build Status](https://api.travis-ci.org/google/googletest.svg?branch=master)](https://travis-ci.org/google/googletest)
 [![Build status](https://ci.appveyor.com/api/projects/status/4o38plt0xbo1ubc8/branch/master?svg=true)](https://ci.appveyor.com/project/GoogleTestAppVeyor/googletest/branch/master)
 
-### Future Plans
+### Announcements:
 
-#### 1.8.x Release:
+#### Release 1.10.x
 
-[the 1.8.x](https://github.com/google/googletest/releases/tag/release-1.8.1) is
-the last release that works with pre-C++11 compilers. The 1.8.x will not accept
-any requests for any new features and any bugfix requests will only be accepted
-if proven "critical"
+[Release 1.10.x](https://github.com/google/googletest/releases/tag/release-1.10.0)
+is now available.
 
-#### Post 1.8.x:
+#### Coming Soon
 
-On-going work to improve/cleanup/pay technical debt. When this work is completed
-there will be a 1.9.x tagged release
-
-#### Post 1.9.x
-
-Post 1.9.x googletest will follow
-[Abseil Live at Head philosophy](https://abseil.io/about/philosophy)
+*   Post 1.10.x googletest will follow
+    [Abseil Live at Head philosophy](https://abseil.io/about/philosophy)
+*   We are also planning to take a dependency on
+    [Abseil](https://github.com/abseil/abseil-cpp).
 
 ## Welcome to **Google Test**, Google's C++ test framework!
 
 This repository is a merger of the formerly separate GoogleTest and GoogleMock
 projects. These were so closely related that it makes sense to maintain and
 release them together.
-
-Please subscribe to the mailing list at googletestframework@googlegroups.com for
-questions, discussions, and development.
 
 ### Getting started:
 
@@ -81,8 +73,6 @@ following notable projects:
 *   [Protocol Buffers](https://github.com/google/protobuf), Google's data
     interchange format.
 *   The [OpenCV](http://opencv.org/) computer vision library.
-*   [tiny-dnn](https://github.com/tiny-dnn/tiny-dnn): header only,
-    dependency-free deep learning framework in C++11.
 
 ## Related Open Source Projects
 
@@ -107,12 +97,20 @@ runs tests from your binary in parallel to provide significant speed-up.
 is a VS Code extension allowing to view Google Tests in a tree view, and
 run/debug your tests.
 
+[C++ TestMate](https://github.com/matepek/vscode-catch2-test-adapter) is a VS
+Code extension allowing to view Google Tests in a tree view, and run/debug your
+tests.
+
+[Cornichon](https://pypi.org/project/cornichon/) is a small Gherkin DSL parser
+that generates stub code for Google Test.
+
 ## Requirements
 
 Google Test is designed to have fairly minimal requirements to build and use
 with your projects, but there are some. If you notice any problems on your
-platform, please notify
-[googletestframework@googlegroups.com](https://groups.google.com/forum/#!forum/googletestframework).
+platform, please file an issue on the
+[GoogleTest GitHub Issue Tracker](https://github.com/google/googletest/issues).
+
 Patches for fixing them are welcome!
 
 ### Build Requirements

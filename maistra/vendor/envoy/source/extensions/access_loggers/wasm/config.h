@@ -12,7 +12,8 @@ namespace Wasm {
 /**
  * Config registration for the file access log. @see AccessLogInstanceFactory.
  */
-class WasmAccessLogFactory : public Server::Configuration::AccessLogInstanceFactory {
+class WasmAccessLogFactory : public Server::Configuration::AccessLogInstanceFactory,
+                             Logger::Loggable<Logger::Id::wasm> {
 public:
   AccessLog::InstanceSharedPtr
   createAccessLogInstance(const Protobuf::Message& config, AccessLog::FilterPtr&& filter,
@@ -23,7 +24,7 @@ public:
   std::string name() const override;
 
 private:
-  std::unordered_map<std::string, std::string> convertJsonFormatToMap(ProtobufWkt::Struct config);
+  absl::flat_hash_map<std::string, std::string> convertJsonFormatToMap(ProtobufWkt::Struct config);
   Config::DataSource::RemoteAsyncDataProviderPtr remote_data_provider_;
 };
 

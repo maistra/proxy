@@ -15,7 +15,7 @@
 #include "src/debug/debug.h"
 #include "src/execution/frame-constants.h"
 #include "src/execution/frames-inl.h"
-#include "src/heap/heap-inl.h"  // For MemoryChunk.
+#include "src/heap/memory-chunk.h"
 #include "src/init/bootstrapper.h"
 #include "src/logging/counters.h"
 #include "src/runtime/runtime.h"
@@ -30,6 +30,20 @@
 
 namespace v8 {
 namespace internal {
+
+Operand StackArgumentsAccessor::GetArgumentOperand(int index) const {
+  DCHECK_GE(index, 0);
+#ifdef V8_REVERSE_JSARGS
+  // arg[0] = esp + kPCOnStackSize;
+  // arg[i] = arg[0] + i * kSystemPointerSize;
+  return Operand(esp, kPCOnStackSize + index * kSystemPointerSize);
+#else
+  // arg[0] = (esp + kPCOnStackSize) + argc * kSystemPointerSize;
+  // arg[i] = arg[0] - i * kSystemPointerSize;
+  return Operand(esp, argc_, times_system_pointer_size,
+                 kPCOnStackSize - index * kSystemPointerSize);
+#endif
+}
 
 // -------------------------------------------------------------------------
 // MacroAssembler implementation.
@@ -91,18 +105,6 @@ void TurboAssembler::CompareRoot(Register with, RootIndex index) {
   }
 }
 
-void TurboAssembler::CompareRealStackLimit(Register with) {
-  CHECK(root_array_available());  // Only used by builtins.
-
-  // Address through the root register. No load is needed.
-  ExternalReference limit =
-      ExternalReference::address_of_real_jslimit(isolate());
-  DCHECK(IsAddressableThroughRootRegister(isolate(), limit));
-
-  intptr_t offset = RootRegisterOffsetForExternalReference(isolate(), limit);
-  cmp(with, Operand(kRootRegister, offset));
-}
-
 void MacroAssembler::PushRoot(RootIndex index) {
   if (root_array_available()) {
     DCHECK(RootsTable::IsImmortalImmovable(index));
@@ -131,6 +133,31 @@ void MacroAssembler::JumpIfIsInRange(Register value, unsigned lower_limit,
     cmp(value, Immediate(higher_limit));
   }
   j(below_equal, on_in_range, near_jump);
+}
+
+void TurboAssembler::PushArray(Register array, Register size, Register scratch,
+                               PushArrayOrder order) {
+  DCHECK(!AreAliased(array, size, scratch));
+  Register counter = scratch;
+  Label loop, entry;
+  if (order == PushArrayOrder::kReverse) {
+    mov(counter, 0);
+    jmp(&entry);
+    bind(&loop);
+    Push(Operand(array, counter, times_system_pointer_size, 0));
+    inc(counter);
+    bind(&entry);
+    cmp(counter, size);
+    j(less, &loop, Label::kNear);
+  } else {
+    mov(counter, size);
+    jmp(&entry);
+    bind(&loop);
+    Push(Operand(array, counter, times_system_pointer_size, 0));
+    bind(&entry);
+    dec(counter);
+    j(greater_equal, &loop, Label::kNear);
+  }
 }
 
 Operand TurboAssembler::ExternalReferenceAsOperand(ExternalReference reference,
@@ -570,6 +597,28 @@ void TurboAssembler::Cvttsd2ui(Register dst, Operand src, XMMRegister tmp) {
   add(dst, Immediate(0x80000000));
 }
 
+void TurboAssembler::Roundps(XMMRegister dst, XMMRegister src,
+                             RoundingMode mode) {
+  if (CpuFeatures::IsSupported(AVX)) {
+    CpuFeatureScope scope(this, AVX);
+    vroundps(dst, src, mode);
+  } else {
+    CpuFeatureScope scope(this, SSE4_1);
+    roundps(dst, src, mode);
+  }
+}
+
+void TurboAssembler::Roundpd(XMMRegister dst, XMMRegister src,
+                             RoundingMode mode) {
+  if (CpuFeatures::IsSupported(AVX)) {
+    CpuFeatureScope scope(this, AVX);
+    vroundpd(dst, src, mode);
+  } else {
+    CpuFeatureScope scope(this, SSE4_1);
+    roundpd(dst, src, mode);
+  }
+}
+
 void TurboAssembler::ShlPair(Register high, Register low, uint8_t shift) {
   DCHECK_GE(63, shift);
   if (shift >= 32) {
@@ -756,8 +805,9 @@ void TurboAssembler::StubPrologue(StackFrame::Type type) {
 void TurboAssembler::Prologue() {
   push(ebp);  // Caller's frame pointer.
   mov(ebp, esp);
-  push(esi);  // Callee's context.
-  push(edi);  // Callee's JS function.
+  push(kContextRegister);                 // Callee's context.
+  push(kJSFunctionRegister);              // Callee's JS function.
+  push(kJavaScriptCallArgCountRegister);  // Actual argument count.
 }
 
 void TurboAssembler::EnterFrame(StackFrame::Type type) {
@@ -1107,9 +1157,14 @@ void MacroAssembler::CallDebugOnFunctionCall(Register fun, Register new_target,
   }
   Push(fun);
   Push(fun);
+  // Arguments are located 2 words below the base pointer.
+#ifdef V8_REVERSE_JSARGS
+  Operand receiver_op = Operand(ebp, kSystemPointerSize * 2);
+#else
   Operand receiver_op =
       Operand(ebp, actual_parameter_count, times_system_pointer_size,
               kSystemPointerSize * 2);
+#endif
   Push(receiver_op);
   CallRuntime(Runtime::kDebugOnFunctionCall);
   Pop(fun);
@@ -1776,32 +1831,38 @@ void TurboAssembler::CallCFunction(Register function, int num_arguments) {
 
   // Save the frame pointer and PC so that the stack layout remains iterable,
   // even without an ExitFrame which normally exists between JS and C frames.
-  if (isolate() != nullptr) {
-    // Find two caller-saved scratch registers.
-    Register scratch1 = eax;
-    Register scratch2 = ecx;
-    if (function == eax) scratch1 = edx;
-    if (function == ecx) scratch2 = edx;
-    PushPC();
-    pop(scratch1);
-    mov(ExternalReferenceAsOperand(
-            ExternalReference::fast_c_call_caller_pc_address(isolate()),
-            scratch2),
-        scratch1);
-    mov(ExternalReferenceAsOperand(
-            ExternalReference::fast_c_call_caller_fp_address(isolate()),
-            scratch2),
-        ebp);
-  }
+  // Find two caller-saved scratch registers.
+  Register pc_scratch = eax;
+  Register scratch = ecx;
+  if (function == eax) pc_scratch = edx;
+  if (function == ecx) scratch = edx;
+  PushPC();
+  pop(pc_scratch);
+
+  // See x64 code for reasoning about how to address the isolate data fields.
+  DCHECK_IMPLIES(!root_array_available(), isolate() != nullptr);
+  mov(root_array_available()
+          ? Operand(kRootRegister, IsolateData::fast_c_call_caller_pc_offset())
+          : ExternalReferenceAsOperand(
+                ExternalReference::fast_c_call_caller_pc_address(isolate()),
+                scratch),
+      pc_scratch);
+  mov(root_array_available()
+          ? Operand(kRootRegister, IsolateData::fast_c_call_caller_fp_offset())
+          : ExternalReferenceAsOperand(
+                ExternalReference::fast_c_call_caller_fp_address(isolate()),
+                scratch),
+      ebp);
 
   call(function);
 
-  if (isolate() != nullptr) {
-    // We don't unset the PC; the FP is the source of truth.
-    mov(ExternalReferenceAsOperand(
-            ExternalReference::fast_c_call_caller_fp_address(isolate()), edx),
-        Immediate(0));
-  }
+  // We don't unset the PC; the FP is the source of truth.
+  mov(root_array_available()
+          ? Operand(kRootRegister, IsolateData::fast_c_call_caller_fp_offset())
+          : ExternalReferenceAsOperand(
+                ExternalReference::fast_c_call_caller_fp_address(isolate()),
+                scratch),
+      Immediate(0));
 
   if (base::OS::ActivationFrameAlignment() != 0) {
     mov(esp, Operand(esp, num_arguments * kSystemPointerSize));
@@ -2007,9 +2068,9 @@ void TurboAssembler::CheckPageFlag(Register object, Register scratch, int mask,
     and_(scratch, object);
   }
   if (mask < (1 << kBitsPerByte)) {
-    test_b(Operand(scratch, MemoryChunk::kFlagsOffset), Immediate(mask));
+    test_b(Operand(scratch, BasicMemoryChunk::kFlagsOffset), Immediate(mask));
   } else {
-    test(Operand(scratch, MemoryChunk::kFlagsOffset), Immediate(mask));
+    test(Operand(scratch, BasicMemoryChunk::kFlagsOffset), Immediate(mask));
   }
   j(cc, condition_met, condition_met_distance);
 }
@@ -2028,7 +2089,9 @@ void TurboAssembler::ComputeCodeStartAddress(Register dst) {
   }
 }
 
-void TurboAssembler::CallForDeoptimization(Address target, int deopt_id) {
+void TurboAssembler::CallForDeoptimization(Address target, int deopt_id,
+                                           Label* exit, DeoptimizeKind kind) {
+  USE(exit, kind);
   NoRootArrayScope no_root_array(this);
   // Save the deopt id in ebx (we don't need the roots array from now on).
   mov(ebx, deopt_id);
@@ -2036,6 +2099,7 @@ void TurboAssembler::CallForDeoptimization(Address target, int deopt_id) {
 }
 
 void TurboAssembler::Trap() { int3(); }
+void TurboAssembler::DebugBreak() { int3(); }
 
 }  // namespace internal
 }  // namespace v8

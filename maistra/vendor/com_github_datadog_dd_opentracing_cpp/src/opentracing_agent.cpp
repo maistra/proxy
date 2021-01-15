@@ -24,9 +24,9 @@ std::shared_ptr<ot::Tracer> makeTracer(const TracerOptions &options) {
   }
   TracerOptions opts = maybe_options.value();
 
-  std::shared_ptr<SampleProvider> sampler = sampleProviderFromOptions(opts);
+  auto sampler = std::make_shared<RulesSampler>();
   auto writer = std::shared_ptr<Writer>{
-      new AgentWriter(opts.agent_host, opts.agent_port,
+      new AgentWriter(opts.agent_host, opts.agent_port, opts.agent_url,
                       std::chrono::milliseconds(llabs(opts.write_period_ms)), sampler)};
   return std::shared_ptr<ot::Tracer>{new Tracer{opts, writer, sampler}};
 }

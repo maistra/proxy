@@ -1,0 +1,36 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "autostart_default.go",
+        "autostart_posix.go",
+        "lsprpc.go",
+    ],
+    importpath = "golang.org/x/tools/internal/lsp/lsprpc",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//internal/event:go_default_library",
+        "//internal/jsonrpc2:go_default_library",
+        "//internal/lsp:go_default_library",
+        "//internal/lsp/cache:go_default_library",
+        "//internal/lsp/debug:go_default_library",
+        "//internal/lsp/protocol:go_default_library",
+        "@org_golang_x_sync//errgroup:go_default_library",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = ["lsprpc_test.go"],
+    embed = [":go_default_library"],
+    deps = [
+        "//internal/event:go_default_library",
+        "//internal/jsonrpc2:go_default_library",
+        "//internal/jsonrpc2/servertest:go_default_library",
+        "//internal/lsp/cache:go_default_library",
+        "//internal/lsp/debug:go_default_library",
+        "//internal/lsp/fake:go_default_library",
+        "//internal/lsp/protocol:go_default_library",
+    ],
+)

@@ -1,0 +1,14 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["eventtest.go"],
+    importpath = "golang.org/x/tools/internal/event/export/eventtest",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//internal/event:go_default_library",
+        "//internal/event/core:go_default_library",
+        "//internal/event/export:go_default_library",
+        "//internal/event/label:go_default_library",
+    ],
+)

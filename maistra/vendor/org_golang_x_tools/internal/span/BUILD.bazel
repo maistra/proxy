@@ -21,6 +21,7 @@ go_test(
         "span_test.go",
         "token_test.go",
         "uri_test.go",
+        "uri_windows_test.go",
         "utf16_test.go",
     ],
     embed = [":go_default_library"],

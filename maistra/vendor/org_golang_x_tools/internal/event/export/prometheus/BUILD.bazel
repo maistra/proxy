@@ -1,0 +1,14 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["prometheus.go"],
+    importpath = "golang.org/x/tools/internal/event/export/prometheus",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//internal/event:go_default_library",
+        "//internal/event/core:go_default_library",
+        "//internal/event/export/metric:go_default_library",
+        "//internal/event/label:go_default_library",
+    ],
+)

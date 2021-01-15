@@ -29,6 +29,9 @@ go_test(
     srcs = ["main_test.go"],
     embed = [":go_default_library"],
     deps = select({
+        "@io_bazel_rules_go//go/platform:aix": [
+            "//internal/testenv:go_default_library",
+        ],
         "@io_bazel_rules_go//go/platform:darwin": [
             "//internal/testenv:go_default_library",
         ],
@@ -38,7 +41,13 @@ go_test(
         "@io_bazel_rules_go//go/platform:freebsd": [
             "//internal/testenv:go_default_library",
         ],
+        "@io_bazel_rules_go//go/platform:illumos": [
+            "//internal/testenv:go_default_library",
+        ],
         "@io_bazel_rules_go//go/platform:ios": [
+            "//internal/testenv:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:js": [
             "//internal/testenv:go_default_library",
         ],
         "@io_bazel_rules_go//go/platform:linux": [

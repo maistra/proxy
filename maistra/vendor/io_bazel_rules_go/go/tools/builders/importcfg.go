@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -172,14 +171,10 @@ func buildImportcfgFileForLink(archives []archive, stdPackageListPath, installSu
 	}
 	depsSeen := map[string]string{}
 	for _, arc := range archives {
-		if conflictLabel, ok := depsSeen[arc.packagePath]; ok {
-			// TODO(#1327): link.bzl should report this as a failure after 0.11.0.
-			// At this point, we'll prepare an importcfg file and remove logic here.
-			log.Printf(`warning: package %q is provided by more than one rule:
-    %s
-    %s
-Set "importmap" to different paths in each library.
-This will be an error in the future.`, arc.packagePath, arc.label, conflictLabel)
+		if _, ok := depsSeen[arc.packagePath]; ok {
+			// If this is detected during analysis, the -conflict_err flag will be set.
+			// We'll report that error if the link command fails.
+			// TODO(#1374): This should always be an error. Panic.
 			continue
 		}
 		depsSeen[arc.packagePath] = arc.label

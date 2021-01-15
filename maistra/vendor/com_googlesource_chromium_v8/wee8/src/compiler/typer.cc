@@ -47,7 +47,7 @@ Typer::Typer(JSHeapBroker* broker, Flags flags, Graph* graph,
   singleton_false_ = operation_typer_.singleton_false();
   singleton_true_ = operation_typer_.singleton_true();
 
-  decorator_ = new (zone()) Decorator(this);
+  decorator_ = zone()->New<Decorator>(this);
   graph_->AddDecorator(decorator_);
 }
 
@@ -61,171 +61,98 @@ class Typer::Visitor : public Reducer {
   explicit Visitor(Typer* typer, LoopVariableOptimizer* induction_vars)
       : typer_(typer),
         induction_vars_(induction_vars),
-        weakened_nodes_(typer->zone()),
-        remembered_types_(typer->zone()) {}
+        weakened_nodes_(typer->zone()) {}
 
   const char* reducer_name() const override { return "Typer"; }
 
   Reduction Reduce(Node* node) override {
     if (node->op()->ValueOutputCount() == 0) return NoChange();
-    switch (node->opcode()) {
-#define DECLARE_CASE(x) \
-  case IrOpcode::k##x:  \
-    return UpdateType(node, TypeBinaryOp(node, x##Typer));
-      JS_SIMPLE_BINOP_LIST(DECLARE_CASE)
-#undef DECLARE_CASE
-
-#define DECLARE_CASE(x) \
-  case IrOpcode::k##x:  \
-    return UpdateType(node, Type##x(node));
-      DECLARE_CASE(Start)
-      DECLARE_CASE(IfException)
-      // VALUE_OP_LIST without JS_SIMPLE_BINOP_LIST:
-      COMMON_OP_LIST(DECLARE_CASE)
-      SIMPLIFIED_COMPARE_BINOP_LIST(DECLARE_CASE)
-      SIMPLIFIED_OTHER_OP_LIST(DECLARE_CASE)
-      JS_SIMPLE_UNOP_LIST(DECLARE_CASE)
-      JS_OBJECT_OP_LIST(DECLARE_CASE)
-      JS_CONTEXT_OP_LIST(DECLARE_CASE)
-      JS_OTHER_OP_LIST(DECLARE_CASE)
-#undef DECLARE_CASE
-
-#define DECLARE_CASE(x) \
-  case IrOpcode::k##x:  \
-    return UpdateType(node, TypeBinaryOp(node, x));
-      SIMPLIFIED_NUMBER_BINOP_LIST(DECLARE_CASE)
-      SIMPLIFIED_BIGINT_BINOP_LIST(DECLARE_CASE)
-      SIMPLIFIED_SPECULATIVE_NUMBER_BINOP_LIST(DECLARE_CASE)
-      SIMPLIFIED_SPECULATIVE_BIGINT_BINOP_LIST(DECLARE_CASE)
-#undef DECLARE_CASE
-
-#define DECLARE_CASE(x) \
-  case IrOpcode::k##x:  \
-    return UpdateType(node, TypeUnaryOp(node, x));
-      SIMPLIFIED_NUMBER_UNOP_LIST(DECLARE_CASE)
-      SIMPLIFIED_BIGINT_UNOP_LIST(DECLARE_CASE)
-      SIMPLIFIED_SPECULATIVE_NUMBER_UNOP_LIST(DECLARE_CASE)
-      SIMPLIFIED_SPECULATIVE_BIGINT_UNOP_LIST(DECLARE_CASE)
-#undef DECLARE_CASE
-
-#define DECLARE_CASE(x) case IrOpcode::k##x:
-      DECLARE_CASE(Loop)
-      DECLARE_CASE(Branch)
-      DECLARE_CASE(IfTrue)
-      DECLARE_CASE(IfFalse)
-      DECLARE_CASE(IfSuccess)
-      DECLARE_CASE(Switch)
-      DECLARE_CASE(IfValue)
-      DECLARE_CASE(IfDefault)
-      DECLARE_CASE(Merge)
-      DECLARE_CASE(Deoptimize)
-      DECLARE_CASE(DeoptimizeIf)
-      DECLARE_CASE(DeoptimizeUnless)
-      DECLARE_CASE(TrapIf)
-      DECLARE_CASE(TrapUnless)
-      DECLARE_CASE(Return)
-      DECLARE_CASE(TailCall)
-      DECLARE_CASE(Terminate)
-      DECLARE_CASE(OsrNormalEntry)
-      DECLARE_CASE(OsrLoopEntry)
-      DECLARE_CASE(Throw)
-      DECLARE_CASE(End)
-      SIMPLIFIED_CHANGE_OP_LIST(DECLARE_CASE)
-      SIMPLIFIED_CHECKED_OP_LIST(DECLARE_CASE)
-      MACHINE_SIMD_OP_LIST(DECLARE_CASE)
-      MACHINE_OP_LIST(DECLARE_CASE)
-#undef DECLARE_CASE
-      break;
-    }
-    return NoChange();
+    return UpdateType(node, TypeNode(node));
   }
 
   Type TypeNode(Node* node) {
     switch (node->opcode()) {
-#define DECLARE_CASE(x) \
-      case IrOpcode::k##x: return TypeBinaryOp(node, x##Typer);
-      JS_SIMPLE_BINOP_LIST(DECLARE_CASE)
-#undef DECLARE_CASE
-
-#define DECLARE_CASE(x) case IrOpcode::k##x: return Type##x(node);
-      DECLARE_CASE(Start)
-      DECLARE_CASE(IfException)
-      // VALUE_OP_LIST without JS_SIMPLE_BINOP_LIST:
-      COMMON_OP_LIST(DECLARE_CASE)
-      SIMPLIFIED_COMPARE_BINOP_LIST(DECLARE_CASE)
-      SIMPLIFIED_OTHER_OP_LIST(DECLARE_CASE)
-      JS_SIMPLE_UNOP_LIST(DECLARE_CASE)
-      JS_OBJECT_OP_LIST(DECLARE_CASE)
-      JS_CONTEXT_OP_LIST(DECLARE_CASE)
-      JS_OTHER_OP_LIST(DECLARE_CASE)
-#undef DECLARE_CASE
-
-#define DECLARE_CASE(x) \
-  case IrOpcode::k##x:  \
-    return TypeBinaryOp(node, x);
-      SIMPLIFIED_NUMBER_BINOP_LIST(DECLARE_CASE)
-      SIMPLIFIED_BIGINT_BINOP_LIST(DECLARE_CASE)
-      SIMPLIFIED_SPECULATIVE_NUMBER_BINOP_LIST(DECLARE_CASE)
-      SIMPLIFIED_SPECULATIVE_BIGINT_BINOP_LIST(DECLARE_CASE)
-#undef DECLARE_CASE
-
-#define DECLARE_CASE(x) \
-  case IrOpcode::k##x:  \
-    return TypeUnaryOp(node, x);
-      SIMPLIFIED_NUMBER_UNOP_LIST(DECLARE_CASE)
-      SIMPLIFIED_BIGINT_UNOP_LIST(DECLARE_CASE)
-      SIMPLIFIED_SPECULATIVE_NUMBER_UNOP_LIST(DECLARE_CASE)
-      SIMPLIFIED_SPECULATIVE_BIGINT_UNOP_LIST(DECLARE_CASE)
-#undef DECLARE_CASE
-
-#define DECLARE_CASE(x) case IrOpcode::k##x:
-      DECLARE_CASE(Loop)
-      DECLARE_CASE(Branch)
-      DECLARE_CASE(IfTrue)
-      DECLARE_CASE(IfFalse)
-      DECLARE_CASE(IfSuccess)
-      DECLARE_CASE(Switch)
-      DECLARE_CASE(IfValue)
-      DECLARE_CASE(IfDefault)
-      DECLARE_CASE(Merge)
-      DECLARE_CASE(Deoptimize)
-      DECLARE_CASE(DeoptimizeIf)
-      DECLARE_CASE(DeoptimizeUnless)
-      DECLARE_CASE(TrapIf)
-      DECLARE_CASE(TrapUnless)
-      DECLARE_CASE(Return)
-      DECLARE_CASE(TailCall)
-      DECLARE_CASE(Terminate)
-      DECLARE_CASE(OsrNormalEntry)
-      DECLARE_CASE(OsrLoopEntry)
-      DECLARE_CASE(Throw)
-      DECLARE_CASE(End)
-      SIMPLIFIED_CHANGE_OP_LIST(DECLARE_CASE)
-      SIMPLIFIED_CHECKED_OP_LIST(DECLARE_CASE)
-      MACHINE_SIMD_OP_LIST(DECLARE_CASE)
-      MACHINE_OP_LIST(DECLARE_CASE)
-#undef DECLARE_CASE
-      break;
+#define DECLARE_UNARY_CASE(x, ...) \
+  case IrOpcode::k##x:             \
+    return Type##x(Operand(node, 0));
+      JS_SIMPLE_UNOP_LIST(DECLARE_UNARY_CASE)
+      SIMPLIFIED_NUMBER_UNOP_LIST(DECLARE_UNARY_CASE)
+      SIMPLIFIED_BIGINT_UNOP_LIST(DECLARE_UNARY_CASE)
+      SIMPLIFIED_SPECULATIVE_NUMBER_UNOP_LIST(DECLARE_UNARY_CASE)
+      SIMPLIFIED_SPECULATIVE_BIGINT_UNOP_LIST(DECLARE_UNARY_CASE)
+#undef DECLARE_UNARY_CASE
+#define DECLARE_BINARY_CASE(x, ...) \
+  case IrOpcode::k##x:              \
+    return Type##x(Operand(node, 0), Operand(node, 1));
+      JS_SIMPLE_BINOP_LIST(DECLARE_BINARY_CASE)
+      SIMPLIFIED_NUMBER_BINOP_LIST(DECLARE_BINARY_CASE)
+      SIMPLIFIED_BIGINT_BINOP_LIST(DECLARE_BINARY_CASE)
+      SIMPLIFIED_SPECULATIVE_NUMBER_BINOP_LIST(DECLARE_BINARY_CASE)
+      SIMPLIFIED_SPECULATIVE_BIGINT_BINOP_LIST(DECLARE_BINARY_CASE)
+#undef DECLARE_BINARY_CASE
+#define DECLARE_OTHER_CASE(x, ...) \
+  case IrOpcode::k##x:             \
+    return Type##x(node);
+      DECLARE_OTHER_CASE(Start)
+      DECLARE_OTHER_CASE(IfException)
+      COMMON_OP_LIST(DECLARE_OTHER_CASE)
+      SIMPLIFIED_COMPARE_BINOP_LIST(DECLARE_OTHER_CASE)
+      SIMPLIFIED_OTHER_OP_LIST(DECLARE_OTHER_CASE)
+      JS_OBJECT_OP_LIST(DECLARE_OTHER_CASE)
+      JS_CONTEXT_OP_LIST(DECLARE_OTHER_CASE)
+      JS_OTHER_OP_LIST(DECLARE_OTHER_CASE)
+#undef DECLARE_OTHER_CASE
+#define DECLARE_IMPOSSIBLE_CASE(x, ...) case IrOpcode::k##x:
+      DECLARE_IMPOSSIBLE_CASE(Loop)
+      DECLARE_IMPOSSIBLE_CASE(Branch)
+      DECLARE_IMPOSSIBLE_CASE(IfTrue)
+      DECLARE_IMPOSSIBLE_CASE(IfFalse)
+      DECLARE_IMPOSSIBLE_CASE(IfSuccess)
+      DECLARE_IMPOSSIBLE_CASE(Switch)
+      DECLARE_IMPOSSIBLE_CASE(IfValue)
+      DECLARE_IMPOSSIBLE_CASE(IfDefault)
+      DECLARE_IMPOSSIBLE_CASE(Merge)
+      DECLARE_IMPOSSIBLE_CASE(Deoptimize)
+      DECLARE_IMPOSSIBLE_CASE(DeoptimizeIf)
+      DECLARE_IMPOSSIBLE_CASE(DeoptimizeUnless)
+      DECLARE_IMPOSSIBLE_CASE(TrapIf)
+      DECLARE_IMPOSSIBLE_CASE(TrapUnless)
+      DECLARE_IMPOSSIBLE_CASE(Return)
+      DECLARE_IMPOSSIBLE_CASE(TailCall)
+      DECLARE_IMPOSSIBLE_CASE(Terminate)
+      DECLARE_IMPOSSIBLE_CASE(Throw)
+      DECLARE_IMPOSSIBLE_CASE(End)
+      SIMPLIFIED_CHANGE_OP_LIST(DECLARE_IMPOSSIBLE_CASE)
+      SIMPLIFIED_CHECKED_OP_LIST(DECLARE_IMPOSSIBLE_CASE)
+      MACHINE_SIMD_OP_LIST(DECLARE_IMPOSSIBLE_CASE)
+      MACHINE_OP_LIST(DECLARE_IMPOSSIBLE_CASE)
+#undef DECLARE_IMPOSSIBLE_CASE
+      UNREACHABLE();
     }
-    UNREACHABLE();
   }
 
   Type TypeConstant(Handle<Object> value);
+
+  bool InductionVariablePhiTypeIsPrefixedPoint(
+      InductionVariable* induction_var);
 
  private:
   Typer* typer_;
   LoopVariableOptimizer* induction_vars_;
   ZoneSet<NodeId> weakened_nodes_;
-  // TODO(tebbi): remove once chromium:906567 is resolved.
-  ZoneUnorderedMap<std::pair<Node*, int>, Type> remembered_types_;
 
-#define DECLARE_METHOD(x) inline Type Type##x(Node* node);
+#define DECLARE_METHOD(x, ...) inline Type Type##x(Node* node);
   DECLARE_METHOD(Start)
   DECLARE_METHOD(IfException)
   COMMON_OP_LIST(DECLARE_METHOD)
   SIMPLIFIED_COMPARE_BINOP_LIST(DECLARE_METHOD)
   SIMPLIFIED_OTHER_OP_LIST(DECLARE_METHOD)
-  JS_OP_LIST(DECLARE_METHOD)
+  JS_OBJECT_OP_LIST(DECLARE_METHOD)
+  JS_CONTEXT_OP_LIST(DECLARE_METHOD)
+  JS_OTHER_OP_LIST(DECLARE_METHOD)
+#undef DECLARE_METHOD
+#define DECLARE_METHOD(x, ...) inline Type Type##x(Type input);
+  JS_SIMPLE_UNOP_LIST(DECLARE_METHOD)
 #undef DECLARE_METHOD
 
   Type TypeOrNone(Node* node) {
@@ -251,8 +178,10 @@ class Typer::Visitor : public Reducer {
   using UnaryTyperFun = Type (*)(Type, Typer* t);
   using BinaryTyperFun = Type (*)(Type, Type, Typer* t);
 
-  Type TypeUnaryOp(Node* node, UnaryTyperFun);
-  Type TypeBinaryOp(Node* node, BinaryTyperFun);
+  inline Type TypeUnaryOp(Node* node, UnaryTyperFun);
+  inline Type TypeBinaryOp(Node* node, BinaryTyperFun);
+  inline Type TypeUnaryOp(Type input, UnaryTyperFun);
+  inline Type TypeBinaryOp(Type left, Type right, BinaryTyperFun);
 
   static Type BinaryNumberOpTyper(Type lhs, Type rhs, Typer* t,
                                   BinaryTyperFun f);
@@ -300,7 +229,28 @@ class Typer::Visitor : public Reducer {
   SIMPLIFIED_SPECULATIVE_NUMBER_BINOP_LIST(DECLARE_METHOD)
   SIMPLIFIED_SPECULATIVE_BIGINT_BINOP_LIST(DECLARE_METHOD)
 #undef DECLARE_METHOD
-
+#define DECLARE_METHOD(Name, ...)                  \
+  inline Type Type##Name(Type left, Type right) {  \
+    return TypeBinaryOp(left, right, Name##Typer); \
+  }
+  JS_SIMPLE_BINOP_LIST(DECLARE_METHOD)
+#undef DECLARE_METHOD
+#define DECLARE_METHOD(Name, ...)                 \
+  inline Type Type##Name(Type left, Type right) { \
+    return TypeBinaryOp(left, right, Name);       \
+  }
+  SIMPLIFIED_NUMBER_BINOP_LIST(DECLARE_METHOD)
+  SIMPLIFIED_BIGINT_BINOP_LIST(DECLARE_METHOD)
+  SIMPLIFIED_SPECULATIVE_NUMBER_BINOP_LIST(DECLARE_METHOD)
+  SIMPLIFIED_SPECULATIVE_BIGINT_BINOP_LIST(DECLARE_METHOD)
+#undef DECLARE_METHOD
+#define DECLARE_METHOD(Name, ...) \
+  inline Type Type##Name(Type input) { return TypeUnaryOp(input, Name); }
+  SIMPLIFIED_NUMBER_UNOP_LIST(DECLARE_METHOD)
+  SIMPLIFIED_BIGINT_UNOP_LIST(DECLARE_METHOD)
+  SIMPLIFIED_SPECULATIVE_NUMBER_UNOP_LIST(DECLARE_METHOD)
+  SIMPLIFIED_SPECULATIVE_BIGINT_UNOP_LIST(DECLARE_METHOD)
+#undef DECLARE_METHOD
   static Type ObjectIsArrayBufferView(Type, Typer*);
   static Type ObjectIsBigInt(Type, Typer*);
   static Type ObjectIsCallable(Type, Typer*);
@@ -321,7 +271,7 @@ class Typer::Visitor : public Reducer {
   static ComparisonOutcome JSCompareTyper(Type, Type, Typer*);
   static ComparisonOutcome NumberCompareTyper(Type, Type, Typer*);
 
-#define DECLARE_METHOD(x) static Type x##Typer(Type, Type, Typer*);
+#define DECLARE_METHOD(x, ...) static Type x##Typer(Type, Type, Typer*);
   JS_SIMPLE_BINOP_LIST(DECLARE_METHOD)
 #undef DECLARE_METHOD
 
@@ -350,47 +300,7 @@ class Typer::Visitor : public Reducer {
         AllowHandleDereference allow;
         std::ostringstream ostream;
         node->Print(ostream);
-
-        if (V8_UNLIKELY(node->opcode() == IrOpcode::kNumberAdd)) {
-          ostream << "Previous UpdateType run (inputs first):";
-          for (int i = 0; i < 3; ++i) {
-            ostream << "  ";
-            if (remembered_types_[{node, i}].IsInvalid()) {
-              ostream << "untyped";
-            } else {
-              remembered_types_[{node, i}].PrintTo(ostream);
-            }
-          }
-
-          ostream << "\nCurrent (output) type:  ";
-          previous.PrintTo(ostream);
-
-          ostream << "\nThis UpdateType run (inputs first):";
-          for (int i = 0; i < 2; ++i) {
-            ostream << "  ";
-            Node* input = NodeProperties::GetValueInput(node, i);
-            if (NodeProperties::IsTyped(input)) {
-              NodeProperties::GetType(input).PrintTo(ostream);
-            } else {
-              ostream << "untyped";
-            }
-          }
-          ostream << "  ";
-          current.PrintTo(ostream);
-          ostream << "\n";
-        }
-
         FATAL("UpdateType error for node %s", ostream.str().c_str());
-      }
-
-      if (V8_UNLIKELY(node->opcode() == IrOpcode::kNumberAdd)) {
-        for (int i = 0; i < 2; ++i) {
-          Node* input = NodeProperties::GetValueInput(node, i);
-          remembered_types_[{node, i}] = NodeProperties::IsTyped(input)
-                                             ? NodeProperties::GetType(input)
-                                             : Type::Invalid();
-        }
-        remembered_types_[{node, 2}] = current;
       }
 
       NodeProperties::SetType(node, current);
@@ -400,16 +310,6 @@ class Typer::Visitor : public Reducer {
       }
       return NoChange();
     } else {
-      if (V8_UNLIKELY(node->opcode() == IrOpcode::kNumberAdd)) {
-        for (int i = 0; i < 2; ++i) {
-          Node* input = NodeProperties::GetValueInput(node, i);
-          remembered_types_[{node, i}] = NodeProperties::IsTyped(input)
-                                             ? NodeProperties::GetType(input)
-                                             : Type::Invalid();
-        }
-        remembered_types_[{node, 2}] = current;
-      }
-
       // No previous type, simply update the type.
       NodeProperties::SetType(node, current);
       return Changed(node);
@@ -425,12 +325,20 @@ void Typer::Run(const NodeVector& roots,
     induction_vars->ChangeToInductionVariablePhis();
   }
   Visitor visitor(this, induction_vars);
-  GraphReducer graph_reducer(zone(), graph(), tick_counter_);
+  GraphReducer graph_reducer(zone(), graph(), tick_counter_, broker());
   graph_reducer.AddReducer(&visitor);
   for (Node* const root : roots) graph_reducer.ReduceNode(root);
   graph_reducer.ReduceGraph();
 
   if (induction_vars != nullptr) {
+    // Validate the types computed by TypeInductionVariablePhi.
+    for (auto entry : induction_vars->induction_variables()) {
+      InductionVariable* induction_var = entry.second;
+      if (induction_var->phi()->opcode() == IrOpcode::kInductionVariablePhi) {
+        CHECK(visitor.InductionVariablePhiTypeIsPrefixedPoint(induction_var));
+      }
+    }
+
     induction_vars->ChangeToPhisAndInsertGuards();
   }
 }
@@ -461,12 +369,20 @@ void Typer::Decorator::Decorate(Node* node) {
 
 Type Typer::Visitor::TypeUnaryOp(Node* node, UnaryTyperFun f) {
   Type input = Operand(node, 0);
+  return TypeUnaryOp(input, f);
+}
+
+Type Typer::Visitor::TypeUnaryOp(Type input, UnaryTyperFun f) {
   return input.IsNone() ? Type::None() : f(input, typer_);
 }
 
 Type Typer::Visitor::TypeBinaryOp(Node* node, BinaryTyperFun f) {
   Type left = Operand(node, 0);
   Type right = Operand(node, 1);
+  return TypeBinaryOp(left, right, f);
+}
+
+Type Typer::Visitor::TypeBinaryOp(Type left, Type right, BinaryTyperFun f) {
   return left.IsNone() || right.IsNone() ? Type::None()
                                          : f(left, right, typer_);
 }
@@ -561,13 +477,12 @@ Type Typer::Visitor::ToBoolean(Type type, Typer* t) {
 Type Typer::Visitor::ToInteger(Type type, Typer* t) {
   // ES6 section 7.1.4 ToInteger ( argument )
   type = ToNumber(type, t);
-  if (type.Is(t->cache_->kIntegerOrMinusZero)) return type;
+  if (type.Is(t->cache_->kInteger)) return type;
   if (type.Is(t->cache_->kIntegerOrMinusZeroOrNaN)) {
-    return Type::Union(
-        Type::Intersect(type, t->cache_->kIntegerOrMinusZero, t->zone()),
-        t->cache_->kSingletonZero, t->zone());
+    return Type::Union(Type::Intersect(type, t->cache_->kInteger, t->zone()),
+                       t->cache_->kSingletonZero, t->zone());
   }
-  return t->cache_->kIntegerOrMinusZero;
+  return t->cache_->kInteger;
 }
 
 
@@ -579,10 +494,10 @@ Type Typer::Visitor::ToLength(Type type, Typer* t) {
   double min = type.Min();
   double max = type.Max();
   if (max <= 0.0) {
-    return Type::NewConstant(0, t->zone());
+    return Type::Constant(0, t->zone());
   }
   if (min >= kMaxSafeInteger) {
-    return Type::NewConstant(kMaxSafeInteger, t->zone());
+    return Type::Constant(kMaxSafeInteger, t->zone());
   }
   if (min <= 0.0) min = 0.0;
   if (max >= kMaxSafeInteger) max = kMaxSafeInteger;
@@ -802,6 +717,8 @@ Type Typer::Visitor::TypeInt32Constant(Node* node) { UNREACHABLE(); }
 
 Type Typer::Visitor::TypeInt64Constant(Node* node) { UNREACHABLE(); }
 
+Type Typer::Visitor::TypeTaggedIndexConstant(Node* node) { UNREACHABLE(); }
+
 Type Typer::Visitor::TypeRelocatableInt32Constant(Node* node) { UNREACHABLE(); }
 
 Type Typer::Visitor::TypeRelocatableInt64Constant(Node* node) { UNREACHABLE(); }
@@ -812,7 +729,7 @@ Type Typer::Visitor::TypeFloat64Constant(Node* node) { UNREACHABLE(); }
 
 Type Typer::Visitor::TypeNumberConstant(Node* node) {
   double number = OpParameter<double>(node->op());
-  return Type::NewConstant(number, zone());
+  return Type::Constant(number, zone());
 }
 
 Type Typer::Visitor::TypeHeapConstant(Node* node) {
@@ -850,11 +767,13 @@ Type Typer::Visitor::TypeInductionVariablePhi(Node* node) {
   Type initial_type = Operand(node, 0);
   Type increment_type = Operand(node, 2);
 
-  // Fallback to normal phi typing in a variety of cases: when the induction
-  // variable is not initially of type Integer (we want to work with ranges
-  // below), when the increment is zero (in that case, phi typing will generally
-  // yield a better type), and when the induction variable can become NaN
-  // (through addition/subtraction of opposing infinities).
+  // Fallback to normal phi typing in a variety of cases:
+  // - when the induction variable is not initially of type Integer, because we
+  //   want to work with ranges in the algorithm below.
+  // - when the increment is zero, because in that case normal phi typing will
+  //   generally yield a more precise type.
+  // - when the induction variable can become NaN (through addition/subtraction
+  //   of opposing infinities), because the code below can't handle that case.
   if (initial_type.IsNone() ||
       increment_type.Is(typer_->cache_->kSingletonZero) ||
       !initial_type.Is(typer_->cache_->kInteger) ||
@@ -873,9 +792,8 @@ Type Typer::Visitor::TypeInductionVariablePhi(Node* node) {
     return type;
   }
 
-  // Now process the bounds.
   auto res = induction_vars_->induction_variables().find(node->id());
-  DCHECK(res != induction_vars_->induction_variables().end());
+  DCHECK_NE(res, induction_vars_->induction_variables().end());
   InductionVariable* induction_var = res->second;
   InductionVariable::ArithmeticType arithmetic_type = induction_var->Type();
 
@@ -888,13 +806,13 @@ Type Typer::Visitor::TypeInductionVariablePhi(Node* node) {
     increment_min = increment_type.Min();
     increment_max = increment_type.Max();
   } else {
-    DCHECK_EQ(InductionVariable::ArithmeticType::kSubtraction, arithmetic_type);
+    DCHECK_EQ(arithmetic_type, InductionVariable::ArithmeticType::kSubtraction);
     increment_min = -increment_type.Max();
     increment_max = -increment_type.Min();
   }
 
   if (increment_min >= 0) {
-    // increasing sequence
+    // Increasing sequence.
     min = initial_type.Min();
     for (auto bound : induction_var->upper_bounds()) {
       Type bound_type = TypeOrNone(bound.bound);
@@ -914,7 +832,7 @@ Type Typer::Visitor::TypeInductionVariablePhi(Node* node) {
     // The upper bound must be at least the initial value's upper bound.
     max = std::max(max, initial_type.Max());
   } else if (increment_max <= 0) {
-    // decreasing sequence
+    // Decreasing sequence.
     max = initial_type.Max();
     for (auto bound : induction_var->lower_bounds()) {
       Type bound_type = TypeOrNone(bound.bound);
@@ -935,9 +853,12 @@ Type Typer::Visitor::TypeInductionVariablePhi(Node* node) {
     min = std::min(min, initial_type.Min());
   } else {
     // If the increment can be both positive and negative, the variable can go
-    // arbitrarily far.
-    return typer_->cache_->kInteger;
+    // arbitrarily far. Use the maximal range in that case. Note that this may
+    // be less precise than what ordinary typing would produce.
+    min = -V8_INFINITY;
+    max = +V8_INFINITY;
   }
+
   if (FLAG_trace_turbo_loop) {
     StdoutStream{} << std::setprecision(10) << "Loop ("
                    << NodeProperties::GetControlInput(node)->id()
@@ -949,7 +870,66 @@ Type Typer::Visitor::TypeInductionVariablePhi(Node* node) {
                    << " for phi " << node->id() << ": (" << min << ", " << max
                    << ")\n";
   }
+
   return Type::Range(min, max, typer_->zone());
+}
+
+bool Typer::Visitor::InductionVariablePhiTypeIsPrefixedPoint(
+    InductionVariable* induction_var) {
+  Node* node = induction_var->phi();
+  DCHECK_EQ(node->opcode(), IrOpcode::kInductionVariablePhi);
+  Type type = NodeProperties::GetType(node);
+  Type initial_type = Operand(node, 0);
+  Node* arith = node->InputAt(1);
+  Type increment_type = Operand(node, 2);
+
+  // Intersect {type} with useful bounds.
+  for (auto bound : induction_var->upper_bounds()) {
+    Type bound_type = TypeOrNone(bound.bound);
+    if (!bound_type.Is(typer_->cache_->kInteger)) continue;
+    if (!bound_type.IsNone()) {
+      bound_type = Type::Range(
+          -V8_INFINITY,
+          bound_type.Max() - (bound.kind == InductionVariable::kStrict),
+          zone());
+    }
+    type = Type::Intersect(type, bound_type, typer_->zone());
+  }
+  for (auto bound : induction_var->lower_bounds()) {
+    Type bound_type = TypeOrNone(bound.bound);
+    if (!bound_type.Is(typer_->cache_->kInteger)) continue;
+    if (!bound_type.IsNone()) {
+      bound_type = Type::Range(
+          bound_type.Min() + (bound.kind == InductionVariable::kStrict),
+          +V8_INFINITY, typer_->zone());
+    }
+    type = Type::Intersect(type, bound_type, typer_->zone());
+  }
+
+  // Apply ordinary typing to the "increment" operation.
+  // clang-format off
+  switch (arith->opcode()) {
+#define CASE(x)                             \
+    case IrOpcode::k##x:                    \
+      type = Type##x(type, increment_type); \
+      break;
+    CASE(JSAdd)
+    CASE(JSSubtract)
+    CASE(NumberAdd)
+    CASE(NumberSubtract)
+    CASE(SpeculativeNumberAdd)
+    CASE(SpeculativeNumberSubtract)
+    CASE(SpeculativeSafeIntegerAdd)
+    CASE(SpeculativeSafeIntegerSubtract)
+#undef CASE
+    default:
+      UNREACHABLE();
+  }
+  // clang-format on
+
+  type = Type::Union(initial_type, type, typer_->zone());
+
+  return type.Is(NodeProperties::GetType(node));
 }
 
 Type Typer::Visitor::TypeEffectPhi(Node* node) { UNREACHABLE(); }
@@ -1005,6 +985,8 @@ Type Typer::Visitor::TypeTypedObjectState(Node* node) {
 
 Type Typer::Visitor::TypeCall(Node* node) { return Type::Any(); }
 
+Type Typer::Visitor::TypeFastApiCall(Node* node) { return Type::Any(); }
+
 Type Typer::Visitor::TypeProjection(Node* node) {
   Type const type = Operand(node, 0);
   if (type.Is(Type::None())) return Type::None();
@@ -1021,6 +1003,8 @@ Type Typer::Visitor::TypeTypeGuard(Node* node) {
   Type const type = Operand(node, 0);
   return typer_->operation_typer()->TypeTypeGuard(node->op(), type);
 }
+
+Type Typer::Visitor::TypeFoldConstant(Node* node) { return Operand(node, 0); }
 
 Type Typer::Visitor::TypeDead(Node* node) { return Type::None(); }
 
@@ -1042,9 +1026,10 @@ Type Typer::Visitor::JSEqualTyper(Type lhs, Type rhs, Typer* t) {
       (lhs.Max() < rhs.Min() || lhs.Min() > rhs.Max())) {
     return t->singleton_false_;
   }
-  if (lhs.IsHeapConstant() && rhs.Is(lhs)) {
+  if (lhs.IsSingleton() && rhs.Is(lhs)) {
     // Types are equal and are inhabited only by a single semantic value,
     // which is not nan due to the earlier check.
+    DCHECK(lhs.Is(rhs));
     return t->singleton_true_;
   }
   return Type::Boolean();
@@ -1190,59 +1175,34 @@ Type Typer::Visitor::JSExponentiateTyper(Type lhs, Type rhs, Typer* t) {
 
 // JS unary operators.
 
-Type Typer::Visitor::TypeJSBitwiseNot(Node* node) {
-  return TypeUnaryOp(node, BitwiseNot);
-}
-
-Type Typer::Visitor::TypeJSDecrement(Node* node) {
-  return TypeUnaryOp(node, Decrement);
-}
-
-Type Typer::Visitor::TypeJSIncrement(Node* node) {
-  return TypeUnaryOp(node, Increment);
-}
-
-Type Typer::Visitor::TypeJSNegate(Node* node) {
-  return TypeUnaryOp(node, Negate);
-}
+#define DEFINE_METHOD(Name)                       \
+  Type Typer::Visitor::TypeJS##Name(Type input) { \
+    return TypeUnaryOp(input, Name);              \
+  }
+DEFINE_METHOD(BitwiseNot)
+DEFINE_METHOD(Decrement)
+DEFINE_METHOD(Increment)
+DEFINE_METHOD(Negate)
+DEFINE_METHOD(ToLength)
+DEFINE_METHOD(ToName)
+DEFINE_METHOD(ToNumber)
+DEFINE_METHOD(ToNumberConvertBigInt)
+DEFINE_METHOD(ToNumeric)
+DEFINE_METHOD(ToObject)
+DEFINE_METHOD(ToString)
+#undef DEFINE_METHOD
 
 Type Typer::Visitor::TypeTypeOf(Node* node) {
   return Type::InternalizedString();
 }
 
+Type Typer::Visitor::TypeTierUpCheck(Node* node) { UNREACHABLE(); }
+Type Typer::Visitor::TypeUpdateInterruptBudget(Node* node) { UNREACHABLE(); }
 
 // JS conversion operators.
 
 Type Typer::Visitor::TypeToBoolean(Node* node) {
   return TypeUnaryOp(node, ToBoolean);
-}
-
-Type Typer::Visitor::TypeJSToLength(Node* node) {
-  return TypeUnaryOp(node, ToLength);
-}
-
-Type Typer::Visitor::TypeJSToName(Node* node) {
-  return TypeUnaryOp(node, ToName);
-}
-
-Type Typer::Visitor::TypeJSToNumber(Node* node) {
-  return TypeUnaryOp(node, ToNumber);
-}
-
-Type Typer::Visitor::TypeJSToNumberConvertBigInt(Node* node) {
-  return TypeUnaryOp(node, ToNumberConvertBigInt);
-}
-
-Type Typer::Visitor::TypeJSToNumeric(Node* node) {
-  return TypeUnaryOp(node, ToNumeric);
-}
-
-Type Typer::Visitor::TypeJSToObject(Node* node) {
-  return TypeUnaryOp(node, ToObject);
-}
-
-Type Typer::Visitor::TypeJSToString(Node* node) {
-  return TypeUnaryOp(node, ToString);
 }
 
 // JS object operators.
@@ -1348,11 +1308,15 @@ Type Typer::Visitor::TypeJSLoadProperty(Node* node) {
 
 Type Typer::Visitor::TypeJSLoadNamed(Node* node) { return Type::NonInternal(); }
 
+Type Typer::Visitor::TypeJSLoadNamedFromSuper(Node* node) {
+  return Type::NonInternal();
+}
+
 Type Typer::Visitor::TypeJSLoadGlobal(Node* node) {
   return Type::NonInternal();
 }
 
-Type Typer::Visitor::TypeJSParseInt(Node* node) { return Type::Number(); }
+Type Typer::Visitor::TypeJSParseInt(Type input) { return Type::Number(); }
 
 Type Typer::Visitor::TypeJSRegExpTest(Node* node) { return Type::Boolean(); }
 
@@ -1862,7 +1826,7 @@ Type Typer::Visitor::TypeJSCallRuntime(Node* node) {
       return TypeUnaryOp(node, ToNumber);
     case Runtime::kInlineToObject:
       return TypeUnaryOp(node, ToObject);
-    case Runtime::kInlineToStringRT:
+    case Runtime::kInlineToString:
       return TypeUnaryOp(node, ToString);
     case Runtime::kHasInPrototypeChain:
       return Type::Boolean();
@@ -1899,6 +1863,8 @@ Type Typer::Visitor::TypeJSStoreMessage(Node* node) { UNREACHABLE(); }
 Type Typer::Visitor::TypeJSLoadModule(Node* node) { return Type::Any(); }
 
 Type Typer::Visitor::TypeJSStoreModule(Node* node) { UNREACHABLE(); }
+
+Type Typer::Visitor::TypeJSGetImportMeta(Node* node) { return Type::Any(); }
 
 Type Typer::Visitor::TypeJSGeneratorStore(Node* node) { UNREACHABLE(); }
 
@@ -2125,6 +2091,7 @@ Type Typer::Visitor::TypeCheckInternalizedString(Node* node) {
 }
 
 Type Typer::Visitor::TypeCheckMaps(Node* node) { UNREACHABLE(); }
+Type Typer::Visitor::TypeDynamicCheckMaps(Node* node) { UNREACHABLE(); }
 
 Type Typer::Visitor::TypeCompareMaps(Node* node) { return Type::Boolean(); }
 
@@ -2166,6 +2133,8 @@ Type Typer::Visitor::TypeCheckNotTaggedHole(Node* node) {
   type = Type::Intersect(type, Type::NonInternal(), zone());
   return type;
 }
+
+Type Typer::Visitor::TypeCheckClosure(Node* node) { return Type::Function(); }
 
 Type Typer::Visitor::TypeConvertReceiver(Node* node) {
   Type arg = Operand(node, 0);
@@ -2345,6 +2314,10 @@ Type Typer::Visitor::TypeArgumentsLength(Node* node) {
   return TypeCache::Get()->kArgumentsLengthType;
 }
 
+Type Typer::Visitor::TypeRestLength(Node* node) {
+  return TypeCache::Get()->kArgumentsLengthType;
+}
+
 Type Typer::Visitor::TypeArgumentsFrame(Node* node) {
   return Type::ExternalPointer();
 }
@@ -2382,7 +2355,7 @@ Type Typer::Visitor::TypeAssertType(Node* node) { UNREACHABLE(); }
 // Heap constants.
 
 Type Typer::Visitor::TypeConstant(Handle<Object> value) {
-  return Type::NewConstant(typer_->broker(), value, zone());
+  return Type::Constant(typer_->broker(), value, zone());
 }
 
 Type Typer::Visitor::TypeJSGetIterator(Node* node) { return Type::Any(); }

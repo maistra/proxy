@@ -105,17 +105,23 @@ def generate_config(template_path, template, output_file, **context):
     fh.write(raw_output)
 
 
+# TODO(sunjayBhatia, wrowe): Avoiding tracing extensions until they build on Windows
+tracing_enabled = os.name != 'nt'
+
 # Generate a demo config for the main front proxy. This sets up both HTTP and HTTPS listeners,
 # as well as a listener for the double proxy to connect to via SSL client authentication.
 generate_config(SCRIPT_DIR,
                 'envoy_front_proxy_v2.template.yaml',
                 '{}/envoy_front_proxy.v2.yaml'.format(OUT_DIR),
-                clusters=front_envoy_clusters)
+                clusters=front_envoy_clusters,
+                tracing=tracing_enabled)
 
 # Generate a demo config for the double proxy. This sets up both an HTTP and HTTPS listeners,
 # and backhauls the traffic to the main front proxy.
-generate_config(SCRIPT_DIR, 'envoy_double_proxy_v2.template.yaml',
-                '{}/envoy_double_proxy.v2.yaml'.format(OUT_DIR))
+generate_config(SCRIPT_DIR,
+                'envoy_double_proxy_v2.template.yaml',
+                '{}/envoy_double_proxy.v2.yaml'.format(OUT_DIR),
+                tracing=tracing_enabled)
 
 # Generate a demo config for the service to service (local) proxy. This sets up several different
 # listeners:
@@ -134,3 +140,6 @@ generate_config(SCRIPT_DIR,
 
 for google_ext in ['v2.yaml']:
   shutil.copy(os.path.join(SCRIPT_DIR, 'google_com_proxy.%s' % google_ext), OUT_DIR)
+
+shutil.copy(os.path.join(SCRIPT_DIR, 'encapsulate_in_connect.v3.yaml'), OUT_DIR)
+shutil.copy(os.path.join(SCRIPT_DIR, 'terminate_connect.v3.yaml'), OUT_DIR)

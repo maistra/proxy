@@ -15,10 +15,11 @@
 // See http://dev.chromium.org/developers/testing/threadsanitizer-tsan-v2
 // for the instructions on writing suppressions.
 char kTSanDefaultSuppressions[] =
-    // False positives in libdconfsettings.so, libflashplayer.so, libgio.so,
-    // libglib.so and libgobject.so.
+    // False positives in libdbus.so, libdconfsettings.so, libflashplayer.so,
+    // libgio.so, libglib.so and libgobject.so.
     // Since we don't instrument them, we cannot reason about the
     // synchronization in them.
+    "race:libdbus*.so\n"
     "race:libdconfsettings*.so\n"
     "race:libflashplayer.so\n"
     "race:libgio*.so\n"
@@ -133,6 +134,11 @@ char kTSanDefaultSuppressions[] =
 
     // https://crbug.com/977085
     "race:vp3_update_thread_context\n"
+
+    // Benign data race in libjpeg-turbo, won't fix
+    // (https://github.com/libjpeg-turbo/libjpeg-turbo/issues/87).
+    // https://crbug.com/1056011
+    "race:third_party/libjpeg_turbo/simd/x86_64/jsimd.c\n"
 
     // End of suppressions.
     ;  // Please keep this semicolon.

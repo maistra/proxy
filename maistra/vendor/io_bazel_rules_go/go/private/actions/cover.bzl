@@ -55,7 +55,11 @@ def emit_cover(go, source):
         args.add("-var", cover_var)
         args.add("-src", src)
         args.add("-srcname", srcname)
-        args.add("-mode", "set")
+
+        if go.mode.race:
+            args.add("-mode", "atomic")
+        else:
+            args.add("-mode", "set")
         go.actions.run(
             inputs = [src] + go.sdk.tools,
             outputs = [out],

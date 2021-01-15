@@ -1,0 +1,19 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "irregular.go",
+        "test.pb.go",
+    ],
+    importpath = "google.golang.org/protobuf/internal/testprotos/irregular",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//encoding/prototext:go_default_library",
+        "//reflect/protodesc:go_default_library",
+        "//reflect/protoreflect:go_default_library",
+        "//runtime/protoiface:go_default_library",
+        "//runtime/protoimpl:go_default_library",
+        "//types/descriptorpb:go_default_library",
+    ],
+)

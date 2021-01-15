@@ -1,0 +1,14 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_test")
+
+go_test(
+    name = "go_default_test",
+    srcs = ["micro_test.go"],
+    deps = [
+        "//internal/impl:go_default_library",
+        "//internal/testprotos/benchmarks/micro:go_default_library",
+        "//internal/testprotos/test:go_default_library",
+        "//proto:go_default_library",
+        "//runtime/protoiface:go_default_library",
+        "//types/known/emptypb:go_default_library",
+    ],
+)

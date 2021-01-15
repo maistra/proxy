@@ -8,22 +8,33 @@ namespace Extensions {
 namespace Common {
 namespace Wasm {
 
-google::api::expr::runtime::CelValue WasmState::exprValue(Protobuf::Arena* arena) const {
+using google::api::expr::runtime::CelValue;
+
+CelValue WasmState::exprValue(Protobuf::Arena* arena, bool last) const {
   if (initialized_) {
     switch (type_) {
     case WasmType::String:
-      return google::api::expr::runtime::CelValue::CreateString(&value_);
+      return CelValue::CreateString(&value_);
     case WasmType::Bytes:
-    case WasmType::Protobuf:
-      return google::api::expr::runtime::CelValue::CreateBytes(&value_);
+      return CelValue::CreateBytes(&value_);
+    case WasmType::Protobuf: {
+      if (last) {
+        return CelValue::CreateBytes(&value_);
+      }
+      // Note that this is very expensive since it incurs a de-serialization
+      const auto any = serializeAsProto();
+      return CelValue::CreateMessage(any.get(), arena);
+    }
     case WasmType::FlatBuffers:
-      return google::api::expr::runtime::CelValue::CreateMap(
-          google::api::expr::runtime::CreateFlatBuffersBackedObject(
-              reinterpret_cast<const uint8_t*>(value_.data()),
-              *reflection::GetSchema(schema_.data()), arena));
+      if (last) {
+        return CelValue::CreateBytes(&value_);
+      }
+      return CelValue::CreateMap(google::api::expr::runtime::CreateFlatBuffersBackedObject(
+          reinterpret_cast<const uint8_t*>(value_.data()), *reflection::GetSchema(schema_.data()),
+          arena));
     }
   }
-  return google::api::expr::runtime::CelValue::CreateNull();
+  return CelValue::CreateNull();
 }
 
 ProtobufTypes::MessagePtr WasmState::serializeAsProto() const {
@@ -34,7 +45,7 @@ ProtobufTypes::MessagePtr WasmState::serializeAsProto() const {
     value.set_value(value_);
     any->PackFrom(value);
   } else {
-    // The WASM extension serialized in its own type.
+    // The Wasm extension serialized in its own type.
     any->set_type_url(std::string(schema_));
     any->set_value(value_);
   }

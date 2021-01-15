@@ -62,7 +62,7 @@ message JwtProvider {
   // Example: https://securetoken.google.com
   // Example: 1234567-compute@developer.gserviceaccount.com
   //
-  string issuer = 1 [(validate.rules).string = {min_bytes: 1}];
+  string issuer = 1 [(validate.rules).string = {min_len: 1}];
 
   // The list of JWT `audiences <https://tools.ietf.org/html/rfc7519#section-4.1.3>`_ are
   // allowed to access. A JWT containing any of these audiences will be accepted. If not specified,
@@ -171,7 +171,8 @@ message JwtProvider {
   //    base64url_encoded(jwt_payload_in_JSON)
   //
   // If it is not specified, the payload will not be forwarded.
-  string forward_payload_header = 8;
+  string forward_payload_header = 8
+      [(validate.rules).string = {well_known_regex: HTTP_HEADER_NAME strict: false}];
 
   // If non empty, successfully verified JWT payloads will be written to StreamInfo DynamicMetadata
   // in the format as: *namespace* is the jwt_authn filter name as **envoy.filters.http.jwt_authn**
@@ -218,12 +219,14 @@ message JwtHeader {
       "envoy.config.filter.http.jwt_authn.v2alpha.JwtHeader";
 
   // The HTTP header name.
-  string name = 1 [(validate.rules).string = {min_bytes: 1}];
+  string name = 1
+      [(validate.rules).string = {min_len: 1 well_known_regex: HTTP_HEADER_NAME strict: false}];
 
   // The value prefix. The value format is "value_prefix<token>"
   // For example, for "Authorization: Bearer <token>", value_prefix="Bearer " with a space at the
   // end.
-  string value_prefix = 2;
+  string value_prefix = 2
+      [(validate.rules).string = {well_known_regex: HTTP_HEADER_VALUE strict: false}];
 }
 
 // Specify a required provider with audiences.
@@ -411,7 +414,7 @@ message FilterStateRule {
       "envoy.config.filter.http.jwt_authn.v2alpha.FilterStateRule";
 
   // The filter state name to retrieve the `Router::StringAccessor` object.
-  string name = 1 [(validate.rules).string = {min_bytes: 1}];
+  string name = 1 [(validate.rules).string = {min_len: 1}];
 
   // A map of string keys to requirements. The string key is the string value
   // in the FilterState with the name specified in the *name* field above.

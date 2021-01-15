@@ -84,8 +84,8 @@ func PrintfTests() {
 	fmt.Printf("%T %T", 3, i)
 	fmt.Printf("%U %U", 3, i)
 	fmt.Printf("%v %v", 3, i)
-	fmt.Printf("%x %x %x %x", 3, i, "hi", s)
-	fmt.Printf("%X %X %X %X", 3, i, "hi", s)
+	fmt.Printf("%x %x %x %x %x %x %x", 3, i, "hi", s, x, c, fslice)
+	fmt.Printf("%X %X %X %X %X %X %X", 3, i, "hi", s, x, c, fslice)
 	fmt.Printf("%.*s %d %g", 3, "hi", 23, 2.3)
 	fmt.Printf("%s", &stringerv)
 	fmt.Printf("%v", &stringerv)
@@ -101,8 +101,9 @@ func PrintfTests() {
 	fmt.Printf("%v", notstringerarrayv)
 	fmt.Printf("%T", notstringerarrayv)
 	fmt.Printf("%d", new(fmt.Formatter))
-	fmt.Printf("%*%", 2)               // Ridiculous but allowed.
-	fmt.Printf("%s", interface{}(nil)) // Nothing useful we can say.
+	fmt.Printf("%*%", 2)                              // Ridiculous but allowed.
+	fmt.Printf("%s", interface{}(nil))                // Nothing useful we can say.
+	fmt.Printf("%a", interface{}(new(BoolFormatter))) // Could be a fmt.Formatter.
 
 	fmt.Printf("%g", 1+2i)
 	fmt.Printf("%#e %#E %#f %#F %#g %#G", 1.2, 1.2, 1.2, 1.2, 1.2, 1.2) // OK since Go 1.9
@@ -128,7 +129,6 @@ func PrintfTests() {
 	fmt.Printf("%t", 23)                        // want "Printf format %t has arg 23 of wrong type int"
 	fmt.Printf("%U", x)                         // want "Printf format %U has arg x of wrong type float64"
 	fmt.Printf("%x", nil)                       // want "Printf format %x has arg nil of wrong type untyped nil"
-	fmt.Printf("%X", 2.3)                       // want "Printf format %X has arg 2.3 of wrong type float64"
 	fmt.Printf("%s", stringerv)                 // want "Printf format %s has arg stringerv of wrong type a.ptrStringer"
 	fmt.Printf("%t", stringerv)                 // want "Printf format %t has arg stringerv of wrong type a.ptrStringer"
 	fmt.Printf("%s", embeddedStringerv)         // want "Printf format %s has arg embeddedStringerv of wrong type a.embeddedStringer"
@@ -161,6 +161,7 @@ func PrintfTests() {
 	fmt.Printf("%*% x", 0.22)                   // want `Printf format %\*% uses non-int 0.22 as argument of \*`
 	fmt.Printf("%q %q", multi()...)             // ok
 	fmt.Printf("%#q", `blah`)                   // ok
+	fmt.Printf("%#b", 3)                        // ok
 	// printf("now is the time", "buddy")          // no error "printf call has arguments but no formatting directives"
 	Printf("now is the time", "buddy") // want "Printf call has arguments but no formatting directives"
 	Printf("hi")                       // ok
@@ -523,6 +524,59 @@ func (p *recursivePtrStringer) String() string {
 	_ = fmt.Sprintf("%v", *p)
 	_ = fmt.Sprint(&p)     // ok; prints address
 	return fmt.Sprintln(p) // want "Sprintln arg p causes recursive call to String method"
+}
+
+type recursiveError int
+
+func (s recursiveError) Error() string {
+	_ = fmt.Sprintf("%d", s)
+	_ = fmt.Sprintf("%#v", s)
+	_ = fmt.Sprintf("%v", s)  // want "Sprintf format %v with arg s causes recursive Error method call"
+	_ = fmt.Sprintf("%v", &s) // want "Sprintf format %v with arg &s causes recursive Error method call"
+	_ = fmt.Sprintf("%T", s)  // ok; does not recursively call Error
+	return fmt.Sprintln(s)    // want "Sprintln arg s causes recursive call to Error method"
+}
+
+type recursivePtrError int
+
+func (p *recursivePtrError) Error() string {
+	_ = fmt.Sprintf("%v", *p)
+	_ = fmt.Sprint(&p)     // ok; prints address
+	return fmt.Sprintln(p) // want "Sprintln arg p causes recursive call to Error method"
+}
+
+type recursiveStringerAndError int
+
+func (s recursiveStringerAndError) String() string {
+	_ = fmt.Sprintf("%d", s)
+	_ = fmt.Sprintf("%#v", s)
+	_ = fmt.Sprintf("%v", s)  // want "Sprintf format %v with arg s causes recursive String method call"
+	_ = fmt.Sprintf("%v", &s) // want "Sprintf format %v with arg &s causes recursive String method call"
+	_ = fmt.Sprintf("%T", s)  // ok; does not recursively call String
+	return fmt.Sprintln(s)    // want "Sprintln arg s causes recursive call to String method"
+}
+
+func (s recursiveStringerAndError) Error() string {
+	_ = fmt.Sprintf("%d", s)
+	_ = fmt.Sprintf("%#v", s)
+	_ = fmt.Sprintf("%v", s)  // want "Sprintf format %v with arg s causes recursive Error method call"
+	_ = fmt.Sprintf("%v", &s) // want "Sprintf format %v with arg &s causes recursive Error method call"
+	_ = fmt.Sprintf("%T", s)  // ok; does not recursively call Error
+	return fmt.Sprintln(s)    // want "Sprintln arg s causes recursive call to Error method"
+}
+
+type recursivePtrStringerAndError int
+
+func (p *recursivePtrStringerAndError) String() string {
+	_ = fmt.Sprintf("%v", *p)
+	_ = fmt.Sprint(&p)     // ok; prints address
+	return fmt.Sprintln(p) // want "Sprintln arg p causes recursive call to String method"
+}
+
+func (p *recursivePtrStringerAndError) Error() string {
+	_ = fmt.Sprintf("%v", *p)
+	_ = fmt.Sprint(&p)     // ok; prints address
+	return fmt.Sprintln(p) // want "Sprintln arg p causes recursive call to Error method"
 }
 
 // implements a String() method but with non-matching return types

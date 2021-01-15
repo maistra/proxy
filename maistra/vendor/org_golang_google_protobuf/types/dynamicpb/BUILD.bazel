@@ -1,0 +1,28 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["dynamic.go"],
+    importpath = "google.golang.org/protobuf/types/dynamicpb",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//internal/errors:go_default_library",
+        "//reflect/protoreflect:go_default_library",
+        "//runtime/protoiface:go_default_library",
+        "//runtime/protoimpl:go_default_library",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = ["dynamic_test.go"],
+    embed = [":go_default_library"],
+    deps = [
+        "//internal/testprotos/test:go_default_library",
+        "//internal/testprotos/test3:go_default_library",
+        "//proto:go_default_library",
+        "//reflect/protoreflect:go_default_library",
+        "//reflect/protoregistry:go_default_library",
+        "//testing/prototest:go_default_library",
+    ],
+)

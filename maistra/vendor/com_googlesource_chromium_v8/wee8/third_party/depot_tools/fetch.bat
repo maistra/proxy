@@ -6,6 +6,10 @@ setlocal
 
 :: Synchronize the root directory before deferring control back to gclient.py.
 call "%~dp0\update_depot_tools.bat"
+:: Abort the script if we failed to update depot_tools.
+IF %errorlevel% NEQ 0 (
+  goto :EOF
+)
 
 :: Ensure that "depot_tools" is somewhere in PATH so this tool can be used
 :: standalone, but allow other PATH manipulations to take priority.
@@ -13,7 +17,12 @@ set PATH=%PATH%;%~dp0
 
 :: Defer control.
 IF "%GCLIENT_PY3%" == "1" (
-  vpython3 "%~dp0\fetch.py" %*
+  :: Explicitly run on Python 3
+  call vpython3 "%~dp0\fetch.py" %*
+) ELSE IF "%GCLIENT_PY3%" == "0" (
+  :: Explicitly run on Python 2
+  call vpython "%~dp0\fetch.py" %*
 ) ELSE (
-  vpython "%~dp0\fetch.py" %*
+  :: Run on Python 3, allows default to be flipped.
+  call vpython3 "%~dp0\fetch.py" %*
 )

@@ -4,7 +4,6 @@
 #include <map>
 #include <memory>
 #include <string>
-#include <unordered_map>
 
 #include "envoy/config/cluster/v3/cluster.pb.h"
 #include "envoy/runtime/runtime.h"
@@ -16,6 +15,7 @@
 #include "common/protobuf/utility.h"
 #include "common/upstream/upstream_impl.h"
 
+#include "absl/container/node_hash_map.h"
 #include "absl/types/optional.h"
 
 namespace Envoy {
@@ -26,9 +26,10 @@ public:
   SubsetLoadBalancer(
       LoadBalancerType lb_type, PrioritySet& priority_set, const PrioritySet* local_priority_set,
       ClusterStats& stats, Stats::Scope& scope, Runtime::Loader& runtime,
-      Runtime::RandomGenerator& random, const LoadBalancerSubsetInfo& subsets,
+      Random::RandomGenerator& random, const LoadBalancerSubsetInfo& subsets,
       const absl::optional<envoy::config::cluster::v3::Cluster::RingHashLbConfig>&
           lb_ring_hash_config,
+      const absl::optional<envoy::config::cluster::v3::Cluster::MaglevLbConfig>& lb_maglev_config,
       const absl::optional<envoy::config::cluster::v3::Cluster::LeastRequestLbConfig>&
           least_request_config,
       const envoy::config::cluster::v3::Cluster::CommonLbConfig& common_config);
@@ -36,6 +37,8 @@ public:
 
   // Upstream::LoadBalancer
   HostConstSharedPtr chooseHost(LoadBalancerContext* context) override;
+  // TODO(alyssawilk) implement for non-metadata match.
+  HostConstSharedPtr peekAnotherHost(LoadBalancerContext*) override { return nullptr; }
 
 private:
   using HostPredicate = std::function<bool(const Host&)>;
@@ -63,9 +66,6 @@ private:
     LocalityWeightsConstSharedPtr
     determineLocalityWeights(const HostsPerLocality& hosts_per_locality) const;
 
-    void triggerCallbacks() { HostSetImpl::runUpdateCallbacks({}, {}); }
-    bool empty() { return hosts().empty(); }
-
   private:
     const HostSet& original_host_set_;
     const bool locality_weight_aware_;
@@ -81,10 +81,6 @@ private:
     void update(uint32_t priority, const HostVector& hosts_added, const HostVector& hosts_removed);
 
     bool empty() { return empty_; }
-
-    const HostSubsetImpl* getOrCreateHostSubset(uint32_t priority) {
-      return reinterpret_cast<const HostSubsetImpl*>(&getOrCreateHostSet(priority));
-    }
 
     void triggerCallbacks() {
       for (size_t i = 0; i < hostSetsPerPriority().size(); ++i) {
@@ -127,8 +123,8 @@ private:
 
   using LbSubsetEntryPtr = std::shared_ptr<LbSubsetEntry>;
   using SubsetSelectorMapPtr = std::shared_ptr<SubsetSelectorMap>;
-  using ValueSubsetMap = std::unordered_map<HashedValue, LbSubsetEntryPtr>;
-  using LbSubsetMap = std::unordered_map<std::string, ValueSubsetMap>;
+  using ValueSubsetMap = absl::node_hash_map<HashedValue, LbSubsetEntryPtr>;
+  using LbSubsetMap = absl::node_hash_map<std::string, ValueSubsetMap>;
   using SubsetSelectorFallbackParamsRef = std::reference_wrapper<SubsetSelectorFallbackParams>;
 
   class LoadBalancerContextWrapper : public LoadBalancerContext {
@@ -147,10 +143,11 @@ private:
     const Http::RequestHeaderMap* downstreamHeaders() const override {
       return wrapped_->downstreamHeaders();
     }
-    const HealthyAndDegradedLoad&
-    determinePriorityLoad(const PrioritySet& priority_set,
-                          const HealthyAndDegradedLoad& original_priority_load) override {
-      return wrapped_->determinePriorityLoad(priority_set, original_priority_load);
+    const HealthyAndDegradedLoad& determinePriorityLoad(
+        const PrioritySet& priority_set, const HealthyAndDegradedLoad& original_priority_load,
+        const Upstream::RetryPriority::PriorityMappingFunc& priority_mapping_func) override {
+      return wrapped_->determinePriorityLoad(priority_set, original_priority_load,
+                                             priority_mapping_func);
     }
     bool shouldSelectAnotherHost(const Host& host) override {
       return wrapped_->shouldSelectAnotherHost(host);
@@ -177,7 +174,7 @@ private:
   };
 
   struct SubsetSelectorMap {
-    std::unordered_map<std::string, SubsetSelectorMapPtr> subset_keys_;
+    absl::node_hash_map<std::string, SubsetSelectorMapPtr> subset_keys_;
     SubsetSelectorFallbackParams fallback_params_;
   };
 
@@ -188,6 +185,7 @@ private:
 
     bool initialized() const { return priority_subset_ != nullptr; }
     bool active() const { return initialized() && !priority_subset_->empty(); }
+    bool hasChildren() const { return !children_.empty(); }
 
     LbSubsetMap children_;
 
@@ -202,14 +200,20 @@ private:
   // Called by HostSet::MemberUpdateCb
   void update(uint32_t priority, const HostVector& hosts_added, const HostVector& hosts_removed);
 
+  // Rebuild the map for single_host_per_subset mode.
+  void rebuildSingle();
+
   void updateFallbackSubset(uint32_t priority, const HostVector& hosts_added,
                             const HostVector& hosts_removed);
-  void processSubsets(
-      const HostVector& hosts_added, const HostVector& hosts_removed,
-      std::function<void(LbSubsetEntryPtr)> update_cb,
-      std::function<void(LbSubsetEntryPtr, HostPredicate, const SubsetMetadata&, bool)> cb);
+  void
+  processSubsets(const HostVector& hosts_added, const HostVector& hosts_removed,
+                 std::function<void(LbSubsetEntryPtr)> update_cb,
+                 std::function<void(LbSubsetEntryPtr, HostPredicate, const SubsetMetadata&)> cb);
 
   HostConstSharedPtr tryChooseHostFromContext(LoadBalancerContext* context, bool& host_chosen);
+  HostConstSharedPtr
+  tryChooseHostFromMetadataMatchCriteriaSingle(const Router::MetadataMatchCriteria& match_criteria,
+                                               bool& host_chosen);
 
   absl::optional<SubsetSelectorFallbackParamsRef>
   tryFindSelectorFallbackParams(LoadBalancerContext* context);
@@ -222,6 +226,7 @@ private:
   LbSubsetEntryPtr findOrCreateSubset(LbSubsetMap& subsets, const SubsetMetadata& kvs,
                                       uint32_t idx);
   void forEachSubset(LbSubsetMap& subsets, std::function<void(LbSubsetEntryPtr)> cb);
+  void purgeEmptySubsets(LbSubsetMap& subsets);
 
   std::vector<SubsetMetadata> extractSubsetMetadata(const std::set<std::string>& subset_keys,
                                                     const Host& host);
@@ -229,18 +234,19 @@ private:
 
   const LoadBalancerType lb_type_;
   const absl::optional<envoy::config::cluster::v3::Cluster::RingHashLbConfig> lb_ring_hash_config_;
+  const absl::optional<envoy::config::cluster::v3::Cluster::MaglevLbConfig> lb_maglev_config_;
   const absl::optional<envoy::config::cluster::v3::Cluster::LeastRequestLbConfig>
       least_request_config_;
   const envoy::config::cluster::v3::Cluster::CommonLbConfig common_config_;
   ClusterStats& stats_;
   Stats::Scope& scope_;
   Runtime::Loader& runtime_;
-  Runtime::RandomGenerator& random_;
+  Random::RandomGenerator& random_;
 
   const envoy::config::cluster::v3::Cluster::LbSubsetConfig::LbSubsetFallbackPolicy
       fallback_policy_;
   const SubsetMetadata default_subset_metadata_;
-  const std::vector<SubsetSelectorPtr> subset_selectors_;
+  std::vector<SubsetSelectorPtr> subset_selectors_;
 
   const PrioritySet& original_priority_set_;
   const PrioritySet* original_local_priority_set_;
@@ -257,6 +263,10 @@ private:
   // Forms a trie-like structure of lexically sorted keys+fallback policy from subset
   // selectors configuration
   SubsetSelectorMapPtr selectors_;
+
+  std::string single_key_;
+  absl::flat_hash_map<HashedValue, HostConstSharedPtr> single_host_per_subset_map_;
+  Stats::Gauge* single_duplicate_stat_{};
 
   const bool locality_weight_aware_;
   const bool scale_locality_weight_;

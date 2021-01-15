@@ -3,15 +3,14 @@
 // found in the LICENSE file.
 
 #include "src/builtins/builtins-proxy-gen.h"
+
 #include "src/builtins/builtins-utils-gen.h"
 #include "src/builtins/builtins-utils.h"
 #include "src/builtins/builtins.h"
-
 #include "src/logging/counters.h"
 #include "src/objects/js-proxy.h"
 #include "src/objects/objects-inl.h"
-
-#include "torque-generated/exported-macros-assembler-tq.h"
+#include "torque-generated/exported-macros-assembler.h"
 
 namespace v8 {
 namespace internal {
@@ -62,9 +61,10 @@ TNode<JSProxy> ProxiesCodeStubAssembler::AllocateProxy(
 
 TNode<Context> ProxiesCodeStubAssembler::CreateProxyRevokeFunctionContext(
     TNode<JSProxy> proxy, TNode<NativeContext> native_context) {
-  const TNode<Context> context =
-      AllocateSyntheticFunctionContext(native_context, kProxyContextLength);
-  StoreContextElementNoWriteBarrier(context, kProxySlot, proxy);
+  const TNode<Context> context = AllocateSyntheticFunctionContext(
+      native_context, ProxyRevokeFunctionContextSlot::kProxyContextLength);
+  StoreContextElementNoWriteBarrier(
+      context, ProxyRevokeFunctionContextSlot::kProxySlot, proxy);
   return context;
 }
 
@@ -76,8 +76,7 @@ TNode<JSFunction> ProxiesCodeStubAssembler::AllocateProxyRevokeFunction(
       CreateProxyRevokeFunctionContext(proxy, native_context);
   const TNode<Map> revoke_map = CAST(LoadContextElement(
       native_context, Context::STRICT_FUNCTION_WITHOUT_PROTOTYPE_MAP_INDEX));
-  const TNode<SharedFunctionInfo> revoke_info = CAST(
-      LoadContextElement(native_context, Context::PROXY_REVOKE_SHARED_FUN));
+  const TNode<SharedFunctionInfo> revoke_info = ProxyRevokeSharedFunConstant();
 
   return AllocateFunctionWithMapAndContext(revoke_map, revoke_info,
                                            proxy_context);
@@ -126,8 +125,7 @@ TF_BUILTIN(CallProxy, ProxiesCodeStubAssembler) {
                               UncheckedCast<IntPtrT>(argc_ptr));
 
   // 8. Return Call(trap, handler, «target, thisArgument, argArray»).
-  TNode<Object> result = CallJS(CodeFactory::Call(isolate()), context, trap,
-                                handler, target, receiver, array);
+  TNode<Object> result = Call(context, trap, handler, target, receiver, array);
   args.PopAndReturn(result);
 
   BIND(&trap_undefined);
@@ -181,8 +179,8 @@ TF_BUILTIN(ConstructProxy, ProxiesCodeStubAssembler) {
                               UncheckedCast<IntPtrT>(argc_ptr));
 
   // 8. Let newObj be ? Call(trap, handler, « target, argArray, newTarget »).
-  TNode<Object> new_obj = CallJS(CodeFactory::Call(isolate()), context, trap,
-                                 handler, target, array, new_target);
+  TNode<Object> new_obj =
+      Call(context, trap, handler, target, array, new_target);
 
   // 9. If Type(newObj) is not Object, throw a TypeError exception.
   GotoIf(TaggedIsSmi(new_obj), &not_an_object);

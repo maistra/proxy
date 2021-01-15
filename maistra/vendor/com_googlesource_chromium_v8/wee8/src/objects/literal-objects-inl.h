@@ -95,14 +95,8 @@ void ObjectBoilerplateDescription::set_backing_store_size(
 OBJECT_CONSTRUCTORS_IMPL(ClassBoilerplate, FixedArray)
 CAST_ACCESSOR(ClassBoilerplate)
 
-BIT_FIELD_ACCESSORS(ClassBoilerplate, flags, install_class_name_accessor,
-                    ClassBoilerplate::Flags::InstallClassNameAccessorBit)
-
-BIT_FIELD_ACCESSORS(ClassBoilerplate, flags, arguments_count,
-                    ClassBoilerplate::Flags::ArgumentsCountBits)
-
-SMI_ACCESSORS(ClassBoilerplate, flags,
-              FixedArray::OffsetOfElementAt(kFlagsIndex))
+SMI_ACCESSORS(ClassBoilerplate, arguments_count,
+              FixedArray::OffsetOfElementAt(kArgumentsCountIndex))
 
 ACCESSORS(ClassBoilerplate, static_properties_template, Object,
           FixedArray::OffsetOfElementAt(kClassPropertiesTemplateIndex))
@@ -127,8 +121,6 @@ ACCESSORS(ClassBoilerplate, instance_computed_properties, FixedArray,
 //
 
 TQ_OBJECT_CONSTRUCTORS_IMPL(ArrayBoilerplateDescription)
-
-TQ_SMI_ACCESSORS(ArrayBoilerplateDescription, flags)
 
 ElementsKind ArrayBoilerplateDescription::elements_kind() const {
   return static_cast<ElementsKind>(flags());

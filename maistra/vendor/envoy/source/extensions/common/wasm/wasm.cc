@@ -1,53 +1,22 @@
 #include "extensions/common/wasm/wasm.h"
 
-#include <stdio.h>
-
 #include <algorithm>
-#include <cctype>
 #include <chrono>
-#include <limits>
-#include <memory>
-#include <string>
 
-#include "envoy/common/exception.h"
-#include "envoy/config/wasm/v3/wasm.pb.validate.h"
 #include "envoy/event/deferred_deletable.h"
-#include "envoy/grpc/status.h"
-#include "envoy/http/codes.h"
-#include "envoy/local_info/local_info.h"
-#include "envoy/server/wasm.h"
-#include "envoy/thread_local/thread_local.h"
 
-#include "common/buffer/buffer_impl.h"
-#include "common/common/assert.h"
-#include "common/common/base64.h"
-#include "common/common/empty_string.h"
-#include "common/common/enum_to_int.h"
 #include "common/common/logger.h"
-#include "common/config/remote_data_fetcher.h"
-#include "common/http/header_map_impl.h"
-#include "common/http/message_impl.h"
-#include "common/http/utility.h"
-#include "common/tracing/http_tracer_impl.h"
 
-#include "extensions/common/wasm/foreign.h"
-#include "extensions/common/wasm/wasm_state.h"
-#include "extensions/common/wasm/well_known_names.h"
-#include "extensions/filters/common/expr/context.h"
+#include "extensions/common/wasm/wasm_extension.h"
 
-#include "absl/base/casts.h"
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/node_hash_map.h"
 #include "absl/strings/str_cat.h"
-#include "absl/synchronization/mutex.h"
-#include "eval/eval/field_access.h"
-#include "eval/eval/field_backed_list_impl.h"
-#include "eval/eval/field_backed_map_impl.h"
-#include "eval/public/cel_value.h"
-#include "eval/public/value_export_util.h"
-//#include "openssl/bytestring.h"
-#include "openssl/hmac.h"
-#include "openssl/sha.h"
+
+#define WASM_CONTEXT(_c)                                                                           \
+  static_cast<Context*>(proxy_wasm::exports::ContextOrEffectiveContext(                            \
+      static_cast<proxy_wasm::ContextBase*>((void)_c, proxy_wasm::current_context_)))
+
+using proxy_wasm::FailState;
+using proxy_wasm::Word;
 
 namespace Envoy {
 
@@ -56,34 +25,9 @@ using ScopeWeakPtr = std::weak_ptr<Stats::Scope>;
 namespace Extensions {
 namespace Common {
 namespace Wasm {
-
-std::string Sha256(absl::string_view data) {
-  std::vector<uint8_t> digest(SHA256_DIGEST_LENGTH);
-  EVP_MD_CTX* ctx(EVP_MD_CTX_new());
-  auto rc = EVP_DigestInit(ctx, EVP_sha256());
-  RELEASE_ASSERT(rc == 1, "Failed to init digest context");
-  rc = EVP_DigestUpdate(ctx, data.data(), data.size());
-  RELEASE_ASSERT(rc == 1, "Failed to update digest");
-  rc = EVP_DigestFinal(ctx, digest.data(), nullptr);
-  RELEASE_ASSERT(rc == 1, "Failed to finalize digest");
-  EVP_MD_CTX_free(ctx);
-  return std::string(reinterpret_cast<const char*>(&digest[0]), digest.size());
-}
-
 namespace {
 
-#define CREATE_WASM_STATS(COUNTER, GAUGE)                                                          \
-  COUNTER(remote_load_cache_hits)                                                                  \
-  COUNTER(remote_load_cache_negative_hits)                                                         \
-  COUNTER(remote_load_cache_misses)                                                                \
-  COUNTER(remote_load_fetch_successes)                                                             \
-  COUNTER(remote_load_fetch_failures)                                                              \
-  GAUGE(remote_load_cache_entries, NeverImport)
-
-struct CreateWasmStats {
-  ScopeWeakPtr scope_;
-  CREATE_WASM_STATS(GENERATE_COUNTER_STRUCT, GENERATE_GAUGE_STRUCT)
-};
+using WasmEvent = EnvoyWasm::WasmEvent;
 
 struct CodeCacheEntry {
   std::string code;
@@ -96,9 +40,9 @@ class RemoteDataFetcherAdapter : public Config::DataFetcher::RemoteDataFetcherCa
                                  public Event::DeferredDeletable {
 public:
   RemoteDataFetcherAdapter(std::function<void(std::string cb)> cb) : cb_(cb) {}
-  ~RemoteDataFetcherAdapter() = default;
+  ~RemoteDataFetcherAdapter() override = default;
   void onSuccess(const std::string& data) override { cb_(data); }
-  virtual void onFailure(Config::DataFetcher::FailureReason) override { cb_(""); }
+  void onFailure(Config::DataFetcher::FailureReason) override { cb_(""); }
   void setFetcher(std::unique_ptr<Config::DataFetcher::RemoteDataFetcher>&& fetcher) {
     fetcher_ = std::move(fetcher);
   }
@@ -108,57 +52,39 @@ private:
   std::unique_ptr<Config::DataFetcher::RemoteDataFetcher> fetcher_;
 };
 
-std::atomic<int64_t> active_wasm_;
-std::mutex code_cache_mutex;
-std::unordered_map<std::string, CodeCacheEntry>* code_cache = nullptr;
-CreateWasmStats* create_wasm_stats = nullptr;
-
-std::string Xor(absl::string_view a, absl::string_view b) {
-  ASSERT(a.size() == b.size());
-  std::string result;
-  result.reserve(a.size());
-  for (size_t i = 0; i < a.size(); i++) {
-    result.push_back(a[i] ^ b[i]);
-  }
-  return result;
-}
-
-// Map from Wasm Key to the local Wasm instance.
-thread_local absl::flat_hash_map<std::string, std::weak_ptr<WasmHandle>> local_wasms_;
-// Map from Wasm Key to the base Wasm instance, using a pointer to avoid the initialization fiasco.
-ABSL_CONST_INIT absl::Mutex base_wasms_mutex_(absl::kConstInit);
-absl::flat_hash_map<std::string, std::weak_ptr<WasmHandle>>* base_wasms_ = nullptr;
-
 const std::string INLINE_STRING = "<inline>";
-// NB: xDS currently does not support failing asynchronously, so we fail immediately
-// if remote Wasm code is not cached and do a background fill.
-const bool DEFAULT_FAIL_IF_NOT_CACHED = true;
-bool fail_if_code_not_cached = DEFAULT_FAIL_IF_NOT_CACHED;
 const int CODE_CACHE_SECONDS_NEGATIVE_CACHING = 10;
 const int CODE_CACHE_SECONDS_CACHING_TTL = 24 * 3600; // 24 hours.
 MonotonicTime::duration cache_time_offset_for_testing{};
 
-const uint8_t* decodeVarint(const uint8_t* pos, const uint8_t* end, uint32_t* out) {
-  uint32_t ret = 0;
-  int shift = 0;
-  while (pos < end && (*pos & 0x80)) {
-    ret |= (*pos & 0x7f) << shift;
-    shift += 7;
-    pos++;
-  }
-  if (pos < end) {
-    ret |= *pos << shift;
-    pos++;
-  }
-  *out = ret;
-  return pos;
+std::atomic<int64_t> active_wasms;
+std::mutex code_cache_mutex;
+absl::flat_hash_map<std::string, CodeCacheEntry>* code_cache = nullptr;
+
+// Downcast WasmBase to the actual Wasm.
+inline Wasm* getWasm(WasmHandleSharedPtr& base_wasm_handle) {
+  return static_cast<Wasm*>(base_wasm_handle->wasm().get());
 }
 
 } // namespace
 
+std::string anyToBytes(const ProtobufWkt::Any& any) {
+  if (any.Is<ProtobufWkt::StringValue>()) {
+    ProtobufWkt::StringValue s;
+    MessageUtil::unpackTo(any, s);
+    return s.value();
+  }
+  if (any.Is<ProtobufWkt::BytesValue>()) {
+    Protobuf::BytesValue b;
+    MessageUtil::unpackTo(any, b);
+    return b.value();
+  }
+  return any.value();
+}
+
 void Wasm::initializeStats() {
-  active_wasm_++;
-  wasm_stats_.active_.set(active_wasm_);
+  active_wasms++;
+  wasm_stats_.active_.set(active_wasms);
   wasm_stats_.created_.inc();
 }
 
@@ -174,425 +100,169 @@ void Wasm::initializeLifecycle(Server::ServerLifecycleNotifier& lifecycle_notifi
 }
 
 Wasm::Wasm(absl::string_view runtime, absl::string_view vm_id, absl::string_view vm_configuration,
-           absl::string_view vm_key, Stats::ScopeSharedPtr scope,
+           absl::string_view vm_key, const Stats::ScopeSharedPtr& scope,
            Upstream::ClusterManager& cluster_manager, Event::Dispatcher& dispatcher)
-    : vm_id_(std::string(vm_id)), vm_key_(std::string(vm_key)),
-      wasm_vm_(Common::Wasm::createWasmVm(runtime, scope)), scope_(scope),
+    : WasmBase(createWasmVm(runtime, scope), vm_id, vm_configuration, vm_key), scope_(scope),
       cluster_manager_(cluster_manager), dispatcher_(dispatcher),
-      time_source_(dispatcher.timeSource()), vm_configuration_(vm_configuration),
+      time_source_(dispatcher.timeSource()),
       wasm_stats_(WasmStats{
           ALL_WASM_STATS(POOL_COUNTER_PREFIX(*scope_, absl::StrCat("wasm.", runtime, ".")),
                          POOL_GAUGE_PREFIX(*scope_, absl::StrCat("wasm.", runtime, ".")))}) {
   initializeStats();
-  ENVOY_LOG(debug, "Base Wasm created {} now active", active_wasm_);
+  ENVOY_LOG(debug, "Base Wasm created {} now active", active_wasms);
 }
 
-void Wasm::registerCallbacks() {
-#define _REGISTER(_fn)                                                                             \
-  wasm_vm_->registerCallback(                                                                      \
-      "env", #_fn, &Exports::_fn,                                                                  \
-      &ConvertFunctionWordToUint32<decltype(Exports::_fn),                                         \
-                                   Exports::_fn>::convertFunctionWordToUint32)
-  _REGISTER(pthread_equal);
-#undef _REGISTER
-
-#define _REGISTER_WASI(_fn)                                                                        \
-  wasm_vm_->registerCallback(                                                                      \
-      "wasi_unstable", #_fn, &Exports::wasi_unstable_##_fn,                                        \
-      &ConvertFunctionWordToUint32<decltype(Exports::wasi_unstable_##_fn),                         \
-                                   Exports::wasi_unstable_##_fn>::convertFunctionWordToUint32);    \
-  wasm_vm_->registerCallback(                                                                      \
-      "wasi_snapshot_preview1", #_fn, &Exports::wasi_unstable_##_fn,                               \
-      &ConvertFunctionWordToUint32<decltype(Exports::wasi_unstable_##_fn),                         \
-                                   Exports::wasi_unstable_##_fn>::convertFunctionWordToUint32)
-  _REGISTER_WASI(fd_write);
-  _REGISTER_WASI(fd_read);
-  _REGISTER_WASI(fd_seek);
-  _REGISTER_WASI(fd_close);
-  _REGISTER_WASI(fd_fdstat_get);
-  _REGISTER_WASI(environ_get);
-  _REGISTER_WASI(environ_sizes_get);
-  _REGISTER_WASI(args_get);
-  _REGISTER_WASI(args_sizes_get);
-  _REGISTER_WASI(proc_exit);
-#undef _REGISTER_WASI
-
-  // Calls with the "proxy_" prefix.
-#define _REGISTER_PROXY(_fn)                                                                       \
-  wasm_vm_->registerCallback(                                                                      \
-      "env", "proxy_" #_fn, &Exports::_fn,                                                         \
-      &ConvertFunctionWordToUint32<decltype(Exports::_fn),                                         \
-                                   Exports::_fn>::convertFunctionWordToUint32);
-  _REGISTER_PROXY(log);
-
-  _REGISTER_PROXY(get_status);
-  _REGISTER_PROXY(get_configuration);
-
-  _REGISTER_PROXY(set_property);
-  _REGISTER_PROXY(get_property);
-
-  _REGISTER_PROXY(continue_request);
-  _REGISTER_PROXY(continue_response);
-  _REGISTER_PROXY(send_local_response);
-  _REGISTER_PROXY(clear_route_cache);
-
-  _REGISTER_PROXY(get_shared_data);
-  _REGISTER_PROXY(set_shared_data);
-
-  _REGISTER_PROXY(register_shared_queue);
-  _REGISTER_PROXY(resolve_shared_queue);
-  _REGISTER_PROXY(dequeue_shared_queue);
-  _REGISTER_PROXY(enqueue_shared_queue);
-
-  _REGISTER_PROXY(get_header_map_value);
-  _REGISTER_PROXY(add_header_map_value);
-  _REGISTER_PROXY(replace_header_map_value);
-  _REGISTER_PROXY(remove_header_map_value);
-  _REGISTER_PROXY(get_header_map_pairs);
-  _REGISTER_PROXY(set_header_map_pairs);
-  _REGISTER_PROXY(get_header_map_size);
-
-  _REGISTER_PROXY(get_buffer_status);
-  _REGISTER_PROXY(get_buffer_bytes);
-  _REGISTER_PROXY(set_buffer_bytes);
-
-  _REGISTER_PROXY(http_call);
-
-  _REGISTER_PROXY(grpc_call);
-  _REGISTER_PROXY(grpc_stream);
-  _REGISTER_PROXY(grpc_close);
-  _REGISTER_PROXY(grpc_cancel);
-  _REGISTER_PROXY(grpc_send);
-
-  _REGISTER_PROXY(set_tick_period_milliseconds);
-  _REGISTER_PROXY(get_current_time_nanoseconds);
-
-  _REGISTER_PROXY(define_metric);
-  _REGISTER_PROXY(increment_metric);
-  _REGISTER_PROXY(record_metric);
-  _REGISTER_PROXY(get_metric);
-
-  _REGISTER_PROXY(set_effective_context);
-  _REGISTER_PROXY(done);
-  _REGISTER_PROXY(call_foreign_function);
-#undef _REGISTER_PROXY
+Wasm::Wasm(WasmHandleSharedPtr base_wasm_handle, Event::Dispatcher& dispatcher)
+    : WasmBase(base_wasm_handle,
+               [&base_wasm_handle]() {
+                 return createWasmVm(
+                     getEnvoyWasmIntegration(*base_wasm_handle->wasm()->wasm_vm()).runtime(),
+                     getWasm(base_wasm_handle)->scope_);
+               }),
+      scope_(getWasm(base_wasm_handle)->scope_),
+      cluster_manager_(getWasm(base_wasm_handle)->clusterManager()), dispatcher_(dispatcher),
+      time_source_(dispatcher.timeSource()), wasm_stats_(getWasm(base_wasm_handle)->wasm_stats_) {
+  initializeStats();
+  ENVOY_LOG(debug, "Thread-Local Wasm created {} now active", active_wasms);
 }
 
-void Wasm::getFunctions() {
-#define _GET(_fn) wasm_vm_->getFunction(#_fn, &_fn##_);
-  _GET(_start);
-  _GET(__wasm_call_ctors);
+void Wasm::error(absl::string_view message) { ENVOY_LOG(error, "Wasm VM failed {}", message); }
 
-  _GET(malloc);
-  if (!malloc_) {
-    throw WasmException("WASM missing malloc");
+void Wasm::setTimerPeriod(uint32_t context_id, std::chrono::milliseconds new_period) {
+  auto& period = timer_period_[context_id];
+  auto& timer = timer_[context_id];
+  bool was_running = timer && period.count() > 0;
+  period = new_period;
+  if (was_running) {
+    timer->disableTimer();
   }
-#undef _GET
-
-#define _GET_PROXY(_fn) wasm_vm_->getFunction("proxy_" #_fn, &_fn##_);
-  _GET_PROXY(abi_version_0_1_0);
-  if (!abi_version_0_1_0_) {
-    throw WasmException("WASM missing Proxy-Wasm ABI version or requires an unsupported version.");
+  if (period.count() > 0) {
+    timer = dispatcher_.createTimer(
+        [weak = std::weak_ptr<Wasm>(std::static_pointer_cast<Wasm>(shared_from_this())),
+         context_id]() {
+          auto shared = weak.lock();
+          if (shared) {
+            shared->tickHandler(context_id);
+          }
+        });
+    timer->enableTimer(period);
   }
-
-  _GET_PROXY(validate_configuration);
-  _GET_PROXY(on_vm_start);
-  _GET_PROXY(on_configure);
-  _GET_PROXY(on_tick);
-
-  _GET_PROXY(on_context_create);
-
-  _GET_PROXY(on_new_connection);
-  _GET_PROXY(on_downstream_data);
-  _GET_PROXY(on_upstream_data);
-  _GET_PROXY(on_downstream_connection_close);
-  _GET_PROXY(on_upstream_connection_close);
-
-  _GET_PROXY(on_request_headers);
-  _GET_PROXY(on_request_body);
-  _GET_PROXY(on_request_trailers);
-  _GET_PROXY(on_request_metadata);
-  _GET_PROXY(on_response_headers);
-  _GET_PROXY(on_response_body);
-  _GET_PROXY(on_response_trailers);
-  _GET_PROXY(on_response_metadata);
-  _GET_PROXY(on_http_call_response);
-  _GET_PROXY(on_grpc_receive);
-  _GET_PROXY(on_grpc_close);
-  _GET_PROXY(on_grpc_receive_initial_metadata);
-  _GET_PROXY(on_grpc_receive_trailing_metadata);
-  _GET_PROXY(on_queue_ready);
-  _GET_PROXY(on_done);
-  _GET_PROXY(on_log);
-  _GET_PROXY(on_delete);
-#undef _GET_PROXY
 }
 
-Wasm::Wasm(WasmHandleSharedPtr& base_wasm_handle, Event::Dispatcher& dispatcher)
-    : std::enable_shared_from_this<Wasm>(*base_wasm_handle->wasm()),
-      vm_id_(base_wasm_handle->wasm()->vm_id_), vm_key_(base_wasm_handle->wasm()->vm_key_),
-      started_from_(base_wasm_handle->wasm()->wasm_vm()->cloneable()),
-      scope_(base_wasm_handle->wasm()->scope_),
-      cluster_manager_(base_wasm_handle->wasm()->cluster_manager_), dispatcher_(dispatcher),
-      time_source_(dispatcher.timeSource()), base_wasm_handle_(base_wasm_handle),
-      wasm_stats_(base_wasm_handle->wasm()->wasm_stats_) {
-  if (started_from_ != Cloneable::NotCloneable) {
-    wasm_vm_ = base_wasm_handle->wasm()->wasm_vm()->clone();
-  } else {
-    wasm_vm_ = Common::Wasm::createWasmVm(base_wasm_handle->wasm()->wasm_vm()->runtime(), scope_);
+void Wasm::tickHandler(uint32_t root_context_id) {
+  auto period = timer_period_.find(root_context_id);
+  auto timer = timer_.find(root_context_id);
+  if (period == timer_period_.end() || timer == timer_.end() || !on_tick_) {
+    return;
   }
-  if (!initialize(base_wasm_handle->wasm()->code(),
-                  base_wasm_handle->wasm()->allow_precompiled())) {
-    throw WasmException("Failed to load WASM code");
+  auto context = getContext(root_context_id);
+  if (context) {
+    context->onTick(0);
   }
-  active_wasm_++;
-  wasm_stats_.active_.set(active_wasm_);
-  wasm_stats_.created_.inc();
-  ENVOY_LOG(debug, "Thread-Local Wasm created {} now active", active_wasm_);
+  if (timer->second && period->second.count() > 0) {
+    timer->second->enableTimer(period->second);
+  }
 }
 
 Wasm::~Wasm() {
-  active_wasm_--;
-  wasm_stats_.active_.set(active_wasm_);
-  ENVOY_LOG(debug, "~Wasm {} remaining active", active_wasm_);
-  for (auto& p : timer_) {
-    if (p.second && p.second->enabled()) {
-      p.second->disableTimer();
-    }
-  }
+  active_wasms--;
+  wasm_stats_.active_.set(active_wasms);
+  ENVOY_LOG(debug, "~Wasm {} remaining active", active_wasms);
   if (server_shutdown_post_cb_) {
     dispatcher_.post(server_shutdown_post_cb_);
   }
 }
 
-bool Wasm::initialize(const std::string& code, bool allow_precompiled) {
-  if (!wasm_vm_) {
-    return false;
+// NOLINTNEXTLINE(readability-identifier-naming)
+Word resolve_dns(void* raw_context, Word dns_address_ptr, Word dns_address_size, Word token_ptr) {
+  auto context = WASM_CONTEXT(raw_context);
+  auto root_context = context->isRootContext() ? context : context->rootContext();
+  auto address = context->wasmVm()->getMemory(dns_address_ptr, dns_address_size);
+  if (!address) {
+    return WasmResult::InvalidMemoryAccess;
   }
-
-  if (started_from_ == Cloneable::NotCloneable) {
-    auto ok = wasm_vm_->load(code, allow_precompiled);
-    if (!ok) {
-      return false;
-    }
-    auto metadata = wasm_vm_->getCustomSection("emscripten_metadata");
-    if (!metadata.empty()) {
-      // See https://github.com/emscripten-core/emscripten/blob/incoming/tools/shared.py#L3059
-      is_emscripten_ = true;
-      auto start = reinterpret_cast<const uint8_t*>(metadata.data());
-      auto end = reinterpret_cast<const uint8_t*>(metadata.data() + metadata.size());
-      start = decodeVarint(start, end, &emscripten_metadata_major_version_);
-      start = decodeVarint(start, end, &emscripten_metadata_minor_version_);
-      start = decodeVarint(start, end, &emscripten_abi_major_version_);
-      start = decodeVarint(start, end, &emscripten_abi_minor_version_);
-      uint32_t temp;
-      if (emscripten_metadata_major_version_ > 0 || emscripten_metadata_minor_version_ > 1) {
-        // metadata 0.2 - added: wasm_backend.
-        start = decodeVarint(start, end, &temp);
-      }
-      start = decodeVarint(start, end, &temp);
-      start = decodeVarint(start, end, &temp);
-      if (emscripten_metadata_major_version_ > 0 || emscripten_metadata_minor_version_ > 0) {
-        // metadata 0.1 - added: global_base, dynamic_base, dynamictop_ptr and tempdouble_ptr.
-        start = decodeVarint(start, end, &temp);
-        start = decodeVarint(start, end, &temp);
-        start = decodeVarint(start, end, &temp);
-        decodeVarint(start, end, &temp);
-        if (emscripten_metadata_major_version_ > 0 || emscripten_metadata_minor_version_ > 2) {
-          // metadata 0.3 - added: standalone_wasm.
-          start = decodeVarint(start, end, &emscripten_standalone_wasm_);
-        }
-      }
-    }
-
-    code_ = code;
-    allow_precompiled_ = allow_precompiled;
+  // Verify set and verify token_ptr before initiating the async resolve.
+  uint32_t token = context->wasm()->nextDnsToken();
+  if (!context->wasm()->setDatatype(token_ptr, token)) {
+    return WasmResult::InvalidMemoryAccess;
   }
-
-  if (started_from_ != Cloneable::InstantiatedModule) {
-    registerCallbacks();
-    wasm_vm_->link(vm_id_);
-  }
-
-  vm_context_ = std::make_shared<Context>(this);
-  getFunctions();
-
-  if (started_from_ != Cloneable::InstantiatedModule) {
-    // Base VM was already started, so don't try to start cloned VMs again.
-    startVm(vm_context_.get());
-  }
-
-  return true;
-}
-
-Context* Wasm::getOrCreateRootContext(const PluginSharedPtr& plugin) {
-  auto root_context = getRootContext(plugin->root_id_);
-  if (!root_context) {
-    auto context = std::make_unique<Context>(this, plugin);
-    root_context = context.get();
-    root_contexts_[plugin->root_id_] = std::move(context);
-  }
-  return root_context;
-}
-
-void Wasm::startVm(Context* root_context) {
-  /* Call "_start" function, and fallback to "__wasm_call_ctors" if the former is not available. */
-  if (_start_) {
-    _start_(root_context);
-  } else if (__wasm_call_ctors_) {
-    __wasm_call_ctors_(root_context);
-  }
-}
-
-bool Wasm::configure(Context* root_context, PluginSharedPtr plugin,
-                     absl::string_view configuration) {
-  return root_context->onConfigure(configuration, plugin);
-}
-
-Context* Wasm::start(PluginSharedPtr plugin) {
-  auto root_id = plugin->root_id_;
-  auto it = root_contexts_.find(root_id);
-  if (it != root_contexts_.end()) {
-    it->second->onStart(vm_configuration(), plugin);
-    return it->second.get();
-  }
-  auto context = std::make_unique<Context>(this, plugin);
-  auto context_ptr = context.get();
-  root_contexts_[root_id] = std::move(context);
-  context_ptr->onStart(vm_configuration(), plugin);
-  return context_ptr;
-};
-
-void Wasm::startForTesting(std::unique_ptr<Context> context, PluginSharedPtr plugin) {
-  auto context_ptr = context.get();
-  if (!context->wasm_) {
-    // Initialization was delayed till the Wasm object was created.
-    context->initializeRoot(this, plugin);
-  }
-  root_contexts_[plugin->root_id_] = std::move(context);
-  // Set the current plugin over the lifetime of the onConfigure call to the RootContext.
-  context_ptr->onStart(vm_configuration_, plugin);
-}
-
-void Wasm::setTickPeriod(uint32_t context_id, std::chrono::milliseconds new_tick_period) {
-  auto& tick_period = tick_period_[context_id];
-  auto& timer = timer_[context_id];
-  bool was_running = timer && tick_period.count() > 0;
-  tick_period = new_tick_period;
-  if (was_running) {
-    timer->disableTimer();
-  }
-  if (tick_period.count() > 0) {
-    timer = dispatcher_.createTimer([weak = std::weak_ptr<Wasm>(shared_from_this()), context_id]() {
-      auto shared = weak.lock();
-      if (shared) {
-        shared->tickHandler(context_id);
-      }
-    });
-    timer->enableTimer(tick_period);
-  }
-}
-
-void Wasm::tickHandler(uint32_t root_context_id) {
-  auto& tick_period = tick_period_[root_context_id];
-  auto& timer = timer_[root_context_id];
-  if (on_tick_) {
-    auto it = contexts_.find(root_context_id);
-    if (it == contexts_.end() || !it->second->isRootContext()) {
+  auto callback = [weak_wasm = std::weak_ptr<Wasm>(context->wasm()->sharedThis()), root_context,
+                   context_id = context->id(),
+                   token](Envoy::Network::DnsResolver::ResolutionStatus status,
+                          std::list<Envoy::Network::DnsResponse>&& response) {
+    auto wasm = weak_wasm.lock();
+    if (!wasm) {
       return;
     }
-    it->second->onTick();
-    if (timer && tick_period.count() > 0) {
-      timer->enableTimer(tick_period);
-    }
+    root_context->onResolveDns(token, status, std::move(response));
+  };
+  if (!context->wasm()->dnsResolver()) {
+    context->wasm()->dnsResolver() = context->wasm()->dispatcher().createDnsResolver({}, false);
   }
-}
-
-uint32_t Wasm::allocContextId() {
-  while (true) {
-    auto id = next_context_id_++;
-    // Prevent reuse.
-    if (contexts_.find(id) == contexts_.end()) {
-      return id;
-    }
-  }
-}
-
-class Wasm::ShutdownHandle : public Envoy::Event::DeferredDeletable {
-public:
-  ~ShutdownHandle() { wasm_->finishShutdown(); }
-  ShutdownHandle(WasmSharedPtr wasm) : wasm_(wasm) {}
-
-private:
-  WasmSharedPtr wasm_;
-};
-
-void Wasm::startShutdown() {
-  bool all_done = true;
-  for (auto& p : root_contexts_) {
-    if (!p.second->onDone()) {
-      all_done = false;
-      pending_done_.insert(p.second.get());
-    }
-  }
-  if (!all_done) {
-    shutdown_handle_ = std::make_unique<ShutdownHandle>(shared_from_this());
-  } else {
-    finishShutdown();
-  }
-}
-
-WasmResult Wasm::done(Context* root_context) {
-  auto it = pending_done_.find(root_context);
-  if (it == pending_done_.end()) {
-    return WasmResult::NotFound;
-  }
-  pending_done_.erase(it);
-  if (pending_done_.empty() && shutdown_handle_) {
-    dispatcher_.deferredDelete(std::move(shutdown_handle_));
-  }
+  context->wasm()->dnsResolver()->resolve(std::string(address.value()),
+                                          Network::DnsLookupFamily::Auto, callback);
   return WasmResult::Ok;
 }
 
-void Wasm::finishShutdown() {
-  for (auto& p : root_contexts_) {
-    p.second->onDelete();
-  }
+void Wasm::registerCallbacks() {
+  WasmBase::registerCallbacks();
+#define _REGISTER(_fn)                                                                             \
+  wasm_vm_->registerCallback(                                                                      \
+      "env", "envoy_" #_fn, &_fn,                                                                  \
+      &proxy_wasm::ConvertFunctionWordToUint32<decltype(_fn), _fn>::convertFunctionWordToUint32)
+  _REGISTER(resolve_dns);
+#undef _REGISTER
 }
 
-void Wasm::queueReady(uint32_t root_context_id, uint32_t token) {
-  auto it = contexts_.find(root_context_id);
-  if (it == contexts_.end() || !it->second->isRootContext()) {
-    return;
-  }
-  it->second->onQueueReady(token);
+void Wasm::getFunctions() {
+  WasmBase::getFunctions();
+#define _GET(_fn) wasm_vm_->getFunction("envoy_" #_fn, &_fn##_);
+  _GET(on_resolve_dns)
+  _GET(on_stats_update)
+#undef _GET
 }
 
-WasmForeignFunction Wasm::getForeignFunction(absl::string_view function_name) {
-  auto it = foreign_functions_.find(function_name);
-  if (it != foreign_functions_.end()) {
-    return it->second;
-  }
-  auto factory = Registry::FactoryRegistry<ForeignFunctionFactory>::getFactory(function_name);
-  if (factory) {
-    auto f = factory->create();
-    foreign_functions_[function_name] = f;
-    return f;
-  }
-  return WasmForeignFunction();
+proxy_wasm::CallOnThreadFunction Wasm::callOnThreadFunction() {
+  auto& dispatcher = dispatcher_;
+  return [&dispatcher](const std::function<void()>& f) { return dispatcher.post(f); };
 }
 
-void clearCodeCacheForTesting(bool fail_if_not_cached) {
+ContextBase* Wasm::createContext(const std::shared_ptr<PluginBase>& plugin) {
+  if (create_context_for_testing_) {
+    return create_context_for_testing_(this, std::static_pointer_cast<Plugin>(plugin));
+  }
+  return new Context(this, std::static_pointer_cast<Plugin>(plugin));
+}
+
+ContextBase* Wasm::createRootContext(const std::shared_ptr<PluginBase>& plugin) {
+  if (create_root_context_for_testing_) {
+    return create_root_context_for_testing_(this, std::static_pointer_cast<Plugin>(plugin));
+  }
+  return new Context(this, std::static_pointer_cast<Plugin>(plugin));
+}
+
+ContextBase* Wasm::createVmContext() { return new Context(this); }
+
+void Wasm::log(absl::string_view root_id, const Http::RequestHeaderMap* request_headers,
+               const Http::ResponseHeaderMap* response_headers,
+               const Http::ResponseTrailerMap* response_trailers,
+               const StreamInfo::StreamInfo& stream_info) {
+  auto context = getRootContext(root_id);
+  context->log(request_headers, response_headers, response_trailers, stream_info);
+}
+
+void Wasm::onStatsUpdate(absl::string_view root_id, Envoy::Stats::MetricSnapshot& snapshot) {
+  auto context = getRootContext(root_id);
+  context->onStatsUpdate(snapshot);
+}
+
+void clearCodeCacheForTesting() {
   std::lock_guard<std::mutex> guard(code_cache_mutex);
-  fail_if_code_not_cached = fail_if_not_cached;
   if (code_cache) {
     delete code_cache;
     code_cache = nullptr;
   }
-  if (create_wasm_stats) {
-    delete create_wasm_stats;
-    create_wasm_stats = nullptr;
-  }
+  getWasmExtension()->resetStatsForTesting();
 }
 
 // TODO: remove this post #4160: Switch default to SimulatedTimeSystem.
@@ -600,13 +270,51 @@ void setTimeOffsetForCodeCacheForTesting(MonotonicTime::duration d) {
   cache_time_offset_for_testing = d;
 }
 
-static void
-createWasmInternal(const VmConfig& vm_config, PluginSharedPtr plugin, Stats::ScopeSharedPtr scope,
-                   Upstream::ClusterManager& cluster_manager, Init::Manager& init_manager,
-                   Event::Dispatcher& dispatcher, Runtime::RandomGenerator& random, Api::Api& api,
-                   Server::ServerLifecycleNotifier& lifecycle_notifier,
-                   Config::DataSource::RemoteAsyncDataProviderPtr& remote_data_provider,
-                   std::unique_ptr<Context> root_context_for_testing, CreateWasmCallback&& cb) {
+static proxy_wasm::WasmHandleCloneFactory
+getCloneFactory(WasmExtension* wasm_extension, Event::Dispatcher& dispatcher,
+                CreateContextFn create_root_context_for_testing) {
+  auto wasm_clone_factory = wasm_extension->wasmCloneFactory();
+  return [&dispatcher, create_root_context_for_testing, wasm_clone_factory](
+             WasmHandleBaseSharedPtr base_wasm) -> std::shared_ptr<WasmHandleBase> {
+    return wasm_clone_factory(std::static_pointer_cast<WasmHandle>(base_wasm), dispatcher,
+                              create_root_context_for_testing);
+  };
+}
+
+WasmEvent toWasmEvent(const std::shared_ptr<WasmHandleBase>& wasm) {
+  if (!wasm) {
+    return WasmEvent::UnableToCreateVM;
+  }
+  switch (wasm->wasm()->fail_state()) {
+  case FailState::Ok:
+    return WasmEvent::Ok;
+  case FailState::UnableToCreateVM:
+    return WasmEvent::UnableToCreateVM;
+  case FailState::UnableToCloneVM:
+    return WasmEvent::UnableToCloneVM;
+  case FailState::MissingFunction:
+    return WasmEvent::MissingFunction;
+  case FailState::UnableToInitializeCode:
+    return WasmEvent::UnableToInitializeCode;
+  case FailState::StartFailed:
+    return WasmEvent::StartFailed;
+  case FailState::ConfigureFailed:
+    return WasmEvent::ConfigureFailed;
+  case FailState::RuntimeError:
+    return WasmEvent::RuntimeError;
+  }
+  NOT_IMPLEMENTED_GCOVR_EXCL_LINE;
+}
+
+static bool createWasmInternal(const VmConfig& vm_config, const PluginSharedPtr& plugin,
+                               const Stats::ScopeSharedPtr& scope,
+                               Upstream::ClusterManager& cluster_manager,
+                               Init::Manager& init_manager, Event::Dispatcher& dispatcher,
+                               Api::Api& api, Server::ServerLifecycleNotifier& lifecycle_notifier,
+                               Config::DataSource::RemoteAsyncDataProviderPtr& remote_data_provider,
+                               CreateWasmCallback&& cb,
+                               CreateContextFn create_root_context_for_testing = nullptr) {
+  auto wasm_extension = getWasmExtension();
   std::string source, code;
   bool fetch = false;
   if (vm_config.code().has_remote()) {
@@ -616,57 +324,49 @@ createWasmInternal(const VmConfig& vm_config, PluginSharedPtr plugin, Stats::Sco
     if (!code_cache) {
       code_cache = new std::remove_reference<decltype(*code_cache)>::type;
     }
-    Stats::ScopeSharedPtr create_wasm_stats_scope;
-    if (!create_wasm_stats || !(create_wasm_stats_scope = create_wasm_stats->scope_.lock())) {
-      if (create_wasm_stats) {
-        delete create_wasm_stats;
-      }
-      create_wasm_stats =
-          new CreateWasmStats{scope, CREATE_WASM_STATS(POOL_COUNTER_PREFIX(*scope, "wasm."),
-                                                       POOL_GAUGE_PREFIX(*scope, "wasm."))};
-    }
+    Stats::ScopeSharedPtr create_wasm_stats_scope =
+        wasm_extension->lockAndCreateStats(scope, plugin);
     // Remove entries older than CODE_CACHE_SECONDS_CACHING_TTL except for our target.
     for (auto it = code_cache->begin(); it != code_cache->end();) {
       if (now - it->second.use_time > std::chrono::seconds(CODE_CACHE_SECONDS_CACHING_TTL) &&
           it->first != vm_config.code().remote().sha256()) {
-        it = code_cache->erase(it);
+        code_cache->erase(it++);
       } else {
         ++it;
       }
     }
-    create_wasm_stats->remote_load_cache_entries_.set(code_cache->size());
+    wasm_extension->onRemoteCacheEntriesChanged(code_cache->size());
     auto it = code_cache->find(vm_config.code().remote().sha256());
     if (it != code_cache->end()) {
       it->second.use_time = now;
       if (it->second.in_progress) {
+        wasm_extension->onEvent(WasmExtension::WasmEvent::RemoteLoadCacheMiss, plugin);
         ENVOY_LOG_TO_LOGGER(Envoy::Logger::Registry::getLog(Envoy::Logger::Id::wasm), warn,
                             "createWasm: failed to load (in progress) from {}", source);
-        create_wasm_stats->remote_load_cache_misses_.inc();
-        throw WasmException(
-            fmt::format("Failed to load WASM code (fetch in progress) from {}", source));
+        cb(nullptr);
       }
       code = it->second.code;
       if (code.empty()) {
         if (now - it->second.fetch_time <
             std::chrono::seconds(CODE_CACHE_SECONDS_NEGATIVE_CACHING)) {
-          create_wasm_stats->remote_load_cache_negative_hits_.inc();
+          wasm_extension->onEvent(WasmExtension::WasmEvent::RemoteLoadCacheNegativeHit, plugin);
           ENVOY_LOG_TO_LOGGER(Envoy::Logger::Registry::getLog(Envoy::Logger::Id::wasm), warn,
                               "createWasm: failed to load (cached) from {}", source);
-          throw WasmException(fmt::format("Failed to load WASM code (cached) from {}", source));
+          cb(nullptr);
         }
         fetch = true; // Fetch failed, retry.
         it->second.in_progress = true;
         it->second.fetch_time = now;
       } else {
-        create_wasm_stats->remote_load_cache_hits_.inc();
+        wasm_extension->onEvent(WasmExtension::WasmEvent::RemoteLoadCacheHit, plugin);
       }
     } else {
       fetch = true; // Not in cache, fetch.
       auto& e = (*code_cache)[vm_config.code().remote().sha256()];
       e.in_progress = true;
       e.use_time = e.fetch_time = now;
-      create_wasm_stats->remote_load_cache_entries_.set(code_cache->size());
-      create_wasm_stats->remote_load_cache_misses_.inc();
+      wasm_extension->onRemoteCacheEntriesChanged(code_cache->size());
+      wasm_extension->onEvent(WasmExtension::WasmEvent::RemoteLoadCacheMiss, plugin);
     }
   } else if (vm_config.code().has_local()) {
     code = Config::DataSource::read(vm_config.code().local(), true, api);
@@ -674,70 +374,63 @@ createWasmInternal(const VmConfig& vm_config, PluginSharedPtr plugin, Stats::Sco
                  .value_or(code.empty() ? EMPTY_STRING : INLINE_STRING);
   }
 
-  auto complete_cb =
-      [cb, vm_config, plugin, scope, &cluster_manager, &dispatcher, &lifecycle_notifier, source,
-       root_context_for_testing_ptr = root_context_for_testing.release()](std::string code) {
-        auto root_context = std::unique_ptr<Context>(root_context_for_testing_ptr);
-
-        std::string vm_key = Sha256(vm_config.vm_id());
-        vm_key = Xor(vm_key, Sha256(vm_config.configuration()));
-        vm_key = Xor(vm_key, Sha256(code));
-        vm_key = Base64::encode(&*vm_key.begin(), vm_key.size());
-
-        std::shared_ptr<WasmHandle> wasm;
-        {
-          absl::MutexLock l(&base_wasms_mutex_);
-          if (!base_wasms_) {
-            base_wasms_ = new std::remove_reference<decltype(*base_wasms_)>::type;
-          }
-          auto it = base_wasms_->find(vm_key);
-          if (it != base_wasms_->end()) {
-            wasm = it->second.lock();
-            if (!wasm) {
-              base_wasms_->erase(it);
-            }
-          }
-          if (!wasm) {
-            wasm = std::make_shared<WasmHandle>(std::make_shared<Wasm>(
-                vm_config.runtime(), vm_config.vm_id(), vm_config.configuration(), vm_key, scope,
-                cluster_manager, dispatcher));
-            // NB: we need the shared_ptr to have been created for shared_from_this() to work.
-            wasm->wasm()->initializeLifecycle(lifecycle_notifier);
-            if (!wasm->wasm()->initialize(code, vm_config.allow_precompiled())) {
-              throw WasmException(fmt::format("Failed to initialize WASM code from {}", source));
-            }
-            if (!root_context) {
-              wasm->wasm()->start(plugin);
-              wasm->wasm()->clearRootContexts();
-            } else {
-              wasm->wasm()->startForTesting(std::move(root_context), plugin);
-            }
-            (*base_wasms_)[vm_key] = wasm;
-          }
-          cb(std::move(wasm));
-        }
-      };
+  auto complete_cb = [cb, vm_config, plugin, scope, &cluster_manager, &dispatcher,
+                      &lifecycle_notifier, create_root_context_for_testing,
+                      wasm_extension](std::string code) -> bool {
+    if (code.empty()) {
+      cb(nullptr);
+      return false;
+    }
+    auto vm_key =
+        proxy_wasm::makeVmKey(vm_config.vm_id(), anyToBytes(vm_config.configuration()), code);
+    auto wasm_factory = wasm_extension->wasmFactory();
+    proxy_wasm::WasmHandleFactory proxy_wasm_factory =
+        [&vm_config, scope, &cluster_manager, &dispatcher, &lifecycle_notifier,
+         wasm_factory](absl::string_view vm_key) -> WasmHandleBaseSharedPtr {
+      return wasm_factory(vm_config, scope, cluster_manager, dispatcher, lifecycle_notifier,
+                          vm_key);
+    };
+    auto wasm = proxy_wasm::createWasm(
+        vm_key, code, plugin, proxy_wasm_factory,
+        getCloneFactory(wasm_extension, dispatcher, create_root_context_for_testing),
+        vm_config.allow_precompiled());
+    Stats::ScopeSharedPtr create_wasm_stats_scope =
+        wasm_extension->lockAndCreateStats(scope, plugin);
+    wasm_extension->onEvent(toWasmEvent(wasm), plugin);
+    if (!wasm || wasm->wasm()->isFailed()) {
+      ENVOY_LOG_TO_LOGGER(Envoy::Logger::Registry::getLog(Envoy::Logger::Id::wasm), trace,
+                          "Unable to create Wasm");
+      cb(nullptr);
+      return false;
+    }
+    cb(std::static_pointer_cast<WasmHandle>(wasm));
+    return true;
+  };
 
   if (fetch) {
     auto holder = std::make_shared<std::unique_ptr<Event::DeferredDeletable>>();
-    auto fetch_callback = [vm_config, complete_cb, source, &dispatcher, scope,
-                           holder](const std::string& code) {
+    auto fetch_callback = [vm_config, complete_cb, source, &dispatcher, scope, holder, plugin,
+                           wasm_extension](const std::string& code) {
       {
         std::lock_guard<std::mutex> guard(code_cache_mutex);
         auto& e = (*code_cache)[vm_config.code().remote().sha256()];
         e.in_progress = false;
         e.code = code;
+        Stats::ScopeSharedPtr create_wasm_stats_scope =
+            wasm_extension->lockAndCreateStats(scope, plugin);
         if (code.empty()) {
-          create_wasm_stats->remote_load_fetch_failures_.inc();
+          wasm_extension->onEvent(WasmExtension::WasmEvent::RemoteLoadCacheFetchFailure, plugin);
         } else {
-          create_wasm_stats->remote_load_fetch_successes_.inc();
+          wasm_extension->onEvent(WasmExtension::WasmEvent::RemoteLoadCacheFetchSuccess, plugin);
         }
-        create_wasm_stats->remote_load_cache_entries_.set(code_cache->size());
+        wasm_extension->onRemoteCacheEntriesChanged(code_cache->size());
       }
-      if (!fail_if_code_not_cached) {
+      // NB: xDS currently does not support failing asynchronously, so we fail immediately
+      // if remote Wasm code is not cached and do a background fill.
+      if (!vm_config.nack_on_code_cache_miss()) {
         if (code.empty()) {
-          throw WasmException(
-              fmt::format("Failed to load WASM code (fetch failed) from {}", source));
+          ENVOY_LOG_TO_LOGGER(Envoy::Logger::Registry::getLog(Envoy::Logger::Id::wasm), trace,
+                              "Failed to load Wasm code (fetch failed) from {}", source);
         }
         complete_cb(code);
       }
@@ -746,7 +439,7 @@ createWasmInternal(const VmConfig& vm_config, PluginSharedPtr plugin, Stats::Sco
         dispatcher.deferredDelete(Envoy::Event::DeferredDeletablePtr{holder->release()});
       }
     };
-    if (fail_if_code_not_cached) {
+    if (vm_config.nack_on_code_cache_miss()) {
       auto adapter = std::make_unique<RemoteDataFetcherAdapter>(fetch_callback);
       auto fetcher = std::make_unique<Config::DataFetcher::RemoteDataFetcher>(
           cluster_manager, vm_config.code().remote().http_uri(), vm_config.code().remote().sha256(),
@@ -755,78 +448,39 @@ createWasmInternal(const VmConfig& vm_config, PluginSharedPtr plugin, Stats::Sco
       adapter->setFetcher(std::move(fetcher));
       *holder = std::move(adapter);
       fetcher_ptr->fetch();
-      throw WasmException(fmt::format("Failed to load WASM code (fetching) from {}", source));
+      ENVOY_LOG_TO_LOGGER(Envoy::Logger::Registry::getLog(Envoy::Logger::Id::wasm), trace,
+                          fmt::format("Failed to load Wasm code (fetching) from {}", source));
+      cb(nullptr);
+      return false;
     } else {
       remote_data_provider = std::make_unique<Config::DataSource::RemoteAsyncDataProvider>(
-          cluster_manager, init_manager, vm_config.code().remote(), dispatcher, random, true,
-          fetch_callback);
+          cluster_manager, init_manager, vm_config.code().remote(), dispatcher,
+          api.randomGenerator(), true, fetch_callback);
     }
   } else {
-    complete_cb(code);
+    return complete_cb(code);
   }
+  return true;
 }
 
-void createWasm(const VmConfig& vm_config, PluginSharedPtr plugin, Stats::ScopeSharedPtr scope,
-                Upstream::ClusterManager& cluster_manager, Init::Manager& init_manager,
-                Event::Dispatcher& dispatcher, Runtime::RandomGenerator& random, Api::Api& api,
+bool createWasm(const VmConfig& vm_config, const PluginSharedPtr& plugin,
+                const Stats::ScopeSharedPtr& scope, Upstream::ClusterManager& cluster_manager,
+                Init::Manager& init_manager, Event::Dispatcher& dispatcher, Api::Api& api,
                 Envoy::Server::ServerLifecycleNotifier& lifecycle_notifier,
                 Config::DataSource::RemoteAsyncDataProviderPtr& remote_data_provider,
-                CreateWasmCallback&& cb) {
-  createWasmInternal(vm_config, plugin, scope, cluster_manager, init_manager, dispatcher, random,
-                     api, lifecycle_notifier, remote_data_provider,
-                     nullptr /* root_context_for_testing */, std::move(cb));
+                CreateWasmCallback&& cb, CreateContextFn create_root_context_for_testing) {
+  return createWasmInternal(vm_config, plugin, scope, cluster_manager, init_manager, dispatcher,
+                            api, lifecycle_notifier, remote_data_provider, std::move(cb),
+                            create_root_context_for_testing);
 }
 
-void createWasmForTesting(const envoy::config::wasm::v3::VmConfig& vm_config,
-                          PluginSharedPtr plugin, Stats::ScopeSharedPtr scope,
-                          Upstream::ClusterManager& cluster_manager, Init::Manager& init_manager,
-                          Event::Dispatcher& dispatcher, Runtime::RandomGenerator& random,
-                          Api::Api& api, Envoy::Server::ServerLifecycleNotifier& lifecycle_notifier,
-                          Config::DataSource::RemoteAsyncDataProviderPtr& remote_data_provider,
-                          std::unique_ptr<Context> root_context_for_testing,
-                          CreateWasmCallback&& cb) {
-  createWasmInternal(vm_config, plugin, scope, cluster_manager, init_manager, dispatcher, random,
-                     api, lifecycle_notifier, remote_data_provider,
-                     std::move(root_context_for_testing), std::move(cb));
-}
-
-WasmHandleSharedPtr createThreadLocalWasm(WasmHandleSharedPtr& base_wasm, PluginSharedPtr plugin,
-                                          absl::string_view configuration,
-                                          Event::Dispatcher& dispatcher) {
-  auto wasm_handle = std::make_shared<WasmHandle>(std::make_shared<Wasm>(base_wasm, dispatcher));
-  Context* root_context = wasm_handle->wasm()->start(plugin);
-  if (!wasm_handle->wasm()->configure(root_context, plugin, configuration)) {
-    throw WasmException("Failed to configure WASM code");
-  }
-  local_wasms_[wasm_handle->wasm()->vm_key()] = wasm_handle;
-  return wasm_handle;
-}
-
-WasmHandleSharedPtr getThreadLocalWasmPtr(absl::string_view vm_key) {
-  auto it = local_wasms_.find(vm_key);
-  if (it == local_wasms_.end()) {
-    return nullptr;
-  }
-  auto wasm = it->second.lock();
-  if (!wasm) {
-    local_wasms_.erase(vm_key);
-  }
-  return wasm;
-}
-
-WasmHandleSharedPtr getOrCreateThreadLocalWasm(WasmHandleSharedPtr base_wasm,
-                                               PluginSharedPtr plugin,
-                                               absl::string_view configuration,
-                                               Event::Dispatcher& dispatcher) {
-  auto wasm_handle = getThreadLocalWasmPtr(base_wasm->wasm()->vm_key());
-  if (wasm_handle) {
-    auto root_context = wasm_handle->wasm()->getOrCreateRootContext(plugin);
-    if (!wasm_handle->wasm()->configure(root_context, plugin, configuration)) {
-      throw WasmException("Failed to configure WASM code");
-    }
-    return wasm_handle;
-  }
-  return createThreadLocalWasm(base_wasm, plugin, configuration, dispatcher);
+WasmHandleSharedPtr getOrCreateThreadLocalWasm(const WasmHandleSharedPtr& base_wasm,
+                                               const PluginSharedPtr& plugin,
+                                               Event::Dispatcher& dispatcher,
+                                               CreateContextFn create_root_context_for_testing) {
+  return std::static_pointer_cast<WasmHandle>(proxy_wasm::getOrCreateThreadLocalWasm(
+      std::static_pointer_cast<WasmHandle>(base_wasm), plugin,
+      getCloneFactory(getWasmExtension(), dispatcher, create_root_context_for_testing)));
 }
 
 } // namespace Wasm

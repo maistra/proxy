@@ -14,10 +14,11 @@
 #include "src/codegen/register-configuration.h"
 #include "src/codegen/string-constants.h"
 #include "src/codegen/x64/assembler-x64.h"
+#include "src/common/external-pointer.h"
 #include "src/common/globals.h"
 #include "src/debug/debug.h"
 #include "src/execution/frames-inl.h"
-#include "src/heap/heap-inl.h"  // For MemoryChunk.
+#include "src/heap/memory-chunk.h"
 #include "src/init/bootstrapper.h"
 #include "src/logging/counters.h"
 #include "src/objects/objects-inl.h"
@@ -34,28 +35,18 @@
 namespace v8 {
 namespace internal {
 
-Operand StackArgumentsAccessor::GetArgumentOperand(int index) {
+Operand StackArgumentsAccessor::GetArgumentOperand(int index) const {
   DCHECK_GE(index, 0);
-  int receiver = (receiver_mode_ == ARGUMENTS_CONTAIN_RECEIVER) ? 1 : 0;
-  int displacement_to_last_argument =
-      base_reg_ == rsp ? kPCOnStackSize : kFPOnStackSize + kPCOnStackSize;
-  displacement_to_last_argument += extra_displacement_to_last_argument_;
-  if (argument_count_reg_ == no_reg) {
-    // argument[0] is at base_reg_ + displacement_to_last_argument +
-    // (argument_count_immediate_ + receiver - 1) * kSystemPointerSize.
-    DCHECK_GT(argument_count_immediate_ + receiver, 0);
-    return Operand(base_reg_,
-                   displacement_to_last_argument +
-                       (argument_count_immediate_ + receiver - 1 - index) *
-                           kSystemPointerSize);
-  } else {
-    // argument[0] is at base_reg_ + displacement_to_last_argument +
-    // argument_count_reg_ * times_system_pointer_size + (receiver - 1) *
-    // kSystemPointerSize.
-    return Operand(base_reg_, argument_count_reg_, times_system_pointer_size,
-                   displacement_to_last_argument +
-                       (receiver - 1 - index) * kSystemPointerSize);
-  }
+#ifdef V8_REVERSE_JSARGS
+  // arg[0] = rsp + kPCOnStackSize;
+  // arg[i] = arg[0] + i * kSystemPointerSize;
+  return Operand(rsp, kPCOnStackSize + index * kSystemPointerSize);
+#else
+  // arg[0] = (rsp + kPCOnStackSize) + argc * kSystemPointerSize;
+  // arg[i] = arg[0] - i * kSystemPointerSize;
+  return Operand(rsp, argc_, times_system_pointer_size,
+                 kPCOnStackSize - index * kSystemPointerSize);
+#endif
 }
 
 void MacroAssembler::Load(Register destination, ExternalReference source) {
@@ -348,6 +339,14 @@ void TurboAssembler::SaveRegisters(RegList registers) {
     if ((registers >> i) & 1u) {
       pushq(Register::from_code(i));
     }
+  }
+}
+
+void TurboAssembler::LoadExternalPointerField(Register destination,
+                                              Operand field_operand) {
+  movq(destination, field_operand);
+  if (V8_HEAP_SANDBOX_BOOL) {
+    xorq(destination, Immediate(kExternalPointerSalt));
   }
 }
 
@@ -1354,6 +1353,12 @@ void TurboAssembler::Move(XMMRegister dst, uint64_t src) {
   }
 }
 
+void TurboAssembler::Move(XMMRegister dst, uint64_t high, uint64_t low) {
+  Move(dst, low);
+  movq(kScratchRegister, high);
+  Pinsrq(dst, kScratchRegister, int8_t{1});
+}
+
 // ----------------------------------------------------------------------------
 
 void MacroAssembler::Absps(XMMRegister dst) {
@@ -1409,6 +1414,31 @@ void MacroAssembler::JumpIfIsInRange(Register value, unsigned lower_limit,
 void TurboAssembler::Push(Handle<HeapObject> source) {
   Move(kScratchRegister, source);
   Push(kScratchRegister);
+}
+
+void TurboAssembler::PushArray(Register array, Register size, Register scratch,
+                               PushArrayOrder order) {
+  DCHECK(!AreAliased(array, size, scratch));
+  Register counter = scratch;
+  Label loop, entry;
+  if (order == PushArrayOrder::kReverse) {
+    Set(counter, 0);
+    jmp(&entry);
+    bind(&loop);
+    Push(Operand(array, counter, times_system_pointer_size, 0));
+    incq(counter);
+    bind(&entry);
+    cmpq(counter, size);
+    j(less, &loop, Label::kNear);
+  } else {
+    movq(counter, size);
+    jmp(&entry);
+    bind(&loop);
+    Push(Operand(array, counter, times_system_pointer_size, 0));
+    bind(&entry);
+    decq(counter);
+    j(greater_equal, &loop, Label::kNear);
+  }
 }
 
 void TurboAssembler::Move(Register result, Handle<HeapObject> object,
@@ -2078,7 +2108,7 @@ void TurboAssembler::AssertZeroExtended(Register int32_register) {
     DCHECK_NE(int32_register, kScratchRegister);
     movq(kScratchRegister, int64_t{0x0000000100000000});
     cmpq(kScratchRegister, int32_register);
-    Check(above_equal, AbortReason::k32BitValueInRegisterIsNotZeroExtended);
+    Check(above, AbortReason::k32BitValueInRegisterIsNotZeroExtended);
   }
 }
 
@@ -2335,6 +2365,51 @@ void MacroAssembler::InvokePrologue(Register expected_parameter_count,
                                     Label* done, InvokeFlag flag) {
   if (expected_parameter_count != actual_parameter_count) {
     Label regular_invoke;
+#ifdef V8_NO_ARGUMENTS_ADAPTOR
+    // Skip if adaptor sentinel.
+    cmpl(expected_parameter_count, Immediate(kDontAdaptArgumentsSentinel));
+    j(equal, &regular_invoke, Label::kNear);
+
+    // Skip if overapplication or if expected number of arguments.
+    subq(expected_parameter_count, actual_parameter_count);
+    j(less_equal, &regular_invoke, Label::kNear);
+
+    // Underapplication. Move the arguments already in the stack, including the
+    // receiver and the return address.
+    {
+      Label copy, check;
+      Register src = r8, dest = rsp, num = r9, current = r11;
+      movq(src, rsp);
+      leaq(kScratchRegister,
+           Operand(expected_parameter_count, times_system_pointer_size, 0));
+      AllocateStackSpace(kScratchRegister);
+      // Extra words are the receiver and the return address (if a jump).
+      int extra_words = flag == CALL_FUNCTION ? 1 : 2;
+      leaq(num, Operand(rax, extra_words));  // Number of words to copy.
+      Set(current, 0);
+      // Fall-through to the loop body because there are non-zero words to copy.
+      bind(&copy);
+      movq(kScratchRegister,
+           Operand(src, current, times_system_pointer_size, 0));
+      movq(Operand(dest, current, times_system_pointer_size, 0),
+           kScratchRegister);
+      incq(current);
+      bind(&check);
+      cmpq(current, num);
+      j(less, &copy);
+      leaq(r8, Operand(rsp, num, times_system_pointer_size, 0));
+    }
+    // Fill remaining expected arguments with undefined values.
+    LoadRoot(kScratchRegister, RootIndex::kUndefinedValue);
+    {
+      Label loop;
+      bind(&loop);
+      decq(expected_parameter_count);
+      movq(Operand(r8, expected_parameter_count, times_system_pointer_size, 0),
+           kScratchRegister);
+      j(greater, &loop, Label::kNear);
+    }
+#else
     // Both expected and actual are in (different) registers. This
     // is the case when we invoke functions using call and apply.
     cmpq(expected_parameter_count, actual_parameter_count);
@@ -2348,6 +2423,8 @@ void MacroAssembler::InvokePrologue(Register expected_parameter_count,
     } else {
       Jump(adaptor, RelocInfo::CODE_TARGET);
     }
+#endif
+
     bind(&regular_invoke);
   } else {
     Move(rax, actual_parameter_count);
@@ -2371,8 +2448,15 @@ void MacroAssembler::CallDebugOnFunctionCall(Register fun, Register new_target,
   }
   Push(fun);
   Push(fun);
-  Push(
-      StackArgumentsAccessor(rbp, actual_parameter_count).GetReceiverOperand());
+  // Arguments are located 2 words below the base pointer.
+#ifdef V8_REVERSE_JSARGS
+  Operand receiver_op = Operand(rbp, kSystemPointerSize * 2);
+#else
+  Operand receiver_op =
+      Operand(rbp, actual_parameter_count, times_system_pointer_size,
+              kSystemPointerSize * 2);
+#endif
+  Push(receiver_op);
   CallRuntime(Runtime::kDebugOnFunctionCall);
   Pop(fun);
   if (new_target.is_valid()) {
@@ -2393,8 +2477,9 @@ void TurboAssembler::StubPrologue(StackFrame::Type type) {
 void TurboAssembler::Prologue() {
   pushq(rbp);  // Caller's frame pointer.
   movq(rbp, rsp);
-  Push(rsi);  // Callee's context.
-  Push(rdi);  // Callee's JS function.
+  Push(kContextRegister);                 // Callee's context.
+  Push(kJSFunctionRegister);              // Callee's JS function.
+  Push(kJavaScriptCallArgCountRegister);  // Actual argument count.
 }
 
 void TurboAssembler::EnterFrame(StackFrame::Type type) {
@@ -2651,23 +2736,57 @@ void TurboAssembler::CallCFunction(Register function, int num_arguments) {
 
   // Save the frame pointer and PC so that the stack layout remains iterable,
   // even without an ExitFrame which normally exists between JS and C frames.
-  if (isolate() != nullptr) {
-    Label get_pc;
-    DCHECK(!AreAliased(kScratchRegister, function));
-    leaq(kScratchRegister, Operand(&get_pc, 0));
-    bind(&get_pc);
+  Label get_pc;
+  DCHECK(!AreAliased(kScratchRegister, function));
+  leaq(kScratchRegister, Operand(&get_pc, 0));
+  bind(&get_pc);
+
+  // Addressing the following external references is tricky because we need
+  // this to work in three situations:
+  // 1. In wasm compilation, the isolate is nullptr and thus no
+  //    ExternalReference can be created, but we can construct the address
+  //    directly using the root register and a static offset.
+  // 2. In normal JIT (and builtin) compilation, the external reference is
+  //    usually addressed through the root register, so we can use the direct
+  //    offset directly in most cases.
+  // 3. In regexp compilation, the external reference is embedded into the reloc
+  //    info.
+  // The solution here is to use root register offsets wherever possible in
+  // which case we can construct it directly. When falling back to external
+  // references we need to ensure that the scratch register does not get
+  // accidentally overwritten. If we run into more such cases in the future, we
+  // should implement a more general solution.
+  if (root_array_available()) {
+    movq(Operand(kRootRegister, IsolateData::fast_c_call_caller_pc_offset()),
+         kScratchRegister);
+    movq(Operand(kRootRegister, IsolateData::fast_c_call_caller_fp_offset()),
+         rbp);
+  } else {
+    DCHECK_NOT_NULL(isolate());
+    // Use alternative scratch register in order not to overwrite
+    // kScratchRegister.
+    Register scratch = r12;
+    pushq(scratch);
+
     movq(ExternalReferenceAsOperand(
-             ExternalReference::fast_c_call_caller_pc_address(isolate())),
+             ExternalReference::fast_c_call_caller_pc_address(isolate()),
+             scratch),
          kScratchRegister);
     movq(ExternalReferenceAsOperand(
              ExternalReference::fast_c_call_caller_fp_address(isolate())),
          rbp);
+
+    popq(scratch);
   }
 
   call(function);
 
-  if (isolate() != nullptr) {
-    // We don't unset the PC; the FP is the source of truth.
+  // We don't unset the PC; the FP is the source of truth.
+  if (root_array_available()) {
+    movq(Operand(kRootRegister, IsolateData::fast_c_call_caller_fp_offset()),
+         Immediate(0));
+  } else {
+    DCHECK_NOT_NULL(isolate());
     movq(ExternalReferenceAsOperand(
              ExternalReference::fast_c_call_caller_fp_address(isolate())),
          Immediate(0));
@@ -2691,10 +2810,10 @@ void TurboAssembler::CheckPageFlag(Register object, Register scratch, int mask,
     andq(scratch, object);
   }
   if (mask < (1 << kBitsPerByte)) {
-    testb(Operand(scratch, MemoryChunk::kFlagsOffset),
+    testb(Operand(scratch, BasicMemoryChunk::kFlagsOffset),
           Immediate(static_cast<uint8_t>(mask)));
   } else {
-    testl(Operand(scratch, MemoryChunk::kFlagsOffset), Immediate(mask));
+    testl(Operand(scratch, BasicMemoryChunk::kFlagsOffset), Immediate(mask));
   }
   j(cc, condition_met, condition_met_distance);
 }
@@ -2712,7 +2831,9 @@ void TurboAssembler::ResetSpeculationPoisonRegister() {
   Set(kSpeculationPoisonRegister, -1);
 }
 
-void TurboAssembler::CallForDeoptimization(Address target, int deopt_id) {
+void TurboAssembler::CallForDeoptimization(Address target, int deopt_id,
+                                           Label* exit, DeoptimizeKind kind) {
+  USE(exit, kind);
   NoRootArrayScope no_root_array(this);
   // Save the deopt id in r13 (we don't need the roots array from now on).
   movq(r13, Immediate(deopt_id));
@@ -2720,6 +2841,7 @@ void TurboAssembler::CallForDeoptimization(Address target, int deopt_id) {
 }
 
 void TurboAssembler::Trap() { int3(); }
+void TurboAssembler::DebugBreak() { int3(); }
 
 }  // namespace internal
 }  // namespace v8

@@ -16,6 +16,10 @@ declare_args() {
   # generated installation scripts. If not specified, then no default directory
   # will be used.
   default_fuchsia_build_dir_for_installation = ""
+
+  # Architecture of the host tools included in Fuchsia test targets.
+  # Defaults to target_cpu.
+  fuchsia_override_host_tool_arch_for_isolated_testing = target_cpu
 }
 
 # Generates a script which deploys and optionally executes a package on a
@@ -44,7 +48,6 @@ template("fuchsia_package_runner") {
 
   _pkg_dir = "$root_out_dir/gen/" + get_label_info(invoker.package, "dir") +
              "/" + _pkg_shortname
-  _manifest_path = "$_pkg_dir/${_pkg_shortname}.archive_manifest"
   _package_path = "$_pkg_dir/${_pkg_shortname}.far"
 
   generated_run_pkg_script_path = "$root_build_dir/bin/run_${_pkg_shortname}"
@@ -69,45 +72,52 @@ template("fuchsia_package_runner") {
     }
     wrapper_script = generated_run_pkg_script_path
 
-    deps = [ invoker.package ]
-    if (defined(invoker.deps)) {
-      deps += invoker.deps
-    }
+    data_deps = [
+      invoker.package,
 
-    data_deps = [ invoker.package ]
+      # Runner scripts require access to "ids.txt" for symbolization, and to
+      # the "package" from which to get the name & version to deploy, which
+      # are outputs of the archive manifest generation action.
+      "${invoker.package}__archive-manifest",
+
+      # Runner scripts require access to "meta.far" from which to calculate the
+      # expected Merkle root for the package, to verify it has been cached.
+      "${invoker.package}__archive-metadata",
+    ]
+    if (defined(invoker.data_deps)) {
+      data_deps += invoker.data_deps
+    }
 
     # Declares the files that are needed for test execution on the
     # swarming test client.
     data = [
-      _manifest_path,
       "//build/fuchsia/",
       "//build/util/lib/",
-      "${fuchsia_sdk}/.build-id/",
+      "//third_party/fuchsia-sdk/sdk/.build-id/",
+      "//third_party/fuchsia-sdk/sdk/bin/fpave.sh",
+      "//third_party/fuchsia-sdk/sdk/bin/fuchsia-common.sh",
+      "//third_party/fuchsia-sdk/sdk/meta/manifest.json",
       "${boot_image_root}/qemu/qemu-kernel.kernel",
       "${boot_image_root}/qemu/storage-full.blk",
       "${boot_image_root}/qemu/zircon-a.zbi",
     ]
 
-    if (checkout_aemu) {
+    if (host_cpu == "x64" && (host_os == "linux" || host_os == "mac")) {
       data += [ "${aemu_root}/" ]
     }
 
-    if (host_os == "linux" && host_cpu == "x64" && target_cpu == "arm64") {
-      data += [
-        # Host tools for arm64 test bots.
-        "${fuchsia_sdk}/tools/arm64/fvm",
-        "${fuchsia_sdk}/tools/arm64/pm",
-        "${fuchsia_sdk}/tools/arm64/symbolize",
-        "${fuchsia_sdk}/tools/arm64/zbi",
-        "${qemu_arm64_root}/",
-      ]
+    data += [
+      "//third_party/fuchsia-sdk/sdk/tools/${fuchsia_override_host_tool_arch_for_isolated_testing}/device-finder",
+      "//third_party/fuchsia-sdk/sdk/tools/${fuchsia_override_host_tool_arch_for_isolated_testing}/fvm",
+      "//third_party/fuchsia-sdk/sdk/tools/${fuchsia_override_host_tool_arch_for_isolated_testing}/merkleroot",
+      "//third_party/fuchsia-sdk/sdk/tools/${fuchsia_override_host_tool_arch_for_isolated_testing}/pm",
+      "//third_party/fuchsia-sdk/sdk/tools/${fuchsia_override_host_tool_arch_for_isolated_testing}/symbolize",
+      "//third_party/fuchsia-sdk/sdk/tools/${fuchsia_override_host_tool_arch_for_isolated_testing}/zbi",
+    ]
+    if (target_cpu == "arm64") {
+      data += [ "${qemu_arm64_root}/" ]
     } else {
       data += [
-        # Host tools for x64 test bots.
-        "${fuchsia_sdk}/tools/x64/fvm",
-        "${fuchsia_sdk}/tools/x64/pm",
-        "${fuchsia_sdk}/tools/x64/symbolize",
-        "${fuchsia_sdk}/tools/x64/zbi",
         "${qemu_root}/",
         "//third_party/llvm-build/Release+Asserts/bin/llvm-symbolizer",
       ]
@@ -121,7 +131,11 @@ template("fuchsia_package_runner") {
         package_dep_target = package_dep[0]
         package_dep_name = package_dep[1]
 
-        deps += [ package_dep_target ]
+        data_deps += [
+          package_dep_target,
+          package_dep_target + "__archive-manifest",
+          package_dep_target + "__archive-metadata",
+        ]
         package_dep_path = rebase_path(
                 get_label_info(package_dep_target, "target_gen_dir") + "/" +
                     package_dep_name + "/" + package_dep_name + ".far",
@@ -138,7 +152,7 @@ template("fuchsia_package_runner") {
     }
 
     executable_args += [
-      "--output-directory",
+      "--out-dir",
       "@WrappedPath(.)",
       "--target-cpu",
       target_cpu,
@@ -166,9 +180,9 @@ template("fuchsia_package_runner") {
     executable = rebase_path("//build/fuchsia/deploy_to_amber_repo.py")
     wrapper_script = generated_install_pkg_script_path
 
-    deps = [ invoker.package ]
-    if (defined(invoker.deps)) {
-      deps += invoker.deps
+    data_deps = [ invoker.package ]
+    if (defined(invoker.data_deps)) {
+      data_deps += invoker.data_deps
     }
 
     # Build a list of all packages to install, and pass the list to the runner
@@ -179,7 +193,7 @@ template("fuchsia_package_runner") {
         package_dep_target = package_dep[0]
         package_dep_name = package_dep[1]
 
-        deps += [ package_dep_target ]
+        data_deps += [ package_dep_target ]
         package_dep_path = rebase_path(
                 get_label_info(package_dep_target, "target_gen_dir") + "/" +
                     package_dep_name + "/" + package_dep_name + ".far",

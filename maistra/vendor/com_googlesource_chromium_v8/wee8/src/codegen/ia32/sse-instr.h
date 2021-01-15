@@ -9,6 +9,7 @@
   V(packsswb, 66, 0F, 63)        \
   V(packssdw, 66, 0F, 6B)        \
   V(packuswb, 66, 0F, 67)        \
+  V(pmaddwd, 66, 0F, F5)         \
   V(paddb, 66, 0F, FC)           \
   V(paddw, 66, 0F, FD)           \
   V(paddd, 66, 0F, FE)           \
@@ -66,6 +67,12 @@
   V(psignb, 66, 0F, 38, 08)       \
   V(psignw, 66, 0F, 38, 09)       \
   V(psignd, 66, 0F, 38, 0A)
+
+// SSSE3 instructions whose AVX version has two operands.
+#define SSSE3_UNOP_INSTRUCTION_LIST(V) \
+  V(pabsb, 66, 0F, 38, 1C)             \
+  V(pabsw, 66, 0F, 38, 1D)             \
+  V(pabsd, 66, 0F, 38, 1E)
 
 #define SSE4_INSTRUCTION_LIST(V) \
   V(packusdw, 66, 0F, 38, 2B)    \

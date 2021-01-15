@@ -29,6 +29,8 @@
 #include "src/objects/maybe-object.h"
 #include "src/objects/objects.h"
 #include "src/objects/oddball.h"
+#include "src/objects/smi.h"
+#include "src/objects/tagged-index.h"
 #include "src/runtime/runtime.h"
 #include "src/utils/allocation.h"
 #include "src/zone/zone-containers.h"
@@ -60,22 +62,22 @@ class JSRegExpStringIterator;
 class JSRelativeTimeFormat;
 class JSSegmentIterator;
 class JSSegmenter;
+class JSSegments;
 class JSV8BreakIterator;
 class JSWeakCollection;
-class JSFinalizationGroup;
-class JSFinalizationGroupCleanupIterator;
+class JSFinalizationRegistry;
 class JSWeakMap;
 class JSWeakRef;
 class JSWeakSet;
+class ProfileDataFromFile;
 class PromiseCapability;
 class PromiseFulfillReactionJobTask;
 class PromiseReaction;
 class PromiseReactionJobTask;
 class PromiseRejectReactionJobTask;
-class WasmDebugInfo;
 class Zone;
-#define MAKE_FORWARD_DECLARATION(V, NAME, Name, name) class Name;
-TORQUE_STRUCT_LIST_GENERATOR(MAKE_FORWARD_DECLARATION, UNUSED)
+#define MAKE_FORWARD_DECLARATION(Name) class Name;
+TORQUE_DEFINED_CLASS_LIST(MAKE_FORWARD_DECLARATION)
 #undef MAKE_FORWARD_DECLARATION
 
 template <typename T>
@@ -86,6 +88,7 @@ class Signature;
 enum class ObjectType {
   ENUM_ELEMENT(Object)                 //
   ENUM_ELEMENT(Smi)                    //
+  ENUM_ELEMENT(TaggedIndex)            //
   ENUM_ELEMENT(HeapObject)             //
   OBJECT_TYPE_LIST(ENUM_ELEMENT)       //
   HEAP_OBJECT_TYPE_LIST(ENUM_ELEMENT)  //
@@ -163,6 +166,7 @@ struct ObjectTypeOf {};
   };
 OBJECT_TYPE_CASE(Object)
 OBJECT_TYPE_CASE(Smi)
+OBJECT_TYPE_CASE(TaggedIndex)
 OBJECT_TYPE_CASE(HeapObject)
 OBJECT_TYPE_LIST(OBJECT_TYPE_CASE)
 HEAP_OBJECT_ORDINARY_TYPE_LIST(OBJECT_TYPE_CASE)
@@ -270,6 +274,7 @@ class CodeAssemblerParameterizedLabel;
   V(WordShl, WordT, WordT, IntegralT)                                   \
   V(WordShr, WordT, WordT, IntegralT)                                   \
   V(WordSar, WordT, WordT, IntegralT)                                   \
+  V(WordSarShiftOutZeros, WordT, WordT, IntegralT)                      \
   V(Word32Or, Word32T, Word32T, Word32T)                                \
   V(Word32And, Word32T, Word32T, Word32T)                               \
   V(Word32Xor, Word32T, Word32T, Word32T)                               \
@@ -277,6 +282,7 @@ class CodeAssemblerParameterizedLabel;
   V(Word32Shl, Word32T, Word32T, Word32T)                               \
   V(Word32Shr, Word32T, Word32T, Word32T)                               \
   V(Word32Sar, Word32T, Word32T, Word32T)                               \
+  V(Word32SarShiftOutZeros, Word32T, Word32T, Word32T)                  \
   V(Word64And, Word64T, Word64T, Word64T)                               \
   V(Word64Or, Word64T, Word64T, Word64T)                                \
   V(Word64Xor, Word64T, Word64T, Word64T)                               \
@@ -371,7 +377,8 @@ class V8_EXPORT_PRIVATE CodeAssembler {
   ~CodeAssembler();
 
   static Handle<Code> GenerateCode(CodeAssemblerState* state,
-                                   const AssemblerOptions& options);
+                                   const AssemblerOptions& options,
+                                   const ProfileDataFromFile* profile_data);
 
   bool Is64() const;
   bool Is32() const;
@@ -385,7 +392,6 @@ class V8_EXPORT_PRIVATE CodeAssembler {
 
   // Shortened aliases for use in CodeAssembler subclasses.
   using Label = CodeAssemblerLabel;
-  using Variable = CodeAssemblerVariable;
   template <class T>
   using TVariable = TypedCodeAssemblerVariable<T>;
   using VariableList = CodeAssemblerVariableList;
@@ -508,6 +514,7 @@ class V8_EXPORT_PRIVATE CodeAssembler {
   TNode<UintPtrT> UintPtrConstant(uintptr_t value) {
     return Unsigned(IntPtrConstant(bit_cast<intptr_t>(value)));
   }
+  TNode<TaggedIndex> TaggedIndexConstant(intptr_t value);
   TNode<RawPtrT> PointerConstant(void* value) {
     return ReinterpretCast<RawPtrT>(IntPtrConstant(bit_cast<intptr_t>(value)));
   }
@@ -528,6 +535,7 @@ class V8_EXPORT_PRIVATE CodeAssembler {
   TNode<String> StringConstant(const char* str);
   TNode<Oddball> BooleanConstant(bool value);
   TNode<ExternalReference> ExternalConstant(ExternalReference address);
+  TNode<Float32T> Float32Constant(double value);
   TNode<Float64T> Float64Constant(double value);
   TNode<BoolT> Int32TrueConstant() {
     return ReinterpretCast<BoolT>(Int32Constant(1));
@@ -567,10 +575,12 @@ class V8_EXPORT_PRIVATE CodeAssembler {
   void Return(TNode<Int32T> value);
   void Return(TNode<Uint32T> value);
   void Return(TNode<WordT> value);
+  void Return(TNode<Float32T> value);
+  void Return(TNode<Float64T> value);
   void Return(TNode<WordT> value1, TNode<WordT> value2);
   void PopAndReturn(Node* pop, Node* value);
 
-  void ReturnIf(Node* condition, TNode<Object> value);
+  void ReturnIf(TNode<BoolT> condition, TNode<Object> value);
 
   void AbortCSAAssert(Node* message);
   void DebugBreak();
@@ -588,18 +598,34 @@ class V8_EXPORT_PRIVATE CodeAssembler {
     Comment(s.str());
   }
 
-  void StaticAssert(TNode<BoolT> value);
+  void StaticAssert(TNode<BoolT> value,
+                    const char* source = "unknown position");
 
+  // The following methods refer to source positions in CSA or Torque code
+  // compiled during mksnapshot, not JS compiled at runtime.
   void SetSourcePosition(const char* file, int line);
+  void PushSourcePosition();
+  void PopSourcePosition();
+  class SourcePositionScope {
+   public:
+    explicit SourcePositionScope(CodeAssembler* ca) : ca_(ca) {
+      ca->PushSourcePosition();
+    }
+    ~SourcePositionScope() { ca_->PopSourcePosition(); }
+
+   private:
+    CodeAssembler* ca_;
+  };
+  const std::vector<FileAndLine>& GetMacroSourcePositionStack() const;
 
   void Bind(Label* label);
 #if DEBUG
   void Bind(Label* label, AssemblerDebugInfo debug_info);
 #endif  // DEBUG
   void Goto(Label* label);
-  void GotoIf(SloppyTNode<IntegralT> condition, Label* true_label);
-  void GotoIfNot(SloppyTNode<IntegralT> condition, Label* false_label);
-  void Branch(SloppyTNode<IntegralT> condition, Label* true_label,
+  void GotoIf(TNode<IntegralT> condition, Label* true_label);
+  void GotoIfNot(TNode<IntegralT> condition, Label* false_label);
+  void Branch(TNode<IntegralT> condition, Label* true_label,
               Label* false_label);
 
   template <class T>
@@ -618,6 +644,16 @@ class V8_EXPORT_PRIVATE CodeAssembler {
               CodeAssemblerParameterizedLabel<T...>* if_false, Args... args) {
     if_true->AddInputs(args...);
     if_false->AddInputs(args...);
+    Branch(condition, if_true->plain_label(), if_false->plain_label());
+  }
+  template <class... T, class... U>
+  void Branch(TNode<BoolT> condition,
+              CodeAssemblerParameterizedLabel<T...>* if_true,
+              std::vector<Node*> args_true,
+              CodeAssemblerParameterizedLabel<U...>* if_false,
+              std::vector<Node*> args_false) {
+    if_true->AddInputsVector(std::move(args_true));
+    if_false->AddInputsVector(std::move(args_false));
     Branch(condition, if_true->plain_label(), if_false->plain_label());
   }
 
@@ -642,8 +678,8 @@ class V8_EXPORT_PRIVATE CodeAssembler {
   TNode<RawPtrT> LoadParentFramePointer();
 
   // Poison |value| on speculative paths.
-  TNode<Object> TaggedPoisonOnSpeculation(SloppyTNode<Object> value);
-  TNode<WordT> WordPoisonOnSpeculation(SloppyTNode<WordT> value);
+  TNode<Object> TaggedPoisonOnSpeculation(TNode<Object> value);
+  TNode<WordT> WordPoisonOnSpeculation(TNode<WordT> value);
 
   // Load raw memory location.
   Node* Load(MachineType type, Node* base,
@@ -783,6 +819,10 @@ class V8_EXPORT_PRIVATE CodeAssembler {
     return Unsigned(
         Word32Shr(static_cast<Node*>(left), static_cast<Node*>(right)));
   }
+  TNode<Int32T> Word32Sar(TNode<Int32T> left, TNode<Int32T> right) {
+    return Signed(
+        Word32Sar(static_cast<Node*>(left), static_cast<Node*>(right)));
+  }
 
   TNode<IntPtrT> WordAnd(TNode<IntPtrT> left, TNode<IntPtrT> right) {
     return Signed(WordAnd(static_cast<Node*>(left), static_cast<Node*>(right)));
@@ -905,18 +945,24 @@ class V8_EXPORT_PRIVATE CodeAssembler {
   // Changes a double to an inptr_t for pointer arithmetic outside of Smi range.
   // Assumes that the double can be exactly represented as an int.
   TNode<IntPtrT> ChangeFloat64ToIntPtr(TNode<Float64T> value);
-  TNode<UintPtrT> ChangeFloat64ToUintPtr(SloppyTNode<Float64T> value);
+  TNode<UintPtrT> ChangeFloat64ToUintPtr(TNode<Float64T> value);
   // Same in the opposite direction.
   TNode<Float64T> ChangeUintPtrToFloat64(TNode<UintPtrT> value);
 
   // Changes an intptr_t to a double, e.g. for storing an element index
   // outside Smi range in a HeapNumber. Lossless on 32-bit,
   // rounds on 64-bit (which doesn't affect valid element indices).
-  Node* RoundIntPtrToFloat64(Node* value);
+  TNode<Float64T> RoundIntPtrToFloat64(Node* value);
   // No-op on 32-bit, otherwise zero extend.
-  TNode<UintPtrT> ChangeUint32ToWord(SloppyTNode<Word32T> value);
+  TNode<UintPtrT> ChangeUint32ToWord(TNode<Word32T> value);
   // No-op on 32-bit, otherwise sign extend.
-  TNode<IntPtrT> ChangeInt32ToIntPtr(SloppyTNode<Word32T> value);
+  TNode<IntPtrT> ChangeInt32ToIntPtr(TNode<Word32T> value);
+
+  // Truncates a float to a 32-bit integer. If the float is outside of 32-bit
+  // range, make sure that overflow detection is easy. In particular, return
+  // int_min instead of int_max on arm platforms by using parameter
+  // kSetOverflowToMin.
+  TNode<Int32T> TruncateFloat32ToInt32(SloppyTNode<Float32T> value);
 
   // No-op that guarantees that the value is kept alive till this point even
   // if GC happens.
@@ -935,26 +981,26 @@ class V8_EXPORT_PRIVATE CodeAssembler {
 
   // Calls
   template <class... TArgs>
-  TNode<Object> CallRuntime(Runtime::FunctionId function,
-                            SloppyTNode<Object> context, TArgs... args) {
+  TNode<Object> CallRuntime(Runtime::FunctionId function, TNode<Object> context,
+                            TArgs... args) {
     return CallRuntimeImpl(function, context,
-                           {implicit_cast<SloppyTNode<Object>>(args)...});
+                           {implicit_cast<TNode<Object>>(args)...});
   }
 
   template <class... TArgs>
-  void TailCallRuntime(Runtime::FunctionId function,
-                       SloppyTNode<Object> context, TArgs... args) {
+  void TailCallRuntime(Runtime::FunctionId function, TNode<Object> context,
+                       TArgs... args) {
     int argc = static_cast<int>(sizeof...(args));
     TNode<Int32T> arity = Int32Constant(argc);
     return TailCallRuntimeImpl(function, arity, context,
-                               {implicit_cast<SloppyTNode<Object>>(args)...});
+                               {implicit_cast<TNode<Object>>(args)...});
   }
 
   template <class... TArgs>
   void TailCallRuntime(Runtime::FunctionId function, TNode<Int32T> arity,
-                       SloppyTNode<Object> context, TArgs... args) {
+                       TNode<Object> context, TArgs... args) {
     return TailCallRuntimeImpl(function, arity, context,
-                               {implicit_cast<SloppyTNode<Object>>(args)...});
+                               {implicit_cast<TNode<Object>>(args)...});
   }
 
   //
@@ -962,7 +1008,7 @@ class V8_EXPORT_PRIVATE CodeAssembler {
   //
 
   template <class T = Object, class... TArgs>
-  TNode<T> CallStub(Callable const& callable, SloppyTNode<Object> context,
+  TNode<T> CallStub(Callable const& callable, TNode<Object> context,
                     TArgs... args) {
     TNode<Code> target = HeapConstant(callable.code());
     return CallStub<T>(callable.descriptor(), target, context, args...);
@@ -970,8 +1016,7 @@ class V8_EXPORT_PRIVATE CodeAssembler {
 
   template <class T = Object, class... TArgs>
   TNode<T> CallStub(const CallInterfaceDescriptor& descriptor,
-                    SloppyTNode<Code> target, SloppyTNode<Object> context,
-                    TArgs... args) {
+                    TNode<Code> target, TNode<Object> context, TArgs... args) {
     return UncheckedCast<T>(CallStubR(StubCallMode::kCallCodeObject, descriptor,
                                       1, target, context, args...));
   }
@@ -979,8 +1024,7 @@ class V8_EXPORT_PRIVATE CodeAssembler {
   template <class... TArgs>
   Node* CallStubR(StubCallMode call_mode,
                   const CallInterfaceDescriptor& descriptor, size_t result_size,
-                  SloppyTNode<Object> target, SloppyTNode<Object> context,
-                  TArgs... args) {
+                  TNode<Object> target, TNode<Object> context, TArgs... args) {
     return CallStubRImpl(call_mode, descriptor, result_size, target, context,
                          {args...});
   }
@@ -998,7 +1042,7 @@ class V8_EXPORT_PRIVATE CodeAssembler {
   }
 
   template <class... TArgs>
-  void TailCallStub(Callable const& callable, SloppyTNode<Object> context,
+  void TailCallStub(Callable const& callable, TNode<Object> context,
                     TArgs... args) {
     TNode<Code> target = HeapConstant(callable.code());
     TailCallStub(callable.descriptor(), target, context, args...);
@@ -1006,8 +1050,7 @@ class V8_EXPORT_PRIVATE CodeAssembler {
 
   template <class... TArgs>
   void TailCallStub(const CallInterfaceDescriptor& descriptor,
-                    SloppyTNode<Code> target, SloppyTNode<Object> context,
-                    TArgs... args) {
+                    TNode<Code> target, TNode<Object> context, TArgs... args) {
     TailCallStubImpl(descriptor, target, context, {args...});
   }
 
@@ -1039,19 +1082,22 @@ class V8_EXPORT_PRIVATE CodeAssembler {
                        Node* receiver, TArgs... args) {
     int argc = static_cast<int>(sizeof...(args));
     TNode<Int32T> arity = Int32Constant(argc);
-    return CallStub(callable, context, function, arity, receiver, args...);
+    TNode<Code> target = HeapConstant(callable.code());
+    return CAST(CallJSStubImpl(callable.descriptor(), target, CAST(context),
+                               CAST(function), TNode<Object>(), arity,
+                               {receiver, args...}));
   }
 
   template <class... TArgs>
   Node* ConstructJSWithTarget(Callable const& callable, Node* context,
-                              Node* target, Node* new_target, TArgs... args) {
+                              Node* function, Node* new_target, TArgs... args) {
     int argc = static_cast<int>(sizeof...(args));
     TNode<Int32T> arity = Int32Constant(argc);
     TNode<Object> receiver = LoadRoot(RootIndex::kUndefinedValue);
-
-    // Construct(target, new_target, arity, receiver, arguments...)
-    return CallStub(callable, context, target, new_target, arity, receiver,
-                    args...);
+    TNode<Code> target = HeapConstant(callable.code());
+    return CallJSStubImpl(callable.descriptor(), target, CAST(context),
+                          CAST(function), CAST(new_target), arity,
+                          {receiver, args...});
   }
   template <class... TArgs>
   Node* ConstructJS(Callable const& callable, Node* context, Node* new_target,
@@ -1099,10 +1145,6 @@ class V8_EXPORT_PRIVATE CodeAssembler {
     return CallCFunctionWithCallerSavedRegisters(function, return_type, mode,
                                                  {cargs...});
   }
-
-  // Exception handling support.
-  void GotoIfException(Node* node, Label* if_exception,
-                       Variable* exception_var = nullptr);
 
   // Helpers which delegate to RawMachineAssembler.
   Factory* factory() const;
@@ -1164,6 +1206,11 @@ class V8_EXPORT_PRIVATE CodeAssembler {
                       size_t result_size, TNode<Object> target,
                       TNode<Object> context, std::initializer_list<Node*> args);
 
+  Node* CallJSStubImpl(const CallInterfaceDescriptor& descriptor,
+                       TNode<Object> target, TNode<Object> context,
+                       TNode<Object> function, TNode<Object> new_target,
+                       TNode<Int32T> arity, std::initializer_list<Node*> args);
+
   // These two don't have definitions and are here only for catching use cases
   // where the cast is not necessary.
   TNode<Int32T> Signed(TNode<Int32T> x);
@@ -1181,8 +1228,16 @@ class V8_EXPORT_PRIVATE CodeAssembler {
   DISALLOW_COPY_AND_ASSIGN(CodeAssembler);
 };
 
+// TODO(solanes, v8:6949): this class should be merged into
+// TypedCodeAssemblerVariable. It's required to be separate for
+// CodeAssemblerVariableLists.
 class V8_EXPORT_PRIVATE CodeAssemblerVariable {
  public:
+  Node* value() const;
+  MachineRepresentation rep() const;
+  bool IsBound() const;
+
+ protected:
   explicit CodeAssemblerVariable(CodeAssembler* assembler,
                                  MachineRepresentation rep);
   CodeAssemblerVariable(CodeAssembler* assembler, MachineRepresentation rep,
@@ -1196,9 +1251,6 @@ class V8_EXPORT_PRIVATE CodeAssemblerVariable {
 
   ~CodeAssemblerVariable();
   void Bind(Node* value);
-  Node* value() const;
-  MachineRepresentation rep() const;
-  bool IsBound() const;
 
  private:
   class Impl;
@@ -1222,20 +1274,19 @@ template <class T>
 class TypedCodeAssemblerVariable : public CodeAssemblerVariable {
  public:
   TypedCodeAssemblerVariable(TNode<T> initial_value, CodeAssembler* assembler)
-      : CodeAssemblerVariable(assembler, MachineRepresentationOf<T>::value,
+      : CodeAssemblerVariable(assembler, PhiMachineRepresentationOf<T>,
                               initial_value) {}
   explicit TypedCodeAssemblerVariable(CodeAssembler* assembler)
-      : CodeAssemblerVariable(assembler, MachineRepresentationOf<T>::value) {}
+      : CodeAssemblerVariable(assembler, PhiMachineRepresentationOf<T>) {}
 #if DEBUG
   TypedCodeAssemblerVariable(AssemblerDebugInfo debug_info,
                              CodeAssembler* assembler)
       : CodeAssemblerVariable(assembler, debug_info,
-                              MachineRepresentationOf<T>::value) {}
+                              PhiMachineRepresentationOf<T>) {}
   TypedCodeAssemblerVariable(AssemblerDebugInfo debug_info,
                              TNode<T> initial_value, CodeAssembler* assembler)
       : CodeAssemblerVariable(assembler, debug_info,
-                              MachineRepresentationOf<T>::value,
-                              initial_value) {}
+                              PhiMachineRepresentationOf<T>, initial_value) {}
 #endif  // DEBUG
 
   TNode<T> value() const {
@@ -1349,6 +1400,9 @@ class CodeAssemblerParameterizedLabel
  private:
   friend class CodeAssembler;
 
+  void AddInputsVector(std::vector<Node*> inputs) {
+    CodeAssemblerParameterizedLabelBase::AddInputs(std::move(inputs));
+  }
   void AddInputs(TNode<Types>... inputs) {
     CodeAssemblerParameterizedLabelBase::AddInputs(
         std::vector<Node*>{inputs...});
@@ -1356,7 +1410,7 @@ class CodeAssemblerParameterizedLabel
   void CreatePhis(TNode<Types>*... results) {
     const std::vector<Node*>& phi_nodes =
         CodeAssemblerParameterizedLabelBase::CreatePhis(
-            {MachineRepresentationOf<Types>::value...});
+            {PhiMachineRepresentationOf<Types>...});
     auto it = phi_nodes.begin();
     USE(it);
     ITERATE_PACK(AssignPhi(results, *(it++)));
@@ -1376,13 +1430,13 @@ class V8_EXPORT_PRIVATE CodeAssemblerState {
   // |result_size| specifies the number of results returned by the stub.
   // TODO(rmcilroy): move result_size to the CallInterfaceDescriptor.
   CodeAssemblerState(Isolate* isolate, Zone* zone,
-                     const CallInterfaceDescriptor& descriptor, Code::Kind kind,
+                     const CallInterfaceDescriptor& descriptor, CodeKind kind,
                      const char* name, PoisoningMitigationLevel poisoning_level,
                      int32_t builtin_index = Builtins::kNoBuiltinId);
 
   // Create with JSCall linkage.
   CodeAssemblerState(Isolate* isolate, Zone* zone, int parameter_count,
-                     Code::Kind kind, const char* name,
+                     CodeKind kind, const char* name,
                      PoisoningMitigationLevel poisoning_level,
                      int32_t builtin_index = Builtins::kNoBuiltinId);
 
@@ -1403,10 +1457,10 @@ class V8_EXPORT_PRIVATE CodeAssemblerState {
   friend class CodeAssemblerVariable;
   friend class CodeAssemblerTester;
   friend class CodeAssemblerParameterizedLabelBase;
-  friend class CodeAssemblerScopedExceptionHandler;
+  friend class ScopedExceptionHandler;
 
   CodeAssemblerState(Isolate* isolate, Zone* zone,
-                     CallDescriptor* call_descriptor, Code::Kind kind,
+                     CallDescriptor* call_descriptor, CodeKind kind,
                      const char* name, PoisoningMitigationLevel poisoning_level,
                      int32_t builtin_index);
 
@@ -1414,7 +1468,7 @@ class V8_EXPORT_PRIVATE CodeAssemblerState {
   void PopExceptionHandler();
 
   std::unique_ptr<RawMachineAssembler> raw_assembler_;
-  Code::Kind kind_;
+  CodeKind kind_;
   const char* name_;
   int32_t builtin_index_;
   bool code_generated_;
@@ -1427,23 +1481,25 @@ class V8_EXPORT_PRIVATE CodeAssemblerState {
   VariableId next_variable_id_ = 0;
   JSGraph* jsgraph_;
 
+  // Only used by CodeStubAssembler builtins.
+  std::vector<FileAndLine> macro_call_stack_;
+
   VariableId NextVariableId() { return next_variable_id_++; }
 
   DISALLOW_COPY_AND_ASSIGN(CodeAssemblerState);
 };
 
-class V8_EXPORT_PRIVATE CodeAssemblerScopedExceptionHandler {
+class V8_EXPORT_PRIVATE ScopedExceptionHandler {
  public:
-  CodeAssemblerScopedExceptionHandler(
-      CodeAssembler* assembler, CodeAssemblerExceptionHandlerLabel* label);
+  ScopedExceptionHandler(CodeAssembler* assembler,
+                         CodeAssemblerExceptionHandlerLabel* label);
 
   // Use this constructor for compatability/ports of old CSA code only. New code
   // should use the CodeAssemblerExceptionHandlerLabel version.
-  CodeAssemblerScopedExceptionHandler(
-      CodeAssembler* assembler, CodeAssemblerLabel* label,
-      TypedCodeAssemblerVariable<Object>* exception);
+  ScopedExceptionHandler(CodeAssembler* assembler, CodeAssemblerLabel* label,
+                         TypedCodeAssemblerVariable<Object>* exception);
 
-  ~CodeAssemblerScopedExceptionHandler();
+  ~ScopedExceptionHandler();
 
  private:
   bool has_handler_;

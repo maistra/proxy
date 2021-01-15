@@ -1,6 +1,5 @@
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
-
 def bsslwrapper_repositories(bind = True):
     http_archive(
         name = "bssl_wrapper",
@@ -77,6 +76,10 @@ def abseil_repositories(bind = True):
         native.bind(
             name = "abseil_time",
             actual = "@com_google_absl//absl/time:time",
+        )
+        native.bind(
+            name = "abseil_flat_hash_set",
+            actual = "@com_google_absl//absl/container:flat_hash_set",
         )
     _cctz_repositories(bind)
 

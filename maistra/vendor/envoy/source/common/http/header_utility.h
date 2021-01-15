@@ -5,7 +5,7 @@
 #include "envoy/common/regex.h"
 #include "envoy/config/route/v3/route_components.pb.h"
 #include "envoy/http/header_map.h"
-#include "envoy/json/json_object.h"
+#include "envoy/http/protocol.h"
 #include "envoy/type/v3/range.pb.h"
 
 #include "common/protobuf/protobuf.h"
@@ -18,7 +18,7 @@ namespace Http {
  */
 class HeaderUtility {
 public:
-  enum class HeaderMatchType { Value, Regex, Range, Present, Prefix, Suffix };
+  enum class HeaderMatchType { Value, Regex, Range, Present, Prefix, Suffix, Contains };
 
   /**
    * Get all instances of the header key specified, and return the values in the vector provided.
@@ -31,6 +31,35 @@ public:
    */
   static void getAllOfHeader(const HeaderMap& headers, absl::string_view key,
                              std::vector<absl::string_view>& out);
+
+  /**
+   * Get all header values as a single string. Multiple headers are concatenated with ','.
+   */
+  class GetAllOfHeaderAsStringResult {
+  public:
+    // The ultimate result of the concatenation. If absl::nullopt, no header values were found.
+    // If the final string required a string allocation, the memory is held in
+    // backingString(). This allows zero allocation in the common case of a single header
+    // value.
+    absl::optional<absl::string_view> result() const {
+      // This is safe for move/copy of this class as the backing string will be moved or copied.
+      // Otherwise result_ is valid. The assert verifies that both are empty or only 1 is set.
+      ASSERT((!result_.has_value() && result_backing_string_.empty()) ||
+             (result_.has_value() ^ !result_backing_string_.empty()));
+      return !result_backing_string_.empty() ? result_backing_string_ : result_;
+    }
+
+    const std::string& backingString() const { return result_backing_string_; }
+
+  private:
+    absl::optional<absl::string_view> result_;
+    // Valid only if result_ relies on memory allocation that must live beyond the call. See above.
+    std::string result_backing_string_;
+
+    friend class HeaderUtility;
+  };
+  static GetAllOfHeaderAsStringResult getAllOfHeaderAsString(const HeaderMap& headers,
+                                                             const Http::LowerCaseString& key);
 
   // A HeaderData specifies one of exact value or regex or range element
   // to match in a request's header, specified in the header_match_type_ member.
@@ -112,6 +141,17 @@ public:
   static bool authorityIsValid(const absl::string_view authority_value);
 
   /**
+   * @brief a helper function to determine if the headers represent a CONNECT request.
+   */
+  static bool isConnect(const RequestHeaderMap& headers);
+
+  /**
+   * @brief a helper function to determine if the headers represent an accepted CONNECT response.
+   */
+  static bool isConnectResponse(const RequestHeaderMap* request_headers,
+                                const ResponseHeaderMap& response_headers);
+
+  /**
    * Add headers from one HeaderMap to another
    * @param headers target where headers will be added
    * @param headers_to_add supplies the headers to be added
@@ -130,6 +170,21 @@ public:
    */
   static absl::optional<std::reference_wrapper<const absl::string_view>>
   requestHeadersValid(const RequestHeaderMap& headers);
+
+  /**
+   * Determines if the response should be framed by Connection: Close based on protocol
+   * and headers.
+   * @param protocol the protocol of the request
+   * @param headers the request or response headers
+   * @return if the response should be framed by Connection: Close
+   */
+  static bool shouldCloseConnection(Http::Protocol protocol,
+                                    const RequestOrResponseHeaderMap& headers);
+
+  /**
+   * @brief Remove the port part from host/authority header if it is equal to provided port
+   */
+  static void stripPortFromHost(RequestHeaderMap& headers, uint32_t listener_port);
 };
 } // namespace Http
 } // namespace Envoy

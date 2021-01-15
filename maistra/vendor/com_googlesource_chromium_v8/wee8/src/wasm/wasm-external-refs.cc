@@ -11,7 +11,9 @@
 
 #include "src/base/bits.h"
 #include "src/base/ieee754.h"
+#include "src/common/assert-scope.h"
 #include "src/utils/memcopy.h"
+#include "src/wasm/wasm-objects-inl.h"
 
 #if defined(ADDRESS_SANITIZER) || defined(MEMORY_SANITIZER) || \
     defined(THREAD_SANITIZER) || defined(LEAK_SANITIZER) ||    \
@@ -228,6 +230,82 @@ int32_t float64_to_uint64_wrapper(Address data) {
   return 0;
 }
 
+void float32_to_int64_sat_wrapper(Address data) {
+  float input = ReadUnalignedValue<float>(data);
+  // We use "<" here to check the upper bound because of rounding problems: With
+  // "<=" some inputs would be considered within int64 range which are actually
+  // not within int64 range.
+  if (input < static_cast<float>(std::numeric_limits<int64_t>::max()) &&
+      input >= static_cast<float>(std::numeric_limits<int64_t>::min())) {
+    WriteUnalignedValue<int64_t>(data, static_cast<int64_t>(input));
+    return;
+  }
+  if (std::isnan(input)) {
+    WriteUnalignedValue<int64_t>(data, 0);
+    return;
+  }
+  if (input < 0.0) {
+    WriteUnalignedValue<int64_t>(data, std::numeric_limits<int64_t>::min());
+    return;
+  }
+  WriteUnalignedValue<int64_t>(data, std::numeric_limits<int64_t>::max());
+}
+
+void float32_to_uint64_sat_wrapper(Address data) {
+  float input = ReadUnalignedValue<float>(data);
+  // We use "<" here to check the upper bound because of rounding problems: With
+  // "<=" some inputs would be considered within uint64 range which are actually
+  // not within uint64 range.
+  if (input < static_cast<float>(std::numeric_limits<uint64_t>::max()) &&
+      input >= 0.0) {
+    WriteUnalignedValue<uint64_t>(data, static_cast<uint64_t>(input));
+    return;
+  }
+  if (input >= std::numeric_limits<uint64_t>::max()) {
+    WriteUnalignedValue<uint64_t>(data, std::numeric_limits<uint64_t>::max());
+    return;
+  }
+  WriteUnalignedValue<uint64_t>(data, 0);
+}
+
+void float64_to_int64_sat_wrapper(Address data) {
+  double input = ReadUnalignedValue<double>(data);
+  // We use "<" here to check the upper bound because of rounding problems: With
+  // "<=" some inputs would be considered within int64 range which are actually
+  // not within int64 range.
+  if (input < static_cast<double>(std::numeric_limits<int64_t>::max()) &&
+      input >= static_cast<double>(std::numeric_limits<int64_t>::min())) {
+    WriteUnalignedValue<int64_t>(data, static_cast<int64_t>(input));
+    return;
+  }
+  if (std::isnan(input)) {
+    WriteUnalignedValue<int64_t>(data, 0);
+    return;
+  }
+  if (input < 0.0) {
+    WriteUnalignedValue<int64_t>(data, std::numeric_limits<int64_t>::min());
+    return;
+  }
+  WriteUnalignedValue<int64_t>(data, std::numeric_limits<int64_t>::max());
+}
+
+void float64_to_uint64_sat_wrapper(Address data) {
+  double input = ReadUnalignedValue<double>(data);
+  // We use "<" here to check the upper bound because of rounding problems: With
+  // "<=" some inputs would be considered within int64 range which are actually
+  // not within int64 range.
+  if (input < static_cast<double>(std::numeric_limits<uint64_t>::max()) &&
+      input >= 0.0) {
+    WriteUnalignedValue<uint64_t>(data, static_cast<uint64_t>(input));
+    return;
+  }
+  if (input >= std::numeric_limits<uint64_t>::max()) {
+    WriteUnalignedValue<uint64_t>(data, std::numeric_limits<uint64_t>::max());
+    return;
+  }
+  WriteUnalignedValue<uint64_t>(data, 0);
+}
+
 int32_t int64_div_wrapper(Address data) {
   int64_t dividend = ReadUnalignedValue<int64_t>(data);
   int64_t divisor = ReadUnalignedValue<int64_t>(data + sizeof(dividend));
@@ -323,60 +401,182 @@ void float64_pow_wrapper(Address data) {
   WriteUnalignedValue<double>(data, base::ieee754::pow(x, y));
 }
 
-// Asan on Windows triggers exceptions in this function to allocate
-// shadow memory lazily. When this function is called from WebAssembly,
-// these exceptions would be handled by the trap handler before they get
-// handled by Asan, and thereby confuse the thread-in-wasm flag.
-// Therefore we disable ASAN for this function. Alternatively we could
-// reset the thread-in-wasm flag before calling this function. However,
-// as this is only a problem with Asan on Windows, we did not consider
-// it worth the overhead.
-DISABLE_ASAN void memory_copy_wrapper(Address dst, Address src, uint32_t size) {
-  // Use explicit forward and backward copy to match the required semantics for
-  // the memory.copy instruction. It is assumed that the caller of this
-  // function has already performed bounds checks, so {src + size} and
-  // {dst + size} should not overflow.
-  DCHECK(src + size >= src && dst + size >= dst);
-  uint8_t* dst8 = reinterpret_cast<uint8_t*>(dst);
-  uint8_t* src8 = reinterpret_cast<uint8_t*>(src);
-  if (src < dst && src + size > dst && dst + size > src) {
-    dst8 += size - 1;
-    src8 += size - 1;
-    for (; size > 0; size--) {
-      *dst8-- = *src8--;
-    }
-  } else {
-    for (; size > 0; size--) {
-      *dst8++ = *src8++;
-    }
+template <typename T, T (*float_round_op)(T)>
+void simd_float_round_wrapper(Address data) {
+  constexpr int n = kSimd128Size / sizeof(T);
+  for (int i = 0; i < n; i++) {
+    WriteUnalignedValue<T>(
+        data + (i * sizeof(T)),
+        float_round_op(ReadUnalignedValue<T>(data + (i * sizeof(T)))));
   }
 }
 
-// Asan on Windows triggers exceptions in this function that confuse the
-// WebAssembly trap handler, so Asan is disabled. See the comment on
-// memory_copy_wrapper above for more info.
-void memory_fill_wrapper(Address dst, uint32_t value, uint32_t size) {
+void f64x2_ceil_wrapper(Address data) {
+  simd_float_round_wrapper<double, &ceil>(data);
+}
+
+void f64x2_floor_wrapper(Address data) {
+  simd_float_round_wrapper<double, &floor>(data);
+}
+
+void f64x2_trunc_wrapper(Address data) {
+  simd_float_round_wrapper<double, &trunc>(data);
+}
+
+void f64x2_nearest_int_wrapper(Address data) {
+  simd_float_round_wrapper<double, &nearbyint>(data);
+}
+
+void f32x4_ceil_wrapper(Address data) {
+  simd_float_round_wrapper<float, &ceilf>(data);
+}
+
+void f32x4_floor_wrapper(Address data) {
+  simd_float_round_wrapper<float, &floorf>(data);
+}
+
+void f32x4_trunc_wrapper(Address data) {
+  simd_float_round_wrapper<float, &truncf>(data);
+}
+
+void f32x4_nearest_int_wrapper(Address data) {
+  simd_float_round_wrapper<float, &nearbyintf>(data);
+}
+
+namespace {
+class ThreadNotInWasmScope {
+// Asan on Windows triggers exceptions to allocate shadow memory lazily. When
+// this function is called from WebAssembly, these exceptions would be handled
+// by the trap handler before they get handled by Asan, and thereby confuse the
+// thread-in-wasm flag. Therefore we disable ASAN for this function.
+// Alternatively we could reset the thread-in-wasm flag before calling this
+// function. However, as this is only a problem with Asan on Windows, we did not
+// consider it worth the overhead.
 #if defined(RESET_THREAD_IN_WASM_FLAG_FOR_ASAN_ON_WINDOWS)
-  bool thread_was_in_wasm = trap_handler::IsThreadInWasm();
-  if (thread_was_in_wasm) {
-    trap_handler::ClearThreadInWasm();
+
+ public:
+  ThreadNotInWasmScope() : thread_was_in_wasm_(trap_handler::IsThreadInWasm()) {
+    if (thread_was_in_wasm_) {
+      trap_handler::ClearThreadInWasm();
+    }
   }
+
+  ~ThreadNotInWasmScope() {
+    if (thread_was_in_wasm_) {
+      trap_handler::SetThreadInWasm();
+    }
+  }
+
+ private:
+  bool thread_was_in_wasm_;
+#else
+
+ public:
+  ThreadNotInWasmScope() {
+    // This is needed to avoid compilation errors (unused variable).
+    USE(this);
+  }
+#endif
+};
+
+#ifdef DISABLE_UNTRUSTED_CODE_MITIGATIONS
+inline byte* EffectiveAddress(WasmInstanceObject instance, uint32_t index) {
+  return instance.memory_start() + index;
+}
+
+inline byte* EffectiveAddress(byte* base, size_t size, uint32_t index) {
+  return base + index;
+}
+
+#else
+inline byte* EffectiveAddress(WasmInstanceObject instance, uint32_t index) {
+  // Compute the effective address of the access, making sure to condition
+  // the index even in the in-bounds case.
+  return instance.memory_start() + (index & instance.memory_mask());
+}
+
+inline byte* EffectiveAddress(byte* base, size_t size, uint32_t index) {
+  size_t mem_mask = base::bits::RoundUpToPowerOfTwo(size) - 1;
+  return base + (index & mem_mask);
+}
 #endif
 
-  // Use an explicit forward copy to match the required semantics for the
-  // memory.fill instruction. It is assumed that the caller of this function
-  // has already performed bounds checks, so {dst + size} should not overflow.
-  DCHECK(dst + size >= dst);
-  uint8_t* dst8 = reinterpret_cast<uint8_t*>(dst);
-  uint8_t value8 = static_cast<uint8_t>(value);
-  for (; size > 0; size--) {
-    *dst8++ = value8;
-  }
-#if defined(RESET_THREAD_IN_WASM_FLAG_FOR_ASAN_ON_WINDOWS)
-  if (thread_was_in_wasm) {
-    trap_handler::SetThreadInWasm();
-  }
-#endif
+template <typename V>
+V ReadAndIncrementOffset(Address data, size_t* offset) {
+  V result = ReadUnalignedValue<V>(data + *offset);
+  *offset += sizeof(V);
+  return result;
+}
+}  // namespace
+
+int32_t memory_init_wrapper(Address data) {
+  constexpr int32_t kSuccess = 1;
+  constexpr int32_t kOutOfBounds = 0;
+  ThreadNotInWasmScope thread_not_in_wasm_scope;
+  DisallowHeapAllocation disallow_heap_allocation;
+  size_t offset = 0;
+  Object raw_instance = ReadAndIncrementOffset<Object>(data, &offset);
+  WasmInstanceObject instance = WasmInstanceObject::cast(raw_instance);
+  uint32_t dst = ReadAndIncrementOffset<uint32_t>(data, &offset);
+  uint32_t src = ReadAndIncrementOffset<uint32_t>(data, &offset);
+  uint32_t seg_index = ReadAndIncrementOffset<uint32_t>(data, &offset);
+  uint32_t size = ReadAndIncrementOffset<uint32_t>(data, &offset);
+
+  uint64_t mem_size = instance.memory_size();
+  if (!base::IsInBounds<uint64_t>(dst, size, mem_size)) return kOutOfBounds;
+
+  uint32_t seg_size = instance.data_segment_sizes()[seg_index];
+  if (!base::IsInBounds<uint32_t>(src, size, seg_size)) return kOutOfBounds;
+
+  byte* seg_start =
+      reinterpret_cast<byte*>(instance.data_segment_starts()[seg_index]);
+  std::memcpy(EffectiveAddress(instance, dst),
+              EffectiveAddress(seg_start, seg_size, src), size);
+  return kSuccess;
+}
+
+int32_t memory_copy_wrapper(Address data) {
+  constexpr int32_t kSuccess = 1;
+  constexpr int32_t kOutOfBounds = 0;
+  ThreadNotInWasmScope thread_not_in_wasm_scope;
+  DisallowHeapAllocation disallow_heap_allocation;
+  size_t offset = 0;
+  Object raw_instance = ReadAndIncrementOffset<Object>(data, &offset);
+  WasmInstanceObject instance = WasmInstanceObject::cast(raw_instance);
+  uint32_t dst = ReadAndIncrementOffset<uint32_t>(data, &offset);
+  uint32_t src = ReadAndIncrementOffset<uint32_t>(data, &offset);
+  uint32_t size = ReadAndIncrementOffset<uint32_t>(data, &offset);
+
+  uint64_t mem_size = instance.memory_size();
+  if (!base::IsInBounds<uint64_t>(dst, size, mem_size)) return kOutOfBounds;
+  if (!base::IsInBounds<uint64_t>(src, size, mem_size)) return kOutOfBounds;
+
+  // Use std::memmove, because the ranges can overlap.
+  std::memmove(EffectiveAddress(instance, dst), EffectiveAddress(instance, src),
+               size);
+  return kSuccess;
+}
+
+int32_t memory_fill_wrapper(Address data) {
+  constexpr int32_t kSuccess = 1;
+  constexpr int32_t kOutOfBounds = 0;
+
+  ThreadNotInWasmScope thread_not_in_wasm_scope;
+  DisallowHeapAllocation disallow_heap_allocation;
+
+  size_t offset = 0;
+  Object raw_instance = ReadAndIncrementOffset<Object>(data, &offset);
+  WasmInstanceObject instance = WasmInstanceObject::cast(raw_instance);
+  uint32_t dst = ReadAndIncrementOffset<uint32_t>(data, &offset);
+  uint8_t value =
+      static_cast<uint8_t>(ReadAndIncrementOffset<uint32_t>(data, &offset));
+  uint32_t size = ReadAndIncrementOffset<uint32_t>(data, &offset);
+
+  uint64_t mem_size = instance.memory_size();
+  if (!base::IsInBounds<uint64_t>(dst, size, mem_size)) return kOutOfBounds;
+
+  std::memset(EffectiveAddress(instance, dst), value, size);
+  return kSuccess;
 }
 
 static WasmTrapCallbackForTesting wasm_trap_callback_for_testing = nullptr;

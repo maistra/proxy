@@ -1,12 +1,37 @@
-load("@io_bazel_rules_go//go:def.bzl", "go_path")
-load("@io_bazel_rules_go//go/private:tools/lines_sorted_test.bzl", "lines_sorted_test")
-load("@io_bazel_rules_go//go/private:rules/nogo.bzl", "nogo")
-load("@io_bazel_rules_go//go/private:rules/info.bzl", "go_info")
-load("@io_bazel_rules_go//go/private:context.bzl", "cgo_context_data", "go_context_data")
-load("@io_bazel_rules_go//go/private:rules/stdlib.bzl", "stdlib")
+load(
+    "@io_bazel_rules_go//go/private:tools/lines_sorted_test.bzl",
+    "lines_sorted_test",
+)
+load(
+    "@io_bazel_rules_go//go/private:rules/nogo.bzl",
+    "nogo",
+)
+load(
+    "@io_bazel_rules_go//go/private:rules/info.bzl",
+    "go_info",
+)
+load(
+    "@io_bazel_rules_go//go:def.bzl",
+    "TOOLS_NOGO",
+)
+load(
+    "@io_bazel_rules_go//go/private:context.bzl",
+    "cgo_context_data",
+    "cgo_context_data_proxy",
+    "go_config",
+    "go_context_data",
+)
+load(
+    "@io_bazel_rules_go//go/private:rules/stdlib.bzl",
+    "stdlib",
+)
 
 stdlib(
     name = "stdlib",
+    cgo_context_data = select({
+        "//go/platform:internal_cgo_off": None,
+        "//conditions:default": ":cgo_context_data",
+    }),
     visibility = ["//visibility:public"],
 )
 
@@ -25,40 +50,7 @@ nogo(
 nogo(
     name = "tools_nogo",
     visibility = ["//visibility:public"],
-    deps = [
-        "@org_golang_x_tools//go/analysis/passes/asmdecl:go_tool_library",
-        "@org_golang_x_tools//go/analysis/passes/assign:go_tool_library",
-        "@org_golang_x_tools//go/analysis/passes/atomic:go_tool_library",
-        "@org_golang_x_tools//go/analysis/passes/atomicalign:go_tool_library",
-        "@org_golang_x_tools//go/analysis/passes/bools:go_tool_library",
-        "@org_golang_x_tools//go/analysis/passes/buildssa:go_tool_library",
-        "@org_golang_x_tools//go/analysis/passes/buildtag:go_tool_library",
-        "@org_golang_x_tools//go/analysis/passes/cgocall:go_tool_library",
-        "@org_golang_x_tools//go/analysis/passes/composite:go_tool_library",
-        "@org_golang_x_tools//go/analysis/passes/copylock:go_tool_library",
-        "@org_golang_x_tools//go/analysis/passes/ctrlflow:go_tool_library",
-        "@org_golang_x_tools//go/analysis/passes/deepequalerrors:go_tool_library",
-        "@org_golang_x_tools//go/analysis/passes/errorsas:go_tool_library",
-        "@org_golang_x_tools//go/analysis/passes/findcall:go_tool_library",
-        "@org_golang_x_tools//go/analysis/passes/httpresponse:go_tool_library",
-        "@org_golang_x_tools//go/analysis/passes/inspect:go_tool_library",
-        "@org_golang_x_tools//go/analysis/passes/loopclosure:go_tool_library",
-        "@org_golang_x_tools//go/analysis/passes/lostcancel:go_tool_library",
-        "@org_golang_x_tools//go/analysis/passes/nilfunc:go_tool_library",
-        "@org_golang_x_tools//go/analysis/passes/nilness:go_tool_library",
-        "@org_golang_x_tools//go/analysis/passes/pkgfact:go_tool_library",
-        "@org_golang_x_tools//go/analysis/passes/printf:go_tool_library",
-        "@org_golang_x_tools//go/analysis/passes/shadow:go_tool_library",
-        "@org_golang_x_tools//go/analysis/passes/shift:go_tool_library",
-        "@org_golang_x_tools//go/analysis/passes/sortslice:go_tool_library",
-        "@org_golang_x_tools//go/analysis/passes/stdmethods:go_tool_library",
-        "@org_golang_x_tools//go/analysis/passes/structtag:go_tool_library",
-        "@org_golang_x_tools//go/analysis/passes/tests:go_tool_library",
-        "@org_golang_x_tools//go/analysis/passes/unmarshal:go_tool_library",
-        "@org_golang_x_tools//go/analysis/passes/unreachable:go_tool_library",
-        "@org_golang_x_tools//go/analysis/passes/unsafeptr:go_tool_library",
-        "@org_golang_x_tools//go/analysis/passes/unusedresult:go_tool_library",
-    ],
+    deps = TOOLS_NOGO,
 )
 
 # go_context_data collects build options and is depended on by all Go targets.
@@ -66,25 +58,52 @@ nogo(
 go_context_data(
     name = "go_context_data",
     cgo_context_data = select({
-        "@io_bazel_rules_go//go/platform:internal_cgo_off": None,
+        "//go/platform:internal_cgo_off": None,
         "//conditions:default": ":cgo_context_data",
     }),
-    stamp = select({
-        "@io_bazel_rules_go//go/private:stamp": True,
-        "//conditions:default": False,
-    }),
-    strip = select({
-        "@io_bazel_rules_go//go/private:strip-always": "always",
-        "@io_bazel_rules_go//go/private:strip-sometimes": "sometimes",
-        "@io_bazel_rules_go//go/private:strip-never": "never",
-    }),
+    coverdata = "//go/tools/coverdata",
+    go_config = ":go_config",
+    nogo = "@io_bazel_rules_nogo//:nogo",
+    stdlib = ":stdlib",
     visibility = ["//visibility:public"],
 )
 
 # cgo_context_data collects information about the C/C++ toolchain.
-# go_toolchains may depend on this in order to support cgo.
+# go_context_data depends if cgo is enabled in the target configuration.
 cgo_context_data(
     name = "cgo_context_data",
+    visibility = ["//visibility:private"],
+)
+
+# cgo_context_data_proxy depends on cgo_context_data if cgo is enabled and
+# forwards its provider. Rule attributes may depend on this, since they cannot
+# use select.
+cgo_context_data_proxy(
+    name = "cgo_context_data_proxy",
+    actual = select({
+        "//go/platform:internal_cgo_off": None,
+        "//conditions:default": ":cgo_context_data",
+    }),
+    visibility = ["//visibility:public"],
+)
+
+# go_config collects information about build settings in the current
+# configuration. go_context_data depends on this so that rules don't need
+# to depend on all build settings directly.
+go_config(
+    name = "go_config",
+    debug = "//go/config:debug",
+    gotags = "//go/config:tags",
+    linkmode = "//go/config:linkmode",
+    msan = "//go/config:msan",
+    pure = "//go/config:pure",
+    race = "//go/config:race",
+    stamp = select({
+        "//go/private:stamp": True,
+        "//conditions:default": False,
+    }),
+    static = "//go/config:static",
+    strip = "//go/config:strip",
     visibility = ["//visibility:public"],
 )
 

@@ -1,27 +1,31 @@
 
 'use strict';
 
-let hostrefs = {};
-let hostsym = Symbol("hostref");
-function hostref(s) {
-  if (! (s in hostrefs)) hostrefs[s] = {[hostsym]: s};
-  return hostrefs[s];
+let externrefs = {};
+let externsym = Symbol("externref");
+function externref(s) {
+  if (! (s in externrefs)) externrefs[s] = {[externsym]: s};
+  return externrefs[s];
 }
-function is_hostref(x) {
-  return (x !== null && hostsym in x) ? 1 : 0;
+function is_externref(x) {
+  return (x !== null && externsym in x) ? 1 : 0;
 }
 function is_funcref(x) {
   return typeof x === "function" ? 1 : 0;
 }
-function eq_ref(x, y) {
+function eq_externref(x, y) {
+  return x === y ? 1 : 0;
+}
+function eq_funcref(x, y) {
   return x === y ? 1 : 0;
 }
 
 let spectest = {
-  hostref: hostref,
-  is_hostref: is_hostref,
+  externref: externref,
+  is_externref: is_externref,
   is_funcref: is_funcref,
-  eq_ref: eq_ref,
+  eq_externref: eq_externref,
+  eq_funcref: eq_funcref,
   print: console.log.bind(console),
   print_i32: console.log.bind(console),
   print_i32_f32: console.log.bind(console),
@@ -132,47 +136,50 @@ function assert_exhaustion(action) {
   throw new Error("Wasm resource exhaustion expected");
 }
 
-function assert_return(action, expected) {
+function assert_return(action, ...expected) {
   let actual = action();
-  switch (expected) {
-    case "nan:canonical":
-    case "nan:arithmetic":
-    case "nan:any":
-      // Note that JS can't reliably distinguish different NaN values,
-      // so there's no good way to test that it's a canonical NaN.
-      if (!Number.isNaN(actual)) {
-        throw new Error("Wasm return value NaN expected, got " + actual);
-      };
-      return;
-    default:
-      if (!Object.is(actual, expected)) {
-        throw new Error("Wasm return value " + expected + " expected, got " + actual);
-      };
+  if (actual === undefined) {
+    actual = [];
+  } else if (!Array.isArray(actual)) {
+    actual = [actual];
+  }
+  if (actual.length !== expected.length) {
+    throw new Error(expected.length + " value(s) expected, got " + actual.length);
+  }
+  for (let i = 0; i < actual.length; ++i) {
+    switch (expected[i]) {
+      case "nan:canonical":
+      case "nan:arithmetic":
+      case "nan:any":
+        // Note that JS can't reliably distinguish different NaN values,
+        // so there's no good way to test that it's a canonical NaN.
+        if (!Number.isNaN(actual[i])) {
+          throw new Error("Wasm return value NaN expected, got " + actual[i]);
+        };
+        return;
+      case "ref.func":
+        if (typeof actual !== "function") {
+          throw new Error("Wasm function return value expected, got " + actual);
+        };
+        return;
+      case "ref.extern":
+        if (actual === null) {
+          throw new Error("Wasm reference return value expected, got " + actual);
+        };
+        return;
+      default:
+        if (!Object.is(actual[i], expected[i])) {
+          throw new Error("Wasm return value " + expected[i] + " expected, got " + actual[i]);
+        };
+    }
   }
 }
 
-function assert_return_ref(action) {
-  let actual = action();
-  if (actual === null || typeof actual !== "object" && typeof actual !== "function") {
-    throw new Error("Wasm reference return value expected, got " + actual);
-  };
-}
-
-function assert_return_func(action) {
-  let actual = action();
-  if (typeof actual !== "function") {
-    throw new Error("Wasm function return value expected, got " + actual);
-  };
-}
-
 // ref_null.wast:1
-let $1 = instance("\x00\x61\x73\x6d\x01\x00\x00\x00\x01\x8d\x80\x80\x80\x00\x03\x60\x00\x01\x6f\x60\x00\x01\x70\x60\x00\x01\x6e\x03\x84\x80\x80\x80\x00\x03\x00\x01\x02\x06\x8d\x80\x80\x80\x00\x03\x6f\x00\xd0\x0b\x70\x00\xd0\x0b\x6e\x00\xd0\x0b\x07\x9e\x80\x80\x80\x00\x03\x06\x61\x6e\x79\x72\x65\x66\x00\x00\x07\x66\x75\x6e\x63\x72\x65\x66\x00\x01\x07\x6e\x75\x6c\x6c\x72\x65\x66\x00\x02\x0a\x99\x80\x80\x80\x00\x03\x83\x80\x80\x80\x00\x00\xd0\x0b\x83\x80\x80\x80\x00\x00\xd0\x0b\x83\x80\x80\x80\x00\x00\xd0\x0b");
+let $1 = instance("\x00\x61\x73\x6d\x01\x00\x00\x00\x01\x89\x80\x80\x80\x00\x02\x60\x00\x01\x6f\x60\x00\x01\x70\x03\x83\x80\x80\x80\x00\x02\x00\x01\x06\x8b\x80\x80\x80\x00\x02\x6f\x00\xd0\x6f\x0b\x70\x00\xd0\x70\x0b\x07\x97\x80\x80\x80\x00\x02\x09\x65\x78\x74\x65\x72\x6e\x72\x65\x66\x00\x00\x07\x66\x75\x6e\x63\x72\x65\x66\x00\x01\x0a\x93\x80\x80\x80\x00\x02\x84\x80\x80\x80\x00\x00\xd0\x6f\x0b\x84\x80\x80\x80\x00\x00\xd0\x70\x0b");
 
-// ref_null.wast:11
-assert_return(() => call($1, "anyref", []), null);
+// ref_null.wast:9
+assert_return(() => call($1, "externref", []), null);
 
-// ref_null.wast:12
+// ref_null.wast:10
 assert_return(() => call($1, "funcref", []), null);
-
-// ref_null.wast:13
-assert_return(() => call($1, "nullref", []), null);
