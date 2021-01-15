@@ -76,13 +76,6 @@ load("@envoy//bazel:dependency_imports.bzl", "envoy_dependency_imports")
 
 envoy_dependency_imports()
 
-
-load("@rules_antlr//antlr:deps.bzl", "antlr_dependencies")
-
-antlr_dependencies(471)
-
-FLAT_BUFFERS_SHA = "a83caf5910644ba1c421c002ef68e42f21c15f9f"
-
 load("//bazel:wasm.bzl", "wasm_dependencies")
 
 wasm_dependencies()
