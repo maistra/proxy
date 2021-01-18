@@ -24,7 +24,7 @@ bazel build \
   --config=release \
   --config=${ARCH} \
   --local_ram_resources=12288 \
-  --local_cpu_resources=4.0 \
+  --local_cpu_resources=4 \
   --jobs=4 \
   //src/envoy:envoy_tar
 
