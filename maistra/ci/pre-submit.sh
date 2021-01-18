@@ -21,7 +21,8 @@ sed -i "s|=/work/|=$(pwd)/|" maistra/bazelrc-vendor
 bazel build \
   --config=release \
   --config=${ARCH} \
-  --local_resources 12288,4.0,1.0 \
+  --local_ram_resources=12288 \
+  --local_cpu_resources=4.0 \
   --jobs=4 \
   //src/envoy:envoy
 
@@ -32,7 +33,8 @@ bazel-bin/src/envoy/envoy --version
 bazel test \
   --config=release \
   --config=${ARCH} \
-  --local_resources 12288,4.0,1.0 \
+  --local_ram_resources=12288 \
+  --local_cpu_resources=4.0 \
   --jobs=4 \
   --test_output=all \
   --build_tests_only \
