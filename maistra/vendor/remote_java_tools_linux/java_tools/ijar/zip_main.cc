@@ -251,12 +251,11 @@ char **read_filelist(char *filename) {
   }
 
   size_t sizeof_array = sizeof(char *) * (nb_entries + 1);
-  void *result = malloc(sizeof_array + file_stat.total_size + 1);
+  void *result = malloc(sizeof_array + file_stat.total_size);
   // copy the content
   char **filelist = static_cast<char **>(result);
   char *content = static_cast<char *>(result) + sizeof_array;
   memcpy(content, data, file_stat.total_size);
-  content[file_stat.total_size] = '\0';
   free(data);
   // Create the corresponding array
   int j = 1;

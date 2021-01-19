@@ -1,1 +1,1 @@
-bazel_version = "3.4.1"
+bazel_version = "2.2.0"
