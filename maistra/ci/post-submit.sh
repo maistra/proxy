@@ -39,4 +39,7 @@ gsutil cp bazel-bin/src/envoy/envoy_tar.tar.gz "${ARTIFACTS_GCS_PATH}/envoy-alph
 
 # Workaround WASM limitations
 gsutil cp "${ARTIFACTS_GCS_PATH}/metadata_exchange.wasm" "${ARTIFACTS_GCS_PATH}/metadata_exchange-${SHA}.wasm"
+gsutil cp "${ARTIFACTS_GCS_PATH}/metadata_exchange.wasm" "${ARTIFACTS_GCS_PATH}/metadata_exchange-${SHA}.compiled.wasm"
+
 gsutil cp "${ARTIFACTS_GCS_PATH}/stats.wasm" "${ARTIFACTS_GCS_PATH}/stats-${SHA}.wasm"
+gsutil cp "${ARTIFACTS_GCS_PATH}/stats.wasm" "${ARTIFACTS_GCS_PATH}/stats-${SHA}.compiled.wasm"
