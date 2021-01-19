@@ -5,6 +5,9 @@ set -u
 set -o pipefail
 set -x
 
+DIR=$(cd $(dirname $0) ; pwd -P)
+source "${DIR}/common.sh"
+
 GCS_PROJECT=${GCS_PROJECT:-maistra-prow-testing}
 ARTIFACTS_GCS_PATH=${ARTIFACTS_GCS_PATH:-gs://maistra-prow-testing/proxy}
 
@@ -26,7 +29,9 @@ bazel build \
   --local_ram_resources=12288 \
   --local_cpu_resources=4 \
   --jobs=4 \
-  //src/envoy:envoy_tar
+  --disk_cache=/bazel-cache \
+  //src/envoy:envoy_tar \
+  2>&1 | grep -v -E "${OUTPUT_TO_IGNORE}"
 
 # Copy binary to GCS
 SHA="$(git rev-parse --verify HEAD)"
@@ -34,4 +39,7 @@ gsutil cp bazel-bin/src/envoy/envoy_tar.tar.gz "${ARTIFACTS_GCS_PATH}/envoy-alph
 
 # Workaround WASM limitations
 gsutil cp "${ARTIFACTS_GCS_PATH}/metadata_exchange.wasm" "${ARTIFACTS_GCS_PATH}/metadata_exchange-${SHA}.wasm"
+gsutil cp "${ARTIFACTS_GCS_PATH}/metadata_exchange.wasm" "${ARTIFACTS_GCS_PATH}/metadata_exchange-${SHA}.compiled.wasm"
+
 gsutil cp "${ARTIFACTS_GCS_PATH}/stats.wasm" "${ARTIFACTS_GCS_PATH}/stats-${SHA}.wasm"
+gsutil cp "${ARTIFACTS_GCS_PATH}/stats.wasm" "${ARTIFACTS_GCS_PATH}/stats-${SHA}.compiled.wasm"
