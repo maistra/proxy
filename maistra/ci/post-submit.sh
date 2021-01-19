@@ -23,7 +23,8 @@ fi
 bazel build \
   --config=release \
   --config=${ARCH} \
-  --local_resources 12288,4.0,1.0 \
+  --local_ram_resources=12288 \
+  --local_cpu_resources=4 \
   --jobs=4 \
   //src/envoy:envoy_tar
 
