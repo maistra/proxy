@@ -32,5 +32,7 @@ build:s390x --define=DUMMY=dummy
 build:ppc --define=DUMMY=dummy
 build:aarch64 --define=DUMMY=dummy
 
+build:release --config=clang
+
 # Import vendor flags
 import %workspace%/maistra/bazelrc-vendor
