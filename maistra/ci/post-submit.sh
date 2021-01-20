@@ -29,7 +29,7 @@ bazel build \
   --local_ram_resources=12288 \
   --local_cpu_resources=4 \
   --jobs=4 \
-  --disk_cache=/bazel-cache \
+#  --disk_cache=/bazel-cache \
   //src/envoy:envoy_tar \
   2>&1 | grep -v -E "${OUTPUT_TO_IGNORE}"
 
