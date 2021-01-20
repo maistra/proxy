@@ -1,6 +1,7 @@
 # Common build flags
 build --copt -fPIE
 build --copt -fPIC
+# disabled while testing clang
 #build --copt -fstack-clash-protection
 #build --copt -fplugin=annobin=/usr/lib/gcc/x86_64-redhat-linux/8/plugin/annobin.so.0.0.0
 build --copt -fstack-protector-all
