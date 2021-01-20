@@ -2,7 +2,7 @@
 build --copt -fPIE
 build --copt -fPIC
 #build --copt -fstack-clash-protection
-build --copt -fplugin=annobin=/usr/lib/gcc/x86_64-redhat-linux/8/plugin/
+#build --copt -fplugin=annobin=/usr/lib/gcc/x86_64-redhat-linux/8/plugin/annobin.so.0.0.0
 build --copt -fstack-protector-all
 build --copt -fstack-protector-strong
 build --copt -O2
