@@ -1,7 +1,7 @@
 # Common build flags
 build --copt -fPIE
 build --copt -fPIC
-build --copt -fstack-clash-protection
+#build --copt -fstack-clash-protection
 build --copt -fplugin=annobin
 build --copt -fstack-protector-all
 build --copt -fstack-protector-strong
