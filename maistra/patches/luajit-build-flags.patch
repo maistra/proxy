@@ -7,7 +7,7 @@ index bdaa58236..2b168749b 100644
  # unwinding are not affected -- the assembler part has frame unwind
  # information and GCC emits it where needed (x64) or with -g (see CCDEBUG).
 -CCOPT= -O2 -fomit-frame-pointer
-+CCOPT= -O2 -fomit-frame-pointer -fPIC -fPIE -fplugin=annobin -fstack-protector-strong -fstack-protector-all
++CCOPT= -O2 -fomit-frame-pointer -fPIC -fPIE -fstack-protector-strong -fstack-protector-all
  # Use this if you want to generate a smaller binary (but it's slower):
  #CCOPT= -Os -fomit-frame-pointer
  # Note: it's no longer recommended to use -O3 with GCC 4.x.
