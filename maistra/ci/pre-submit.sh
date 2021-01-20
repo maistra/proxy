@@ -27,7 +27,6 @@ bazel build \
   --local_ram_resources=12288 \
   --local_cpu_resources=4 \
   --jobs=4 \
-#  --disk_cache=/bazel-cache \
   //src/envoy:envoy \
   2>&1 | grep -v -E "${OUTPUT_TO_IGNORE}"
 
@@ -44,6 +43,5 @@ bazel test \
   --test_output=all \
   --build_tests_only \
   --test_env=ENVOY_IP_TEST_VERSIONS=v4only \
-#  --disk_cache=/bazel-cache \
   //src/... \
   2>&1 | grep -v -E "${OUTPUT_TO_IGNORE}"
