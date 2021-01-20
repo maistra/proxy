@@ -31,6 +31,7 @@ build --define wasm=v8
 build --copt -DNULL_PLUGIN
 
 # Release builds without debug symbols.
+build:release --config=clang
 build:release -c opt
 build:release --strip=always
 
