@@ -5,6 +5,8 @@ set -u
 set -o pipefail
 set -x
 
+source /opt/rh/gcc-toolset-9/enable
+
 DIR=$(cd $(dirname $0) ; pwd -P)
 source "${DIR}/common.sh"
 
@@ -24,12 +26,12 @@ fi
 
 # Build
 bazel build \
+  --incompatible_linkopts_to_linklibs \
   --config=release \
   --config=${ARCH} \
   --local_ram_resources=12288 \
   --local_cpu_resources=4 \
   --jobs=4 \
-  --disk_cache=/bazel-cache \
   //src/envoy:envoy_tar \
   2>&1 | grep -v -E "${OUTPUT_TO_IGNORE}"
 
