@@ -1,9 +1,10 @@
 #!/bin/bash
 
 set -e
-set -u
 set -o pipefail
 set -x
+
+source /opt/rh/gcc-toolset-9/enable
 
 DIR=$(cd $(dirname $0) ; pwd -P)
 source "${DIR}/common.sh"
@@ -22,6 +23,7 @@ sed -i "s|=/work/|=$(pwd)/|" maistra/bazelrc-vendor
 
 # Build
 bazel build \
+  --incompatible_linkopts_to_linklibs \
   --config=release \
   --config=${ARCH} \
   --local_ram_resources=12288 \
@@ -36,6 +38,7 @@ bazel-bin/src/envoy/envoy --version
 
 # Run tests
 bazel test \
+  --incompatible_linkopts_to_linklibs \
   --config=release \
   --config=${ARCH} \
   --local_ram_resources=12288 \

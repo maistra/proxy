@@ -1,9 +1,10 @@
 #!/bin/bash
 
 set -e
-set -u
 set -o pipefail
 set -x
+
+source /opt/rh/gcc-toolset-9/enable
 
 DIR=$(cd $(dirname $0) ; pwd -P)
 source "${DIR}/common.sh"
@@ -24,6 +25,7 @@ fi
 
 # Build
 bazel build \
+  --incompatible_linkopts_to_linklibs \
   --config=release \
   --config=${ARCH} \
   --local_ram_resources=12288 \
