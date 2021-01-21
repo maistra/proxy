@@ -100,6 +100,8 @@ function run_bazel() {
 }
 
 function main() {
+  source /opt/rh/gcc-toolset-9/enable
+
   validate
   init
   run_bazel
