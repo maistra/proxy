@@ -14,8 +14,9 @@
 # limitations under the License.
 
 set -e
-set -u
 set -o pipefail
+
+source /opt/rh/gcc-toolset-9/enable
 
 function init(){
   ROOT_DIR="$(pwd)"
