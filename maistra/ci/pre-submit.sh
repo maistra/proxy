@@ -15,9 +15,6 @@ if [ "${ARCH}" = "ppc64le" ]; then
 fi
 export ARCH
 
-export BUILD_SCM_REVISION="Maistra PR #${PULL_NUMBER:-undefined}"
-export BUILD_SCM_STATUS="SHA=${PULL_PULL_SHA:-undefined}"
-
 # Fix path to the vendor deps
 sed -i "s|=/work/|=$(pwd)/|" maistra/bazelrc-vendor
 
@@ -48,5 +45,7 @@ bazel test \
   --build_tests_only \
   --test_env=ENVOY_IP_TEST_VERSIONS=v4only \
   --disk_cache=/bazel-cache \
-  //src/... \
+  -- //src/... //test/...  \
   2>&1 | grep -v -E "${OUTPUT_TO_IGNORE}"
+
+env ENVOY_PATH=bazel-bin/src/envoy/envoy GO111MODULE=on go test ./...
