@@ -4,9 +4,12 @@ set -e
 set -o pipefail
 set -x
 
+# shellcheck disable=SC1091
 source /opt/rh/gcc-toolset-9/enable
 
-DIR=$(cd $(dirname $0) ; pwd -P)
+DIR=$(cd "$(dirname "$0")" ; pwd -P)
+
+# shellcheck disable=SC1090
 source "${DIR}/common.sh"
 
 GCS_PROJECT=${GCS_PROJECT:-maistra-prow-testing}
@@ -18,30 +21,31 @@ gcloud config set project "${GCS_PROJECT}"
 # Fix path to the vendor deps
 sed -i "s|=/work/|=$(pwd)/|" maistra/bazelrc-vendor
 
-ARCH=$(uname -p)
-if [ "${ARCH}" = "ppc64le" ]; then
-  ARCH="ppc"
-fi
+# Build WASM extensions first
+bazel_build //extensions:stats.wasm
+bazel_build //extensions:metadata_exchange.wasm
+bazel_build //extensions:attributegen.wasm
+bazel_build @envoy//test/tools/wee8_compile:wee8_compile_tool
 
-# Build
-bazel build \
-  --incompatible_linkopts_to_linklibs \
-  --config=release \
-  --config=${ARCH} \
-  --local_ram_resources=12288 \
-  --local_cpu_resources=4 \
-  --jobs=4 \
-  --disk_cache=/bazel-cache \
-  //src/envoy:envoy_tar \
-  2>&1 | grep -v -E "${OUTPUT_TO_IGNORE}"
+bazel-bin/external/envoy/test/tools/wee8_compile/wee8_compile_tool bazel-bin/extensions/stats.wasm bazel-bin/extensions/stats.compiled.wasm
+bazel-bin/external/envoy/test/tools/wee8_compile/wee8_compile_tool bazel-bin/extensions/metadata_exchange.wasm bazel-bin/extensions/metadata_exchange.compiled.wasm
+bazel-bin/external/envoy/test/tools/wee8_compile/wee8_compile_tool bazel-bin/extensions/attributegen.wasm bazel-bin/extensions/attributegen.compiled.wasm
 
-# Copy binary to GCS
+# Build Envoy
+bazel_build //src/envoy:envoy_tar
+
+# Copy artifacts to GCS
 SHA="$(git rev-parse --verify HEAD)"
+
+# Envoy
 gsutil cp bazel-bin/src/envoy/envoy_tar.tar.gz "${ARTIFACTS_GCS_PATH}/envoy-alpha-${SHA}.tar.gz"
 
-# Workaround WASM limitations
-gsutil cp "${ARTIFACTS_GCS_PATH}/metadata_exchange-2.1.wasm" "${ARTIFACTS_GCS_PATH}/metadata_exchange-${SHA}.wasm"
-gsutil cp "${ARTIFACTS_GCS_PATH}/metadata_exchange-2.1.compiled.wasm" "${ARTIFACTS_GCS_PATH}/metadata_exchange-${SHA}.compiled.wasm"
+# WASM extensions
+gsutil cp bazel-bin/extensions/stats.wasm "${ARTIFACTS_GCS_PATH}/stats-${SHA}.wasm"
+gsutil cp bazel-bin/extensions/stats.compiled.wasm "${ARTIFACTS_GCS_PATH}/stats-${SHA}.compiled.wasm"
 
-gsutil cp "${ARTIFACTS_GCS_PATH}/stats-2.1.wasm" "${ARTIFACTS_GCS_PATH}/stats-${SHA}.wasm"
-gsutil cp "${ARTIFACTS_GCS_PATH}/stats-2.1.compiled.wasm" "${ARTIFACTS_GCS_PATH}/stats-${SHA}.compiled.wasm"
+gsutil cp bazel-bin/extensions/metadata_exchange.wasm "${ARTIFACTS_GCS_PATH}/metadata_exchange-${SHA}.wasm"
+gsutil cp bazel-bin/extensions/metadata_exchange.compiled.wasm "${ARTIFACTS_GCS_PATH}/metadata_exchange-${SHA}.compiled.wasm"
+
+gsutil cp bazel-bin/extensions/attributegen.wasm "${ARTIFACTS_GCS_PATH}/attributegen-${SHA}.wasm"
+gsutil cp bazel-bin/extensions/attributegen.compiled.wasm "${ARTIFACTS_GCS_PATH}/attributegen-${SHA}.compiled.wasm"
