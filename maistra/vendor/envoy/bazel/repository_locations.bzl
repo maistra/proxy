@@ -901,7 +901,14 @@ DEPENDENCY_REPOSITORIES_SPEC = dict(
         version = "1.39",
         sha256 = "4ac0f1f3de8b3f1373d435cd7e58bd94de4146e751f099732167749a229b443b",
         patch_cmds = [
-            "[[ \"$(uname -m)\" == \"x86_64\" ]] && ./emsdk install 1.39.6-upstream && ./emsdk activate --embedded 1.39.6-upstream || true",
+            "./emsdk install 1.39.6-upstream",
+            "./emsdk activate --embedded 1.39.6-upstream",
+            # Maistra change.
+            # Relies on the host tooling, instead of emsdk's. Requires clang with wasm32 target enabled and binaryen.
+            "rm -rf upstream/bin/*",
+            "ln -s /usr/bin/clang* upstream/bin/",
+            "ln -s /usr/bin/ll* upstream/bin/",
+            "ln -s /usr/bin/wasm* upstream/bin/",
         ],
         strip_prefix = "emsdk-{version}.6",
         urls = ["https://github.com/emscripten-core/emsdk/archive/{version}.6.tar.gz"],
