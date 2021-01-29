@@ -39,6 +39,7 @@ SHA="$(git rev-parse --verify HEAD)"
 
 # Envoy
 gsutil cp bazel-bin/src/envoy/envoy_tar.tar.gz "${ARTIFACTS_GCS_PATH}/envoy-alpha-${SHA}.tar.gz"
+gsutil cp "${ARTIFACTS_GCS_PATH}/envoy-alpha-${SHA}.tar.gz" "${ARTIFACTS_GCS_PATH}/envoy-centos-alpha-${SHA}.tar.gz"
 
 # WASM extensions
 gsutil cp bazel-bin/extensions/stats.wasm "${ARTIFACTS_GCS_PATH}/stats-${SHA}.wasm"
