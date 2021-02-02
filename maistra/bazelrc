@@ -21,6 +21,9 @@ build --host_javabase=@bazel_tools//tools/jdk:absolute_javabase --define=ABSOLUT
 build --force_pic=true
 build --verbose_failures
 
+# release build: define NDEBUG 
+build:release --copt -DNDEBUG
+
 # Test flags
 build --test_env=ENVOY_IP_TEST_VERSIONS=v4only
 build --test_env=HEAPCHECK=minimal
