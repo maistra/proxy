@@ -68,6 +68,8 @@ function contains () {
 }
 
 function copy_files() {
+  local cp_flags
+
   for f in "${OUTPUT_BASE}"/external/*; do
     if [ -d "${f}" ]; then
       repo_name=$(basename "${f}")
@@ -76,7 +78,11 @@ function copy_files() {
         continue
       fi
 
-      cp -rL "${f}" "${VENDOR_DIR}" || echo "Copy of ${f} failed. Ignoring..."
+      cp_flags="-rL"
+      if [ "${repo_name}" == "emscripten_toolchain" ]; then
+        cp_flags="-r"
+      fi
+      cp "${cp_flags}" "${f}" "${VENDOR_DIR}" || echo "Copy of ${f} failed. Ignoring..."
       echo "build --override_repository=${repo_name}=/work/maistra/vendor/${repo_name}" >> "${BAZELRC}"
     fi
 
@@ -98,6 +104,9 @@ function apply_local_patches() {
 
 function run_bazel() {
   bazel --output_base="${OUTPUT_BASE}" fetch //... || true
+
+  # For some reason the command above does not fetch emscripten, so, fetch it manually
+  bazel --output_base="${OUTPUT_BASE}" fetch @emscripten_toolchain//...
 }
 
 function main() {
