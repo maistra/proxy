@@ -18,9 +18,6 @@ ARTIFACTS_GCS_PATH=${ARTIFACTS_GCS_PATH:-gs://maistra-prow-testing/proxy}
 gcloud auth activate-service-account --key-file="${GOOGLE_APPLICATION_CREDENTIALS}"
 gcloud config set project "${GCS_PROJECT}"
 
-# Fix path to the vendor deps
-sed -i "s|=/work/|=$(pwd)/|" maistra/bazelrc-vendor
-
 # Build WASM extensions first
 bazel_build //extensions:stats.wasm
 bazel_build //extensions:metadata_exchange.wasm
