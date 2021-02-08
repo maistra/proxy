@@ -1,0 +1,1 @@
+filegroup(name = "all", srcs = glob(["**"], exclude=["upstream/emscripten/cache/is_vanilla.txt", ".emscripten_sanity"]), visibility = ["//visibility:public"])

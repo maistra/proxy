@@ -12,9 +12,6 @@ DIR=$(cd "$(dirname "$0")" ; pwd -P)
 # shellcheck disable=SC1090
 source "${DIR}/common.sh"
 
-# Fix path to the vendor deps
-sed -i "s|=/work/|=$(pwd)/|" maistra/bazelrc-vendor
-
 # Build WASM extensions first
 bazel_build //extensions:stats.wasm
 bazel_build //extensions:metadata_exchange.wasm
