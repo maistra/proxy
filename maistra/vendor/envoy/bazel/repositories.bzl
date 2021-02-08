@@ -891,7 +891,11 @@ def _upb():
     )
 
 def _proxy_wasm_cpp_sdk():
-    _repository_impl(name = "proxy_wasm_cpp_sdk")
+    _repository_impl(
+        name = "proxy_wasm_cpp_sdk",
+        patches = ["@envoy//bazel/external:0001-Fix-the-cxx-builtin-directories-for-maistra-proxy.patch"],
+        patch_args = ["-p1"],
+    )
 
 def _proxy_wasm_cpp_host():
     _repository_impl(
