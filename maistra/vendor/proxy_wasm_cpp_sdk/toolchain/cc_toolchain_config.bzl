@@ -161,8 +161,11 @@ def _impl(ctx):
         # we just need to include them here so that bazel doesn't complain on
         # "this rule is missing dependency declarations for the following files included".
         cxx_builtin_include_directories = [
-            "external/emscripten_toolchain/upstream/emscripten/system/include/libcxx",
-            "external/emscripten_toolchain/upstream/emscripten/system/include/libc",
+            "/work/maistra/vendor/emscripten_toolchain/upstream/emscripten/system/include/libcxx",
+            "/work/maistra/vendor/emscripten_toolchain/upstream/emscripten/system/include/libc",
+            "/work/maistra/vendor/emscripten_toolchain/upstream/emscripten/system/include/compat",
+            "/work/maistra/vendor/emscripten_toolchain/upstream/emscripten/system/include/wasi",
+            "/work/maistra/vendor/emscripten_toolchain/upstream/emscripten/system/lib/libc/musl/arch/emscripten/bits",
         ],
         features = [cxx17_feature, no_canonical_prefixes_feature, opt_feature],
     )
