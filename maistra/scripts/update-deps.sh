@@ -88,6 +88,7 @@ function copy_files() {
 
   find "${VENDOR_DIR}" -name .git -type d -print0 | xargs -0 -r rm -rf
   find "${VENDOR_DIR}" -name .gitignore -type f -delete
+  find "${VENDOR_DIR}" -name '*.pyc' -delete
 done
 }
 
