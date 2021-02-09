@@ -261,6 +261,7 @@ void H2FuzzIntegrationTest::replay(const test::integration::H2CaptureFuzzTestCas
   }
   if (tcp_client->connected()) {
     tcp_client->close();
+    test_server_->waitForCounterGe("http.config_test.downstream_cx_destroy", 1);
   }
 }
 
