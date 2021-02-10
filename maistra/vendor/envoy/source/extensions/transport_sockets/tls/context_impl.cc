@@ -398,13 +398,16 @@ ContextImpl::ContextImpl(Stats::Scope& scope, const Envoy::Ssl::ContextConfig& c
   // contention.
 
   // Ciphers
-  stat_name_set_->rememberBuiltin("AEAD-AES128-GCM-SHA256");
-  stat_name_set_->rememberBuiltin("ECDHE-ECDSA-AES128-GCM-SHA256");
-  stat_name_set_->rememberBuiltin("ECDHE-RSA-AES128-GCM-SHA256");
-  stat_name_set_->rememberBuiltin("ECDHE-RSA-AES128-SHA");
-  stat_name_set_->rememberBuiltin("ECDHE-RSA-CHACHA20-POLY1305");
-  stat_name_set_->rememberBuiltin("TLS_AES_128_GCM_SHA256");
-
+  const STACK_OF(SSL_CIPHER) *ciphers = SSL_CTX_get_ciphers(tls_context_.ssl_ctx_.get());
+  for (size_t i = 0; i < sk_SSL_CIPHER_num(ciphers); i++) {
+    const SSL_CIPHER *cipher = sk_SSL_CIPHER_value(ciphers, i);
+    stat_name_set_->rememberBuiltin(SSL_CIPHER_get_name(cipher));
+  }
+  // Add hardcoded cipher suites from the TLS 1.3 spec:
+  // https://tools.ietf.org/html/rfc8446
+  stat_name_set_->rememberBuiltins(
+      {"TLS_AES_128_GCM_SHA256", "TLS_AES_256_GCM_SHA384", "TLS_AES_128_GCM_SHA256"});
+        
   // Curves from
   // https://github.com/google/boringssl/blob/f4d8b969200f1ee2dd872ffb85802e6a0976afe7/ssl/ssl_key_share.cc#L384
   stat_name_set_->rememberBuiltins(

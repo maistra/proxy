@@ -5938,6 +5938,44 @@ TEST_P(SslSocketTest, DISABLED_TestConnectionFailsOnMultipleCertificatesNonePass
   testUtil(test_options.setExpectedServerStats("ssl.ocsp_staple_failed").enableOcspStapling());
 }
 
+// Test a few ciphers and ensure they don't get tracked as "unknown" ciphers.
+TEST_P(SslSocketTest, CipherUsageGetsCounted) {
+  envoy::config::listener::v3::Listener listener;
+  envoy::config::listener::v3::FilterChain* filter_chain = listener.add_filter_chains();
+  envoy::extensions::transport_sockets::tls::v3::TlsCertificate* server_cert =
+      filter_chain->mutable_hidden_envoy_deprecated_tls_context()
+          ->mutable_common_tls_context()
+          ->add_tls_certificates();
+  server_cert->mutable_certificate_chain()->set_filename(TestEnvironment::substitute(
+      "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/san_dns_cert.pem"));
+  server_cert->mutable_private_key()->set_filename(TestEnvironment::substitute(
+      "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/san_dns_key.pem"));
+  envoy::extensions::transport_sockets::tls::v3::TlsParameters* server_params =
+      filter_chain->mutable_hidden_envoy_deprecated_tls_context()
+          ->mutable_common_tls_context()
+          ->mutable_tls_params();
+
+  envoy::extensions::transport_sockets::tls::v3::UpstreamTlsContext client;
+  envoy::extensions::transport_sockets::tls::v3::TlsParameters* client_params =
+      client.mutable_common_tls_context()->mutable_tls_params();
+
+  const std::vector<std::string> ciphers = {
+      "ECDHE-RSA-CHACHA20-POLY1305", "ECDHE-RSA-AES128-GCM-SHA256",
+      "ECDHE-RSA-AES256-GCM-SHA384", "AES256-SHA256",
+      "ECDHE-RSA-AES128-SHA"};
+  for (const auto& cipher : ciphers) {
+    const std::string stats = "ssl.ciphers." + cipher;
+    client_params->clear_cipher_suites();
+    server_params->clear_cipher_suites();
+    client_params->add_cipher_suites(cipher);
+    server_params->add_cipher_suites(cipher);
+    TestUtilOptionsV2 cipher_test_options(listener, client, true, GetParam());
+    cipher_test_options.setExpectedCiphersuite(cipher);
+    cipher_test_options.setExpectedServerStats(stats).setExpectedClientStats(stats);
+    testUtilV2(cipher_test_options);
+  }
+}
+
 } // namespace Tls
 } // namespace TransportSockets
 } // namespace Extensions
