@@ -77,7 +77,6 @@ build --override_repository=opencensus_proto=/work/maistra/vendor/opencensus_pro
 build --override_repository=openssl_cbs=/work/maistra/vendor/openssl_cbs
 build --override_repository=org_golang_google_protobuf=/work/maistra/vendor/org_golang_google_protobuf
 build --override_repository=org_golang_x_tools=/work/maistra/vendor/org_golang_x_tools
-build --override_repository=org_llvm_llvm=/work/maistra/vendor/org_llvm_llvm
 build --override_repository=platforms=/work/maistra/vendor/platforms
 build --override_repository=prometheus_metrics_model=/work/maistra/vendor/prometheus_metrics_model
 build --override_repository=protodoc_pip3=/work/maistra/vendor/protodoc_pip3
