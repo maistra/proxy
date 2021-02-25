@@ -1,6 +1,6 @@
 # Install pip requirements.
 #
-# Generated from /tmp/tmp.EGcLX7EDYl/external/envoy/source/extensions/filters/network/kafka/requirements.txt
+# Generated from /tmp/tmp.UJehU76fUV/external/envoy/source/extensions/filters/network/kafka/requirements.txt
 
 load("@rules_python//python:whl.bzl", "whl_library")
 
