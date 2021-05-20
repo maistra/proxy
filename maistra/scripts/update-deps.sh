@@ -97,8 +97,10 @@ function apply_local_patches() {
   sed -i 's/GO_VERSION[ ]*=.*/GO_VERSION = "host"/g' ${VENDOR_DIR}/envoy/bazel/dependency_imports.bzl
 
   pushd "${VENDOR_DIR}/com_github_luajit_luajit"
-    patch -p1 -i "${PATCHES_DIR}/luajit-s390x.patch"
-    patch -p1 -i "${PATCHES_DIR}/luajit-ppc64.patch"
+    # FIXME: https://issues.redhat.com/browse/MAISTRA-2379
+    # patch -p1 -i "${PATCHES_DIR}/luajit-s390x.patch"
+    # patch -p1 -i "${PATCHES_DIR}/luajit-ppc64.patch"
+
     patch -p1 -i "${PATCHES_DIR}/luajit-build-flags.patch"
   popd
 }
