@@ -13,6 +13,10 @@ envoy_cc_library(
     srcs = ["ocsp.cc"],
     hdrs = ["ocsp.h"],
     repository = "",
+    external_deps = [
+     "ssl",
+     "bssl_wrapper_lib",
+    ],
     deps = [
         ":asn1_utility_lib",
         "//include/envoy/common:time_interface",
@@ -26,6 +30,10 @@ envoy_cc_library(
     srcs = ["asn1_utility.cc"],
     hdrs = ["asn1_utility.h"],
     repository = "",
+    external_deps = [
+     "ssl",
+     "bssl_wrapper_lib",
+    ],
     deps = [
         "//include/envoy/common:time_interface",
         "//include/envoy/ssl:context_config_interface",

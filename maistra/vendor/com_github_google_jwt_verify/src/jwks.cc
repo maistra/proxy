@@ -23,7 +23,6 @@
 #include "absl/strings/match.h"
 #include "google/protobuf/struct.pb.h"
 #include "google/protobuf/util/json_util.h"
-#include "opensslcbs/cbs.h"
 #include "jwt_verify_lib/struct_utils.h"
 #include "openssl/bio.h"
 #include "openssl/bn.h"

@@ -16,18 +16,18 @@ envoy_cc_test(
         "ssl_socket_test.cc",
     ],
     data = [
-        "gen_unittest_certs.sh",
         # TODO(mattklein123): We should consolidate all of our test certs in a single place as
         # right now we have a bunch of duplication which is confusing.
         "//test/config/integration/certs",
+        "//test/extensions/transport_sockets/tls/ocsp/test_data:certs",
         "//test/extensions/transport_sockets/tls/test_data:certs",
-        "//test/extensions/transport_sockets/tls/ocsp:gen_ocsp_data",
     ],
     external_deps = ["ssl"],
     shard_count = 4,
     # TODO(wrowe): Diagnose timeout error on Windows (skipped for the moment)
     tags = ["fails_on_windows"],
     deps = [
+#        ":test_private_key_method_provider_test_lib",
         "//include/envoy/network:transport_socket_interface",
         "//source/common/buffer:buffer_lib",
         "//source/common/common:empty_string",
@@ -42,7 +42,6 @@ envoy_cc_test(
         "//source/common/stream_info:stream_info_lib",
         "//source/extensions/transport_sockets/tls:context_config_lib",
         "//source/extensions/transport_sockets/tls:context_lib",
-        "//source/extensions/transport_sockets/tls:openssl_impl_lib",
         "//source/extensions/transport_sockets/tls:ssl_socket_lib",
         "//source/extensions/transport_sockets/tls:utility_lib",
         "//source/extensions/transport_sockets/tls/private_key:private_key_manager_lib",
@@ -74,12 +73,9 @@ envoy_cc_test(
         "ssl_certs_test.h",
     ],
     data = [
-        "gen_unittest_certs.sh",
-        "//test/extensions/transport_sockets/tls/ocsp:gen_ocsp_data",
+        "//test/extensions/transport_sockets/tls/ocsp/test_data:certs",
         "//test/extensions/transport_sockets/tls/test_data:certs",
     ],
-    # Fails intermittantly on local build
-    tags = ["flaky_on_windows"],
     deps = [
         ":ssl_test_utils",
         "//source/common/common:base64_lib",
@@ -104,16 +100,16 @@ envoy_cc_test(
     ],
 )
 
-#envoy_cc_test(
-#    name = "io_handle_bio_test",
-#    srcs = ["io_handle_bio_test.cc"],
-#    external_deps = ["ssl"],
-#    deps = [
-#        ":ssl_test_utils",
-#        "//source/extensions/transport_sockets/tls:ssl_socket_lib",
-#        "//test/mocks/network:io_handle_mocks",
-#    ],
-#)
+envoy_cc_test(
+    name = "io_handle_bio_test",
+    srcs = ["io_handle_bio_test.cc"],
+    external_deps = ["ssl"],
+    deps = [
+        ":ssl_test_utils",
+        "//source/extensions/transport_sockets/tls:ssl_socket_lib",
+        "//test/mocks/network:io_handle_mocks",
+    ],
+)
 
 envoy_cc_test(
     name = "utility_test",
@@ -121,14 +117,9 @@ envoy_cc_test(
         "utility_test.cc",
     ],
     data = [
-        "gen_unittest_certs.sh",
-        "//test/extensions/transport_sockets/tls/ocsp:gen_ocsp_data",
         "//test/extensions/transport_sockets/tls/test_data:certs",
     ],
-    external_deps = [
-        "ssl",
-        "bssl_wrapper_lib",
-    ],
+    external_deps = ["ssl"],
     deps = [
         ":ssl_test_utils",
         "//source/extensions/transport_sockets/tls:utility_lib",
@@ -149,18 +140,34 @@ envoy_cc_test_library(
     ],
 )
 
+#envoy_cc_test_library(
+#    name = "test_private_key_method_provider_test_lib",
+#    srcs = [
+#        "test_private_key_method_provider.cc",
+#    ],
+#    hdrs = [
+#        "test_private_key_method_provider.h",
+#    ],
+#    external_deps = ["ssl"],
+#    deps = [
+#        "//include/envoy/api:api_interface",
+#        "//include/envoy/event:dispatcher_interface",
+#        "//include/envoy/server:transport_socket_config_interface",
+#        "//include/envoy/ssl/private_key:private_key_config_interface",
+#        "//include/envoy/ssl/private_key:private_key_interface",
+#        "//source/common/config:utility_lib",
+#        "//source/common/protobuf:utility_lib",
+#        "@envoy_api//envoy/extensions/transport_sockets/tls/v3:pkg_cc_proto",
+#    ],
+#)
+
 envoy_cc_test(
     name = "handshaker_test",
     srcs = ["handshaker_test.cc"],
     data = [
-        "gen_unittest_certs.sh",
-        "//test/config/integration/certs",
         "//test/extensions/transport_sockets/tls/test_data:certs",
     ],
     external_deps = ["ssl"],
-    # TODO(sunjayBhatia): Diagnose openssl DLL load issue on Windows
-    # See: https://github.com/envoyproxy/envoy/pull/13276
-    tags = ["flaky_on_windows"],
     deps = [
         ":ssl_socket_test",
         ":ssl_test_utils",

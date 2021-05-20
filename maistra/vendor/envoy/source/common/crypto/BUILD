@@ -12,7 +12,6 @@ envoy_cc_library(
    name = "utility_lib",
    external_deps = [
      "ssl",
-     "openssl_cbs_lib",
      "bssl_wrapper_lib"
     ],
     hdrs = [
