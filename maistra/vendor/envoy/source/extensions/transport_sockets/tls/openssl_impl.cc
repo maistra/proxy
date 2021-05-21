@@ -97,11 +97,6 @@ void allowRenegotiation(SSL* ssl) {
   // SSL_set_renegotiate_mode(ssl, mode);
 }
 
-EVP_MD_CTX* newEVP_MD_CTX() {
-  EVP_MD_CTX* md(EVP_MD_CTX_new());
-  return md;
-}
-
 SSL_SESSION* ssl_session_from_bytes(SSL* client_ssl_socket, const SSL_CTX* client_ssl_context,
                                     const std::string& client_session) {
   SSL_SESSION* client_ssl_session = SSL_get_session(client_ssl_socket);

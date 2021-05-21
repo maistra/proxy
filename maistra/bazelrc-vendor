@@ -6,7 +6,6 @@ build --override_repository=bazel_gazelle=/work/maistra/vendor/bazel_gazelle
 build --override_repository=bazel_skylib=/work/maistra/vendor/bazel_skylib
 build --override_repository=bazel_toolchains=/work/maistra/vendor/bazel_toolchains
 build --override_repository=bazel_version=/work/maistra/vendor/bazel_version
-build --override_repository=bssl_wrapper=/work/maistra/vendor/bssl_wrapper
 build --override_repository=build_bazel_apple_support=/work/maistra/vendor/build_bazel_apple_support
 build --override_repository=build_bazel_rules_apple=/work/maistra/vendor/build_bazel_rules_apple
 build --override_repository=build_bazel_rules_swift=/work/maistra/vendor/build_bazel_rules_swift
@@ -31,6 +30,7 @@ build --override_repository=com_github_grpc_grpc=/work/maistra/vendor/com_github
 build --override_repository=com_github_jbeder_yaml_cpp=/work/maistra/vendor/com_github_jbeder_yaml_cpp
 build --override_repository=com_github_libevent_libevent=/work/maistra/vendor/com_github_libevent_libevent
 build --override_repository=com_github_luajit_luajit=/work/maistra/vendor/com_github_luajit_luajit
+build --override_repository=com_github_maistra_bssl_wrapper=/work/maistra/vendor/com_github_maistra_bssl_wrapper
 build --override_repository=com_github_mirror_tclap=/work/maistra/vendor/com_github_mirror_tclap
 build --override_repository=com_github_moonjit_moonjit=/work/maistra/vendor/com_github_moonjit_moonjit
 build --override_repository=com_github_msgpack_msgpack_c=/work/maistra/vendor/com_github_msgpack_msgpack_c
@@ -74,7 +74,6 @@ build --override_repository=kafka_pip3_pypi__MarkupSafe_1_1_1=/work/maistra/vend
 build --override_repository=kafka_source=/work/maistra/vendor/kafka_source
 build --override_repository=net_zlib=/work/maistra/vendor/net_zlib
 build --override_repository=opencensus_proto=/work/maistra/vendor/opencensus_proto
-build --override_repository=openssl_cbs=/work/maistra/vendor/openssl_cbs
 build --override_repository=org_golang_google_protobuf=/work/maistra/vendor/org_golang_google_protobuf
 build --override_repository=org_golang_x_tools=/work/maistra/vendor/org_golang_x_tools
 build --override_repository=platforms=/work/maistra/vendor/platforms

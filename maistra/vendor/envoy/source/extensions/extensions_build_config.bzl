@@ -218,6 +218,11 @@ EXTENSIONS = {
     "envoy.watchdog.profile_action":                    "//source/extensions/watchdog/profile_action:config",
     "envoy.watchdog.abort_action":                      "//source/extensions/watchdog/abort_action:config",
 
+    #
+    # TLS peer certification validators
+    #
+
+    "envoy.tls.cert_validator.spiffe":                  "//source/extensions/transport_sockets/tls/cert_validator/spiffe:config",
 }
 
 # These can be changed to ["//visibility:public"], for  downstream builds which

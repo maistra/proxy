@@ -58,19 +58,23 @@ protected:
     // Set up key and cert, initialize two SSL objects and a pair of BIOs for
     // handshaking.
     auto key = makeKey();
+    auto cert = makeCert();
 
     server_ssl_ = bssl::UniquePtr<SSL>(SSL_new(server_ctx_.get()));
     SSL_set_accept_state(server_ssl_.get());
     ASSERT_NE(key, nullptr);
-   
-    std::string path = TestEnvironment::substitute("{{ test_tmpdir }}/unittestcert.pem");
-    ASSERT_EQ(1, SSL_use_certificate_chain_file(server_ssl_.get(), path.c_str()));
-    ASSERT_EQ(1, SSL_use_PrivateKey(server_ssl_.get(), key.get()));
+    // In TLS1.3 OpenSSL server will send session ticket after an ssl handshake.
+    // While technically not part of the handshake, it's part of the server state-machine,
+    // and SSL_do_handshake will return errors (SSL_ERROR_WANT_WRITE) on the server-side if 
+    // the session tickets (2 by default) have not been read by the client.
+    // To avoid this altogether, we disable session tickets by setting the number of tickets
+    // to generate for a new session to zero.
+    SSL_set_num_tickets(server_ssl_.get(), 0);
+
+    ASSERT_EQ(1, SSL_use_cert_and_key(server_ssl_.get(), cert.get(), key.get(), nullptr, 1));
 
     client_ssl_ = bssl::UniquePtr<SSL>(SSL_new(client_ctx_.get()));
     SSL_set_connect_state(client_ssl_.get());
-    const char* const PREFERRED_CIPHERS = "HIGH:!aNULL:!kRSA:!PSK:!SRP:!MD5:!RC4";
-    SSL_set_cipher_list(client_ssl_.get(), PREFERRED_CIPHERS);
 
     ASSERT_EQ(1, BIO_new_bio_pair(&client_bio_, kBufferLength, &server_bio_, kBufferLength));
 
@@ -84,8 +88,8 @@ protected:
 
   // Read in key.pem and return a new private key.
   bssl::UniquePtr<EVP_PKEY> makeKey() {
-    std::string file = TestEnvironment::readFileToStringForTest(
-        TestEnvironment::substitute("{{ test_tmpdir }}/unittestkey.pem"));
+    std::string file = TestEnvironment::readFileToStringForTest(TestEnvironment::substitute(
+        "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/unittest_key.pem"));
     std::string passphrase = "";
     bssl::UniquePtr<BIO> bio(BIO_new_mem_buf(file.data(), file.size()));
 
@@ -95,6 +99,15 @@ protected:
     RELEASE_ASSERT(rsa != nullptr, "PEM_read_bio_RSAPrivateKey failed.");
     RELEASE_ASSERT(1 == EVP_PKEY_assign_RSA(key.get(), rsa), "EVP_PKEY_assign_RSA failed.");
     return key;
+  }
+
+  // Read in cert.pem and return a certificate.
+  bssl::UniquePtr<X509> makeCert() {
+    std::string file = TestEnvironment::readFileToStringForTest(TestEnvironment::substitute(
+        "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/unittest_cert.pem"));
+    bssl::UniquePtr<BIO> bio(BIO_new_mem_buf(file.data(), file.size()));
+
+    return bssl::UniquePtr<X509>(PEM_read_bio_X509_AUX(bio.get(), nullptr, nullptr, nullptr));
   }
 
   const size_t kBufferLength{100};
@@ -107,11 +120,7 @@ protected:
   bssl::UniquePtr<SSL> client_ssl_, server_ssl_;
 };
 
-// TODO (dmitri-d) SSL_do_handshake() call in the handshaker fails
-// with SSL_ERROR_WANT_WRITE, test never finishes, as handshaker never
-// returns Network::PostIoAction::Close.
-// Suspect ssl context setup is incomplete
-TEST_F(HandshakerTest, DISABLED_NormalOperation) {
+TEST_F(HandshakerTest, NormalOperation) {
   NiceMock<Network::MockConnection> mock_connection;
   ON_CALL(mock_connection, state).WillByDefault(Return(Network::Connection::State::Closed));
 
@@ -209,11 +218,7 @@ private:
   bool cert_cb_ok_{false};
 };
 
-// TODO (dmitri-d) SSL_do_handshake() call in the handshaker fails
-// with SSL_ERROR_WANT_WRITE, test never finishes, as handshaker never
-// returns Network::PostIoAction::Close.
-// Suspect ssl context setup is incomplete
-TEST_F(HandshakerTest, DISABLED_NormalOperationWithSslHandshakerImplForTest) {
+TEST_F(HandshakerTest, NormalOperationWithSslHandshakerImplForTest) {
   ::testing::MockFunction<void()> requested_cert_cb;
 
   StrictMock<MockHandshakeCallbacks> handshake_callbacks;

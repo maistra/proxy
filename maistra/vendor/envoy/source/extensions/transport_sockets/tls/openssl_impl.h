@@ -30,8 +30,6 @@ STACK_OF(X509)* SSL_get_peer_full_cert_chain(const SSL *ssl);
 
 void allowRenegotiation(SSL* ssl);
 
-EVP_MD_CTX* newEVP_MD_CTX();
-
 SSL_SESSION* ssl_session_from_bytes(SSL* client_ssl_socket, const SSL_CTX* client_ssl_context,
                                     const std::string& client_session);
 

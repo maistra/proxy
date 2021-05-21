@@ -40,7 +40,7 @@ def win_main():
     dst_dir = os.getcwd() + "/luajit"
     shutil.copytree(src_dir, os.path.basename(src_dir))
     os.chdir(os.path.basename(src_dir) + "/src")
-    os.system('msvcbuild.bat gc64 ' + os.getenv('WINDOWS_DBG_BUILD', '') + ' static')
+    os.system('msvcbuild.bat ' + os.getenv('WINDOWS_DBG_BUILD', '') + ' static')
     os.makedirs(dst_dir + "/lib", exist_ok=True)
     shutil.copy("lua51.lib", dst_dir + "/lib")
     os.makedirs(dst_dir + "/include/luajit-2.1", exist_ok=True)

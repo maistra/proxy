@@ -38,3 +38,4 @@ time bazel test \
   --test_output=all \
   --disk_cache=/bazel-cache \
   //test/...
+

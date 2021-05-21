@@ -1,12 +1,14 @@
 /*
 ** Target architecture selection.
-** Copyright (C) 2005-2017 Mike Pall. See Copyright Notice in luajit.h
+** Copyright (C) 2005-2020 Mike Pall. See Copyright Notice in luajit.h
 */
 
 #ifndef _LJ_ARCH_H
 #define _LJ_ARCH_H
 
 #include "lua.h"
+
+/* -- Target definitions -------------------------------------------------- */
 
 /* Target endianess. */
 #define LUAJIT_LE	0
@@ -29,8 +31,6 @@
 #define LUAJIT_ARCH_mips32	6
 #define LUAJIT_ARCH_MIPS64	7
 #define LUAJIT_ARCH_mips64	7
-#define LUAJIT_ARCH_S390X	8
-#define LUAJIT_ARCH_s390x	8
 
 /* Target OS. */
 #define LUAJIT_OS_OTHER		0
@@ -39,6 +39,14 @@
 #define LUAJIT_OS_OSX		3
 #define LUAJIT_OS_BSD		4
 #define LUAJIT_OS_POSIX		5
+
+/* Number mode. */
+#define LJ_NUMMODE_SINGLE	0	/* Single-number mode only. */
+#define LJ_NUMMODE_SINGLE_DUAL	1	/* Default to single-number mode. */
+#define LJ_NUMMODE_DUAL		2	/* Dual-number mode only. */
+#define LJ_NUMMODE_DUAL_SINGLE	3	/* Default to dual-number mode. */
+
+/* -- Target detection ---------------------------------------------------- */
 
 /* Select native target if no target defined. */
 #ifndef LUAJIT_TARGET
@@ -51,8 +59,6 @@
 #define LUAJIT_TARGET	LUAJIT_ARCH_ARM
 #elif defined(__aarch64__)
 #define LUAJIT_TARGET	LUAJIT_ARCH_ARM64
-#elif defined(__s390x__) || defined(__s390x)
-#define LUAJIT_TARGET	LUAJIT_ARCH_S390X
 #elif defined(__ppc__) || defined(__ppc) || defined(__PPC__) || defined(__PPC) || defined(__powerpc__) || defined(__powerpc) || defined(__POWERPC__) || defined(__POWERPC) || defined(_M_PPC)
 #define LUAJIT_TARGET	LUAJIT_ARCH_PPC
 #elif defined(__mips64__) || defined(__mips64) || defined(__MIPS64__) || defined(__MIPS64)
@@ -73,12 +79,16 @@
 #elif defined(__linux__)
 #define LUAJIT_OS	LUAJIT_OS_LINUX
 #elif defined(__MACH__) && defined(__APPLE__)
+#include "TargetConditionals.h"
 #define LUAJIT_OS	LUAJIT_OS_OSX
 #elif (defined(__FreeBSD__) || defined(__FreeBSD_kernel__) || \
        defined(__NetBSD__) || defined(__OpenBSD__) || \
        defined(__DragonFly__)) && !defined(__ORBIS__)
 #define LUAJIT_OS	LUAJIT_OS_BSD
-#elif (defined(__sun__) && defined(__svr4__)) || defined(__HAIKU__)
+#elif (defined(__sun__) && defined(__svr4__))
+#define LJ_TARGET_SOLARIS	1
+#define LUAJIT_OS	LUAJIT_OS_POSIX
+#elif defined(__HAIKU__)
 #define LUAJIT_OS	LUAJIT_OS_POSIX
 #elif defined(__CYGWIN__)
 #define LJ_TARGET_CYGWIN	1
@@ -107,9 +117,15 @@
 #define LJ_TARGET_WINDOWS	(LUAJIT_OS == LUAJIT_OS_WINDOWS)
 #define LJ_TARGET_LINUX		(LUAJIT_OS == LUAJIT_OS_LINUX)
 #define LJ_TARGET_OSX		(LUAJIT_OS == LUAJIT_OS_OSX)
-#define LJ_TARGET_IOS		(LJ_TARGET_OSX && (LUAJIT_TARGET == LUAJIT_ARCH_ARM || LUAJIT_TARGET == LUAJIT_ARCH_ARM64))
+#define LJ_TARGET_BSD		(LUAJIT_OS == LUAJIT_OS_BSD)
 #define LJ_TARGET_POSIX		(LUAJIT_OS > LUAJIT_OS_WINDOWS)
 #define LJ_TARGET_DLOPEN	LJ_TARGET_POSIX
+
+#if TARGET_OS_IPHONE
+#define LJ_TARGET_IOS		1
+#else
+#define LJ_TARGET_IOS		0
+#endif
 
 #ifdef __CELLOS_LV2__
 #define LJ_TARGET_PS3		1
@@ -139,10 +155,14 @@
 #define LJ_TARGET_GC64		1
 #endif
 
-#define LJ_NUMMODE_SINGLE	0	/* Single-number mode only. */
-#define LJ_NUMMODE_SINGLE_DUAL	1	/* Default to single-number mode. */
-#define LJ_NUMMODE_DUAL		2	/* Dual-number mode only. */
-#define LJ_NUMMODE_DUAL_SINGLE	3	/* Default to dual-number mode. */
+#ifdef _UWP
+#define LJ_TARGET_UWP		1
+#if LUAJIT_TARGET == LUAJIT_ARCH_X64
+#define LJ_TARGET_GC64		1
+#endif
+#endif
+
+/* -- Arch-specific settings ---------------------------------------------- */
 
 /* Set target architecture properties. */
 #if LUAJIT_TARGET == LUAJIT_ARCH_X86
@@ -181,7 +201,7 @@
 #define LJ_TARGET_MASKROT	1
 #define LJ_TARGET_UNALIGNED	1
 #define LJ_ARCH_NUMMODE		LJ_NUMMODE_SINGLE_DUAL
-#ifdef LUAJIT_ENABLE_GC64
+#ifndef LUAJIT_DISABLE_GC64
 #define LJ_TARGET_GC64		1
 #endif
 
@@ -205,13 +225,13 @@
 #define LJ_TARGET_UNIFYROT	2	/* Want only IR_BROR. */
 #define LJ_ARCH_NUMMODE		LJ_NUMMODE_DUAL
 
-#if __ARM_ARCH____ARM_ARCH_8__ || __ARM_ARCH_8A__
+#if __ARM_ARCH == 8 || __ARM_ARCH_8__ || __ARM_ARCH_8A__
 #define LJ_ARCH_VERSION		80
-#elif __ARM_ARCH_7__ || __ARM_ARCH_7A__ || __ARM_ARCH_7R__ || __ARM_ARCH_7S__ || __ARM_ARCH_7VE__
+#elif __ARM_ARCH == 7 || __ARM_ARCH_7__ || __ARM_ARCH_7A__ || __ARM_ARCH_7R__ || __ARM_ARCH_7S__ || __ARM_ARCH_7VE__
 #define LJ_ARCH_VERSION		70
 #elif __ARM_ARCH_6T2__
 #define LJ_ARCH_VERSION		61
-#elif __ARM_ARCH_6__ || __ARM_ARCH_6J__ || __ARM_ARCH_6K__ || __ARM_ARCH_6Z__ || __ARM_ARCH_6ZK__
+#elif __ARM_ARCH == 6 || __ARM_ARCH_6__ || __ARM_ARCH_6J__ || __ARM_ARCH_6K__ || __ARM_ARCH_6Z__ || __ARM_ARCH_6ZK__
 #define LJ_ARCH_VERSION		60
 #else
 #define LJ_ARCH_VERSION		50
@@ -292,18 +312,8 @@
 #if LJ_TARGET_CONSOLE
 #define LJ_ARCH_PPC32ON64	1
 #define LJ_ARCH_NOFFI		1
-#if LJ_TARGET_PS3
-#define LJ_ARCH_PPC_OPD		1
-#endif
 #elif LJ_ARCH_BITS == 64
-#define LJ_ARCH_PPC32ON64	1
-#define LJ_ARCH_NOJIT		1	/* NYI */
-#if _CALL_ELF == 2
-#define LJ_ARCH_PPC_ELFV2	1
-#else
-#define LJ_ARCH_PPC_OPD		1
-#define LJ_ARCH_PPC_OPDENV	1
-#endif
+#error "No support for PPC64"
 #endif
 
 #if _ARCH_PWR7
@@ -335,17 +345,37 @@
 #elif LUAJIT_TARGET == LUAJIT_ARCH_MIPS32 || LUAJIT_TARGET == LUAJIT_ARCH_MIPS64
 
 #if defined(__MIPSEL__) || defined(__MIPSEL) || defined(_MIPSEL)
+#if __mips_isa_rev >= 6
+#define LJ_TARGET_MIPSR6	1
+#define LJ_TARGET_UNALIGNED	1
+#endif
 #if LUAJIT_TARGET == LUAJIT_ARCH_MIPS32
+#if LJ_TARGET_MIPSR6
+#define LJ_ARCH_NAME		"mips32r6el"
+#else
 #define LJ_ARCH_NAME		"mipsel"
+#endif
+#else
+#if LJ_TARGET_MIPSR6
+#define LJ_ARCH_NAME		"mips64r6el"
 #else
 #define LJ_ARCH_NAME		"mips64el"
+#endif
 #endif
 #define LJ_ARCH_ENDIAN		LUAJIT_LE
 #else
 #if LUAJIT_TARGET == LUAJIT_ARCH_MIPS32
+#if LJ_TARGET_MIPSR6
+#define LJ_ARCH_NAME		"mips32r6"
+#else
 #define LJ_ARCH_NAME		"mips"
+#endif
+#else
+#if LJ_TARGET_MIPSR6
+#define LJ_ARCH_NAME		"mips64r6"
 #else
 #define LJ_ARCH_NAME		"mips64"
+#endif
 #endif
 #define LJ_ARCH_ENDIAN		LUAJIT_BE
 #endif
@@ -370,9 +400,6 @@
 #define LJ_ARCH_BITS		32
 #define LJ_TARGET_MIPS32	1
 #else
-#if LJ_ABI_SOFTFP || !LJ_ARCH_HASFPU
-#define LJ_ARCH_NOJIT		1	/* NYI */
-#endif
 #define LJ_ARCH_BITS		64
 #define LJ_TARGET_MIPS64	1
 #define LJ_TARGET_GC64		1
@@ -385,34 +412,19 @@
 #define LJ_TARGET_UNIFYROT	2	/* Want only IR_BROR. */
 #define LJ_ARCH_NUMMODE		LJ_NUMMODE_DUAL
 
-#if _MIPS_ARCH_MIPS32R2 || _MIPS_ARCH_MIPS64R2
+#if LJ_TARGET_MIPSR6
+#define LJ_ARCH_VERSION		60
+#elif _MIPS_ARCH_MIPS32R2 || _MIPS_ARCH_MIPS64R2
 #define LJ_ARCH_VERSION		20
 #else
 #define LJ_ARCH_VERSION		10
 #endif
 
-#elif LUAJIT_TARGET == LUAJIT_ARCH_S390X
-
-#define LJ_ARCH_NAME		"s390x"
-#define LJ_ARCH_BITS		64
-#define LJ_ARCH_ENDIAN		LUAJIT_BE
-#define LJ_TARGET_S390X		1
-#define LJ_TARGET_EHRETREG	0xe
-#define LJ_TARGET_JUMPRANGE	32	/* +-2^32 = +-4GB (32-bit, halfword aligned) */
-#define LJ_TARGET_MASKSHIFT	1
-#define LJ_TARGET_MASKROT	1
-#define LJ_TARGET_UNALIGNED	1
-#define LJ_ARCH_NUMMODE		LJ_NUMMODE_DUAL
-#define LJ_TARGET_GC64		1
-#define LJ_ARCH_NOJIT		1	/* NYI */
-
 #else
 #error "No target architecture defined"
 #endif
 
-#ifndef LJ_PAGESIZE
-#define LJ_PAGESIZE		4096
-#endif
+/* -- Checks for requirements --------------------------------------------- */
 
 /* Check for minimum required compiler versions. */
 #if defined(__GNUC__)
@@ -466,6 +478,9 @@
 #error "No support for ILP32 model on ARM64"
 #endif
 #elif LJ_TARGET_PPC
+#if defined(_LITTLE_ENDIAN) && (!defined(_BYTE_ORDER) || (_BYTE_ORDER == _LITTLE_ENDIAN))
+#error "No support for little-endian PPC32"
+#endif
 #if defined(__NO_FPRS__) && !defined(_SOFT_FLOAT)
 #error "No support for PPC/e500 anymore (use LuaJIT 2.0)"
 #endif
@@ -473,12 +488,19 @@
 #if !((defined(_MIPS_SIM_ABI32) && _MIPS_SIM == _MIPS_SIM_ABI32) || (defined(_ABIO32) && _MIPS_SIM == _ABIO32))
 #error "Only o32 ABI supported for MIPS32"
 #endif
+#if LJ_TARGET_MIPSR6
+/* Not that useful, since most available r6 CPUs are 64 bit. */
+#error "No support for MIPS32R6"
+#endif
 #elif LJ_TARGET_MIPS64
 #if !((defined(_MIPS_SIM_ABI64) && _MIPS_SIM == _MIPS_SIM_ABI64) || (defined(_ABI64) && _MIPS_SIM == _ABI64))
+/* MIPS32ON64 aka n32 ABI support might be desirable, but difficult. */
 #error "Only n64 ABI supported for MIPS64"
 #endif
 #endif
 #endif
+
+/* -- Derived defines ----------------------------------------------------- */
 
 /* Enable or disable the dual-number mode for the VM. */
 #if (LJ_ARCH_NUMMODE == LJ_NUMMODE_SINGLE && LUAJIT_NUMMODE == 2) || \
@@ -551,6 +573,7 @@
 #define LJ_ABI_SOFTFP		0
 #endif
 #define LJ_SOFTFP		(!LJ_ARCH_HASFPU)
+#define LJ_SOFTFP32		(LJ_SOFTFP && LJ_32)
 
 #if LJ_ARCH_ENDIAN == LUAJIT_BE
 #define LJ_LE			0
@@ -576,12 +599,13 @@
 #define LJ_TARGET_UNALIGNED	0
 #endif
 
+#ifndef LJ_PAGESIZE
+#define LJ_PAGESIZE		4096
+#endif
+
 /* Various workarounds for embedded operating systems or weak C runtimes. */
 #if defined(__ANDROID__) || defined(__symbian__) || LJ_TARGET_XBOX360 || LJ_TARGET_WINDOWS
 #define LUAJIT_NO_LOG2
-#endif
-#if defined(__symbian__) || LJ_TARGET_WINDOWS
-#define LUAJIT_NO_EXP2
 #endif
 #if LJ_TARGET_CONSOLE || (LJ_TARGET_IOS && __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_8_0)
 #define LJ_NO_SYSTEM		1
@@ -596,11 +620,65 @@
 #define LJ_NO_UNWIND		1
 #endif
 
+#if LJ_TARGET_WINDOWS
+#if LJ_TARGET_UWP
+#define LJ_WIN_VALLOC	VirtualAllocFromApp
+#define LJ_WIN_VPROTECT	VirtualProtectFromApp
+extern void *LJ_WIN_LOADLIBA(const char *path);
+#else
+#define LJ_WIN_VALLOC	VirtualAlloc
+#define LJ_WIN_VPROTECT	VirtualProtect
+#define LJ_WIN_LOADLIBA(path)	LoadLibraryExA((path), NULL, 0)
+#endif
+#endif
+
 /* Compatibility with Lua 5.1 vs. 5.2. */
 #ifdef LUAJIT_ENABLE_LUA52COMPAT
 #define LJ_52			1
 #else
 #define LJ_52			0
 #endif
+
+/* -- VM security --------------------------------------------------------- */
+
+/* Don't make any changes here. Instead build with:
+**   make "XCFLAGS=-DLUAJIT_SECURITY_flag=value"
+**
+** Important note to distro maintainers: DO NOT change the defaults for a
+** regular distro build -- neither upwards, nor downwards!
+** These build-time configurable security flags are intended for embedders
+** who may have specific needs wrt. security vs. performance.
+*/
+
+/* Security defaults. */
+#ifndef LUAJIT_SECURITY_PRNG
+/* PRNG init: 0 = fixed/insecure, 1 = secure from OS. */
+#define LUAJIT_SECURITY_PRNG	1
+#endif
+
+#ifndef LUAJIT_SECURITY_STRHASH
+/* String hash: 0 = sparse only, 1 = sparse + dense. */
+#define LUAJIT_SECURITY_STRHASH	1
+#endif
+
+#ifndef LUAJIT_SECURITY_STRID
+/* String IDs: 0 = linear, 1 = reseed < 255, 2 = reseed < 15, 3 = random. */
+#define LUAJIT_SECURITY_STRID	1
+#endif
+
+#ifndef LUAJIT_SECURITY_MCODE
+/* Machine code page protection: 0 = insecure RWX, 1 = secure RW^X. */
+#define LUAJIT_SECURITY_MCODE	1
+#endif
+
+#define LJ_SECURITY_MODE \
+  ( 0u \
+  | ((LUAJIT_SECURITY_PRNG & 3) << 0) \
+  | ((LUAJIT_SECURITY_STRHASH & 3) << 2) \
+  | ((LUAJIT_SECURITY_STRID & 3) << 4) \
+  | ((LUAJIT_SECURITY_MCODE & 3) << 6) \
+  )
+#define LJ_SECURITY_MODESTRING \
+  "\004prng\007strhash\005strid\005mcode"
 
 #endif

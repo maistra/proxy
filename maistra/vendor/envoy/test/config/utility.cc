@@ -955,10 +955,15 @@ void ConfigHelper::initializeTls(
   common_tls_context.add_alpn_protocols(Http::Utility::AlpnNames::get().Http11);
 
   auto* validation_context = common_tls_context.mutable_validation_context();
-  validation_context->mutable_trusted_ca()->set_filename(
-      TestEnvironment::runfilesPath("test/config/integration/certs/cacert.pem"));
-  validation_context->add_verify_certificate_hash(
-      options.expect_client_ecdsa_cert_ ? TEST_CLIENT_ECDSA_CERT_HASH : TEST_CLIENT_CERT_HASH);
+  if (options.custom_validator_config_) {
+    validation_context->set_allocated_custom_validator_config(options.custom_validator_config_);
+  } else {
+    validation_context->mutable_trusted_ca()->set_filename(
+        TestEnvironment::runfilesPath("test/config/integration/certs/cacert.pem"));
+    validation_context->add_verify_certificate_hash(
+        options.expect_client_ecdsa_cert_ ? TEST_CLIENT_ECDSA_CERT_HASH : TEST_CLIENT_CERT_HASH);
+  }
+  validation_context->set_allow_expired_certificate(options.allow_expired_certificate_);
 
   // We'll negotiate up to TLSv1.3 for the tests that care, but it really
   // depends on what the client sets.
@@ -986,6 +991,10 @@ void ConfigHelper::initializeTls(
       tls_certificate->mutable_ocsp_staple()->set_filename(TestEnvironment::runfilesPath(
           "test/config/integration/certs/server_ecdsa_ocsp_resp.der"));
     }
+  }
+  if (!options.san_matchers_.empty()) {
+    *validation_context->mutable_match_subject_alt_names() = {options.san_matchers_.begin(),
+                                                              options.san_matchers_.end()};
   }
 }
 

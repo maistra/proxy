@@ -35,22 +35,5 @@ def main():
 
     os.system('make -j{} V=1 PREFIX="{}" install'.format(os.cpu_count(), args.prefix))
 
-def win_main():
-    src_dir = os.path.dirname(os.path.realpath(__file__))
-    dst_dir = os.getcwd() + "/moonjit"
-    shutil.copytree(src_dir, os.path.basename(src_dir))
-    os.chdir(os.path.basename(src_dir) + "/src")
-    os.system('msvcbuild.bat gc64 ' + os.getenv('WINDOWS_DBG_BUILD', '') + ' static')
-    os.makedirs(dst_dir + "/lib", exist_ok=True)
-    shutil.copy("lua51.lib", dst_dir + "/lib")
-    os.makedirs(dst_dir + "/include/moonjit-2.2", exist_ok=True)
-    for header in ["lauxlib.h", "luaconf.h", "lua.h", "lua.hpp", "luajit.h", "lualib.h"]:
-      shutil.copy(header, dst_dir + "/include/moonjit-2.2")
-    os.makedirs(dst_dir + "/bin", exist_ok=True)
-    shutil.copy("luajit.exe", dst_dir + "/bin")
-
-if os.name == 'nt':
-  win_main()
-else:
-  main()
+main()
 

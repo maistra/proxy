@@ -3,6 +3,8 @@
 #include <string>
 #include <vector>
 
+#include "envoy/ssl/context.h"
+
 #include "common/common/utility.h"
 
 #include "absl/types/optional.h"
@@ -17,6 +19,9 @@ namespace Extensions {
 namespace TransportSockets {
 namespace Tls {
 namespace Utility {
+
+Envoy::Ssl::CertificateDetailsPtr certificateDetails(X509* cert, const std::string& path,
+                                                     TimeSource& time_source);
 
 /**
  * Retrieves the serial number of a certificate.

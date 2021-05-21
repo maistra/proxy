@@ -88,15 +88,14 @@ ParsingResult<std::string> Asn1Utility::parseInteger(CBS& cbs) {
   CSmartPtr<ASN1_INTEGER, freeAsn1Integer> asn1_integer(
       c2i_ASN1_INTEGER(nullptr, &head, CBS_len(&num)));
   if (asn1_integer != nullptr) {
-    BIGNUM num_bn;
-    BN_init(&num_bn);
-    ASN1_INTEGER_to_BN(asn1_integer.get(), &num_bn);
+    auto* num_bn = BN_new();
+    ASN1_INTEGER_to_BN(asn1_integer.get(), num_bn);
 
-    CSmartPtr<char, freeOpensslString> char_hex_number(BN_bn2hex(&num_bn));
-    BN_free(&num_bn);
+    CSmartPtr<char, freeOpensslString> char_hex_number(BN_bn2hex(num_bn));
+    BN_free(num_bn);
     if (char_hex_number != nullptr) {
       std::string hex_number(char_hex_number.get());
-      return hex_number;
+      return absl::AsciiStrToLower(hex_number);
     }
   }
 
