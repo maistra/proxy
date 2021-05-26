@@ -1,0 +1,40 @@
+From 1a148d6771bc85fb12810a51f8db5fb3c4254abd Mon Sep 17 00:00:00 2001
+From: Kevin Conner <kconner@redhat.com>
+Date: Tue, 25 May 2021 18:03:38 -0700
+Subject: [PATCH] Disable LuaJIT for s390x
+
+
+diff --git a/bazel/repositories.bzl b/bazel/repositories.bzl
+index 523fa1595f..64cdea5c7f 100644
+--- a/bazel/repositories.bzl
++++ b/bazel/repositories.bzl
+@@ -16,6 +16,8 @@ WINDOWS_SKIP_TARGETS = [
+     "envoy.watchdog.abort_action",
+ ]
+ 
++S390X_SKIP_TARGETS = ["envoy.filters.http.lua"]
++
+ # Make all contents of an external repository accessible under a filegroup.  Used for external HTTP
+ # archives, e.g. cares.
+ BUILD_ALL_CONTENT = """filegroup(name = "all", srcs = glob(["**"]), visibility = ["//visibility:public"])"""
+diff --git a/source/exe/BUILD b/source/exe/BUILD
+index 3edb3dd917..e701cdc7a4 100644
+--- a/source/exe/BUILD
++++ b/source/exe/BUILD
+@@ -8,7 +8,7 @@ load(
+     "envoy_package",
+ )
+ load("//source/extensions:all_extensions.bzl", "envoy_all_core_extensions", "envoy_all_extensions")
+-load("//bazel:repositories.bzl", "PPC_SKIP_TARGETS", "WINDOWS_SKIP_TARGETS")
++load("//bazel:repositories.bzl", "PPC_SKIP_TARGETS", "WINDOWS_SKIP_TARGETS" , "S390X_SKIP_TARGETS")
+ 
+ licenses(["notice"])  # Apache 2
+ 
+@@ -39,6 +39,7 @@ envoy_cc_library(
+     ] + select({
+         "//bazel:windows_x86_64": envoy_all_extensions(WINDOWS_SKIP_TARGETS),
+         "//bazel:linux_ppc": envoy_all_extensions(PPC_SKIP_TARGETS),
++        "//bazel:linux_s390x": envoy_all_extensions(S390X_SKIP_TARGETS),
+         "//conditions:default": envoy_all_extensions(),
+     }),
+ )
