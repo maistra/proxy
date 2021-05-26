@@ -16,6 +16,8 @@ WINDOWS_SKIP_TARGETS = [
     "envoy.watchdog.abort_action",
 ]
 
+S390X_SKIP_TARGETS = ["envoy.filters.http.lua"]
+
 # Make all contents of an external repository accessible under a filegroup.  Used for external HTTP
 # archives, e.g. cares.
 BUILD_ALL_CONTENT = """filegroup(name = "all", srcs = glob(["**"]), visibility = ["//visibility:public"])"""

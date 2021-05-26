@@ -103,6 +103,9 @@ function apply_local_patches() {
 
     patch -p1 -i "${PATCHES_DIR}/luajit-build-flags.patch"
   popd
+  pushd "${VENDOR_DIR}/envoy"
+    patch -p1 -i "${PATCHES_DIR}/luajit-disable-s390x.patch"
+  popd
 }
 
 function run_bazel() {
