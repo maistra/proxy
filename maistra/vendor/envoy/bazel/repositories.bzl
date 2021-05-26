@@ -14,6 +14,8 @@ WINDOWS_SKIP_TARGETS = [
     "envoy.tracers.opencensus",
 ]
 
+S390X_SKIP_TARGETS = ["envoy.filters.http.lua"]
+
 # Make all contents of an external repository accessible under a filegroup.  Used for external HTTP
 # archives, e.g. cares.
 def _build_all_content(exclude = []):
