@@ -4,7 +4,8 @@
 
 import("//build/config/chrome_build.gni")
 import("//build/config/chromecast_build.gni")
-import("//build/config/coverage/coverage.gni")
+import("//build/config/chromeos/args.gni")
+import("//build/config/profiling/profiling.gni")
 import("//build/toolchain/toolchain.gni")
 
 declare_args() {
@@ -51,13 +52,12 @@ declare_args() {
   # See http://clang.llvm.org/docs/ControlFlowIntegrity.html
   #
   # TODO(pcc): Remove this flag if/when CFI is enabled in all official builds.
-  is_cfi = target_os == "linux" && !is_chromeos && target_cpu == "x64" &&
-           is_official_build
-
-  # Enable checks for bad casts: derived cast and unrelated cast.
-  # TODO(krasin): remove this, when we're ready to add these checks by default.
-  # https://crbug.com/626794
-  use_cfi_cast = false
+  #
+  # Disable this on linux-chromeos to avoid using ThinLTO there;
+  # crbug.com/1033839. Similarly, don't use this on ARC builds.
+  is_cfi = is_official_build &&
+           ((target_os == "linux" && !is_chromeos && target_cpu == "x64") ||
+            (target_os == "chromeos" && is_chromeos_device))
 
   # Enable checks for indirect function calls via a function pointer.
   # TODO(pcc): remove this when we're ready to add these checks by default.
@@ -78,6 +78,9 @@ declare_args() {
 
   # Compile for fuzzing with AFL.
   use_afl = false
+
+  # Compile for fuzzing with an external engine (e.g., Grammarinator).
+  use_external_fuzzing_engine = false
 
   # Enables core ubsan security features. Will later be removed once it matches
   # is_ubsan.
@@ -113,6 +116,13 @@ declare_args() {
   archive_seed_corpus = true
 }
 
+declare_args() {
+  # Enable checks for bad casts: derived cast and unrelated cast.
+  # TODO(krasin): remove this, when we're ready to add these checks by default.
+  # https://crbug.com/626794
+  use_cfi_cast = is_cfi && target_os == "chromeos"
+}
+
 # Disable sanitizers for non-target toolchains.
 if (!is_a_target_toolchain) {
   is_asan = false
@@ -145,7 +155,7 @@ use_prebuilt_instrumented_libraries = false
 # Whether we are doing a fuzzer build. Normally this should be checked instead
 # of checking "use_libfuzzer || use_afl" because often developers forget to
 # check for "use_afl".
-use_fuzzing_engine = use_libfuzzer || use_afl
+use_fuzzing_engine = use_libfuzzer || use_afl || use_external_fuzzing_engine
 
 # Args that are in turn dependent on other args must be in a separate
 # declare_args block. User overrides are only applied at the end of a
@@ -160,7 +170,8 @@ declare_args() {
   # work well for fuzzing builds. Since fuzzing builds already disable the
   # sandbox when dumping coverage, limit the sandbox-only path to non-fuzzing
   # builds.
-  use_clang_coverage_inside_sandbox = use_clang_coverage && !use_fuzzing_engine
+  use_clang_profiling_inside_sandbox =
+      use_clang_profiling && !use_fuzzing_engine
 
   # Detect overflow/underflow for global objects.
   #
@@ -189,7 +200,7 @@ assert(!is_cfi || is_clang,
 
 prebuilt_instrumented_libraries_available = false
 
-if (use_libfuzzer && is_linux) {
+if (use_libfuzzer && (is_linux || is_chromeos)) {
   if (is_asan) {
     # We do leak checking with libFuzzer on Linux. Set is_lsan for code that
     # relies on LEAK_SANITIZER define to avoid false positives.
@@ -216,7 +227,7 @@ assert(!is_debug || !(is_msan || is_ubsan || is_ubsan_null || is_ubsan_vptr),
 assert(!is_hwasan || (is_android && current_cpu == "arm64"),
        "HWASan only supported on Android ARM64 builds.")
 
-assert(!is_msan || (is_linux && current_cpu == "x64"),
+assert(!is_msan || ((is_linux || is_chromeos) && current_cpu == "x64"),
        "MSan currently only works on 64-bit Linux and ChromeOS builds.")
 
 assert(!is_lsan || is_asan, "is_lsan = true requires is_asan = true also.")

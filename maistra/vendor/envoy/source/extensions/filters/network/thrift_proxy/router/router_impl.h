@@ -127,8 +127,6 @@ public:
   MethodNameRouteEntryImpl(
       const envoy::extensions::filters::network::thrift_proxy::v3::Route& route);
 
-  const std::string& methodName() const { return method_name_; }
-
   // RouteEntryImplBase
   RouteConstSharedPtr matches(const MessageMetadata& metadata,
                               uint64_t random_value) const override;
@@ -142,8 +140,6 @@ class ServiceNameRouteEntryImpl : public RouteEntryImplBase {
 public:
   ServiceNameRouteEntryImpl(
       const envoy::extensions::filters::network::thrift_proxy::v3::Route& route);
-
-  const std::string& serviceName() const { return service_name_; }
 
   // RouteEntryImplBase
   RouteConstSharedPtr matches(const MessageMetadata& metadata,
@@ -182,13 +178,15 @@ class Router : public Tcp::ConnectionPool::UpstreamCallbacks,
 public:
   Router(Upstream::ClusterManager& cluster_manager, const std::string& stat_prefix,
          Stats::Scope& scope)
-      : cluster_manager_(cluster_manager), stats_(generateStats(stat_prefix, scope)) {}
+      : cluster_manager_(cluster_manager), stats_(generateStats(stat_prefix, scope)),
+        passthrough_supported_(false) {}
 
   ~Router() override = default;
 
   // ThriftFilters::DecoderFilter
   void onDestroy() override;
   void setDecoderFilterCallbacks(ThriftFilters::DecoderFilterCallbacks& callbacks) override;
+  bool passthroughSupported() const override { return passthrough_supported_; }
 
   // ProtocolConverter
   FilterStatus transportBegin(MessageMetadataSharedPtr metadata) override;
@@ -223,7 +221,7 @@ private:
     void releaseConnection(bool close);
 
     // Tcp::ConnectionPool::Callbacks
-    void onPoolFailure(Tcp::ConnectionPool::PoolFailureReason reason,
+    void onPoolFailure(ConnectionPool::PoolFailureReason reason,
                        Upstream::HostDescriptionConstSharedPtr host) override;
     void onPoolReady(Tcp::ConnectionPool::ConnectionDataPtr&& conn,
                      Upstream::HostDescriptionConstSharedPtr host) override;
@@ -232,7 +230,7 @@ private:
     void onRequestComplete();
     void onResponseComplete();
     void onUpstreamHostSelected(Upstream::HostDescriptionConstSharedPtr host);
-    void onResetStream(Tcp::ConnectionPool::PoolFailureReason reason);
+    void onResetStream(ConnectionPool::PoolFailureReason reason);
 
     Router& parent_;
     Tcp::ConnectionPool::Instance& conn_pool_;
@@ -269,6 +267,8 @@ private:
 
   std::unique_ptr<UpstreamRequest> upstream_request_;
   Buffer::OwnedImpl upstream_request_buffer_;
+
+  bool passthrough_supported_ : 1;
 };
 
 } // namespace Router

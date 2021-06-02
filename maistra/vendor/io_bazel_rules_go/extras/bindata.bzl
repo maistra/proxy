@@ -12,13 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""bindata.bzl provides the bindata rule for embedding data in .go files"""
+
 load(
     "@io_bazel_rules_go//go:def.bzl",
     "go_context",
-)
-load(
-    "@io_bazel_rules_go//go/private:rules/rule.bzl",
-    "go_rule",
 )
 
 def _bindata_impl(ctx):
@@ -60,8 +58,8 @@ def _bindata_impl(ctx):
         ),
     ]
 
-bindata = go_rule(
-    _bindata_impl,
+bindata = rule(
+    implementation = _bindata_impl,
     attrs = {
         "srcs": attr.label_list(allow_files = True),
         "package": attr.string(mandatory = True),
@@ -76,5 +74,9 @@ bindata = go_rule(
             cfg = "host",
             default = "@com_github_kevinburke_go_bindata//go-bindata:go-bindata",
         ),
+        "_go_context_data": attr.label(
+            default = "//:go_context_data",
+        ),
     },
+    toolchains = ["@io_bazel_rules_go//go:toolchain"],
 )

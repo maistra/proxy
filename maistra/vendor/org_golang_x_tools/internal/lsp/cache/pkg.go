@@ -5,15 +5,10 @@
 package cache
 
 import (
-	"context"
 	"go/ast"
 	"go/types"
-	"sort"
-	"sync"
 
-	"golang.org/x/tools/go/analysis"
-	"golang.org/x/tools/go/packages"
-	"golang.org/x/tools/internal/lsp/protocol"
+	"golang.org/x/mod/module"
 	"golang.org/x/tools/internal/lsp/source"
 	"golang.org/x/tools/internal/span"
 	errors "golang.org/x/xerrors"
@@ -21,157 +16,75 @@ import (
 
 // pkg contains the type information needed by the source package.
 type pkg struct {
-	view *view
-
-	// ID and package path have their own types to avoid being used interchangeably.
-	id         packageID
-	pkgPath    packagePath
-	files      []source.ParseGoHandle
-	errors     []packages.Error
-	imports    map[packagePath]*pkg
-	types      *types.Package
-	typesInfo  *types.Info
-	typesSizes types.Sizes
-
-	// The analysis cache holds analysis information for all the packages in a view.
-	// Each graph node (action) is one unit of analysis.
-	// Edges express package-to-package (vertical) dependencies,
-	// and analysis-to-analysis (horizontal) dependencies.
-	mu       sync.Mutex
-	analyses map[*analysis.Analyzer]*analysisEntry
-
-	diagMu      sync.Mutex
-	diagnostics map[*analysis.Analyzer][]source.Diagnostic
+	m               *metadata
+	mode            source.ParseMode
+	goFiles         []*source.ParsedGoFile
+	compiledGoFiles []*source.ParsedGoFile
+	errors          []*source.Error
+	imports         map[packagePath]*pkg
+	version         *module.Version
+	typeErrors      []types.Error
+	types           *types.Package
+	typesInfo       *types.Info
+	typesSizes      types.Sizes
 }
 
-// Declare explicit types for package paths and IDs to ensure that we never use
-// an ID where a path belongs, and vice versa. If we confused the two, it would
-// result in confusing errors because package IDs often look like package paths.
-type packageID string
-type packagePath string
+// Declare explicit types for package paths, names, and IDs to ensure that we
+// never use an ID where a path belongs, and vice versa. If we confused these,
+// it would result in confusing errors because package IDs often look like
+// package paths.
+type (
+	packageID   string
+	packagePath string
+	packageName string
+)
 
-type analysisEntry struct {
-	done      chan struct{}
-	succeeded bool
-	*source.Action
-}
-
-func (p *pkg) GetActionGraph(ctx context.Context, a *analysis.Analyzer) (*source.Action, error) {
-	p.mu.Lock()
-	e, ok := p.analyses[a]
-	if ok {
-		// cache hit
-		p.mu.Unlock()
-
-		// wait for entry to become ready or the context to be cancelled
-		select {
-		case <-e.done:
-			// If the goroutine we are waiting on was cancelled, we should retry.
-			// If errors other than cancelation/timeout become possible, it may
-			// no longer be appropriate to always retry here.
-			if !e.succeeded {
-				return p.GetActionGraph(ctx, a)
-			}
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
-	} else {
-		// cache miss
-		e = &analysisEntry{
-			done: make(chan struct{}),
-			Action: &source.Action{
-				Analyzer: a,
-				Pkg:      p,
-			},
-		}
-		p.analyses[a] = e
-		p.mu.Unlock()
-
-		defer func() {
-			// If we got an error, clear out our defunct cache entry. We don't cache
-			// errors since they could depend on our dependencies, which can change.
-			// Currently the only possible error is context.Canceled, though, which
-			// should also not be cached.
-			if !e.succeeded {
-				p.mu.Lock()
-				delete(p.analyses, a)
-				p.mu.Unlock()
-			}
-
-			// Always close done so waiters don't get stuck.
-			close(e.done)
-		}()
-
-		// This goroutine becomes responsible for populating
-		// the entry and broadcasting its readiness.
-
-		// Add a dependency on each required analyzers.
-		for _, req := range a.Requires {
-			act, err := p.GetActionGraph(ctx, req)
-			if err != nil {
-				return nil, err
-			}
-			e.Deps = append(e.Deps, act)
-		}
-
-		// An analysis that consumes/produces facts
-		// must run on the package's dependencies too.
-		if len(a.FactTypes) > 0 {
-			importPaths := make([]string, 0, len(p.imports))
-			for importPath := range p.imports {
-				importPaths = append(importPaths, string(importPath))
-			}
-			sort.Strings(importPaths) // for determinism
-			for _, importPath := range importPaths {
-				dep, err := p.GetImport(ctx, importPath)
-				if err != nil {
-					return nil, err
-				}
-				act, err := dep.GetActionGraph(ctx, a)
-				if err != nil {
-					return nil, err
-				}
-				e.Deps = append(e.Deps, act)
-			}
-		}
-		e.succeeded = true
-	}
-	return e.Action, nil
-}
+// Declare explicit types for files and directories to distinguish between the two.
+type (
+	fileURI         span.URI
+	moduleLoadScope string
+	viewLoadScope   span.URI
+)
 
 func (p *pkg) ID() string {
-	return string(p.id)
+	return string(p.m.id)
+}
+
+func (p *pkg) Name() string {
+	return string(p.m.name)
 }
 
 func (p *pkg) PkgPath() string {
-	return string(p.pkgPath)
+	return string(p.m.pkgPath)
 }
 
-func (p *pkg) Files() []source.ParseGoHandle {
-	return p.files
+func (p *pkg) CompiledGoFiles() []*source.ParsedGoFile {
+	return p.compiledGoFiles
 }
 
-func (p *pkg) File(uri span.URI) (source.ParseGoHandle, error) {
-	for _, ph := range p.Files() {
-		if ph.File().Identity().URI == uri {
-			return ph, nil
+func (p *pkg) File(uri span.URI) (*source.ParsedGoFile, error) {
+	for _, cgf := range p.compiledGoFiles {
+		if cgf.URI == uri {
+			return cgf, nil
 		}
 	}
-	return nil, errors.Errorf("no ParseGoHandle for %s", uri)
+	for _, gf := range p.goFiles {
+		if gf.URI == uri {
+			return gf, nil
+		}
+	}
+	return nil, errors.Errorf("no parsed file for %s in %v", uri, p.m.id)
 }
 
-func (p *pkg) GetSyntax(ctx context.Context) []*ast.File {
+func (p *pkg) GetSyntax() []*ast.File {
 	var syntax []*ast.File
-	for _, ph := range p.files {
-		file, _, _, err := ph.Cached(ctx)
-		if err == nil {
-			syntax = append(syntax, file)
-		}
+	for _, pgf := range p.compiledGoFiles {
+		syntax = append(syntax, pgf.File)
 	}
 	return syntax
 }
 
-func (p *pkg) GetErrors() []packages.Error {
+func (p *pkg) GetErrors() []*source.Error {
 	return p.errors
 }
 
@@ -191,7 +104,11 @@ func (p *pkg) IsIllTyped() bool {
 	return p.types == nil || p.typesInfo == nil || p.typesSizes == nil
 }
 
-func (p *pkg) GetImport(ctx context.Context, pkgPath string) (source.Package, error) {
+func (p *pkg) ForTest() string {
+	return string(p.m.forTest)
+}
+
+func (p *pkg) GetImport(pkgPath string) (source.Package, error) {
 	if imp := p.imports[packagePath(pkgPath)]; imp != nil {
 		return imp, nil
 	}
@@ -199,60 +116,22 @@ func (p *pkg) GetImport(ctx context.Context, pkgPath string) (source.Package, er
 	return nil, errors.Errorf("no imported package for %s", pkgPath)
 }
 
-func (p *pkg) SetDiagnostics(a *analysis.Analyzer, diags []source.Diagnostic) {
-	p.diagMu.Lock()
-	defer p.diagMu.Unlock()
-	if p.diagnostics == nil {
-		p.diagnostics = make(map[*analysis.Analyzer][]source.Diagnostic)
+func (p *pkg) MissingDependencies() []string {
+	var md []string
+	for i := range p.m.missingDeps {
+		md = append(md, string(i))
 	}
-	p.diagnostics[a] = diags
+	return md
 }
 
-func (pkg *pkg) FindDiagnostic(pdiag protocol.Diagnostic) (*source.Diagnostic, error) {
-	pkg.diagMu.Lock()
-	defer pkg.diagMu.Unlock()
-
-	for a, diagnostics := range pkg.diagnostics {
-		if a.Name != pdiag.Source {
-			continue
-		}
-		for _, d := range diagnostics {
-			if d.Message != pdiag.Message {
-				continue
-			}
-			if protocol.CompareRange(d.Range, pdiag.Range) != 0 {
-				continue
-			}
-			return &d, nil
-		}
+func (p *pkg) Imports() []source.Package {
+	var result []source.Package
+	for _, imp := range p.imports {
+		result = append(result, imp)
 	}
-	return nil, errors.Errorf("no matching diagnostic for %v", pdiag)
+	return result
 }
 
-func (p *pkg) FindFile(ctx context.Context, uri span.URI) (source.ParseGoHandle, source.Package, error) {
-	// Special case for ignored files.
-	if p.view.Ignore(uri) {
-		return p.view.findIgnoredFile(ctx, uri)
-	}
-
-	queue := []*pkg{p}
-	seen := make(map[string]bool)
-
-	for len(queue) > 0 {
-		pkg := queue[0]
-		queue = queue[1:]
-		seen[pkg.ID()] = true
-
-		for _, ph := range pkg.files {
-			if ph.File().Identity().URI == uri {
-				return ph, pkg, nil
-			}
-		}
-		for _, dep := range pkg.imports {
-			if !seen[dep.ID()] {
-				queue = append(queue, dep)
-			}
-		}
-	}
-	return nil, nil, errors.Errorf("no file for %s", uri)
+func (p *pkg) Version() *module.Version {
+	return p.version
 }

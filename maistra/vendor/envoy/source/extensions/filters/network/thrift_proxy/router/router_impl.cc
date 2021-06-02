@@ -63,9 +63,11 @@ RouteConstSharedPtr RouteEntryImplBase::clusterEntry(uint64_t random_value,
   const auto& cluster_header = clusterHeader();
   if (!cluster_header.get().empty()) {
     const auto& headers = metadata.headers();
-    const auto* entry = headers.get(cluster_header);
-    if (entry != nullptr) {
-      return std::make_shared<DynamicRouteEntry>(*this, entry->value().getStringView());
+    const auto entry = headers.get(cluster_header);
+    if (!entry.empty()) {
+      // This is an implicitly untrusted header, so per the API documentation only the first
+      // value is used.
+      return std::make_shared<DynamicRouteEntry>(*this, entry[0]->value().getStringView());
     }
 
     return nullptr;
@@ -224,7 +226,7 @@ FilterStatus Router::messageBegin(MessageMetadataSharedPtr metadata) {
   route_entry_ = route_->routeEntry();
   const std::string& cluster_name = route_entry_->clusterName();
 
-  Upstream::ThreadLocalCluster* cluster = cluster_manager_.get(cluster_name);
+  Upstream::ThreadLocalCluster* cluster = cluster_manager_.getThreadLocalCluster(cluster_name);
   if (!cluster) {
     ENVOY_STREAM_LOG(debug, "unknown cluster '{}'", *callbacks_, cluster_name);
     stats_.unknown_cluster_.inc();
@@ -260,8 +262,14 @@ FilterStatus Router::messageBegin(MessageMetadataSharedPtr metadata) {
                                         : callbacks_->downstreamProtocolType();
   ASSERT(protocol != ProtocolType::Auto);
 
-  Tcp::ConnectionPool::Instance* conn_pool = cluster_manager_.tcpConnPoolForCluster(
-      cluster_name, Upstream::ResourcePriority::Default, this);
+  if (callbacks_->downstreamTransportType() == TransportType::Framed &&
+      transport == TransportType::Framed && callbacks_->downstreamProtocolType() == protocol &&
+      protocol != ProtocolType::Twitter) {
+    passthrough_supported_ = true;
+  }
+
+  Tcp::ConnectionPool::Instance* conn_pool =
+      cluster->tcpConnPool(Upstream::ResourcePriority::Default, this);
   if (!conn_pool) {
     stats_.no_healthy_upstream_.inc();
     callbacks_->sendLocalReply(
@@ -344,8 +352,7 @@ void Router::onUpstreamData(Buffer::Instance& data, bool end_stream) {
     // Response is incomplete, but no more data is coming.
     ENVOY_STREAM_LOG(debug, "response underflow", *callbacks_);
     upstream_request_->onResponseComplete();
-    upstream_request_->onResetStream(
-        Tcp::ConnectionPool::PoolFailureReason::RemoteConnectionFailure);
+    upstream_request_->onResetStream(ConnectionPool::PoolFailureReason::RemoteConnectionFailure);
     cleanup();
   }
 }
@@ -356,13 +363,11 @@ void Router::onEvent(Network::ConnectionEvent event) {
   switch (event) {
   case Network::ConnectionEvent::RemoteClose:
     ENVOY_STREAM_LOG(debug, "upstream remote close", *callbacks_);
-    upstream_request_->onResetStream(
-        Tcp::ConnectionPool::PoolFailureReason::RemoteConnectionFailure);
+    upstream_request_->onResetStream(ConnectionPool::PoolFailureReason::RemoteConnectionFailure);
     break;
   case Network::ConnectionEvent::LocalClose:
     ENVOY_STREAM_LOG(debug, "upstream local close", *callbacks_);
-    upstream_request_->onResetStream(
-        Tcp::ConnectionPool::PoolFailureReason::LocalConnectionFailure);
+    upstream_request_->onResetStream(ConnectionPool::PoolFailureReason::LocalConnectionFailure);
     break;
   default:
     // Connected is consumed by the connection pool.
@@ -413,6 +418,10 @@ FilterStatus Router::UpstreamRequest::start() {
     return FilterStatus::StopIteration;
   }
 
+  if (upstream_host_ == nullptr) {
+    return FilterStatus::StopIteration;
+  }
+
   return FilterStatus::Continue;
 }
 
@@ -434,7 +443,7 @@ void Router::UpstreamRequest::releaseConnection(const bool close) {
 
 void Router::UpstreamRequest::resetStream() { releaseConnection(true); }
 
-void Router::UpstreamRequest::onPoolFailure(Tcp::ConnectionPool::PoolFailureReason reason,
+void Router::UpstreamRequest::onPoolFailure(ConnectionPool::PoolFailureReason reason,
                                             Upstream::HostDescriptionConstSharedPtr host) {
   conn_pool_handle_ = nullptr;
 
@@ -494,7 +503,7 @@ void Router::UpstreamRequest::onUpstreamHostSelected(Upstream::HostDescriptionCo
   upstream_host_ = host;
 }
 
-void Router::UpstreamRequest::onResetStream(Tcp::ConnectionPool::PoolFailureReason reason) {
+void Router::UpstreamRequest::onResetStream(ConnectionPool::PoolFailureReason reason) {
   if (metadata_->messageType() == MessageType::Oneway) {
     // For oneway requests, we should not attempt a response. Reset the downstream to signal
     // an error.
@@ -503,26 +512,27 @@ void Router::UpstreamRequest::onResetStream(Tcp::ConnectionPool::PoolFailureReas
   }
 
   switch (reason) {
-  case Tcp::ConnectionPool::PoolFailureReason::Overflow:
+  case ConnectionPool::PoolFailureReason::Overflow:
     parent_.callbacks_->sendLocalReply(
-        AppException(
-            AppExceptionType::InternalError,
-            fmt::format("too many connections to '{}'", upstream_host_->address()->asString())),
+        AppException(AppExceptionType::InternalError,
+                     "thrift upstream request: too many connections"),
         true);
     break;
-  case Tcp::ConnectionPool::PoolFailureReason::LocalConnectionFailure:
+  case ConnectionPool::PoolFailureReason::LocalConnectionFailure:
     // Should only happen if we closed the connection, due to an error condition, in which case
     // we've already handled any possible downstream response.
     parent_.callbacks_->resetDownstreamConnection();
     break;
-  case Tcp::ConnectionPool::PoolFailureReason::RemoteConnectionFailure:
-  case Tcp::ConnectionPool::PoolFailureReason::Timeout:
+  case ConnectionPool::PoolFailureReason::RemoteConnectionFailure:
+  case ConnectionPool::PoolFailureReason::Timeout:
     // TODO(zuercher): distinguish between these cases where appropriate (particularly timeout)
     if (!response_started_) {
       parent_.callbacks_->sendLocalReply(
           AppException(
               AppExceptionType::InternalError,
-              fmt::format("connection failure '{}'", upstream_host_->address()->asString())),
+              fmt::format("connection failure '{}'", (upstream_host_ != nullptr)
+                                                         ? upstream_host_->address()->asString()
+                                                         : "to upstream")),
           true);
       return;
     }

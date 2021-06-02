@@ -14,14 +14,14 @@ StrictDnsClusterImpl::StrictDnsClusterImpl(
     Server::Configuration::TransportSocketFactoryContextImpl& factory_context,
     Stats::ScopePtr&& stats_scope, bool added_via_api)
     : BaseDynamicClusterImpl(cluster, runtime, factory_context, std::move(stats_scope),
-                             added_via_api),
+                             added_via_api, factory_context.dispatcher().timeSource()),
       local_info_(factory_context.localInfo()), dns_resolver_(dns_resolver),
       dns_refresh_rate_ms_(
           std::chrono::milliseconds(PROTOBUF_GET_MS_OR_DEFAULT(cluster, dns_refresh_rate, 5000))),
       respect_dns_ttl_(cluster.respect_dns_ttl()) {
   failure_backoff_strategy_ =
       Config::Utility::prepareDnsRefreshStrategy<envoy::config::cluster::v3::Cluster>(
-          cluster, dns_refresh_rate_ms_.count(), factory_context.random());
+          cluster, dns_refresh_rate_ms_.count(), factory_context.api().randomGenerator());
 
   std::list<ResolveTargetPtr> resolve_targets;
   const envoy::config::endpoint::v3::ClusterLoadAssignment load_assignment(
@@ -54,6 +54,11 @@ StrictDnsClusterImpl::StrictDnsClusterImpl(
 void StrictDnsClusterImpl::startPreInit() {
   for (const ResolveTargetPtr& target : resolve_targets_) {
     target->startResolve();
+  }
+  // If the config provides no endpoints, the cluster is initialized immediately as if all hosts are
+  // resolved in failure.
+  if (resolve_targets_.empty()) {
+    onPreInitComplete();
   }
 }
 
@@ -113,7 +118,7 @@ void StrictDnsClusterImpl::ResolveTarget::startResolve() {
         if (status == Network::DnsResolver::ResolutionStatus::Success) {
           parent_.info_->stats().update_success_.inc();
 
-          std::unordered_map<std::string, HostSharedPtr> updated_hosts;
+          absl::node_hash_map<std::string, HostSharedPtr> updated_hosts;
           HostVector new_hosts;
           std::chrono::seconds ttl_refresh_rate = std::chrono::seconds::max();
           for (const auto& resp : response) {
@@ -129,7 +134,7 @@ void StrictDnsClusterImpl::ResolveTarget::startResolve() {
                 std::make_shared<const envoy::config::core::v3::Metadata>(lb_endpoint_.metadata()),
                 lb_endpoint_.load_balancing_weight().value(), locality_lb_endpoint_.locality(),
                 lb_endpoint_.endpoint().health_check_config(), locality_lb_endpoint_.priority(),
-                lb_endpoint_.health_status()));
+                lb_endpoint_.health_status(), parent_.time_source_));
 
             ttl_refresh_rate = min(ttl_refresh_rate, resp.ttl_);
           }

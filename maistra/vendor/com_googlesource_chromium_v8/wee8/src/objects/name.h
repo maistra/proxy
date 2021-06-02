@@ -8,13 +8,15 @@
 #include "src/base/bit-field.h"
 #include "src/objects/objects.h"
 #include "src/objects/primitive-heap-object.h"
-#include "torque-generated/bit-fields-tq.h"
+#include "torque-generated/bit-fields.h"
 
 // Has to be the last include (doesn't have include guards):
 #include "src/objects/object-macros.h"
 
 namespace v8 {
 namespace internal {
+
+#include "torque-generated/src/objects/name-tq.inc"
 
 // The Name abstract class captures anything that can be used as a property
 // name, i.e., strings and symbols.  All names store a hash value.
@@ -23,8 +25,14 @@ class Name : public TorqueGeneratedName<Name, PrimitiveHeapObject> {
   // Tells whether the hash code has been computed.
   inline bool HasHashCode();
 
-  // Returns a hash value used for the property table
+  // Returns a hash value used for the property table. Ensures that the hash
+  // value is computed.
+  // TODO(ishell): rename to EnsureHash().
   inline uint32_t Hash();
+
+  // Returns a hash value used for the property table (same as Hash()), assumes
+  // the hash is already computed.
+  inline uint32_t hash() const;
 
   // Equality operations.
   inline bool Equals(Name other);
@@ -69,14 +77,13 @@ class Name : public TorqueGeneratedName<Name, PrimitiveHeapObject> {
   int NameShortPrint(Vector<char> str);
 
   // Mask constant for checking if a name has a computed hash code
-  // and if it is a string that is an array index.  The least significant bit
+  // and if it is a string that is an integer index.  The least significant bit
   // indicates whether a hash code has been computed.  If the hash code has
   // been computed the 2nd bit tells whether the string can be used as an
-  // array index.
+  // integer index (up to MAX_SAFE_INTEGER).
   static const int kHashNotComputedMask = 1;
-  static const int kIsNotArrayIndexMask = 1 << 1;
-  static const int kIsNotIntegerIndexMask = 1 << 2;
-  static const int kNofHashBitFields = 3;
+  static const int kIsNotIntegerIndexMask = 1 << 1;
+  static const int kNofHashBitFields = 2;
 
   // Shift constant retrieving hash code from hash field.
   static const int kHashShift = kNofHashBitFields;
@@ -126,11 +133,11 @@ class Name : public TorqueGeneratedName<Name, PrimitiveHeapObject> {
   static const unsigned int kDoesNotContainCachedArrayIndexMask =
       (~static_cast<unsigned>(kMaxCachedArrayIndexLength)
        << ArrayIndexLengthBits::kShift) |
-      kIsNotArrayIndexMask;
+      kIsNotIntegerIndexMask;
 
   // Value of empty hash field indicating that the hash is not computed.
   static const int kEmptyHashField =
-      kIsNotIntegerIndexMask | kIsNotArrayIndexMask | kHashNotComputedMask;
+      kIsNotIntegerIndexMask | kHashNotComputedMask;
 
  protected:
   static inline bool IsHashFieldComputed(uint32_t field);
@@ -139,9 +146,10 @@ class Name : public TorqueGeneratedName<Name, PrimitiveHeapObject> {
 };
 
 // ES6 symbols.
-class Symbol : public TorqueGeneratedSymbol<Symbol, Name>,
-               public TorqueGeneratedSymbolFlagsFields {
+class Symbol : public TorqueGeneratedSymbol<Symbol, Name> {
  public:
+  DEFINE_TORQUE_GENERATED_SYMBOL_FLAGS()
+
   // [is_private]: Whether this is a private symbol.  Private symbols can only
   // be used to designate own properties of objects.
   DECL_BOOLEAN_ACCESSORS(is_private)

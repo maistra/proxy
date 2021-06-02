@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+
 # Go rules
 load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
 
@@ -25,7 +27,7 @@ licenses(["notice"])  # Apache 2.0
 py_binary(
     name = "legacy_fields_migrator",
     srcs = ["legacy_fields_migrator.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     deps = [
         ":legacy_fields_migration_lib",
         "//third_party/com/github/bazelbuild/bazel/src/main/protobuf:crosstool_config_py_pb2",
@@ -45,7 +47,7 @@ py_library(
 py_test(
     name = "legacy_fields_migration_lib_test",
     srcs = ["legacy_fields_migration_lib_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     deps = [
         ":legacy_fields_migration_lib",
         "//third_party/com/github/bazelbuild/bazel/src/main/protobuf:crosstool_config_py_pb2",
@@ -55,7 +57,7 @@ py_test(
 py_binary(
     name = "crosstool_query",
     srcs = ["crosstool_query.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     deps = [
         "//third_party/com/github/bazelbuild/bazel/src/main/protobuf:crosstool_config_py_pb2",
         "@io_abseil_py//absl:app",
@@ -66,7 +68,7 @@ py_binary(
 py_binary(
     name = "ctoolchain_comparator",
     srcs = ["ctoolchain_comparator.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     deps = [
         ":ctoolchain_comparator_lib",
         "//third_party/com/github/bazelbuild/bazel/src/main/protobuf:crosstool_config_py_pb2",
@@ -86,7 +88,7 @@ py_library(
 py_test(
     name = "ctoolchain_comparator_lib_test",
     srcs = ["ctoolchain_comparator_lib_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     deps = [
         ":ctoolchain_comparator_lib",
         "//third_party/com/github/bazelbuild/bazel/src/main/protobuf:crosstool_config_py_pb2",
@@ -128,4 +130,18 @@ filegroup(
         "BUILD",
         "ctoolchain_compare.bzl",
     ],
+)
+
+exports_files(["ctoolchain_compare.bzl"])
+
+bzl_library(
+    name = "ctoolchain_compare_bzl",
+    srcs = ["ctoolchain_compare.bzl"],
+    visibility = ["//visibility:private"],
+)
+
+bzl_library(
+    name = "cc_toolchain_config_comparator_bzl",
+    srcs = ["cc_toolchain_config_comparator.bzl"],
+    visibility = ["//visibility:private"],
 )

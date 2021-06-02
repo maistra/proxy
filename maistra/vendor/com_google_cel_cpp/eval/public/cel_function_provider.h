@@ -1,6 +1,7 @@
 #ifndef THIRD_PARTY_CEL_CPP_EVAL_PUBLIC_CEL_FUNCTION_PROVIDER_H_
 #define THIRD_PARTY_CEL_CPP_EVAL_PUBLIC_CEL_FUNCTION_PROVIDER_H_
 
+#include "absl/status/statusor.h"
 #include "eval/public/activation.h"
 #include "eval/public/cel_function.h"
 
@@ -18,7 +19,7 @@ class CelFunctionProvider {
   // the same activation, this should return the same CelFunction. The
   // CelFunction ptr is assumed to be stable for the life of the Activation.
   // nullptr is interpreted as no funtion overload matches the descriptor.
-  virtual cel_base::StatusOr<const CelFunction*> GetFunction(
+  virtual absl::StatusOr<const CelFunction*> GetFunction(
       const CelFunctionDescriptor& descriptor,
       const BaseActivation& activation) const = 0;
   virtual ~CelFunctionProvider() {}

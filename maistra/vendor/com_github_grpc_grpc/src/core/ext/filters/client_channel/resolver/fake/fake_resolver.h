@@ -43,7 +43,7 @@ class FakeResolverResponseGenerator
     : public RefCounted<FakeResolverResponseGenerator> {
  public:
   FakeResolverResponseGenerator();
-  ~FakeResolverResponseGenerator();
+  ~FakeResolverResponseGenerator() override;
 
   // Instructs the fake resolver associated with the response generator
   // instance to trigger a new resolution with the specified result. If the
@@ -79,10 +79,6 @@ class FakeResolverResponseGenerator
   friend class FakeResolver;
   // Set the corresponding FakeResolver to this generator.
   void SetFakeResolver(RefCountedPtr<FakeResolver> resolver);
-
-  static void SetResponseLocked(void* arg, grpc_error* error);
-  static void SetReresolutionResponseLocked(void* arg, grpc_error* error);
-  static void SetFailureLocked(void* arg, grpc_error* error);
 
   // Mutex protecting the members below.
   Mutex mu_;

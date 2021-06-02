@@ -2,6 +2,7 @@
 
 #include "google/protobuf/arena.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "eval/eval/evaluator_core.h"
 #include "eval/eval/expression_step_base.h"
@@ -88,7 +89,7 @@ ContainerAccessStep::ValueAttributePair ContainerAccessStep::PerformLookup(
 
   if (frame->enable_unknowns()) {
     auto unknown_set =
-        frame->unknowns_utility().MergeUnknowns(input_args, nullptr);
+        frame->attribute_utility().MergeUnknowns(input_args, nullptr);
 
     if (unknown_set) {
       return {CelValue::CreateUnknownSet(unknown_set), trail};
@@ -102,8 +103,8 @@ ContainerAccessStep::ValueAttributePair ContainerAccessStep::PerformLookup(
     trail = container_trail.Step(CelAttributeQualifier::Create(key),
                                  frame->arena());
 
-    if (frame->unknowns_utility().CheckForUnknown(trail,
-                                                  /*use_partial=*/false)) {
+    if (frame->attribute_utility().CheckForUnknown(trail,
+                                                   /*use_partial=*/false)) {
       auto unknown_set = google::protobuf::Arena::Create<UnknownSet>(
           frame->arena(), UnknownAttributeSet({trail.attribute()}));
 
@@ -153,7 +154,7 @@ absl::Status ContainerAccessStep::Evaluate(ExecutionFrame* frame) const {
 }  // namespace
 
 // Factory method for Select - based Execution step
-cel_base::StatusOr<std::unique_ptr<ExpressionStep>> CreateContainerAccessStep(
+absl::StatusOr<std::unique_ptr<ExpressionStep>> CreateContainerAccessStep(
     const google::api::expr::v1alpha1::Expr::Call*, int64_t expr_id) {
   std::unique_ptr<ExpressionStep> step =
       absl::make_unique<ContainerAccessStep>(expr_id);

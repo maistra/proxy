@@ -50,7 +50,7 @@ def BaseConfig(USE_MIRROR=True, CACHE_DIR=None,
     # Maps build_property -> 'solution'
     got_revision_reverse_mapping = Dict(hidden=True),
 
-    # Addition revisions we want to pass in.  For now theres a duplication
+    # Addition revisions we want to pass in.  For now there's a duplication
     # of code here of setting custom vars AND passing in --revision. We hope
     # to remove custom vars later.
     revisions = Dict(
@@ -453,3 +453,10 @@ def devtools(c):
       'https://chromium.googlesource.com/devtools/devtools-frontend': (
           'devtools/devtools-frontend', 'HEAD'),
   })
+
+@config_ctx()
+def tint(c):
+  soln = c.solutions.add()
+  soln.name = 'tint'
+  soln.url = 'https://dawn.googlesource.com/tint.git'
+  c.got_revision_mapping['tint'] = 'got_revision'

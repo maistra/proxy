@@ -19,7 +19,7 @@
 #include "src/core/lib/iomgr/port.h"
 
 // This test won't work except with posix sockets enabled
-#ifdef GRPC_POSIX_SOCKET
+#ifdef GRPC_POSIX_SOCKET_EV
 
 #include "src/core/lib/iomgr/ev_posix.h"
 
@@ -132,7 +132,7 @@ static void session_read_cb(void* arg, /*session */
   ssize_t read_total = 0;
 
   if (error != GRPC_ERROR_NONE) {
-    session_shutdown_cb(arg, 1);
+    session_shutdown_cb(arg, true);
     return;
   }
 
@@ -147,7 +147,7 @@ static void session_read_cb(void* arg, /*session */
      It is possible to read nothing due to spurious edge event or data has
      been drained, In such a case, read() returns -1 and set errno to EAGAIN. */
   if (read_once == 0) {
-    session_shutdown_cb(arg, 1);
+    session_shutdown_cb(arg, true);
   } else if (read_once == -1) {
     if (errno == EAGAIN) {
       /* An edge triggered event is cached in the kernel until next poll.
@@ -533,8 +533,8 @@ int main(int argc, char** argv) {
   return 0;
 }
 
-#else /* GRPC_POSIX_SOCKET */
+#else /* GRPC_POSIX_SOCKET_EV */
 
 int main(int argc, char** argv) { return 1; }
 
-#endif /* GRPC_POSIX_SOCKET */
+#endif /* GRPC_POSIX_SOCKET_EV */

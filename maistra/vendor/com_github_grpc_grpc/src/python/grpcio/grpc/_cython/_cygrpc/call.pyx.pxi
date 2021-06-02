@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-cimport cpython
-
 
 cdef class Call:
 
@@ -88,7 +86,7 @@ cdef class Call:
     with nogil:
       if self.c_call != NULL:
         grpc_call_unref(self.c_call)
-      grpc_shutdown_blocking()
+      grpc_shutdown()
 
   # The object *should* always be valid from Python. Used for debugging.
   @property

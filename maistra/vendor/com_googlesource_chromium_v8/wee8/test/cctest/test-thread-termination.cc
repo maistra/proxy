@@ -492,10 +492,11 @@ TEST(TerminateFromOtherThreadWhileMicrotaskRunning) {
   isolate->EnqueueMicrotask(
       v8::Function::New(isolate->GetCurrentContext(), MicrotaskShouldNotRun)
           .ToLocalChecked());
-  isolate->RunMicrotasks();
+  isolate->PerformMicrotaskCheckpoint();
 
   isolate->CancelTerminateExecution();
-  isolate->RunMicrotasks();  // should not run MicrotaskShouldNotRun
+  // Should not run MicrotaskShouldNotRun.
+  isolate->PerformMicrotaskCheckpoint();
 
   thread.Join();
   delete semaphore;
@@ -871,6 +872,12 @@ class TerminatorSleeperThread : public v8::base::Thread {
 
 TEST(TerminateRegExp) {
   i::FLAG_allow_natives_syntax = true;
+  // We want to be stuck regexp execution, so no fallback to linear-time
+  // engine.
+  // TODO(mbid,v8:10765): Find a way to test interrupt support of the
+  // experimental engine.
+  i::FLAG_enable_experimental_regexp_engine_on_excessive_backtracks = false;
+
   v8::Isolate* isolate = CcTest::isolate();
   v8::HandleScope scope(isolate);
   v8::Local<v8::ObjectTemplate> global = CreateGlobalTemplate(
@@ -913,7 +920,7 @@ TEST(TerminateInMicrotask) {
       CHECK(context2 == isolate->GetCurrentContext());
       CHECK(context2 == isolate->GetEnteredOrMicrotaskContext());
       CHECK(!isolate->IsExecutionTerminating());
-      isolate->RunMicrotasks();
+      isolate->PerformMicrotaskCheckpoint();
       CHECK(context2 == isolate->GetCurrentContext());
       CHECK(context2 == isolate->GetEnteredOrMicrotaskContext());
       CHECK(try_catch.HasCaught());
@@ -948,7 +955,7 @@ TEST(TerminateInApiMicrotask) {
     CHECK(!isolate->IsExecutionTerminating());
     isolate->EnqueueMicrotask(TerminationMicrotask);
     isolate->EnqueueMicrotask(UnreachableMicrotask);
-    isolate->RunMicrotasks();
+    isolate->PerformMicrotaskCheckpoint();
     CHECK(try_catch.HasCaught());
     CHECK(try_catch.HasTerminated());
     CHECK(isolate->IsExecutionTerminating());

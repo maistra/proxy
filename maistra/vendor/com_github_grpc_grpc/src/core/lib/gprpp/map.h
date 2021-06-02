@@ -23,41 +23,28 @@
 
 #include <string.h>
 
-#include <algorithm>
-#include <functional>
-#include <iterator>
 #include <map>
 
-#include "src/core/lib/gpr/useful.h"
+#include "absl/strings/string_view.h"
+
 #include "src/core/lib/gprpp/memory.h"
-#include "src/core/lib/gprpp/ref_counted_ptr.h"
-#include "src/core/lib/gprpp/string_view.h"
 
 namespace grpc_core {
-
-template <class Key, class T, class Compare = std::less<Key>>
-using Map = std::map<Key, T, Compare, Allocator<std::pair<const Key, T>>>;
 
 struct StringLess {
   bool operator()(const char* a, const char* b) const {
     return strcmp(a, b) < 0;
   }
-  bool operator()(const UniquePtr<char>& a, const UniquePtr<char>& b) const {
+  bool operator()(const grpc_core::UniquePtr<char>& a,
+                  const grpc_core::UniquePtr<char>& b) const {
     return strcmp(a.get(), b.get()) < 0;
   }
-  bool operator()(const StringView& a, const StringView& b) const {
+  bool operator()(const absl::string_view& a,
+                  const absl::string_view& b) const {
     const size_t min_size = std::min(a.size(), b.size());
     int c = strncmp(a.data(), b.data(), min_size);
     if (c != 0) return c < 0;
     return a.size() < b.size();
-  }
-};
-
-template <typename T>
-struct RefCountedPtrLess {
-  bool operator()(const RefCountedPtr<T>& p1,
-                  const RefCountedPtr<T>& p2) const {
-    return p1.get() < p2.get();
   }
 };
 

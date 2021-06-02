@@ -36,6 +36,10 @@
 
 extern char** environ;
 
+#ifdef GPR_ANDROID
+// Android doesn't have posix_spawn. Use std::system instead
+void run_cmd(const char* cmd) { std::system(cmd); }
+#else
 void run_cmd(const char* cmd) {
   pid_t pid;
   const char* argv[] = {const_cast<const char*>("sh"),
@@ -50,6 +54,7 @@ void run_cmd(const char* cmd) {
     }
   }
 }
+#endif
 
 class TimeJumpTest : public ::testing::TestWithParam<std::string> {
  protected:
@@ -65,7 +70,7 @@ class TimeJumpTest : public ::testing::TestWithParam<std::string> {
     // Skip test if slowdown factor > 1
     if (grpc_test_slowdown_factor() == 1) {
       run_cmd("sudo sntp -sS pool.ntp.org");
-      grpc_shutdown_blocking();
+      grpc_shutdown();
     }
   }
 

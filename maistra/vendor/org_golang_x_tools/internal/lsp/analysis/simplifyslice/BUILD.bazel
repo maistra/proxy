@@ -1,0 +1,28 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "simplifyslice",
+    srcs = ["simplifyslice.go"],
+    importpath = "golang.org/x/tools/internal/lsp/analysis/simplifyslice",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//go/analysis",
+        "//go/analysis/passes/inspect",
+        "//go/ast/inspector",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":simplifyslice",
+    visibility = ["//:__subpackages__"],
+)
+
+go_test(
+    name = "simplifyslice_test",
+    srcs = ["simplifyslice_test.go"],
+    deps = [
+        ":simplifyslice",
+        "//go/analysis/analysistest",
+    ],
+)

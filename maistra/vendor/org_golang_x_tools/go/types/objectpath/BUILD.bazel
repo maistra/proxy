@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test", "go_tool_library")
 
 go_library(
-    name = "go_default_library",
+    name = "objectpath",
     srcs = ["objectpath.go"],
     importpath = "golang.org/x/tools/go/types/objectpath",
     visibility = ["//visibility:public"],
@@ -14,13 +14,19 @@ go_tool_library(
     visibility = ["//visibility:public"],
 )
 
+alias(
+    name = "go_default_library",
+    actual = ":objectpath",
+    visibility = ["//visibility:public"],
+)
+
 go_test(
-    name = "go_default_test",
+    name = "objectpath_test",
     srcs = ["objectpath_test.go"],
-    embed = [":go_default_library"],
     deps = [
-        "//go/buildutil:go_default_library",
-        "//go/gcexportdata:go_default_library",
-        "//go/loader:go_default_library",
+        ":objectpath",
+        "//go/buildutil",
+        "//go/gcexportdata",
+        "//go/loader",
     ],
 )

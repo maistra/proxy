@@ -1,3 +1,24 @@
+#***************************************************************************
+#                                  _   _ ____  _
+#  Project                     ___| | | |  _ \| |
+#                             / __| | | | |_) | |
+#                            | (__| |_| |  _ <| |___
+#                             \___|\___/|_| \_\_____|
+#
+# Copyright (C) 1998 - 2020, Daniel Stenberg, <daniel@haxx.se>, et al.
+#
+# This software is licensed as described in the file COPYING, which
+# you should have received as part of this distribution. The terms
+# are also available at https://curl.se/docs/copyright.html.
+#
+# You may opt to use, copy, modify, merge, publish, distribute and/or sell
+# copies of the Software, and permit persons to whom the Software is
+# furnished to do so, under the terms of the COPYING file.
+#
+# This software is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY
+# KIND, either express or implied.
+#
+###########################################################################
 set(LIB_NAME libcurl)
 
 if(BUILD_SHARED_LIBS)
@@ -18,7 +39,7 @@ list(APPEND HHEADERS
   ${CMAKE_CURRENT_BINARY_DIR}/curl_config.h
   )
 
-if(MSVC)
+if(WIN32)
   list(APPEND CSOURCES libcurl.rc)
 endif()
 
@@ -28,15 +49,6 @@ endif()
 # # strtok.c - specify later
 # # strtoofft.c - specify later
 # )
-
-# # if we have Kerberos 4, right now this is never on
-# #OPTION(CURL_KRB4 "Use Kerberos 4" OFF)
-# IF(CURL_KRB4)
-# SET(CSOURCES ${CSOURCES}
-# krb4.c
-# security.c
-# )
-# ENDIF(CURL_KRB4)
 
 # #OPTION(CURL_MALLOC_DEBUG "Debug mallocs in Curl" OFF)
 # MARK_AS_ADVANCED(CURL_MALLOC_DEBUG)
@@ -71,9 +83,10 @@ add_library(
   ${HHEADERS} ${CSOURCES}
   )
 
-if(MSVC AND NOT BUILD_SHARED_LIBS)
-  set_target_properties(${LIB_NAME} PROPERTIES STATIC_LIBRARY_FLAGS ${CMAKE_EXE_LINKER_FLAGS})
-endif()
+add_library(
+  ${PROJECT_NAME}::${LIB_NAME}
+  ALIAS ${LIB_NAME}
+  )
 
 if(NOT BUILD_SHARED_LIBS)
     set_target_properties(${LIB_NAME} PROPERTIES INTERFACE_COMPILE_DEFINITIONS CURL_STATICLIB)
@@ -122,5 +135,5 @@ install(TARGETS ${LIB_NAME}
 
 export(TARGETS ${LIB_NAME}
        APPEND FILE ${PROJECT_BINARY_DIR}/libcurl-target.cmake
-       NAMESPACE CURL::
+       NAMESPACE ${PROJECT_NAME}::
 )

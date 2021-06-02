@@ -140,9 +140,8 @@ class BranchMapper(object):
       # This is a blocking get which waits for the remote CL status to be
       # retrieved.
       for cl, status in status_info:
-        self.__status_info[cl.GetBranch()] = (cl.GetIssueURL(),
-                                              color_for_status(status),
-                                              status)
+        self.__status_info[cl.GetBranch()] = (cl.GetIssueURL(short=True),
+                                              color_for_status(status), status)
 
     roots = set()
 
@@ -249,29 +248,30 @@ class BranchMapper(object):
 
     # The branch tracking status.
     if self.verbosity >= 1:
-      ahead_string = ''
+      commits_string = ''
       behind_string = ''
       front_separator = ''
       center_separator = ''
       back_separator = ''
       if branch_info and not self.__is_invalid_parent(branch_info.upstream):
-        ahead = branch_info.ahead
         behind = branch_info.behind
+        commits = branch_info.commits
 
-        if ahead:
-          ahead_string = 'ahead %d' % ahead
+        if commits:
+          commits_string = '%d commit' % commits
+          commits_string += 's' if commits > 1 else ' '
         if behind:
           behind_string = 'behind %d' % behind
 
-        if ahead or behind:
+        if commits or behind:
           front_separator = '['
           back_separator = ']'
 
-        if ahead and behind:
+        if commits and behind:
           center_separator = '|'
 
       line.append(front_separator, separator=' ')
-      line.append(ahead_string, separator=' ', color=Fore.MAGENTA)
+      line.append(commits_string, separator=' ', color=Fore.MAGENTA)
       line.append(center_separator, separator=' ')
       line.append(behind_string, separator=' ', color=Fore.MAGENTA)
       line.append(back_separator)
@@ -324,7 +324,7 @@ def main(argv):
     print_desc()
 
   parser = argparse.ArgumentParser()
-  parser.add_argument('-v', action='count',
+  parser.add_argument('-v', action='count', default=0,
                       help=('Pass once to show tracking info, '
                             'twice for hash and review url, '
                             'thrice for review status'))

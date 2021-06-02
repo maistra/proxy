@@ -6,7 +6,10 @@
 #include "upb/json/printer.h"
 
 #include <ctype.h>
+#include <inttypes.h>
+#include <math.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 #include <time.h>
 
@@ -64,12 +67,8 @@ strpc *newstrpc(upb_handlers *h, const upb_fielddef *f,
     ret->ptr = upb_gstrdup(upb_fielddef_name(f));
     ret->len = strlen(ret->ptr);
   } else {
-    size_t len;
-    ret->len = upb_fielddef_getjsonname(f, NULL, 0);
-    ret->ptr = upb_gmalloc(ret->len);
-    len = upb_fielddef_getjsonname(f, ret->ptr, ret->len);
-    UPB_ASSERT(len == ret->len);
-    ret->len--;  /* NULL */
+    ret->ptr = upb_gstrdup(upb_fielddef_jsonname(f));
+    ret->len = strlen(ret->ptr);
   }
 
   upb_handlers_addcleanup(h, ret, freestrpc);
@@ -88,7 +87,7 @@ strpc *newstrpc_str(upb_handlers *h, const char * str) {
 /* ------------ JSON string printing: values, maps, arrays ------------------ */
 
 static void print_data(
-    upb_json_printer *p, const char *buf, unsigned int len) {
+    upb_json_printer *p, const char *buf, size_t len) {
   /* TODO: Will need to change if we support pushback from the sink. */
   size_t n = upb_bytessink_putbuf(p->output_, p->subc_, buf, len, NULL);
   UPB_ASSERT(n == len);
@@ -128,7 +127,7 @@ UPB_INLINE const char* json_nice_escape(char c) {
 /* Write a properly escaped string chunk. The surrounding quotes are *not*
  * printed; this is so that the caller has the option of emitting the string
  * content in chunks. */
-static void putstring(upb_json_printer *p, const char *buf, unsigned int len) {
+static void putstring(upb_json_printer *p, const char *buf, size_t len) {
   const char* unescaped_run = NULL;
   unsigned int i;
   for (i = 0; i < len; i++) {
@@ -142,7 +141,7 @@ static void putstring(upb_json_printer *p, const char *buf, unsigned int len) {
       char escape_buf[8];
       if (!escape) {
         unsigned char byte = (unsigned char)c;
-        _upb_snprintf(escape_buf, sizeof(escape_buf), "\\u%04x", (int)byte);
+        snprintf(escape_buf, sizeof(escape_buf), "\\u%04x", (int)byte);
         escape = escape_buf;
       }
 
@@ -181,55 +180,53 @@ const char neginf[] = "\"-Infinity\"";
 const char inf[] = "\"Infinity\"";
 
 static size_t fmt_double(double val, char* buf, size_t length) {
-  if (val == UPB_INFINITY) {
+  if (val == INFINITY) {
     CHKLENGTH(length >= strlen(inf));
     strcpy(buf, inf);
     return strlen(inf);
-  } else if (val == -UPB_INFINITY) {
+  } else if (val == -INFINITY) {
     CHKLENGTH(length >= strlen(neginf));
     strcpy(buf, neginf);
     return strlen(neginf);
   } else {
-    size_t n = _upb_snprintf(buf, length, "%.17g", val);
+    size_t n = snprintf(buf, length, "%.17g", val);
     CHKLENGTH(n > 0 && n < length);
     return n;
   }
 }
 
 static size_t fmt_float(float val, char* buf, size_t length) {
-  size_t n = _upb_snprintf(buf, length, "%.8g", val);
+  size_t n = snprintf(buf, length, "%.8g", val);
   CHKLENGTH(n > 0 && n < length);
   return n;
 }
 
 static size_t fmt_bool(bool val, char* buf, size_t length) {
-  size_t n = _upb_snprintf(buf, length, "%s", (val ? "true" : "false"));
+  size_t n = snprintf(buf, length, "%s", (val ? "true" : "false"));
   CHKLENGTH(n > 0 && n < length);
   return n;
 }
 
-static size_t fmt_int64_as_number(long long val, char* buf, size_t length) {
-  size_t n = _upb_snprintf(buf, length, "%lld", val);
+static size_t fmt_int64_as_number(int64_t val, char* buf, size_t length) {
+  size_t n = snprintf(buf, length, "%" PRId64, val);
   CHKLENGTH(n > 0 && n < length);
   return n;
 }
 
-static size_t fmt_uint64_as_number(
-    unsigned long long val, char* buf, size_t length) {
-  size_t n = _upb_snprintf(buf, length, "%llu", val);
+static size_t fmt_uint64_as_number(uint64_t val, char* buf, size_t length) {
+  size_t n = snprintf(buf, length, "%" PRIu64, val);
   CHKLENGTH(n > 0 && n < length);
   return n;
 }
 
-static size_t fmt_int64_as_string(long long val, char* buf, size_t length) {
-  size_t n = _upb_snprintf(buf, length, "\"%lld\"", val);
+static size_t fmt_int64_as_string(int64_t val, char* buf, size_t length) {
+  size_t n = snprintf(buf, length, "\"%" PRId64 "\"", val);
   CHKLENGTH(n > 0 && n < length);
   return n;
 }
 
-static size_t fmt_uint64_as_string(
-    unsigned long long val, char* buf, size_t length) {
-  size_t n = _upb_snprintf(buf, length, "\"%llu\"", val);
+static size_t fmt_uint64_as_string(uint64_t val, char* buf, size_t length) {
+  size_t n = snprintf(buf, length, "\"%" PRIu64 "\"", val);
   CHKLENGTH(n > 0 && n < length);
   return n;
 }
@@ -875,12 +872,12 @@ static bool printer_enddurationmsg(void *closure, const void *handler_data,
     return false;
   }
 
-  _upb_snprintf(buffer, sizeof(buffer), "%ld", (long)p->seconds);
+  snprintf(buffer, sizeof(buffer), "%ld", (long)p->seconds);
   base_len = strlen(buffer);
 
   if (p->nanos != 0) {
     char nanos_buffer[UPB_DURATION_MAX_NANO_LEN + 3];
-    _upb_snprintf(nanos_buffer, sizeof(nanos_buffer), "%.9f",
+    snprintf(nanos_buffer, sizeof(nanos_buffer), "%.9f",
                   p->nanos / 1000000000.0);
     /* Remove trailing 0. */
     for (i = UPB_DURATION_MAX_NANO_LEN + 2;
@@ -954,8 +951,8 @@ static bool printer_endtimestampmsg(void *closure, const void *handler_data,
            "%Y-%m-%dT%H:%M:%S", gmtime(&time));
   if (p->nanos != 0) {
     char nanos_buffer[UPB_TIMESTAMP_MAX_NANO_LEN + 3];
-    _upb_snprintf(nanos_buffer, sizeof(nanos_buffer), "%.9f",
-                  p->nanos / 1000000000.0);
+    snprintf(nanos_buffer, sizeof(nanos_buffer), "%.9f",
+             p->nanos / 1000000000.0);
     /* Remove trailing 0. */
     for (i = UPB_TIMESTAMP_MAX_NANO_LEN + 2;
          nanos_buffer[i] == '0'; i--) {
@@ -1129,16 +1126,16 @@ void printer_sethandlers_timestamp(const void *closure, upb_handlers *h) {
 
 void printer_sethandlers_value(const void *closure, upb_handlers *h) {
   const upb_msgdef *md = upb_handlers_msgdef(h);
-  upb_msg_field_iter i;
+  int i, n;
 
   upb_handlerattr empty_attr = UPB_HANDLERATTR_INIT;
 
   upb_handlers_setstartmsg(h, printer_startmsg_noframe, &empty_attr);
   upb_handlers_setendmsg(h, printer_endmsg_noframe, &empty_attr);
 
-  upb_msg_field_begin(&i, md);
-  for(; !upb_msg_field_done(&i); upb_msg_field_next(&i)) {
-    const upb_fielddef *f = upb_msg_iter_field(&i);
+  n = upb_msgdef_fieldcount(md);
+  for (i = 0; i < n; i++) {
+    const upb_fielddef *f = upb_msgdef_field(md, i);
 
     switch (upb_fielddef_type(f)) {
       case UPB_TYPE_ENUM:
@@ -1227,7 +1224,7 @@ void printer_sethandlers(const void *closure, upb_handlers *h) {
   const upb_msgdef *md = upb_handlers_msgdef(h);
   bool is_mapentry = upb_msgdef_mapentry(md);
   upb_handlerattr empty_attr = UPB_HANDLERATTR_INIT;
-  upb_msg_field_iter i;
+  int i, n;
   const upb_json_printercache *cache = closure;
   const bool preserve_fieldnames = cache->preserve_fieldnames;
 
@@ -1292,9 +1289,9 @@ void printer_sethandlers(const void *closure, upb_handlers *h) {
     }                                                                         \
     break;
 
-  upb_msg_field_begin(&i, md);
-  for(; !upb_msg_field_done(&i); upb_msg_field_next(&i)) {
-    const upb_fielddef *f = upb_msg_iter_field(&i);
+  n = upb_msgdef_fieldcount(md);
+  for (i = 0; i < n; i++) {
+    const upb_fielddef *f = upb_msgdef_field(md, i);
 
     upb_handlerattr name_attr = UPB_HANDLERATTR_INIT;
     name_attr.handler_data = newstrpc(h, f, preserve_fieldnames);
@@ -1372,10 +1369,6 @@ static void json_printer_reset(upb_json_printer *p) {
 
 upb_json_printer *upb_json_printer_create(upb_arena *a, const upb_handlers *h,
                                           upb_bytessink output) {
-#ifndef NDEBUG
-  size_t size_before = upb_arena_bytesallocated(a);
-#endif
-
   upb_json_printer *p = upb_arena_malloc(a, sizeof(upb_json_printer));
   if (!p) return NULL;
 
@@ -1385,9 +1378,6 @@ upb_json_printer *upb_json_printer_create(upb_arena *a, const upb_handlers *h,
   p->seconds = 0;
   p->nanos = 0;
 
-  /* If this fails, increase the value in printer.h. */
-  UPB_ASSERT_DEBUGVAR(upb_arena_bytesallocated(a) - size_before <=
-                      UPB_JSON_PRINTER_SIZE);
   return p;
 }
 

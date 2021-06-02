@@ -1,0 +1,40 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test", "go_tool_library")
+
+go_library(
+    name = "ifaceassert",
+    srcs = ["ifaceassert.go"],
+    importpath = "golang.org/x/tools/go/analysis/passes/ifaceassert",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/analysis",
+        "//go/analysis/passes/inspect",
+        "//go/ast/inspector",
+    ],
+)
+
+go_tool_library(
+    name = "go_tool_library",
+    srcs = ["ifaceassert.go"],
+    importpath = "golang.org/x/tools/go/analysis/passes/ifaceassert",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/analysis:go_tool_library",
+        "//go/analysis/passes/inspect:go_tool_library",
+        "//go/ast/inspector:go_tool_library",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":ifaceassert",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "ifaceassert_test",
+    srcs = ["ifaceassert_test.go"],
+    deps = [
+        ":ifaceassert",
+        "//go/analysis/analysistest",
+    ],
+)

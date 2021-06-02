@@ -17,6 +17,7 @@ package golang
 
 import (
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/bazelbuild/bazel-gazelle/language"
@@ -83,27 +84,42 @@ func (*goLang) ImportRepos(args language.ImportReposArgs) language.ImportReposRe
 			}
 		}
 	}
+	sortRules(res.Gen)
 	return res
 }
 
 func setBuildAttrs(gc *goConfig, r *rule.Rule) {
+	if gc.buildDirectivesAttr != "" {
+		buildDirectives := strings.Split(gc.buildDirectivesAttr, ",")
+		r.SetAttr("build_directives", buildDirectives)
+	}
 	if gc.buildExternalAttr != "" {
 		r.SetAttr("build_external", gc.buildExternalAttr)
-	}
-	if gc.buildFileNamesAttr != "" {
-		r.SetAttr("build_file_name", gc.buildFileNamesAttr)
-	}
-	if gc.buildFileGenerationAttr != "" {
-		r.SetAttr("build_file_generation", gc.buildFileGenerationAttr)
-	}
-	if gc.buildTagsAttr != "" {
-		r.SetAttr("build_tags", gc.buildTagsAttr)
-	}
-	if gc.buildFileProtoModeAttr != "" {
-		r.SetAttr("build_file_proto_mode", gc.buildFileProtoModeAttr)
 	}
 	if gc.buildExtraArgsAttr != "" {
 		extraArgs := strings.Split(gc.buildExtraArgsAttr, ",")
 		r.SetAttr("build_extra_args", extraArgs)
 	}
+	if gc.buildFileGenerationAttr != "" {
+		r.SetAttr("build_file_generation", gc.buildFileGenerationAttr)
+	}
+	if gc.buildFileNamesAttr != "" {
+		r.SetAttr("build_file_name", gc.buildFileNamesAttr)
+	}
+	if gc.buildFileProtoModeAttr != "" {
+		r.SetAttr("build_file_proto_mode", gc.buildFileProtoModeAttr)
+	}
+	if gc.buildTagsAttr != "" {
+		buildTags := strings.Split(gc.buildTagsAttr, ",")
+		r.SetAttr("build_tags", buildTags)
+	}
+}
+
+func sortRules(rules []*rule.Rule) {
+	sort.SliceStable(rules, func(i, j int) bool {
+		if cmp := strings.Compare(rules[i].Name(), rules[j].Name()); cmp != 0 {
+			return cmp < 0
+		}
+		return rules[i].AttrString("importpath") < rules[j].AttrString("importpath")
+	})
 }

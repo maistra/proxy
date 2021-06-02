@@ -13,35 +13,18 @@
 # limitations under the License.
 
 load(
-    "@io_bazel_rules_go//go/private:sdk.bzl",
-    _go_register_toolchains = "go_register_toolchains",
-)
-load(
-    "@io_bazel_rules_go//go/private:sdk_list.bzl",
-    _DEFAULT_VERSION = "DEFAULT_VERSION",
-    _MIN_SUPPORTED_VERSION = "MIN_SUPPORTED_VERSION",
-    _SDK_REPOSITORIES = "SDK_REPOSITORIES",
-)
-load(
     "@io_bazel_rules_go//go/private:platforms.bzl",
     "GOARCH_CONSTRAINTS",
     "GOOS_CONSTRAINTS",
     "PLATFORMS",
 )
 
-# These symbols should be loaded from sdk.bzl or deps.bzl instead of here..
-DEFAULT_VERSION = _DEFAULT_VERSION
-MIN_SUPPORTED_VERSION = _MIN_SUPPORTED_VERSION
-SDK_REPOSITORIES = _SDK_REPOSITORIES
-go_register_toolchains = _go_register_toolchains
-
 def declare_constraints():
     """Generates constraint_values and platform targets for valid platforms.
 
     Each constraint_value corresponds to a valid goos or goarch.
     The goos and goarch values belong to the constraint_settings
-    @platforms//os:os and @platforms//cpu:cpu, respectively (which are
-    aliased through @io_bazel_rules_go_compat//platforms for compatibility).
+    @platforms//os:os and @platforms//cpu:cpu, respectively.
     To avoid redundancy, if there is an equivalent value in @platforms,
     we define an alias here instead of another constraint_value.
 
@@ -54,7 +37,7 @@ def declare_constraints():
         if constraint.startswith("@io_bazel_rules_go//go/toolchain:"):
             native.constraint_value(
                 name = goos,
-                constraint_setting = "@io_bazel_rules_go_compat//platforms:os",
+                constraint_setting = "@platforms//os:os",
             )
         else:
             native.alias(
@@ -66,7 +49,7 @@ def declare_constraints():
         if constraint.startswith("@io_bazel_rules_go//go/toolchain:"):
             native.constraint_value(
                 name = goarch,
-                constraint_setting = "@io_bazel_rules_go_compat//platforms:cpu",
+                constraint_setting = "@platforms//cpu:cpu",
             )
         else:
             native.alias(

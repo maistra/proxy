@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
-    name = "go_default_library",
+    name = "present",
     srcs = [
         "args.go",
         "caption.go",
@@ -17,14 +17,28 @@ go_library(
     ],
     importpath = "golang.org/x/tools/present",
     visibility = ["//visibility:public"],
+    deps = [
+        "@com_github_yuin_goldmark//:go_default_library",
+        "@com_github_yuin_goldmark//ast:go_default_library",
+        "@com_github_yuin_goldmark//renderer/html:go_default_library",
+        "@com_github_yuin_goldmark//text:go_default_library",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":present",
+    visibility = ["//visibility:public"],
 )
 
 go_test(
-    name = "go_default_test",
+    name = "present_test",
     srcs = [
         "code_test.go",
         "link_test.go",
+        "parse_test.go",
         "style_test.go",
     ],
-    embed = [":go_default_library"],
+    data = glob(["testdata/**"]),
+    embed = [":present"],
 )

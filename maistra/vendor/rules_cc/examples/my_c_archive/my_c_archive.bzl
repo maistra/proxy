@@ -30,14 +30,19 @@ def _my_c_archive_impl(ctx):
         unsupported_features = ctx.disabled_features,
     )
 
-    library_to_link = cc_common.create_library_to_link(
-        actions = ctx.actions,
-        feature_configuration = feature_configuration,
-        cc_toolchain = cc_toolchain,
-        static_library = output_file,
+    linker_input = cc_common.create_linker_input(
+        owner = ctx.label,
+        libraries = depset(direct = [
+            cc_common.create_library_to_link(
+                actions = ctx.actions,
+                feature_configuration = feature_configuration,
+                cc_toolchain = cc_toolchain,
+                static_library = output_file,
+            ),
+        ]),
     )
     compilation_context = cc_common.create_compilation_context()
-    linking_context = cc_common.create_linking_context(libraries_to_link = [library_to_link])
+    linking_context = cc_common.create_linking_context(linker_inputs = depset(direct = [linker_input]))
 
     archiver_path = cc_common.get_tool_for_action(
         feature_configuration = feature_configuration,
@@ -85,10 +90,11 @@ def _my_c_archive_impl(ctx):
 my_c_archive = rule(
     implementation = _my_c_archive_impl,
     attrs = {
-        "object": attr.label(mandatory = True, providers = [MyCCompileInfo]),
         "deps": attr.label_list(providers = [CcInfo]),
+        "object": attr.label(mandatory = True, providers = [MyCCompileInfo]),
         "_cc_toolchain": attr.label(default = Label("@bazel_tools//tools/cpp:current_cc_toolchain")),
     },
     fragments = ["cpp"],
     toolchains = ["@bazel_tools//tools/cpp:toolchain_type"],
+    incompatible_use_toolchain_transition = True,
 )

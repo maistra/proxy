@@ -21,13 +21,14 @@
 
 #include <grpc/support/port_platform.h>
 
-#include "src/core/tsi/grpc_shadow_boringssl.h"
-
 #include <grpc/slice.h>
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wmodule-import-in-extern-c"
 extern "C" {
 #include <openssl/ssl.h>
 }
+#pragma clang diagnostic pop
 
 #include "src/core/lib/gprpp/ref_counted.h"
 
@@ -57,7 +58,7 @@ class SslCachedSession {
   SslCachedSession& operator=(const SslCachedSession&) = delete;
 
   /// Create single cached instance of \a session.
-  static grpc_core::UniquePtr<SslCachedSession> Create(SslSessionPtr session);
+  static std::unique_ptr<SslCachedSession> Create(SslSessionPtr session);
 
   virtual ~SslCachedSession() = default;
 

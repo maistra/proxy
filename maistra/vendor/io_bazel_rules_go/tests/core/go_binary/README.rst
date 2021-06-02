@@ -3,6 +3,7 @@ Basic go_binary functionality
 
 .. _go_binary: /go/core.rst#_go_binary
 .. _#2168: https://github.com/bazelbuild/rules_go/issues/2168
+.. _#2463: https://github.com/bazelbuild/rules_go/issues/2463
 
 Tests to ensure the basic features of go_binary are working as expected.
 
@@ -15,8 +16,14 @@ Useful as a primitive smoke test -- if this doesn't build, nothing will.
 out_test
 --------
 
-Test that a `go_binary`_ rule can write its executable file with a custom name
+Tests that a `go_binary`_ rule can write its executable file with a custom name
 in the package directory (not the mode directory).
+
+package_conflict_test
+---------------------
+
+Tests that linking multiple packages with the same path (`importmap`) is an
+error.
 
 goos_pure_bin
 -------------
@@ -51,3 +58,13 @@ produce static binaries. Verifies `#2168`_.
 
 This test only runs on Linux. The darwin external linker cannot produce
 static binaries since there is no static version of C runtime libraries.
+
+tags_bin
+--------
+Checks that setting ``gotags`` affects source filtering. This binary won't build
+without a specific tag being set.
+
+prefix
+------
+This binary has a name that conflicts with a subdirectory. Its output file
+name should not have this conflict. Verifies `#2463`_.

@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
 
 go_library(
-    name = "go_default_library",
+    name = "guru_lib",
     srcs = [
         "callees.go",
         "callers.go",
@@ -24,33 +24,33 @@ go_library(
     importpath = "golang.org/x/tools/cmd/guru",
     visibility = ["//visibility:private"],
     deps = [
-        "//cmd/guru/serial:go_default_library",
-        "//go/ast/astutil:go_default_library",
-        "//go/buildutil:go_default_library",
-        "//go/callgraph:go_default_library",
-        "//go/callgraph/static:go_default_library",
-        "//go/loader:go_default_library",
-        "//go/pointer:go_default_library",
-        "//go/ssa:go_default_library",
-        "//go/ssa/ssautil:go_default_library",
-        "//go/types/typeutil:go_default_library",
-        "//imports:go_default_library",
-        "//refactor/importgraph:go_default_library",
+        "//cmd/guru/serial",
+        "//go/ast/astutil",
+        "//go/buildutil",
+        "//go/callgraph",
+        "//go/callgraph/static",
+        "//go/loader",
+        "//go/pointer",
+        "//go/ssa",
+        "//go/ssa/ssautil",
+        "//go/types/typeutil",
+        "//imports",
+        "//refactor/importgraph",
     ],
 )
 
 go_binary(
     name = "guru",
-    embed = [":go_default_library"],
+    embed = [":guru_lib"],
     visibility = ["//visibility:public"],
 )
 
 go_test(
-    name = "go_default_test",
+    name = "guru_test",
     srcs = [
         "guru_test.go",
         "unit_test.go",
     ],
-    embed = [":go_default_library"],
-    deps = ["//internal/testenv:go_default_library"],
+    embed = [":guru_lib"],
+    deps = ["//internal/testenv"],
 )

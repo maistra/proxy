@@ -21,7 +21,7 @@ public:
   const std::string& certificateRevocationList() const override {
     return certificate_revocation_list_;
   }
-  const std::string& certificateRevocationListPath() const override {
+  const std::string& certificateRevocationListPath() const final {
     return certificate_revocation_list_path_;
   }
   const std::vector<std::string>& verifySubjectAltNameList() const override {
@@ -44,6 +44,13 @@ public:
     return trust_chain_verification_;
   }
 
+  const absl::optional<envoy::config::core::v3::TypedExtensionConfig>&
+  customValidatorConfig() const override {
+    return custom_validator_config_;
+  }
+
+  Api::Api& api() const override { return api_; }
+
 private:
   const std::string ca_cert_;
   const std::string ca_cert_path_;
@@ -56,6 +63,8 @@ private:
   const bool allow_expired_certificate_;
   const envoy::extensions::transport_sockets::tls::v3::CertificateValidationContext::
       TrustChainVerification trust_chain_verification_;
+  const absl::optional<envoy::config::core::v3::TypedExtensionConfig> custom_validator_config_;
+  Api::Api& api_;
 };
 
 } // namespace Ssl

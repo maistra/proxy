@@ -26,18 +26,23 @@ class RegExpStackScope {
   // Initializes the stack memory area if necessary.
   explicit RegExpStackScope(Isolate* isolate);
   ~RegExpStackScope();  // Releases the stack if it has grown.
+  RegExpStackScope(const RegExpStackScope&) = delete;
+  RegExpStackScope& operator=(const RegExpStackScope&) = delete;
 
   RegExpStack* stack() const { return regexp_stack_; }
 
  private:
   RegExpStack* regexp_stack_;
-
-  DISALLOW_COPY_AND_ASSIGN(RegExpStackScope);
 };
 
 
 class RegExpStack {
  public:
+  RegExpStack();
+  ~RegExpStack();
+  RegExpStack(const RegExpStack&) = delete;
+  RegExpStack& operator=(const RegExpStack&) = delete;
+
   // Number of allocated locations on the stack below the limit.
   // No sequence of pushes must be longer that this without doing a stack-limit
   // check.
@@ -65,9 +70,12 @@ class RegExpStack {
   // If passing zero, the default/minimum size buffer is allocated.
   Address EnsureCapacity(size_t size);
 
+  bool is_in_use() const { return thread_local_.is_in_use_; }
+  void set_is_in_use(bool v) { thread_local_.is_in_use_ = v; }
+
   // Thread local archiving.
   static constexpr int ArchiveSpacePerThread() {
-    return static_cast<int>(sizeof(ThreadLocal));
+    return static_cast<int>(kThreadLocalSize);
   }
   char* ArchiveStack(char* to);
   char* RestoreStack(char* from);
@@ -77,9 +85,6 @@ class RegExpStack {
   static constexpr size_t kMaximumStackSize = 64 * MB;
 
  private:
-  RegExpStack();
-  ~RegExpStack();
-
   // Artificial limit used when the thread-local state has been destroyed.
   static const Address kMemoryTop =
       static_cast<Address>(static_cast<uintptr_t>(-1));
@@ -112,10 +117,12 @@ class RegExpStack {
     size_t memory_size_ = 0;
     Address limit_ = kNullAddress;
     bool owns_memory_ = false;  // Whether memory_ is owned and must be freed.
+    bool is_in_use_ = false;    // To guard against reentrancy.
 
     void ResetToStaticStack(RegExpStack* regexp_stack);
     void FreeAndInvalidate();
   };
+  static constexpr size_t kThreadLocalSize = sizeof(ThreadLocal);
 
   // Address of top of memory used as stack.
   Address memory_top_address_address() {
@@ -133,8 +140,6 @@ class RegExpStack {
   friend class ExternalReference;
   friend class Isolate;
   friend class RegExpStackScope;
-
-  DISALLOW_COPY_AND_ASSIGN(RegExpStack);
 };
 
 }  // namespace internal

@@ -13,23 +13,19 @@
 # limitations under the License.
 
 load(
-    "@io_bazel_rules_go//go/private:common.bzl",
+    "//go/private:common.bzl",
     "asm_exts",
     "cgo_exts",
     "go_exts",
 )
 load(
-    "@io_bazel_rules_go//go/private:context.bzl",
+    "//go/private:context.bzl",
     "go_context",
 )
 load(
-    "@io_bazel_rules_go//go/private:providers.bzl",
+    "//go/private:providers.bzl",
     "GoLibrary",
     "INFERRED_PATH",
-)
-load(
-    "@io_bazel_rules_go//go/private:rules/rule.bzl",
-    "go_rule",
 )
 
 def _go_library_impl(ctx):
@@ -54,7 +50,7 @@ def _go_library_impl(ctx):
         ),
     ]
 
-go_library = go_rule(
+go_library = rule(
     _go_library_impl,
     attrs = {
         "data": attr.label_list(allow_files = True),
@@ -72,15 +68,14 @@ go_library = go_rule(
         "copts": attr.string_list(),
         "cxxopts": attr.string_list(),
         "clinkopts": attr.string_list(),
+        "_go_context_data": attr.label(default = "//:go_context_data"),
     },
+    toolchains = ["@io_bazel_rules_go//go:toolchain"],
 )
-"""See go/core.rst#go_library for full documentation."""
+# See go/core.rst#go_library for full documentation.
 
-go_tool_library = go_rule(
+go_tool_library = rule(
     _go_library_impl,
-    bootstrap_attrs = [
-        "_stdlib",
-    ],
     attrs = {
         "data": attr.label_list(allow_files = True),
         "srcs": attr.label_list(allow_files = True),
@@ -90,12 +85,14 @@ go_tool_library = go_rule(
         "embed": attr.label_list(providers = [GoLibrary]),
         "gc_goopts": attr.string_list(),
         "x_defs": attr.string_dict(),
+        "_go_config": attr.label(default = "//:go_config"),
+        "_cgo_context_data": attr.label(default = "//:cgo_context_data_proxy"),
+        "_stdlib": attr.label(default = "//:stdlib"),
     },
+    toolchains = ["@io_bazel_rules_go//go:toolchain"],
 )
-"""
-This is used instead of `go_library` for dependencies of the `nogo` rule and
-packages that are depended on implicitly by code generated within the Go rules.
-This avoids a bootstrapping problem.
+# This is used instead of `go_library` for dependencies of the `nogo` rule and
+# packages that are depended on implicitly by code generated within the Go rules.
+# This avoids a bootstrapping problem.
 
-See go/core.rst#go_tool_library for full documentation.
-"""
+# See go/core.rst#go_tool_library for full documentation.

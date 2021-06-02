@@ -38,7 +38,7 @@ import (
 // handle them, and ar may not be available (cpp.ar_executable is libtool
 // on darwin).
 func pack(args []string) error {
-	args, err := readParamsFiles(args)
+	args, err := expandParamsFiles(args)
 	if err != nil {
 		return err
 	}
@@ -118,26 +118,33 @@ const (
 	// entryLength is the size in bytes of the metadata preceding each file
 	// in an archive.
 	entryLength = 60
+
+	// pkgDef is the name of the export data file within an archive
+	pkgDef = "__.PKGDEF"
+
+	// nogoFact is the name of the nogo fact file
+	nogoFact = "nogo.out"
 )
 
 var zeroBytes = []byte("0                    ")
 
+type bufioReaderWithCloser struct {
+	// bufio.Reader is needed to skip bytes in archives
+	*bufio.Reader
+	io.Closer
+}
+
 func extractFiles(archive, dir string, names map[string]struct{}) (files []string, err error) {
-	f, err := os.Open(archive)
+	rc, err := openArchive(archive)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
-	r := bufio.NewReader(f)
-
-	header := make([]byte, len(arHeader))
-	if _, err := io.ReadFull(r, header); err != nil || string(header) != arHeader {
-		return nil, fmt.Errorf("%s: bad header", archive)
-	}
+	defer rc.Close()
 
 	var nameData []byte
+	bufReader := rc.Reader
 	for {
-		name, size, err := readMetadata(r, &nameData)
+		name, size, err := readMetadata(bufReader, &nameData)
 		if err == io.EOF {
 			return files, nil
 		}
@@ -145,7 +152,7 @@ func extractFiles(archive, dir string, names map[string]struct{}) (files []strin
 			return nil, err
 		}
 		if !isObjectFile(name) {
-			if err := skipFile(r, size); err != nil {
+			if err := skipFile(bufReader, size); err != nil {
 				return nil, err
 			}
 			continue
@@ -155,11 +162,25 @@ func extractFiles(archive, dir string, names map[string]struct{}) (files []strin
 			return nil, err
 		}
 		name = filepath.Join(dir, name)
-		if err := extractFile(r, name, size); err != nil {
+		if err := extractFile(bufReader, name, size); err != nil {
 			return nil, err
 		}
 		files = append(files, name)
 	}
+}
+
+func openArchive(archive string) (bufioReaderWithCloser, error) {
+	f, err := os.Open(archive)
+	if err != nil {
+		return bufioReaderWithCloser{}, err
+	}
+	r := bufio.NewReader(f)
+	header := make([]byte, len(arHeader))
+	if _, err := io.ReadFull(r, header); err != nil || string(header) != arHeader {
+		f.Close()
+		return bufioReaderWithCloser{}, fmt.Errorf("%s: bad header", archive)
+	}
+	return bufioReaderWithCloser{r, f}, nil
 }
 
 // readMetadata reads the relevant fields of an entry. Before calling,
@@ -329,4 +350,71 @@ func appendFiles(goenv *env, archive string, files []string) error {
 	args := goenv.goTool("pack", "r", archive)
 	args = append(args, files...)
 	return goenv.runCommand(args)
+}
+
+type readWithCloser struct {
+	io.Reader
+	io.Closer
+}
+
+func readFileInArchive(fileName, archive string) (io.ReadCloser, error) {
+	rc, err := openArchive(archive)
+	if err != nil {
+		return nil, err
+	}
+	var nameData []byte
+	bufReader := rc.Reader
+	for err == nil {
+		// avoid shadowing err in the loop it can be returned correctly in the end
+		var (
+			name string
+			size int64
+		)
+		name, size, err = readMetadata(bufReader, &nameData)
+		if err != nil {
+			break
+		}
+		if name == fileName {
+			return readWithCloser{
+				Reader: io.LimitReader(rc, size),
+				Closer: rc,
+			}, nil
+		}
+		err = skipFile(bufReader, size)
+	}
+	if err == io.EOF {
+		err = os.ErrNotExist
+	}
+	rc.Close()
+	return nil, err
+}
+
+func extractFileFromArchive(archive, dir, name string) (err error) {
+	archiveReader, err := readFileInArchive(name, archive)
+	if err != nil {
+		return fmt.Errorf("error reading %s from %s: %v", name, archive, err)
+	}
+	defer func() {
+		e := archiveReader.Close()
+		if e != nil && err == nil {
+			err = fmt.Errorf("error closing %q: %v", archive, e)
+		}
+	}()
+	outPath := filepath.Join(dir, pkgDef)
+	outFile, err := os.Create(outPath)
+	if err != nil {
+		return fmt.Errorf("error creating %s: %v", outPath, err)
+	}
+	defer func() {
+		e := outFile.Close()
+		if e != nil && err == nil {
+			err = fmt.Errorf("error closing %q: %v", outPath, e)
+		}
+	}()
+	if size, err := io.Copy(outFile, archiveReader); err != nil {
+		return fmt.Errorf("error writing %s: %v", outPath, err)
+	} else if size == 0 {
+		return fmt.Errorf("%s is empty in %s", name, archive)
+	}
+	return err
 }

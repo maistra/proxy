@@ -16,7 +16,10 @@ package race_test
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"os/exec"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -66,6 +69,31 @@ go_test(
     race = "on",
 )
 
+go_binary(
+    name = "pure_bin",
+    srcs = ["pure_bin.go"],
+    pure = "on",
+)
+
+go_binary(
+    name = "pure_race_bin",
+    srcs = ["pure_bin.go"],
+    pure = "on",
+    race = "on",
+)
+
+go_library(
+		name = "coverrace",
+		srcs = ["coverrace.go"],
+		importpath = "example.com/coverrace",
+)
+
+go_test(
+		name = "coverrace_test",
+		srcs = ["coverrace_test.go"],
+		embed = [":coverrace"],
+    race = "on",
+)
 -- race_off.go --
 // +build !race
 
@@ -128,14 +156,51 @@ func TestRace(t *testing.T) {
 }
 
 -- empty.s --
+-- pure_bin.go --
+// +build !race
+
+// pure_bin will not build in race mode, since its sources will be excluded.
+package main
+
+func main() {}
+
+-- coverrace.go --
+package coverrace
+// copied from https://hermanschaaf.com/running-the-go-race-detector-with-cover/
+func add100() int {
+	total := 0
+	c := make(chan int, 1)
+	for i := 0; i < 100; i++ {
+		go func(chan int) {
+			c <- 1
+		}(c)
+	}
+	for u := 0; u < 100; u++ {
+		total += <-c
+	}
+	return total
+}
+
+-- coverrace_test.go --
+package coverrace
+// copied from https://hermanschaaf.com/running-the-go-race-detector-with-cover/
+
+import "testing"
+
+func TestCoverRace(t *testing.T) {
+	got := add100()
+	if got != 100 {
+		t.Errorf("got %d, want %d", got, 100)
+	}
+}
 `,
 	})
 }
 
 func Test(t *testing.T) {
 	for _, test := range []struct {
-		desc, cmd, target     string
-		featureFlag, wantRace bool
+		desc, cmd, target                    string
+		featureFlag, wantRace, wantBuildFail bool
 	}{
 		{
 			desc:   "cmd_auto",
@@ -167,30 +232,69 @@ func Test(t *testing.T) {
 			target:      "//:racy_test",
 			featureFlag: true,
 			wantRace:    true,
+		}, {
+			desc:        "pure_bin",
+			cmd:         "build",
+			target:      "//:pure_bin",
+			featureFlag: true,
+		}, {
+			desc:          "pure_race_bin",
+			cmd:           "build",
+			target:        "//:pure_race_bin",
+			wantBuildFail: true,
+		}, {
+			desc:   "cover_race",
+			cmd:    "coverage",
+			target: "//:coverrace_test",
 		},
 	} {
 		t.Run(test.desc, func(t *testing.T) {
+			// TODO(#2518): fix coverage tests on Windows
+			if test.cmd == "coverage" && runtime.GOOS == "windows" {
+				t.Skip("TODO(#2518): fix and enable coverage tests on Windows")
+			}
 			args := []string{test.cmd}
 			if test.featureFlag {
-				args = append(args, "--feature=race")
+				args = append(args, "--@io_bazel_rules_go//go/config:race")
 			}
 			args = append(args, test.target)
 			if test.cmd == "test" {
 				args = append(args, fmt.Sprintf("--test_arg=-wantrace=%v", test.wantRace))
-			} else {
+			} else if test.cmd == "run" {
 				args = append(args, "--", fmt.Sprintf("-wantrace=%v", test.wantRace))
 			}
 			cmd := bazel_testing.BazelCmd(args...)
 			stderr := &bytes.Buffer{}
 			cmd.Stderr = stderr
+			t.Logf("running: bazel %s", strings.Join(args, " "))
 			if err := cmd.Run(); err != nil {
-				if bytes.Contains(stderr.Bytes(), []byte("!!!")) {
-					t.Fatalf("error running %s:\n%s", strings.Join(cmd.Args, " "), stderr.Bytes())
-				} else if !test.wantRace {
-					t.Fatalf("error running %s without race enabled\n%s", strings.Join(cmd.Args, " "), stderr.Bytes())
+				var xerr *exec.ExitError
+				if !errors.As(err, &xerr) {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				if xerr.ExitCode() == bazel_testing.BUILD_FAILURE {
+					if !test.wantBuildFail {
+						t.Fatalf("unexpected build failure: %v\nstderr:\n%s", err, stderr.Bytes())
+					}
+					return
+				} else if xerr.ExitCode() == bazel_testing.TESTS_FAILED {
+					if bytes.Contains(stderr.Bytes(), []byte("!!!")) {
+						t.Fatalf("error running %s:\n%s", strings.Join(cmd.Args, " "), stderr.Bytes())
+					} else if !test.wantRace {
+						t.Fatalf("error running %s without race enabled\n%s", strings.Join(cmd.Args, " "), stderr.Bytes())
+					}
+				} else if test.wantRace {
+					if !bytes.Contains(stderr.Bytes(), []byte("WARNING: DATA RACE")) {
+						t.Fatalf("wanted data race; command failed with: %v\nstderr:\n%s", err, stderr.Bytes())
+					}
+					return
+				} else {
+					t.Fatalf("unexpected error: %v\nstderr:\n%s", err, stderr.Bytes())
 				}
 			} else if test.wantRace {
 				t.Fatalf("command %s with race enabled did not fail", strings.Join(cmd.Args, " "))
+			} else if test.wantBuildFail {
+				t.Fatalf("target %s did not fail to build", test.target)
 			}
 		})
 	}

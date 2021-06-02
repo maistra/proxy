@@ -1,21 +1,14 @@
 # rules_foreign_cc
 [![Build status](https://badge.buildkite.com/c28afbf846e2077715c753dda1f4b820cdcc46cc6cde16503c.svg)](https://buildkite.com/bazel/rules-foreign-cc)
 
-Rules for building C/C++ projects using foreign build systems inside Bazel projects.
+**Rules for building C/C++ projects using foreign build systems inside Bazel projects.**
 
-* <span style="color:red">**Experimental** - API will most definitely change.</span>
-* This is not an officially supported Google product
+This is **not an officially supported Google product**
 (meaning, support and/or new releases may be limited.)
 
 ## Bazel versions compatibility
 
-**Bazel HEAD after [cae1e816e](https://github.com/bazelbuild/bazel/commit/cae1e816e5e1142fbd4aefdd29bffb2cbad71fa8) or 0.23+:**
-
-No flags are required, works on Windows.
-
-**Bazel 0.22:**
-
-No flags are required, but unfortunately Bazel's Starlark C++ API **is broken on Windows**.
+Works with Bazel after 3.0.0 without any flags.
 
 ## News
 **March 2019:**
@@ -95,15 +88,20 @@ load("@rules_foreign_cc//:workspace_definitions.bzl", "rules_foreign_cc_dependen
 #
 #  Args:
 #    native_tools_toolchains: pass the toolchains for toolchain types
+#      '@rules_foreign_cc//tools/build_defs:make_toolchain',
 #      '@rules_foreign_cc//tools/build_defs:cmake_toolchain' and
 #      '@rules_foreign_cc//tools/build_defs:ninja_toolchain' with the needed platform constraints.
 #      If you do not pass anything, registered default toolchains will be selected (see below).
 #  
-#    register_default_tools: if True, the cmake and ninja toolchains, calling corresponding
-#      preinstalled binaries by name (cmake, ninja) will be registered after
+#    register_default_tools: if True, the make, cmake and ninja toolchains, calling corresponding
+#      preinstalled binaries by name (make, cmake, ninja) will be registered after
 #      'native_tools_toolchains' without any platform constraints.
 #      The default is True.
-rules_foreign_cc_dependencies(["//:my_cmake_toolchain", "//:my_ninja_toolchain"])
+rules_foreign_cc_dependencies([
+    "//:my_make_toolchain",
+    "//:my_cmake_toolchain",
+    "//:my_ninja_toolchain",
+])
 
 # OpenBLAS source code repository
 http_archive(
@@ -247,6 +245,9 @@ attrs: {
     # cache_entries - the rule makes only a poor guess about the target system,
     # it is better to specify it manually.
     "generate_crosstool_file": attr.bool(mandatory = False, default = False),
+    # Working directory, with the main CMakeLists.txt
+    # (otherwise, the top directory of the lib_source label files is used.)
+    "working_directory": attr.string(mandatory = False, default = ""),
     #
     # From framework.bzl:
     # 
@@ -276,7 +277,7 @@ attrs: {
     #
     # Optional dependencies to be copied into the directory structure.
     # Typically those directly required for the external building of the library/binaries.
-    # (i.e. those that the external buidl system will be looking for and paths to which are
+    # (i.e. those that the external build system will be looking for and paths to which are
     # provided by the calling rule)
     "deps": attr.label_list(mandatory = False, allow_files = True, default = []),
     # Optional tools to be copied into the directory structure.

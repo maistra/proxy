@@ -21,20 +21,19 @@
 
 #include <grpc/support/port_platform.h>
 
+#include <string>
+
 #include "src/core/lib/channel/channel_args.h"
 #include "src/core/lib/channel/channel_stack.h"
 #include "src/core/lib/channel/channel_trace.h"
 #include "src/core/lib/channel/channelz.h"
 
 namespace grpc_core {
-
-class Subchannel;
-
 namespace channelz {
 
 class SubchannelNode : public BaseNode {
  public:
-  SubchannelNode(const char* target_address, size_t channel_tracer_max_nodes);
+  SubchannelNode(std::string target_address, size_t channel_tracer_max_nodes);
   ~SubchannelNode() override;
 
   // Sets the subchannel's connectivity state without health checking.
@@ -45,7 +44,7 @@ class SubchannelNode : public BaseNode {
   // subchannel unrefs the transport.
   void SetChildSocket(RefCountedPtr<SocketNode> socket);
 
-  grpc_json* RenderJson() override;
+  Json RenderJson() override;
 
   // proxy methods to composed classes.
   void AddTraceEvent(ChannelTrace::Severity severity, const grpc_slice& data) {
@@ -62,12 +61,10 @@ class SubchannelNode : public BaseNode {
   void RecordCallSucceeded() { call_counter_.RecordCallSucceeded(); }
 
  private:
-  void PopulateConnectivityState(grpc_json* json);
-
   Atomic<grpc_connectivity_state> connectivity_state_{GRPC_CHANNEL_IDLE};
   Mutex socket_mu_;
   RefCountedPtr<SocketNode> child_socket_;
-  UniquePtr<char> target_;
+  std::string target_;
   CallCountingHelper call_counter_;
   ChannelTrace trace_;
 };

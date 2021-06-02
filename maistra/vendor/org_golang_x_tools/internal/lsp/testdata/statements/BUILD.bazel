@@ -1,0 +1,18 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "statements",
+    srcs = [
+        "append.go",
+        "if_err_check_return.go",
+        "if_err_check_return_2.go",
+    ],
+    importpath = "golang.org/x/tools/internal/lsp/testdata/statements",
+    visibility = ["//:__subpackages__"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":statements",
+    visibility = ["//:__subpackages__"],
+)

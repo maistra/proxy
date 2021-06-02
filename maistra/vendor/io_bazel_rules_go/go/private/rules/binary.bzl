@@ -13,61 +13,29 @@
 # limitations under the License.
 
 load(
-    "@io_bazel_rules_go//go/private:context.bzl",
+    "//go/private:context.bzl",
     "go_context",
 )
 load(
-    "@io_bazel_rules_go//go/private:common.bzl",
+    "//go/private:common.bzl",
     "asm_exts",
     "cgo_exts",
     "go_exts",
 )
 load(
-    "@io_bazel_rules_go//go/private:rules/aspect.bzl",
-    "go_archive_aspect",
-)
-load(
-    "@io_bazel_rules_go//go/private:rules/rule.bzl",
-    "go_rule",
-)
-load(
-    "@io_bazel_rules_go//go/private:providers.bzl",
+    "//go/private:providers.bzl",
     "GoLibrary",
     "GoSDK",
 )
 load(
-    "@io_bazel_rules_go//go/platform:list.bzl",
-    "GOARCH",
-    "GOOS",
+    "//go/private/rules:transition.bzl",
+    "go_transition_rule",
 )
 load(
-    "@io_bazel_rules_go//go/private:mode.bzl",
-    "LINKMODES",
-    "LINKMODE_NORMAL",
+    "//go/private:mode.bzl",
     "LINKMODE_PLUGIN",
     "LINKMODE_SHARED",
 )
-load(
-    "@bazel_skylib//lib:shell.bzl",
-    "shell",
-)
-
-_SHARED_ATTRS = {
-    "basename": attr.string(),
-    "data": attr.label_list(allow_files = True),
-    "srcs": attr.label_list(allow_files = go_exts + asm_exts + cgo_exts),
-    "gc_goopts": attr.string_list(),
-    "gc_linkopts": attr.string_list(),
-    "x_defs": attr.string_dict(),
-    "linkmode": attr.string(values = LINKMODES, default = LINKMODE_NORMAL),
-    "out": attr.string(),
-    "cgo": attr.bool(),
-    "cdeps": attr.label_list(),
-    "cppopts": attr.string_list(),
-    "copts": attr.string_list(),
-    "cxxopts": attr.string_list(),
-    "clinkopts": attr.string_list(),
-}
 
 def _go_binary_impl(ctx):
     """go_binary_impl emits actions for compiling and linking a go executable."""
@@ -109,85 +77,88 @@ def _go_binary_impl(ctx):
         ),
     ]
 
-go_binary = go_rule(
-    _go_binary_impl,
-    attrs = dict({
+_go_binary_kwargs = {
+    "implementation": _go_binary_impl,
+    "attrs": {
+        "srcs": attr.label_list(allow_files = go_exts + asm_exts + cgo_exts),
+        "data": attr.label_list(allow_files = True),
         "deps": attr.label_list(
             providers = [GoLibrary],
-            aspects = [go_archive_aspect],
         ),
         "embed": attr.label_list(
             providers = [GoLibrary],
-            aspects = [go_archive_aspect],
         ),
         "importpath": attr.string(),
-        "pure": attr.string(
-            values = [
-                "on",
-                "off",
-                "auto",
-            ],
-            default = "auto",
-        ),
-        "static": attr.string(
-            values = [
-                "on",
-                "off",
-                "auto",
-            ],
-            default = "auto",
-        ),
-        "race": attr.string(
-            values = [
-                "on",
-                "off",
-                "auto",
-            ],
-            default = "auto",
-        ),
-        "msan": attr.string(
-            values = [
-                "on",
-                "off",
-                "auto",
-            ],
-            default = "auto",
-        ),
-        "goos": attr.string(
-            values = GOOS.keys() + ["auto"],
-            default = "auto",
-        ),
-        "goarch": attr.string(
-            values = GOARCH.keys() + ["auto"],
-            default = "auto",
-        ),
-    }.items() + _SHARED_ATTRS.items()),
-    executable = True,
-)
-"""See go/core.rst#go_binary for full documentation."""
+        "gc_goopts": attr.string_list(),
+        "gc_linkopts": attr.string_list(),
+        "x_defs": attr.string_dict(),
+        "basename": attr.string(),
+        "out": attr.string(),
+        "cgo": attr.bool(),
+        "cdeps": attr.label_list(),
+        "cppopts": attr.string_list(),
+        "copts": attr.string_list(),
+        "cxxopts": attr.string_list(),
+        "clinkopts": attr.string_list(),
+        "_go_context_data": attr.label(default = "//:go_context_data"),
+    },
+    "executable": True,
+    "toolchains": ["@io_bazel_rules_go//go:toolchain"],
+}
+
+go_binary = rule(**_go_binary_kwargs)
+go_transition_binary = go_transition_rule(**_go_binary_kwargs)
 
 def _go_tool_binary_impl(ctx):
     sdk = ctx.attr.sdk[GoSDK]
     name = ctx.label.name
     if sdk.goos == "windows":
         name += ".exe"
+
+    cout = ctx.actions.declare_file(name + ".a")
+    if sdk.goos == "windows":
+        cmd = "@echo off\n {go} tool compile -o {cout} -trimpath=%cd% {srcs}".format(
+            go = sdk.go.path.replace("/", "\\"),
+            cout = cout.path,
+            srcs = " ".join([f.path for f in ctx.files.srcs]),
+        )
+        bat = ctx.actions.declare_file(name + ".bat")
+        ctx.actions.write(
+            output = bat,
+            content = cmd,
+        )
+        ctx.actions.run(
+            executable = "cmd.exe",
+            arguments = ["/S", "/C", bat.path.replace("/", "\\")],
+            inputs = sdk.libs + sdk.headers + sdk.tools + ctx.files.srcs + [sdk.go, bat],
+            outputs = [cout],
+            env = {"GOROOT": sdk.root_file.dirname},  # NOTE(#2005): avoid realpath in sandbox
+            mnemonic = "GoToolchainBinaryCompile",
+        )
+    else:
+        cmd = "{go} tool compile -o {cout} -trimpath=$PWD {srcs}".format(
+            go = sdk.go.path,
+            cout = cout.path,
+            srcs = " ".join([f.path for f in ctx.files.srcs]),
+        )
+        ctx.actions.run_shell(
+            command = cmd,
+            inputs = sdk.libs + sdk.headers + sdk.tools + ctx.files.srcs + [sdk.go],
+            outputs = [cout],
+            env = {"GOROOT": sdk.root_file.dirname},  # NOTE(#2005): avoid realpath in sandbox
+            mnemonic = "GoToolchainBinaryCompile",
+        )
+
     out = ctx.actions.declare_file(name)
-
-    command_tpl = ("{go} tool compile -o {out}.a -I {goroot} -trimpath=$PWD $@ && " +
-                   "{go} tool link -o {out} -L {goroot} {out}.a && " +
-                   "rm {out}.a")
-    command = command_tpl.format(
-        go = shell.quote(sdk.go.path),
-        goroot = shell.quote(sdk.root_file.dirname),
-        out = shell.quote(out.path),
-    )
-
-    ctx.actions.run_shell(
-        inputs = sdk.libs + sdk.headers + sdk.tools + ctx.files.srcs + [sdk.go],
+    largs = ctx.actions.args()
+    largs.add_all(["tool", "link"])
+    largs.add("-o", out)
+    largs.add(cout)
+    ctx.actions.run(
+        executable = sdk.go,
+        arguments = [largs],
+        inputs = sdk.libs + sdk.headers + sdk.tools + [cout],
         outputs = [out],
-        env = {"GOROOT": sdk.root_file.dirname},  # NOTE(#2005): avoid realpath in sandbox
-        command = command,
-        arguments = [f.path for f in ctx.files.srcs],
         mnemonic = "GoToolchainBinary",
     )
 

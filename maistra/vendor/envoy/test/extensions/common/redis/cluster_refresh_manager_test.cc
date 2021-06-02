@@ -11,7 +11,8 @@
 #include "test/extensions/filters/network/common/redis/mocks.h"
 #include "test/extensions/filters/network/redis_proxy/mocks.h"
 #include "test/mocks/event/mocks.h"
-#include "test/mocks/upstream/mocks.h"
+#include "test/mocks/upstream/cluster_manager.h"
+#include "test/mocks/upstream/priority_set.h"
 #include "test/test_common/simulated_time_system.h"
 #include "test/test_common/utility.h"
 
@@ -25,14 +26,15 @@ namespace Extensions {
 namespace Common {
 namespace Redis {
 
+// TODO: rewrite the tests to fix the flaky test
 class ClusterRefreshManagerTest : public testing::Test {
 public:
   ClusterRefreshManagerTest()
       : cluster_name_("fake_cluster"), refresh_manager_(std::make_shared<ClusterRefreshManagerImpl>(
                                            dispatcher_, cm_, time_system_)) {
     time_system_.setMonotonicTime(std::chrono::seconds(1));
-    map_.emplace("fake_cluster", mock_cluster_);
-    ON_CALL(cm_, clusters()).WillByDefault(Return(map_));
+    cluster_maps_.active_clusters_.emplace("fake_cluster", mock_cluster_);
+    ON_CALL(cm_, clusters()).WillByDefault(Return(cluster_maps_));
   }
   ~ClusterRefreshManagerTest() override = default;
 
@@ -102,7 +104,7 @@ public:
   const std::string cluster_name_;
   NiceMock<Event::MockDispatcher> dispatcher_;
   NiceMock<Upstream::MockClusterManager> cm_;
-  Upstream::ClusterManager::ClusterInfoMap map_;
+  Upstream::ClusterManager::ClusterInfoMaps cluster_maps_;
   Upstream::MockClusterMockPrioritySet mock_cluster_;
   Event::SimulatedTimeSystem time_system_;
   std::shared_ptr<ClusterRefreshManagerImpl> refresh_manager_;
@@ -131,17 +133,15 @@ TEST_F(ClusterRefreshManagerTest, Basic) {
     // as wait for 2 would only ensure onRedirection was started
     waitForTime(MonotonicTime(std::chrono::seconds(3)));
     refresh_manager_->onRedirection(cluster_name_);
-    waitForTime(MonotonicTime(std::chrono::seconds(4)));
   });
   Thread::ThreadPtr thread_2 = platform_.threadFactory().createThread([&]() {
     // wait for 3 ensures that thread_1's first onRedirection is completed,
     // as wait for 2 would only ensure onRedirection was started
     waitForTime(MonotonicTime(std::chrono::seconds(3)));
     refresh_manager_->onRedirection(cluster_name_);
-    waitForTime(MonotonicTime(std::chrono::seconds(4)));
   });
 
-  advanceTime(MonotonicTime(std::chrono::seconds(4)), 2);
+  advanceTime(MonotonicTime(std::chrono::seconds(3)), 2);
   thread_1->join();
   thread_2->join();
 
@@ -177,17 +177,15 @@ TEST_F(ClusterRefreshManagerTest, BasicFailureEvents) {
     // as wait for 2 would only ensure onRedirection was started
     waitForTime(MonotonicTime(std::chrono::seconds(3)));
     refresh_manager_->onFailure(cluster_name_);
-    waitForTime(MonotonicTime(std::chrono::seconds(4)));
   });
   Thread::ThreadPtr thread_2 = platform_.threadFactory().createThread([&]() {
     // wait for 3 ensures that thread_1's first onRedirection is completed,
     // as wait for 2 would only ensure onRedirection was started
     waitForTime(MonotonicTime(std::chrono::seconds(3)));
     refresh_manager_->onFailure(cluster_name_);
-    waitForTime(MonotonicTime(std::chrono::seconds(4)));
   });
 
-  advanceTime(MonotonicTime(std::chrono::seconds(4)), 2);
+  advanceTime(MonotonicTime(std::chrono::seconds(3)), 2);
   thread_1->join();
   thread_2->join();
 
@@ -223,17 +221,15 @@ TEST_F(ClusterRefreshManagerTest, BasicDegradedEvents) {
     // as wait for 2 would only ensure onRedirection was started
     waitForTime(MonotonicTime(std::chrono::seconds(3)));
     refresh_manager_->onHostDegraded(cluster_name_);
-    waitForTime(MonotonicTime(std::chrono::seconds(4)));
   });
   Thread::ThreadPtr thread_2 = platform_.threadFactory().createThread([&]() {
     // wait for 3 ensures that thread_1's first onRedirection is completed,
     // as wait for 2 would only ensure onRedirection was started
     waitForTime(MonotonicTime(std::chrono::seconds(3)));
     refresh_manager_->onHostDegraded(cluster_name_);
-    waitForTime(MonotonicTime(std::chrono::seconds(4)));
   });
 
-  advanceTime(MonotonicTime(std::chrono::seconds(4)), 2);
+  advanceTime(MonotonicTime(std::chrono::seconds(3)), 2);
   thread_1->join();
   thread_2->join();
 

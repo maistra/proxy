@@ -33,9 +33,6 @@ var (
 	_ = ptypes.DynamicAny{}
 )
 
-// define the regex for a UUID once up-front
-var _tls_uuidPattern = regexp.MustCompile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
-
 // Validate checks the field values on UpstreamTlsContext with the rules
 // defined in the proto definition for this message. If any rules are
 // violated, an error is returned.
@@ -190,6 +187,13 @@ func (m *DownstreamTlsContext) Validate() error {
 			}
 		}
 
+	}
+
+	if _, ok := DownstreamTlsContext_OcspStaplePolicy_name[int32(m.GetOcspStaplePolicy())]; !ok {
+		return DownstreamTlsContextValidationError{
+			field:  "OcspStaplePolicy",
+			reason: "value must be one of the defined enum values",
+		}
 	}
 
 	switch m.SessionTicketKeysType.(type) {
@@ -357,6 +361,16 @@ func (m *CommonTlsContext) Validate() error {
 		}
 	}
 
+	if v, ok := interface{}(m.GetCustomHandshaker()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return CommonTlsContextValidationError{
+				field:  "CustomHandshaker",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
 	switch m.ValidationContextType.(type) {
 
 	case *CommonTlsContext_ValidationContext:
@@ -486,10 +500,10 @@ func (m *CommonTlsContext_CertificateProvider) Validate() error {
 		return nil
 	}
 
-	if len(m.GetName()) < 1 {
+	if utf8.RuneCountInString(m.GetName()) < 1 {
 		return CommonTlsContext_CertificateProviderValidationError{
 			field:  "Name",
-			reason: "value length must be at least 1 bytes",
+			reason: "value length must be at least 1 runes",
 		}
 	}
 

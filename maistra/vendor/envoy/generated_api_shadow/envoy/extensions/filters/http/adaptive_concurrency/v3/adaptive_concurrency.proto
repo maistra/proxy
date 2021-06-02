@@ -5,7 +5,6 @@ package envoy.extensions.filters.http.adaptive_concurrency.v3;
 import "envoy/config/core/v3/base.proto";
 import "envoy/type/v3/percent.proto";
 
-import "google/api/annotations.proto";
 import "google/protobuf/duration.proto";
 import "google/protobuf/wrappers.proto";
 
@@ -52,10 +51,11 @@ message GradientControllerConfig {
         "envoy.config.filter.http.adaptive_concurrency.v2alpha.GradientControllerConfig."
         "MinimumRTTCalculationParams";
 
-    // The time interval between recalculating the minimum request round-trip time.
+    // The time interval between recalculating the minimum request round-trip time. Has to be
+    // positive.
     google.protobuf.Duration interval = 1 [(validate.rules).duration = {
       required: true
-      gt {}
+      gte {nanos: 1000000}
     }];
 
     // The number of requests to aggregate/sample during the minRTT recalculation window before
@@ -93,15 +93,15 @@ message AdaptiveConcurrency {
   option (udpa.annotations.versioning).previous_message_type =
       "envoy.config.filter.http.adaptive_concurrency.v2alpha.AdaptiveConcurrency";
 
-  // Gradient concurrency control will be used.
-  config.core.v3.RuntimeFeatureFlag enabled = 2;
-
   oneof concurrency_controller_config {
     option (validate.required) = true;
 
-    // If set to false, the adaptive concurrency filter will operate as a pass-through filter. If the
-    // message is unspecified, the filter will be enabled.
+    // Gradient concurrency control will be used.
     GradientControllerConfig gradient_controller_config = 1
         [(validate.rules).message = {required: true}];
   }
+
+  // If set to false, the adaptive concurrency filter will operate as a pass-through filter. If the
+  // message is unspecified, the filter will be enabled.
+  config.core.v3.RuntimeFeatureFlag enabled = 2;
 }

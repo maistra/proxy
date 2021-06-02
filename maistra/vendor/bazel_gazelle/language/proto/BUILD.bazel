@@ -1,17 +1,40 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+load("//language/proto/gen:def.bzl", "known_imports")
 
 # gazelle:exclude testdata
 
-genrule(
+known_imports(
     name = "known_imports",
-    srcs = ["proto.csv"],
-    outs = ["known_imports.go"],
-    cmd = "$(location //language/proto/gen:gen_known_imports) -proto_csv $< -known_imports $@ -package proto -var knownImports -key 0 -value 1",
-    tools = ["//language/proto/gen:gen_known_imports"],
+    src = "proto.csv",
+    out = "known_imports.go",
+    key = 0,
+    package = "proto",
+    value = 1,
+    var = "knownImports",
+)
+
+known_imports(
+    name = "known_proto_imports",
+    src = "proto.csv",
+    out = "known_proto_imports.go",
+    key = 0,
+    package = "proto",
+    value = 3,
+    var = "knownProtoImports",
+)
+
+known_imports(
+    name = "known_go_imports",
+    src = "proto.csv",
+    out = "known_go_imports.go",
+    key = 2,
+    package = "proto",
+    value = 3,
+    var = "knownGoProtoImports",
 )
 
 go_library(
-    name = "go_default_library",
+    name = "proto",
     srcs = [
         "config.go",
         "constants.go",
@@ -19,7 +42,9 @@ go_library(
         "fix.go",
         "generate.go",
         "kinds.go",
+        "known_go_imports.go",
         "known_imports.go",
+        "known_proto_imports.go",
         "lang.go",
         "package.go",
         "resolve.go",
@@ -27,17 +52,18 @@ go_library(
     importpath = "github.com/bazelbuild/bazel-gazelle/language/proto",
     visibility = ["//visibility:public"],
     deps = [
-        "//config:go_default_library",
-        "//label:go_default_library",
-        "//language:go_default_library",
-        "//repo:go_default_library",
-        "//resolve:go_default_library",
-        "//rule:go_default_library",
+        "//config",
+        "//label",
+        "//language",
+        "//pathtools",
+        "//repo",
+        "//resolve",
+        "//rule",
     ],
 )
 
 go_test(
-    name = "go_default_test",
+    name = "proto_test",
     srcs = [
         "config_test.go",
         "fileinfo_test.go",
@@ -45,17 +71,17 @@ go_test(
         "resolve_test.go",
     ],
     data = glob(["testdata/**"]),
-    embed = [":go_default_library"],
+    embed = [":proto"],
     deps = [
-        "//config:go_default_library",
-        "//label:go_default_library",
-        "//language:go_default_library",
-        "//merger:go_default_library",
-        "//repo:go_default_library",
-        "//resolve:go_default_library",
-        "//rule:go_default_library",
-        "//testtools:go_default_library",
-        "//walk:go_default_library",
+        "//config",
+        "//label",
+        "//language",
+        "//merger",
+        "//repo",
+        "//resolve",
+        "//rule",
+        "//testtools",
+        "//walk",
         "@com_github_bazelbuild_buildtools//build:go_default_library",
     ],
 )
@@ -76,7 +102,9 @@ filegroup(
         "generate.go",
         "generate_test.go",
         "kinds.go",
+        "known_go_imports.go",
         "known_imports.go",
+        "known_proto_imports.go",
         "lang.go",
         "package.go",
         "proto.csv",
@@ -84,5 +112,11 @@ filegroup(
         "resolve_test.go",
         "//language/proto/gen:all_files",
     ],
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":proto",
     visibility = ["//visibility:public"],
 )

@@ -3,11 +3,7 @@
 UDP proxy
 =========
 
-.. attention::
-
-  UDP proxy support should be considered alpha and not production ready.
-
-* :ref:`v2 API reference <envoy_api_msg_config.filter.udp.udp_proxy.v2alpha.UdpProxyConfig>`
+* :ref:`v3 API reference <envoy_v3_api_msg_extensions.filters.udp.udp_proxy.v3.UdpProxyConfig>`
 * This filter should be configured with the name *envoy.filters.udp_listener.udp_proxy*
 
 Overview
@@ -22,7 +18,11 @@ Because UDP is not a connection oriented protocol, Envoy must keep track of a cl
 such that the response datagrams from an upstream server can be routed back to the correct client.
 Each session is index by the 4-tuple consisting of source IP/port and local IP/port that the
 datagram is received on. Sessions last until the :ref:`idle timeout
-<envoy_api_field_config.filter.udp.udp_proxy.v2alpha.UdpProxyConfig.idle_timeout>` is reached.
+<envoy_v3_api_field_extensions.filters.udp.udp_proxy.v3.UdpProxyConfig.idle_timeout>` is reached.
+
+The UDP proxy listener filter also can operate as a *transparent* proxy if the
+:ref:`use_original_src_ip <envoy_v3_api_msg_extensions.filters.udp.udp_proxy.v3.UdpProxyConfig>`
+field is set. But please keep in mind that it does not forward the port to upstreams. It forwards only the IP address to upstreams.
 
 Load balancing and unhealthy host handling
 ------------------------------------------
@@ -49,43 +49,9 @@ Example configuration
 The following example configuration will cause Envoy to listen on UDP port 1234 and proxy to a UDP
 server listening on port 1235.
 
-  .. code-block:: yaml
+.. literalinclude:: _include/udp-proxy.yaml
+    :language: yaml
 
-    admin:
-      access_log_path: /tmp/admin_access.log
-      address:
-        socket_address:
-          protocol: TCP
-          address: 127.0.0.1
-          port_value: 9901
-    static_resources:
-      listeners:
-      - name: listener_0
-        address:
-          socket_address:
-            protocol: UDP
-            address: 127.0.0.1
-            port_value: 1234
-        listener_filters:
-          name: envoy.filters.udp_listener.udp_proxy
-          typed_config:
-            '@type': type.googleapis.com/envoy.config.filter.udp.udp_proxy.v2alpha.UdpProxyConfig
-            stat_prefix: service
-            cluster: service_udp
-      clusters:
-      - name: service_udp
-        connect_timeout: 0.25s
-        type: STATIC
-        lb_policy: ROUND_ROBIN
-        load_assignment:
-          cluster_name: service_udp
-          endpoints:
-          - lb_endpoints:
-            - endpoint:
-                address:
-                  socket_address:
-                    address: 127.0.0.1
-                    port_value: 1235
 
 Statistics
 ----------

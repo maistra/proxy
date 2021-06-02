@@ -1,7 +1,8 @@
 `msgpack` for C/C++
 ===================
 
-Version 3.2.1 [![Build Status](https://travis-ci.org/msgpack/msgpack-c.svg?branch=master)](https://travis-ci.org/msgpack/msgpack-c) [![Build status](https://ci.appveyor.com/api/projects/status/8kstcgt79qj123mw/branch/master?svg=true)](https://ci.appveyor.com/project/redboltz/msgpack-c/branch/master)
+Version 3.3.0 [![Build Status](https://travis-ci.org/msgpack/msgpack-c.svg?branch=master)](https://travis-ci.org/msgpack/msgpack-c) [![Build status](https://ci.appveyor.com/api/projects/status/8kstcgt79qj123mw/branch/master?svg=true)](https://ci.appveyor.com/project/redboltz/msgpack-c/branch/master)
+[![codecov](https://codecov.io/gh/msgpack/msgpack-c/branch/master/graph/badge.svg)](https://codecov.io/gh/msgpack/msgpack-c)
 
 It's like JSON but smaller and faster.
 
@@ -149,7 +150,7 @@ execute the following commands:
 
 `MSGPACK_CXX[11|17]` flags are not affected to installing files. Just switching test cases. All files are installed in every settings.
 
-When you use the C part of `msgpack-c`, you need to build and link the library. By default, both static/shared libraries are built. If you want to build only static library, set `BUILD_SHARED_LIBS=OFF` to cmake. If you want to build only shared library, set `BUILD_SHARED_L
+When you use the C part of `msgpack-c`, you need to build and link the library. By default, both static/shared libraries are built. If you want to build only static library, set `BUILD_SHARED_LIBS=OFF` to cmake. If you want to build only shared library, set `BUILD_SHARED_LIBS=ON`.
 
 #### GUI on Windows
 

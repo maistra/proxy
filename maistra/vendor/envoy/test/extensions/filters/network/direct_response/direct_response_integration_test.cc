@@ -21,20 +21,9 @@ public:
       )EOF");
   }
 
-  /**
-   * Initializer for an individual test.
-   */
   void SetUp() override {
     useListenerAccessLog("%RESPONSE_CODE_DETAILS%");
     BaseIntegrationTest::initialize();
-  }
-
-  /**
-   *  Destructor for an individual test.
-   */
-  void TearDown() override {
-    test_server_.reset();
-    fake_upstreams_.clear();
   }
 };
 
@@ -42,18 +31,19 @@ INSTANTIATE_TEST_SUITE_P(IpVersions, DirectResponseIntegrationTest,
                          testing::ValuesIn(TestEnvironment::getIpVersionsForTest()),
                          TestUtility::ipTestParamsToString);
 
-TEST_P(DirectResponseIntegrationTest, Hello) {
-  Buffer::OwnedImpl buffer("hello");
+TEST_P(DirectResponseIntegrationTest, DirectResponseOnConnection) {
   std::string response;
-  RawConnectionDriver connection(
-      lookupPort("listener_0"), buffer,
-      [&](Network::ClientConnection&, const Buffer::Instance& data) -> void {
+  // This test becomes flaky (especially on Windows) if the connection is closed by the server
+  // before the client finishes transmitting the data it writes (resulting in a connection aborted
+  // error when the client reads). Instead, we just initiate the connection and do not send from
+  // the client to avoid this.
+  auto connection = createConnectionDriver(
+      lookupPort("listener_0"), "",
+      [&response](Network::ClientConnection& conn, const Buffer::Instance& data) -> void {
         response.append(data.toString());
-        connection.close();
-      },
-      version_);
-
-  connection.run();
+        conn.close(Network::ConnectionCloseType::FlushWrite);
+      });
+  connection->run();
   EXPECT_EQ("hello, world!\n", response);
   EXPECT_THAT(waitForAccessLog(listener_access_log_name_),
               testing::HasSubstr(StreamInfo::ResponseCodeDetails::get().DirectResponse));

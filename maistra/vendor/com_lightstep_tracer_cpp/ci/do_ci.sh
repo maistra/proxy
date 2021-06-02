@@ -75,9 +75,16 @@ elif [[ "$1" == "clang_tidy" ]]; then
     exit 1
   fi
   exit 0
+elif [[ "$1" == "bazel.build" ]]; then
+  bazel build -c dbg $BAZEL_OPTIONS -- //... -//benchmark/...
+  exit 0
 elif [[ "$1" == "bazel.test" ]]; then
   bazel build -c dbg $BAZEL_OPTIONS -- //... -//benchmark/...
   bazel test -c dbg $BAZEL_TEST_OPTIONS //...
+  exit 0
+elif [[ "$1" == "bazel.unsigned_char.test" ]]; then
+  bazel build -c dbg --copt -funsigned-char $BAZEL_OPTIONS -- //... -//benchmark/...
+  bazel test -c dbg --copt -funsigned-char $BAZEL_TEST_OPTIONS //...
   exit 0
 elif [[ "$1" == "bazel.asan" ]]; then
   setup_clang_toolchain

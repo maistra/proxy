@@ -1,0 +1,28 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "v1beta1",
+    srcs = [
+        "decl.pb.go",
+        "eval.pb.go",
+        "expr.pb.go",
+        "source.pb.go",
+        "value.pb.go",
+    ],
+    importpath = "google.golang.org/genproto/googleapis/api/expr/v1beta1",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//googleapis/rpc/status",
+        "@com_github_golang_protobuf//proto:go_default_library",
+        "@org_golang_google_protobuf//reflect/protoreflect:go_default_library",
+        "@org_golang_google_protobuf//runtime/protoimpl:go_default_library",
+        "@org_golang_google_protobuf//types/known/anypb:go_default_library",
+        "@org_golang_google_protobuf//types/known/structpb:go_default_library",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":v1beta1",
+    visibility = ["//visibility:public"],
+)

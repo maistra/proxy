@@ -29,6 +29,9 @@
 namespace google {
 namespace jwt_verify {
 
+// Clock skew defaults to one minute.
+constexpr uint64_t kClockSkewInSecond = 60;
+
 /**
  * struct to hold a JWT data.
  */
@@ -94,6 +97,16 @@ struct Jwt {
    * @return the status.
    */
   Status parseFromString(const std::string& jwt);
+
+  /*
+   * Verify Jwt time constraint if specified
+   * esp: expiration time, nbf: not before time.
+   * @param now: is the current time in seconds since the unix epoch
+   * @param clock_skew: the the clock skew in second.
+   * @return the verification status.
+   */
+  Status verifyTimeConstraint(uint64_t now,
+                              uint64_t clock_skew = kClockSkewInSecond) const;
 };
 
 }  // namespace jwt_verify

@@ -3,6 +3,7 @@
     "Grpc.Core.Interceptors.Tests.ClientInterceptorTest",
     "Grpc.Core.Interceptors.Tests.ServerInterceptorTest",
     "Grpc.Core.Internal.Tests.AsyncCallServerTest",
+    "Grpc.Core.Internal.Tests.AsyncCallStateTest",
     "Grpc.Core.Internal.Tests.AsyncCallTest",
     "Grpc.Core.Internal.Tests.ChannelArgsSafeHandleTest",
     "Grpc.Core.Internal.Tests.CompletionQueueEventTest",
@@ -40,6 +41,7 @@
     "Grpc.Core.Tests.PInvokeTest",
     "Grpc.Core.Tests.ResponseHeadersTest",
     "Grpc.Core.Tests.SanityTest",
+    "Grpc.Core.Tests.ServerBindFailedTest",
     "Grpc.Core.Tests.ServerTest",
     "Grpc.Core.Tests.ShutdownHookClientTest",
     "Grpc.Core.Tests.ShutdownHookPendingCallTest",
@@ -68,7 +70,9 @@
     "Grpc.IntegrationTesting.InteropClientServerTest",
     "Grpc.IntegrationTesting.MetadataCredentialsTest",
     "Grpc.IntegrationTesting.RunnerClientServerTest",
-    "Grpc.IntegrationTesting.SslCredentialsTest"
+    "Grpc.IntegrationTesting.SslCredentialsTest",
+    "Grpc.IntegrationTesting.UnobservedTaskExceptionTest",
+    "Grpc.IntegrationTesting.XdsInteropClientTest"
   ],
   "Grpc.Reflection.Tests": [
     "Grpc.Reflection.Tests.ReflectionClientServerTest",

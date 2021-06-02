@@ -10,9 +10,11 @@
 #include "src/ast/prettyprinter.h"
 #include "src/ast/scopes.h"
 #include "src/base/hashmap.h"
+#include "src/base/logging.h"
 #include "src/builtins/builtins-constructor.h"
 #include "src/builtins/builtins.h"
 #include "src/common/assert-scope.h"
+#include "src/heap/local-factory-inl.h"
 #include "src/numbers/conversions-inl.h"
 #include "src/numbers/double.h"
 #include "src/objects/contexts.h"
@@ -56,7 +58,6 @@ void AstNode::Print(Isolate* isolate) {
   AllowHandleDereference allow_deref;
   AstPrinter::PrintOut(isolate, this);
 }
-
 
 #endif  // DEBUG
 
@@ -202,8 +203,7 @@ void FunctionLiteral::set_inferred_name(Handle<String> inferred_name) {
   scope()->set_has_inferred_function_name(true);
 }
 
-void FunctionLiteral::set_raw_inferred_name(
-    const AstConsString* raw_inferred_name) {
+void FunctionLiteral::set_raw_inferred_name(AstConsString* raw_inferred_name) {
   DCHECK_NOT_NULL(raw_inferred_name);
   raw_inferred_name_ = raw_inferred_name;
   DCHECK(inferred_name_.is_null());
@@ -223,21 +223,11 @@ bool FunctionLiteral::AllowsLazyCompilation() {
   return scope()->AllowsLazyCompilation();
 }
 
-bool FunctionLiteral::SafeToSkipArgumentsAdaptor() const {
-  return language_mode() == LanguageMode::kStrict &&
-         scope()->arguments() == nullptr &&
-         scope()->rest_parameter() == nullptr;
-}
-
 int FunctionLiteral::start_position() const {
   return scope()->start_position();
 }
 
-
-int FunctionLiteral::end_position() const {
-  return scope()->end_position();
-}
-
+int FunctionLiteral::end_position() const { return scope()->end_position(); }
 
 LanguageMode FunctionLiteral::language_mode() const {
   return scope()->language_mode();
@@ -279,17 +269,6 @@ std::unique_ptr<char[]> FunctionLiteral::GetDebugName() const {
   memcpy(result.get(), result_vec.data(), result_vec.size());
   result[result_vec.size()] = '\0';
   return result;
-}
-
-bool FunctionLiteral::requires_brand_initialization() const {
-  Scope* outer = scope_->outer_scope();
-
-  // If there are no variables declared in the outer scope other than
-  // the class name variable, the outer class scope may be elided when
-  // the function is deserialized after preparsing.
-  if (!outer->is_class_scope()) return false;
-
-  return outer->AsClassScope()->brand() != nullptr;
 }
 
 bool FunctionLiteral::private_name_lookup_skips_outer_class() const {
@@ -339,7 +318,6 @@ bool ObjectLiteral::Property::IsCompileTimeValue() const {
          (kind_ == MATERIALIZED_LITERAL && value_->IsCompileTimeValue());
 }
 
-
 void ObjectLiteral::Property::set_emit_store(bool emit_store) {
   emit_store_ = emit_store;
 }
@@ -350,10 +328,9 @@ void ObjectLiteral::CalculateEmitStore(Zone* zone) {
   const auto GETTER = ObjectLiteral::Property::GETTER;
   const auto SETTER = ObjectLiteral::Property::SETTER;
 
-  ZoneAllocationPolicy allocator(zone);
-
-  CustomMatcherZoneHashMap table(
-      Literal::Match, ZoneHashMap::kDefaultHashMapCapacity, allocator);
+  CustomMatcherZoneHashMap table(Literal::Match,
+                                 ZoneHashMap::kDefaultHashMapCapacity,
+                                 ZoneAllocationPolicy(zone));
   for (int i = properties()->length() - 1; i >= 0; i--) {
     ObjectLiteral::Property* property = properties()->at(i);
     if (property->is_computed_name()) continue;
@@ -362,7 +339,7 @@ void ObjectLiteral::CalculateEmitStore(Zone* zone) {
     DCHECK(!literal->IsNullLiteral());
 
     uint32_t hash = literal->Hash();
-    ZoneHashMap::Entry* entry = table.LookupOrInsert(literal, hash, allocator);
+    ZoneHashMap::Entry* entry = table.LookupOrInsert(literal, hash);
     if (entry->value == nullptr) {
       entry->value = property;
     } else {
@@ -455,7 +432,7 @@ int ObjectLiteral::InitDepthAndFlags() {
     // literal with fast elements will be a waste of space.
     uint32_t element_index = 0;
     if (key->AsArrayIndex(&element_index)) {
-      max_element_index = Max(element_index, max_element_index);
+      max_element_index = std::max(element_index, max_element_index);
       elements++;
     } else {
       DCHECK(key->IsPropertyName());
@@ -473,7 +450,8 @@ int ObjectLiteral::InitDepthAndFlags() {
   return depth_acc;
 }
 
-void ObjectLiteral::BuildBoilerplateDescription(Isolate* isolate) {
+template <typename LocalIsolate>
+void ObjectLiteral::BuildBoilerplateDescription(LocalIsolate* isolate) {
   if (!boilerplate_description_.is_null()) return;
 
   int index_keys = 0;
@@ -518,9 +496,10 @@ void ObjectLiteral::BuildBoilerplateDescription(Isolate* isolate) {
     uint32_t element_index = 0;
     Handle<Object> key =
         key_literal->AsArrayIndex(&element_index)
-            ? isolate->factory()->NewNumberFromUint(element_index)
-            : Handle<Object>::cast(
-                  key_literal->AsRawPropertyName()->string().get<Factory>());
+            ? isolate->factory()
+                  ->template NewNumberFromUint<AllocationType::kOld>(
+                      element_index)
+            : Handle<Object>::cast(key_literal->AsRawPropertyName()->string());
 
     Handle<Object> value = GetBoilerplateValue(property->value(), isolate);
 
@@ -532,6 +511,10 @@ void ObjectLiteral::BuildBoilerplateDescription(Isolate* isolate) {
 
   boilerplate_description_ = boilerplate_description;
 }
+template EXPORT_TEMPLATE_DEFINE(V8_BASE_EXPORT) void ObjectLiteral::
+    BuildBoilerplateDescription(Isolate* isolate);
+template EXPORT_TEMPLATE_DEFINE(V8_BASE_EXPORT) void ObjectLiteral::
+    BuildBoilerplateDescription(LocalIsolate* isolate);
 
 bool ObjectLiteral::IsFastCloningSupported() const {
   // The CreateShallowObjectLiteratal builtin doesn't copy elements, and object
@@ -622,7 +605,8 @@ int ArrayLiteral::InitDepthAndFlags() {
   return depth_acc;
 }
 
-void ArrayLiteral::BuildBoilerplateDescription(Isolate* isolate) {
+template <typename LocalIsolate>
+void ArrayLiteral::BuildBoilerplateDescription(LocalIsolate* isolate) {
   if (!boilerplate_description_.is_null()) return;
 
   int constants_length =
@@ -632,9 +616,11 @@ void ArrayLiteral::BuildBoilerplateDescription(Isolate* isolate) {
 
   Handle<FixedArrayBase> elements;
   if (use_doubles) {
-    elements = isolate->factory()->NewFixedDoubleArray(constants_length);
+    elements = isolate->factory()->NewFixedDoubleArray(constants_length,
+                                                       AllocationType::kOld);
   } else {
-    elements = isolate->factory()->NewFixedArrayWithHoles(constants_length);
+    elements = isolate->factory()->NewFixedArrayWithHoles(constants_length,
+                                                          AllocationType::kOld);
   }
 
   // Fill in the literals.
@@ -664,7 +650,7 @@ void ArrayLiteral::BuildBoilerplateDescription(Isolate* isolate) {
       }
 
       // New handle scope here, needs to be after BuildContants().
-      HandleScope scope(isolate);
+      typename LocalIsolate::HandleScopeType scope(isolate);
 
       Object boilerplate_value = *GetBoilerplateValue(element, isolate);
       // We shouldn't allocate after creating the boilerplate value.
@@ -679,14 +665,15 @@ void ArrayLiteral::BuildBoilerplateDescription(Isolate* isolate) {
         boilerplate_value = Smi::zero();
       }
 
-      DCHECK_EQ(boilerplate_descriptor_kind(),
-                GetMoreGeneralElementsKind(
-                    boilerplate_descriptor_kind(),
-                    boilerplate_value.OptimalElementsKind(isolate)));
+      DCHECK_EQ(
+          boilerplate_descriptor_kind(),
+          GetMoreGeneralElementsKind(boilerplate_descriptor_kind(),
+                                     boilerplate_value.OptimalElementsKind(
+                                         GetIsolateForPtrCompr(*elements))));
 
-      Handle<FixedArray>::cast(elements)->set(array_index, boilerplate_value);
+      FixedArray::cast(*elements).set(array_index, boilerplate_value);
     }
-  }
+  }  // namespace internal
 
   // Simple and shallow arrays can be lazily copied, we transform the
   // elements array to a copy-on-write array.
@@ -698,6 +685,12 @@ void ArrayLiteral::BuildBoilerplateDescription(Isolate* isolate) {
   boilerplate_description_ =
       isolate->factory()->NewArrayBoilerplateDescription(kind, elements);
 }
+template EXPORT_TEMPLATE_DEFINE(
+    V8_BASE_EXPORT) void ArrayLiteral::BuildBoilerplateDescription(Isolate*
+                                                                       isolate);
+template EXPORT_TEMPLATE_DEFINE(
+    V8_BASE_EXPORT) void ArrayLiteral::BuildBoilerplateDescription(LocalIsolate*
+                                                                       isolate);
 
 bool ArrayLiteral::IsFastCloningSupported() const {
   return depth() <= 1 &&
@@ -712,8 +705,9 @@ bool MaterializedLiteral::IsSimple() const {
   return false;
 }
 
+template <typename LocalIsolate>
 Handle<Object> MaterializedLiteral::GetBoilerplateValue(Expression* expression,
-                                                        Isolate* isolate) {
+                                                        LocalIsolate* isolate) {
   if (expression->IsLiteral()) {
     return expression->AsLiteral()->BuildValue(isolate);
   }
@@ -731,6 +725,12 @@ Handle<Object> MaterializedLiteral::GetBoilerplateValue(Expression* expression,
   }
   return isolate->factory()->uninitialized_value();
 }
+template EXPORT_TEMPLATE_DEFINE(V8_EXPORT_PRIVATE)
+    Handle<Object> MaterializedLiteral::GetBoilerplateValue(
+        Expression* expression, Isolate* isolate);
+template EXPORT_TEMPLATE_DEFINE(V8_EXPORT_PRIVATE)
+    Handle<Object> MaterializedLiteral::GetBoilerplateValue(
+        Expression* expression, LocalIsolate* isolate);
 
 int MaterializedLiteral::InitDepthAndFlags() {
   if (IsArrayLiteral()) return AsArrayLiteral()->InitDepthAndFlags();
@@ -750,7 +750,8 @@ bool MaterializedLiteral::NeedsInitialAllocationSite() {
   return false;
 }
 
-void MaterializedLiteral::BuildConstants(Isolate* isolate) {
+template <typename LocalIsolate>
+void MaterializedLiteral::BuildConstants(LocalIsolate* isolate) {
   if (IsArrayLiteral()) {
     AsArrayLiteral()->BuildBoilerplateDescription(isolate);
     return;
@@ -761,19 +762,30 @@ void MaterializedLiteral::BuildConstants(Isolate* isolate) {
   }
   DCHECK(IsRegExpLiteral());
 }
+template EXPORT_TEMPLATE_DEFINE(
+    V8_BASE_EXPORT) void MaterializedLiteral::BuildConstants(Isolate* isolate);
+template EXPORT_TEMPLATE_DEFINE(
+    V8_BASE_EXPORT) void MaterializedLiteral::BuildConstants(LocalIsolate*
+                                                                 isolate);
 
+template <typename LocalIsolate>
 Handle<TemplateObjectDescription> GetTemplateObject::GetOrBuildDescription(
-    Isolate* isolate) {
+    LocalIsolate* isolate) {
   Handle<FixedArray> raw_strings = isolate->factory()->NewFixedArray(
       this->raw_strings()->length(), AllocationType::kOld);
   bool raw_and_cooked_match = true;
   for (int i = 0; i < raw_strings->length(); ++i) {
-    if (this->cooked_strings()->at(i) == nullptr ||
-        *this->raw_strings()->at(i)->string().get<Factory>() !=
-            *this->cooked_strings()->at(i)->string().get<Factory>()) {
+    if (this->raw_strings()->at(i) != this->cooked_strings()->at(i)) {
+      // If the AstRawStrings don't match, then neither should the allocated
+      // Strings, since the AstValueFactory should have deduplicated them
+      // already.
+      DCHECK_IMPLIES(this->cooked_strings()->at(i) != nullptr,
+                     *this->cooked_strings()->at(i)->string() !=
+                         *this->raw_strings()->at(i)->string());
+
       raw_and_cooked_match = false;
     }
-    raw_strings->set(i, *this->raw_strings()->at(i)->string().get<Factory>());
+    raw_strings->set(i, *this->raw_strings()->at(i)->string());
   }
   Handle<FixedArray> cooked_strings = raw_strings;
   if (!raw_and_cooked_match) {
@@ -781,8 +793,7 @@ Handle<TemplateObjectDescription> GetTemplateObject::GetOrBuildDescription(
         this->cooked_strings()->length(), AllocationType::kOld);
     for (int i = 0; i < cooked_strings->length(); ++i) {
       if (this->cooked_strings()->at(i) != nullptr) {
-        cooked_strings->set(
-            i, *this->cooked_strings()->at(i)->string().get<Factory>());
+        cooked_strings->set(i, *this->cooked_strings()->at(i)->string());
       } else {
         cooked_strings->set(i, ReadOnlyRoots(isolate).undefined_value());
       }
@@ -791,6 +802,12 @@ Handle<TemplateObjectDescription> GetTemplateObject::GetOrBuildDescription(
   return isolate->factory()->NewTemplateObjectDescription(raw_strings,
                                                           cooked_strings);
 }
+template EXPORT_TEMPLATE_DEFINE(V8_BASE_EXPORT)
+    Handle<TemplateObjectDescription> GetTemplateObject::GetOrBuildDescription(
+        Isolate* isolate);
+template EXPORT_TEMPLATE_DEFINE(V8_BASE_EXPORT)
+    Handle<TemplateObjectDescription> GetTemplateObject::GetOrBuildDescription(
+        LocalIsolate* isolate);
 
 static bool IsCommutativeOperationWithSmiLiteral(Token::Value op) {
   // Add is not commutative due to potential for string addition.
@@ -839,20 +856,16 @@ bool CompareOperation::IsLiteralCompareTypeof(Expression** expr,
          MatchLiteralCompareTypeof(right_, op(), left_, expr, literal);
 }
 
-
 static bool IsVoidOfLiteral(Expression* expr) {
   UnaryOperation* maybe_unary = expr->AsUnaryOperation();
   return maybe_unary != nullptr && maybe_unary->op() == Token::VOID &&
          maybe_unary->expression()->IsLiteral();
 }
 
-
 // Check for the pattern: void <literal> equals <expression> or
 // undefined equals <expression>
-static bool MatchLiteralCompareUndefined(Expression* left,
-                                         Token::Value op,
-                                         Expression* right,
-                                         Expression** expr) {
+static bool MatchLiteralCompareUndefined(Expression* left, Token::Value op,
+                                         Expression* right, Expression** expr) {
   if (IsVoidOfLiteral(left) && Token::IsEqualityOp(op)) {
     *expr = right;
     return true;
@@ -870,10 +883,8 @@ bool CompareOperation::IsLiteralCompareUndefined(Expression** expr) {
 }
 
 // Check for the pattern: null equals <expression>
-static bool MatchLiteralCompareNull(Expression* left,
-                                    Token::Value op,
-                                    Expression* right,
-                                    Expression** expr) {
+static bool MatchLiteralCompareNull(Expression* left, Token::Value op,
+                                    Expression* right, Expression** expr) {
   if (left->IsNullLiteral() && Token::IsEqualityOp(op)) {
     *expr = right;
     return true;
@@ -909,6 +920,7 @@ Call::CallType Call::GetCallType() const {
   }
   if (property != nullptr) {
     if (property->IsPrivateReference()) {
+      if (is_optional_chain) return PRIVATE_OPTIONAL_CHAIN_CALL;
       return PRIVATE_CALL;
     }
     bool is_super = property->IsSuperAccess();
@@ -931,9 +943,7 @@ Call::CallType Call::GetCallType() const {
 
 CaseClause::CaseClause(Zone* zone, Expression* label,
                        const ScopedPtrList<Statement>& statements)
-    : label_(label), statements_(0, nullptr) {
-  statements.CopyTo(&statements_, zone);
-}
+    : label_(label), statements_(statements.ToConstVector(), zone) {}
 
 bool Literal::IsPropertyName() const {
   if (type() != kString) return false;
@@ -960,14 +970,16 @@ bool Literal::AsArrayIndex(uint32_t* value) const {
   return ToUint32(value) && *value != kMaxUInt32;
 }
 
-Handle<Object> Literal::BuildValue(Isolate* isolate) const {
+template <typename LocalIsolate>
+Handle<Object> Literal::BuildValue(LocalIsolate* isolate) const {
   switch (type()) {
     case kSmi:
       return handle(Smi::FromInt(smi_), isolate);
     case kHeapNumber:
-      return isolate->factory()->NewNumber<AllocationType::kOld>(number_);
+      return isolate->factory()->template NewNumber<AllocationType::kOld>(
+          number_);
     case kString:
-      return string_->string().get<Factory>();
+      return string_->string();
     case kSymbol:
       return isolate->factory()->home_object_symbol();
     case kBoolean:
@@ -985,6 +997,10 @@ Handle<Object> Literal::BuildValue(Isolate* isolate) const {
   }
   UNREACHABLE();
 }
+template EXPORT_TEMPLATE_DEFINE(V8_EXPORT_PRIVATE)
+    Handle<Object> Literal::BuildValue(Isolate* isolate) const;
+template EXPORT_TEMPLATE_DEFINE(V8_EXPORT_PRIVATE)
+    Handle<Object> Literal::BuildValue(LocalIsolate* isolate) const;
 
 bool Literal::ToBooleanIsTrue() const {
   switch (type()) {
@@ -1024,7 +1040,6 @@ uint32_t Literal::Hash() {
                     : ComputeLongHash(double_to_uint64(AsNumber()));
 }
 
-
 // static
 bool Literal::Match(void* a, void* b) {
   Literal* x = static_cast<Literal*>(a);
@@ -1039,7 +1054,7 @@ Literal* AstNodeFactory::NewNumberLiteral(double number, int pos) {
   if (DoubleToSmiInteger(number, &int_value)) {
     return NewSmiLiteral(int_value, pos);
   }
-  return new (zone_) Literal(number, pos);
+  return zone_->New<Literal>(number, pos);
 }
 
 const char* CallRuntime::debug_name() {
@@ -1050,21 +1065,6 @@ const char* CallRuntime::debug_name() {
   return is_jsruntime() ? "(context function)" : function_->name;
 #endif  // DEBUG
 }
-
-#define RETURN_LABELS(NodeType) \
-  case k##NodeType:             \
-    return static_cast<const NodeType*>(this)->labels();
-
-ZonePtrList<const AstRawString>* BreakableStatement::labels() const {
-  switch (node_type()) {
-    BREAKABLE_NODE_LIST(RETURN_LABELS)
-    ITERATION_NODE_LIST(RETURN_LABELS)
-    default:
-      UNREACHABLE();
-  }
-}
-
-#undef RETURN_LABELS
 
 }  // namespace internal
 }  // namespace v8

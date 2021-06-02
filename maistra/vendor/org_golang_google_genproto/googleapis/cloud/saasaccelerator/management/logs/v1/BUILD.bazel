@@ -1,0 +1,19 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "logs",
+    srcs = ["saas_instance_payload.pb.go"],
+    importpath = "google.golang.org/genproto/googleapis/cloud/saasaccelerator/management/logs/v1",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_github_golang_protobuf//proto:go_default_library",
+        "@org_golang_google_protobuf//reflect/protoreflect:go_default_library",
+        "@org_golang_google_protobuf//runtime/protoimpl:go_default_library",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":logs",
+    visibility = ["//visibility:public"],
+)

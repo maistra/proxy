@@ -14,6 +14,8 @@
 namespace v8 {
 namespace internal {
 
+using compiler::ScopedExceptionHandler;
+
 class MicrotaskQueueBuiltinsAssembler : public CodeStubAssembler {
  public:
   explicit MicrotaskQueueBuiltinsAssembler(compiler::CodeAssemblerState* state)
@@ -45,14 +47,15 @@ class MicrotaskQueueBuiltinsAssembler : public CodeStubAssembler {
   void RewindEnteredContext(TNode<IntPtrT> saved_entered_context_count);
 
   void RunPromiseHook(Runtime::FunctionId id, TNode<Context> context,
-                      SloppyTNode<HeapObject> promise_or_capability);
+                      TNode<HeapObject> promise_or_capability);
 };
 
 TNode<RawPtrT> MicrotaskQueueBuiltinsAssembler::GetMicrotaskQueue(
     TNode<Context> native_context) {
   CSA_ASSERT(this, IsNativeContext(native_context));
-  return LoadObjectField<RawPtrT>(native_context,
-                                  NativeContext::kMicrotaskQueueOffset);
+  return LoadExternalPointerFromObject(native_context,
+                                       NativeContext::kMicrotaskQueueOffset,
+                                       kNativeContextMicrotaskQueueTag);
 }
 
 TNode<RawPtrT> MicrotaskQueueBuiltinsAssembler::GetMicrotaskRingBuffer(
@@ -118,7 +121,7 @@ void MicrotaskQueueBuiltinsAssembler::RunSingleMicrotask(
   TNode<Map> microtask_map = LoadMap(microtask);
   TNode<Uint16T> microtask_type = LoadMapInstanceType(microtask_map);
 
-  TVARIABLE(HeapObject, var_exception, TheHoleConstant());
+  TVARIABLE(Object, var_exception);
   Label if_exception(this, Label::kDeferred);
   Label is_callable(this), is_callback(this),
       is_promise_fulfill_reaction_job(this),
@@ -147,10 +150,10 @@ void MicrotaskQueueBuiltinsAssembler::RunSingleMicrotask(
 
     TNode<JSReceiver> callable =
         LoadObjectField<JSReceiver>(microtask, CallableTask::kCallableOffset);
-    const TNode<Object> result = CallJS(
-        CodeFactory::Call(isolate(), ConvertReceiverMode::kNullOrUndefined),
-        microtask_context, callable, UndefinedConstant());
-    GotoIfException(result, &if_exception, &var_exception);
+    {
+      ScopedExceptionHandler handler(this, &if_exception, &var_exception);
+      Call(microtask_context, callable, UndefinedConstant());
+    }
     RewindEnteredContext(saved_entered_context_count);
     SetCurrentContext(current_context);
     Goto(&done);
@@ -173,10 +176,11 @@ void MicrotaskQueueBuiltinsAssembler::RunSingleMicrotask(
     // But from our current measurements it doesn't seem to be a
     // serious performance problem, even if the microtask is full
     // of CallHandlerTasks (which is not a realistic use case anyways).
-    const TNode<Object> result =
-        CallRuntime(Runtime::kRunMicrotaskCallback, current_context,
-                    microtask_callback, microtask_data);
-    GotoIfException(result, &if_exception, &var_exception);
+    {
+      ScopedExceptionHandler handler(this, &if_exception, &var_exception);
+      CallRuntime(Runtime::kRunMicrotaskCallback, current_context,
+                  microtask_callback, microtask_data);
+    }
     Goto(&done);
   }
 
@@ -195,10 +199,18 @@ void MicrotaskQueueBuiltinsAssembler::RunSingleMicrotask(
     const TNode<Object> thenable = LoadObjectField(
         microtask, PromiseResolveThenableJobTask::kThenableOffset);
 
-    const TNode<Object> result =
-        CallBuiltin(Builtins::kPromiseResolveThenableJob, native_context,
-                    promise_to_resolve, thenable, then);
-    GotoIfException(result, &if_exception, &var_exception);
+    RunPromiseHook(Runtime::kPromiseHookBefore, microtask_context,
+                   CAST(promise_to_resolve));
+
+    {
+      ScopedExceptionHandler handler(this, &if_exception, &var_exception);
+      CallBuiltin(Builtins::kPromiseResolveThenableJob, native_context,
+                  promise_to_resolve, thenable, then);
+    }
+
+    RunPromiseHook(Runtime::kPromiseHookAfter, microtask_context,
+                   CAST(promise_to_resolve));
+
     RewindEnteredContext(saved_entered_context_count);
     SetCurrentContext(current_context);
     Goto(&done);
@@ -214,23 +226,43 @@ void MicrotaskQueueBuiltinsAssembler::RunSingleMicrotask(
 
     const TNode<Object> argument =
         LoadObjectField(microtask, PromiseReactionJobTask::kArgumentOffset);
-    const TNode<Object> handler =
+    const TNode<Object> job_handler =
         LoadObjectField(microtask, PromiseReactionJobTask::kHandlerOffset);
     const TNode<HeapObject> promise_or_capability = CAST(LoadObjectField(
         microtask, PromiseReactionJobTask::kPromiseOrCapabilityOffset));
+
+    TNode<Object> preserved_embedder_data = LoadObjectField(
+        microtask,
+        PromiseReactionJobTask::kContinuationPreservedEmbedderDataOffset);
+    Label preserved_data_done(this);
+    GotoIf(IsUndefined(preserved_embedder_data), &preserved_data_done);
+    StoreContextElement(native_context,
+                        Context::CONTINUATION_PRESERVED_EMBEDDER_DATA_INDEX,
+                        preserved_embedder_data);
+    Goto(&preserved_data_done);
+    BIND(&preserved_data_done);
 
     // Run the promise before/debug hook if enabled.
     RunPromiseHook(Runtime::kPromiseHookBefore, microtask_context,
                    promise_or_capability);
 
-    const TNode<Object> result =
-        CallBuiltin(Builtins::kPromiseFulfillReactionJob, microtask_context,
-                    argument, handler, promise_or_capability);
-    GotoIfException(result, &if_exception, &var_exception);
+    {
+      ScopedExceptionHandler handler(this, &if_exception, &var_exception);
+      CallBuiltin(Builtins::kPromiseFulfillReactionJob, microtask_context,
+                  argument, job_handler, promise_or_capability);
+    }
 
     // Run the promise after/debug hook if enabled.
     RunPromiseHook(Runtime::kPromiseHookAfter, microtask_context,
                    promise_or_capability);
+
+    Label preserved_data_reset_done(this);
+    GotoIf(IsUndefined(preserved_embedder_data), &preserved_data_reset_done);
+    StoreContextElement(native_context,
+                        Context::CONTINUATION_PRESERVED_EMBEDDER_DATA_INDEX,
+                        UndefinedConstant());
+    Goto(&preserved_data_reset_done);
+    BIND(&preserved_data_reset_done);
 
     RewindEnteredContext(saved_entered_context_count);
     SetCurrentContext(current_context);
@@ -247,23 +279,43 @@ void MicrotaskQueueBuiltinsAssembler::RunSingleMicrotask(
 
     const TNode<Object> argument =
         LoadObjectField(microtask, PromiseReactionJobTask::kArgumentOffset);
-    const TNode<Object> handler =
+    const TNode<Object> job_handler =
         LoadObjectField(microtask, PromiseReactionJobTask::kHandlerOffset);
     const TNode<HeapObject> promise_or_capability = CAST(LoadObjectField(
         microtask, PromiseReactionJobTask::kPromiseOrCapabilityOffset));
+
+    TNode<Object> preserved_embedder_data = LoadObjectField(
+        microtask,
+        PromiseReactionJobTask::kContinuationPreservedEmbedderDataOffset);
+    Label preserved_data_done(this);
+    GotoIf(IsUndefined(preserved_embedder_data), &preserved_data_done);
+    StoreContextElement(native_context,
+                        Context::CONTINUATION_PRESERVED_EMBEDDER_DATA_INDEX,
+                        preserved_embedder_data);
+    Goto(&preserved_data_done);
+    BIND(&preserved_data_done);
 
     // Run the promise before/debug hook if enabled.
     RunPromiseHook(Runtime::kPromiseHookBefore, microtask_context,
                    promise_or_capability);
 
-    const TNode<Object> result =
-        CallBuiltin(Builtins::kPromiseRejectReactionJob, microtask_context,
-                    argument, handler, promise_or_capability);
-    GotoIfException(result, &if_exception, &var_exception);
+    {
+      ScopedExceptionHandler handler(this, &if_exception, &var_exception);
+      CallBuiltin(Builtins::kPromiseRejectReactionJob, microtask_context,
+                  argument, job_handler, promise_or_capability);
+    }
 
     // Run the promise after/debug hook if enabled.
     RunPromiseHook(Runtime::kPromiseHookAfter, microtask_context,
                    promise_or_capability);
+
+    Label preserved_data_reset_done(this);
+    GotoIf(IsUndefined(preserved_embedder_data), &preserved_data_reset_done);
+    StoreContextElement(native_context,
+                        Context::CONTINUATION_PRESERVED_EMBEDDER_DATA_INDEX,
+                        UndefinedConstant());
+    Goto(&preserved_data_reset_done);
+    BIND(&preserved_data_reset_done);
 
     RewindEnteredContext(saved_entered_context_count);
     SetCurrentContext(current_context);
@@ -276,7 +328,7 @@ void MicrotaskQueueBuiltinsAssembler::RunSingleMicrotask(
   BIND(&if_exception);
   {
     // Report unhandled exceptions from microtasks.
-    CallRuntime(Runtime::kReportMessage, current_context,
+    CallRuntime(Runtime::kReportMessageFromMicrotask, current_context,
                 var_exception.value());
     RewindEnteredContext(saved_entered_context_count);
     SetCurrentContext(current_context);
@@ -415,7 +467,7 @@ void MicrotaskQueueBuiltinsAssembler::RewindEnteredContext(
 
 void MicrotaskQueueBuiltinsAssembler::RunPromiseHook(
     Runtime::FunctionId id, TNode<Context> context,
-    SloppyTNode<HeapObject> promise_or_capability) {
+    TNode<HeapObject> promise_or_capability) {
   Label hook(this, Label::kDeferred), done_hook(this);
   Branch(IsPromiseHookEnabledOrDebugIsActiveOrHasAsyncEventDelegate(), &hook,
          &done_hook);
@@ -438,8 +490,8 @@ void MicrotaskQueueBuiltinsAssembler::RunPromiseHook(
 }
 
 TF_BUILTIN(EnqueueMicrotask, MicrotaskQueueBuiltinsAssembler) {
-  TNode<Microtask> microtask = CAST(Parameter(Descriptor::kMicrotask));
-  TNode<Context> context = CAST(Parameter(Descriptor::kContext));
+  auto microtask = Parameter<Microtask>(Descriptor::kMicrotask);
+  auto context = Parameter<Context>(Descriptor::kContext);
   TNode<NativeContext> native_context = LoadNativeContext(context);
   TNode<RawPtrT> microtask_queue = GetMicrotaskQueue(native_context);
 
@@ -490,8 +542,8 @@ TF_BUILTIN(RunMicrotasks, MicrotaskQueueBuiltinsAssembler) {
   // Load the current context from the isolate.
   TNode<Context> current_context = GetCurrentContext();
 
-  TNode<RawPtrT> microtask_queue =
-      UncheckedCast<RawPtrT>(Parameter(Descriptor::kMicrotaskQueue));
+  auto microtask_queue =
+      UncheckedParameter<RawPtrT>(Descriptor::kMicrotaskQueue);
 
   Label loop(this), done(this);
   Goto(&loop);

@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
 
 go_library(
-    name = "go_default_library",
+    name = "getgo_lib",
     srcs = [
         "download.go",
         "main.go",
@@ -17,16 +17,16 @@ go_library(
 
 go_binary(
     name = "getgo",
-    embed = [":go_default_library"],
+    embed = [":getgo_lib"],
     visibility = ["//visibility:public"],
 )
 
 go_test(
-    name = "go_default_test",
+    name = "getgo_test",
     srcs = [
         "download_test.go",
         "main_test.go",
         "path_test.go",
     ],
-    embed = [":go_default_library"],
+    embed = [":getgo_lib"],
 )

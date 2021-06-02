@@ -19,13 +19,19 @@ load(
 )
 load(":cmake_script.bzl", "create_cmake_script")
 load("//tools/build_defs/shell_toolchain/toolchains:access.bzl", "create_context")
-load("//tools/build_defs/native_tools:tool_access.bzl", "get_cmake_data", "get_ninja_data")
+load(
+    "//tools/build_defs/native_tools:tool_access.bzl",
+    "get_cmake_data",
+    "get_ninja_data",
+    "get_make_data",
+)
 load("@rules_foreign_cc//tools/build_defs:shell_script_helper.bzl", "os_name")
 
 def _cmake_external(ctx):
     cmake_data = get_cmake_data(ctx)
+    make_data = get_make_data(ctx)
 
-    tools_deps = ctx.attr.tools_deps + cmake_data.deps
+    tools_deps = ctx.attr.tools_deps + cmake_data.deps + make_data.deps
 
     ninja_data = get_ninja_data(ctx)
     make_commands = ctx.attr.make_commands
@@ -41,6 +47,7 @@ def _cmake_external(ctx):
         tools_deps = tools_deps,
         cmake_path = cmake_data.path,
         ninja_path = ninja_data.path,
+        make_path = make_data.path,
         make_commands = make_commands,
     )
 
@@ -58,8 +65,11 @@ def _create_configure_script(configureParameters):
     inputs = configureParameters.inputs
 
     root = detect_root(ctx.attr.lib_source)
+    if len(ctx.attr.working_directory) > 0:
+        root = root + "/" + ctx.attr.working_directory
 
     tools = get_tools_info(ctx)
+
     # CMake will replace <TARGET> with the actual output file
     flags = get_flags_info(ctx, "<TARGET>")
     no_toolchain_file = ctx.attr.cache_entries.get("CMAKE_TOOLCHAIN_FILE") or not ctx.attr.generate_crosstool_file
@@ -112,6 +122,9 @@ def _attrs():
         # cache_entries - the rule makes only a poor guess about the target system,
         # it is better to specify it manually.
         "generate_crosstool_file": attr.bool(mandatory = False, default = False),
+        # Working directory, with the main CMakeLists.txt
+        # (otherwise, the top directory of the lib_source label files is used.)
+        "working_directory": attr.string(mandatory = False, default = ""),
     })
     return attrs
 
@@ -128,6 +141,7 @@ cmake_external = rule(
     toolchains = [
         "@rules_foreign_cc//tools/build_defs:cmake_toolchain",
         "@rules_foreign_cc//tools/build_defs:ninja_toolchain",
+        "@rules_foreign_cc//tools/build_defs:make_toolchain",
         "@rules_foreign_cc//tools/build_defs/shell_toolchain/toolchains:shell_commands",
         "@bazel_tools//tools/cpp:toolchain_type",
     ],

@@ -28,6 +28,7 @@ import (
 
 	"github.com/bazelbuild/bazel-gazelle/config"
 	gzflag "github.com/bazelbuild/bazel-gazelle/flag"
+	"github.com/bazelbuild/bazel-gazelle/internal/wspace"
 	"github.com/bazelbuild/bazel-gazelle/label"
 	"github.com/bazelbuild/bazel-gazelle/language"
 	"github.com/bazelbuild/bazel-gazelle/merger"
@@ -129,7 +130,7 @@ func (ucr *updateConfigurer) CheckFlags(fs *flag.FlagSet, c *config.Config) erro
 	// dependency resolution for Go.
 	// TODO(jayconrod): Go-specific code should be moved to language/go.
 	if ucr.repoConfigPath == "" {
-		ucr.repoConfigPath = filepath.Join(c.RepoRoot, "WORKSPACE")
+		ucr.repoConfigPath = wspace.FindWORKSPACEFile(c.RepoRoot)
 	}
 	repoConfigFile, err := rule.LoadWorkspaceFile(ucr.repoConfigPath, "")
 	if err != nil && !os.IsNotExist(err) {
@@ -157,7 +158,7 @@ func (ucr *updateConfigurer) CheckFlags(fs *flag.FlagSet, c *config.Config) erro
 
 	// If the repo configuration file is not WORKSPACE, also load WORKSPACE
 	// and any declared macro files so we can apply fixes.
-	workspacePath := filepath.Join(c.RepoRoot, "WORKSPACE")
+	workspacePath := wspace.FindWORKSPACEFile(c.RepoRoot)
 	var workspace *rule.File
 	if ucr.repoConfigPath == workspacePath {
 		workspace = repoConfigFile
@@ -242,6 +243,7 @@ func runFixUpdate(cmd command, args []string) (err error) {
 	mrslv := newMetaResolver()
 	kinds := make(map[string]rule.KindInfo)
 	loads := genericLoads
+	exts := make([]interface{}, 0, len(languages))
 	for _, lang := range languages {
 		cexts = append(cexts, lang)
 		for kind, info := range lang.Kinds() {
@@ -249,8 +251,9 @@ func runFixUpdate(cmd command, args []string) (err error) {
 			kinds[kind] = info
 		}
 		loads = append(loads, lang.Loads()...)
+		exts = append(exts, lang)
 	}
-	ruleIndex := resolve.NewRuleIndex(mrslv.Resolver)
+	ruleIndex := resolve.NewRuleIndex(mrslv.Resolver, exts...)
 
 	c, err := newFixUpdateConfiguration(cmd, args, cexts)
 	if err != nil {
@@ -259,13 +262,6 @@ func runFixUpdate(cmd command, args []string) (err error) {
 
 	if err := fixRepoFiles(c, loads); err != nil {
 		return err
-	}
-
-	if cmd == fixCmd {
-		// Only check the version when "fix" is run. Generated build files
-		// frequently work with older version of rules_go, and we don't want to
-		// nag too much since there's no way to disable this warning.
-		checkRulesGoVersion(c.RepoRoot)
 	}
 
 	// Visit all directories in the repository.
@@ -285,7 +281,7 @@ func runFixUpdate(cmd command, args []string) (err error) {
 
 		// Fix any problems in the file.
 		if f != nil {
-			for _, l := range languages {
+			for _, l := range filterLanguages(c, languages) {
 				l.Fix(c, f)
 			}
 		}
@@ -293,7 +289,7 @@ func runFixUpdate(cmd command, args []string) (err error) {
 		// Generate rules.
 		var empty, gen []*rule.Rule
 		var imports []interface{}
-		for _, l := range languages {
+		for _, l := range filterLanguages(c, languages) {
 			res := l.GenerateRules(language.GenerateArgs{
 				Config:       c,
 				Dir:          dir,
@@ -371,7 +367,9 @@ func runFixUpdate(cmd command, args []string) (err error) {
 	for _, v := range visits {
 		for i, r := range v.rules {
 			from := label.New(c.RepoName, v.pkgRel, r.Name())
-			mrslv.Resolver(r, v.pkgRel).Resolve(v.c, ruleIndex, rc, r, v.imports[i], from)
+			if rslv := mrslv.Resolver(r, v.pkgRel); rslv != nil {
+				rslv.Resolve(v.c, ruleIndex, rc, r, v.imports[i], from)
+			}
 		}
 		merger.MergeFile(v.file, v.empty, v.rules, merger.PostResolve,
 			unionKindInfoMaps(kinds, v.mappedKindInfo))
@@ -474,7 +472,9 @@ func fixRepoFiles(c *config.Config, loads []rule.LoadInfo) error {
 
 	for _, f := range uc.workspaceFiles {
 		merger.FixLoads(f, loads)
-		if f.Path == filepath.Join(c.RepoRoot, "WORKSPACE") {
+		workspaceFile := wspace.FindWORKSPACEFile(c.RepoRoot)
+
+		if f.Path == workspaceFile {
 			removeLegacyGoRepository(f)
 			if err := merger.CheckGazelleLoaded(f); err != nil {
 				return err
@@ -502,12 +502,20 @@ func removeLegacyGoRepository(f *rule.File) {
 }
 
 func findWorkspaceName(f *rule.File) string {
+	var name string
 	for _, r := range f.Rules {
 		if r.Kind() == "workspace" {
-			return r.Name()
+			name = r.Name()
+			break
 		}
 	}
-	return ""
+	// HACK(bazelbuild/rules_go#2355, bazelbuild/rules_go#2387):
+	// We can't patch the WORKSPACE file with the correct name because Bazel
+	// writes it first; our patches won't apply.
+	if name == "com_google_googleapis" {
+		return "go_googleapis"
+	}
+	return name
 }
 
 func isDescendingDir(dir, root string) bool {

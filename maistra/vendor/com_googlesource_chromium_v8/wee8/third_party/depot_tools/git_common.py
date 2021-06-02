@@ -9,10 +9,17 @@ from __future__ import print_function
 from __future__ import unicode_literals
 
 import multiprocessing.pool
+import sys
+import threading
+
 from multiprocessing.pool import IMapIterator
+
 def wrapper(func):
   def wrap(self, timeout=None):
-    return func(self, timeout=timeout or 1 << 31)
+    default_timeout = (1 << 31 if sys.version_info.major == 2 else
+                       threading.TIMEOUT_MAX)
+    return func(self, timeout=timeout or default_timeout)
+
   return wrap
 IMapIterator.next = wrapper(IMapIterator.next)
 IMapIterator.__next__ = IMapIterator.next
@@ -29,10 +36,8 @@ import re
 import setup_color
 import shutil
 import signal
-import sys
 import tempfile
 import textwrap
-import threading
 
 import subprocess2
 
@@ -449,7 +454,7 @@ def freeze():
       die("Cannot freeze unmerged changes!")
     if limit_mb > 0:
       if s.lstat == '?':
-        untracked_bytes += os.stat(os.path.join(root_path, f)).st_size
+        untracked_bytes += os.lstat(os.path.join(root_path, f)).st_size
   if limit_mb > 0 and untracked_bytes > limit_mb * MB:
     die("""\
       You appear to have too much untracked+unignored data in your git
@@ -464,7 +469,7 @@ def freeze():
         .git/info/exclude
       file. See `git help ignore` for the format of this file.
 
-      If this data is indended as part of your commit, you may adjust the
+      If this data is intended as part of your commit, you may adjust the
       freeze limit by running:
         git config %s <new_limit>
       Where <new_limit> is an integer threshold in megabytes.""",
@@ -525,7 +530,11 @@ def get_or_create_merge_base(branch, parent=None):
   parent = parent or upstream(branch)
   if parent is None or branch is None:
     return None
-  actual_merge_base = run('merge-base', parent, branch)
+
+  try:
+    actual_merge_base = run('merge-base', '--fork-point', parent, branch)
+  except subprocess2.CalledProcessError:
+    actual_merge_base = run('merge-base', parent, branch)
 
   if base_upstream != parent:
     base = None
@@ -657,7 +666,8 @@ def rebase(parent, start, branch, abort=False):
   except subprocess2.CalledProcessError as cpe:
     if abort:
       run_with_retcode('rebase', '--abort')  # ignore failure
-    return RebaseRet(False, cpe.stdout, cpe.stderr)
+    return RebaseRet(False, cpe.stdout.decode('utf-8', 'replace'),
+                     cpe.stderr.decode('utf-8', 'replace'))
 
 
 def remove_merge_base(branch):
@@ -761,7 +771,7 @@ def run_stream_with_retcode(*cmd, **kwargs):
     retcode = proc.wait()
     if retcode != 0:
       raise subprocess2.CalledProcessError(retcode, cmd, os.getcwd(),
-                                           None, None)
+                                           b'', b'')
 
 
 def run_with_stderr(*cmd, **kwargs):
@@ -1030,18 +1040,22 @@ def get_branches_info(include_tracking_status):
   info_map = {}
   data = run('for-each-ref', format_string, 'refs/heads')
   BranchesInfo = collections.namedtuple(
-      'BranchesInfo', 'hash upstream ahead behind')
+      'BranchesInfo', 'hash upstream commits behind')
   for line in data.splitlines():
     (branch, branch_hash, upstream_branch, tracking_status) = line.split(':')
 
-    ahead_match = re.search(r'ahead (\d+)', tracking_status)
-    ahead = int(ahead_match.group(1)) if ahead_match else None
+    commits = None
+    base = get_or_create_merge_base(branch)
+    if base:
+      commits_list = run('rev-list', '--count', branch, '^%s' % base, '--')
+      commits = int(commits_list) or None
 
     behind_match = re.search(r'behind (\d+)', tracking_status)
     behind = int(behind_match.group(1)) if behind_match else None
 
     info_map[branch] = BranchesInfo(
-        hash=branch_hash, upstream=upstream_branch, ahead=ahead, behind=behind)
+        hash=branch_hash, upstream=upstream_branch, commits=commits, 
+        behind=behind)
 
   # Set None for upstreams which are not branches (e.g empty upstream, remotes
   # and deleted upstream branches).
@@ -1077,6 +1091,7 @@ def make_workdir(repository, new_workdir):
     'refs',
     'remotes',
     'rr-cache',
+    'shallow',
   ]
   make_workdir_common(repository, new_workdir, GIT_DIRECTORY_WHITELIST,
                       ['HEAD'])

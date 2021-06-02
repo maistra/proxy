@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "html2article_lib",
     srcs = ["conv.go"],
     importpath = "golang.org/x/tools/cmd/html2article",
     visibility = ["//visibility:private"],
@@ -13,6 +13,6 @@ go_library(
 
 go_binary(
     name = "html2article",
-    embed = [":go_default_library"],
+    embed = [":html2article_lib"],
     visibility = ["//visibility:public"],
 )

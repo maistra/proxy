@@ -38,10 +38,10 @@ struct ResolverArgs {
   const grpc_channel_args* args = nullptr;
   /// Used to drive I/O in the name resolution process.
   grpc_pollset_set* pollset_set = nullptr;
-  /// The combiner under which all resolver calls will be run.
-  Combiner* combiner = nullptr;
+  /// The work_serializer under which all resolver calls will be run.
+  std::shared_ptr<WorkSerializer> work_serializer;
   /// The result handler to be used by the resolver.
-  UniquePtr<Resolver::ResultHandler> result_handler;
+  std::unique_ptr<Resolver::ResultHandler> result_handler;
 };
 
 class ResolverFactory {
@@ -55,10 +55,10 @@ class ResolverFactory {
 
   /// Returns a string representing the default authority to use for this
   /// scheme.
-  virtual UniquePtr<char> GetDefaultAuthority(grpc_uri* uri) const {
+  virtual grpc_core::UniquePtr<char> GetDefaultAuthority(grpc_uri* uri) const {
     const char* path = uri->path;
     if (path[0] == '/') ++path;
-    return UniquePtr<char>(gpr_strdup(path));
+    return grpc_core::UniquePtr<char>(gpr_strdup(path));
   }
 
   /// Returns the URI scheme that this factory implements.

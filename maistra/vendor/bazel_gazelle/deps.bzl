@@ -29,13 +29,6 @@ load(
     "go_repository_config",
 )
 load(
-    "@bazel_gazelle//internal:overlay_repository.bzl",
-    # Load overlay git_repository and http_archive in order to re-export.
-    # These may be removed at some point in the future.
-    "git_repository",
-    "http_archive",
-)
-load(
     "@bazel_tools//tools/build_defs/repo:git.bzl",
     _tools_git_repository = "git_repository",
 )
@@ -106,8 +99,8 @@ def gazelle_dependencies(
         go_repository,
         name = "com_github_bazelbuild_buildtools",
         importpath = "github.com/bazelbuild/buildtools",
-        sum = "h1:OfyUN/Msd8yqJww6deQ9vayJWw+Jrbe6Qp9giv51QQI=",
-        version = "v0.0.0-20190731111112-f720930ceb60",
+        sum = "h1:Et1IIXrXwhpDvR5wH9REPEZ0sUtzUoJSq19nfmBqzBY=",
+        version = "v0.0.0-20200718160251-b1667ff58f71",
     )
 
     _maybe(
@@ -132,6 +125,30 @@ def gazelle_dependencies(
         importpath = "github.com/pmezard/go-difflib",
         sum = "h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=",
         version = "v1.0.0",
+    )
+
+    _maybe(
+        go_repository,
+        name = "com_github_bmatcuk_doublestar",
+        importpath = "github.com/bmatcuk/doublestar",
+        sum = "h1:oC24CykoSAB8zd7XgruHo33E0cHJf/WhQA/7BeXj+x0=",
+        version = "v1.2.2",
+    )
+
+    _maybe(
+        go_repository,
+        name = "com_github_google_go_cmp",
+        importpath = "github.com/google/go-cmp",
+        sum = "h1:/exdXoGamhu5ONeUJH0deniYLWYvQwW66yvlfiiKTu0=",
+        version = "v0.4.1",
+    )
+
+    _maybe(
+        go_repository,
+        name = "org_golang_x_xerrors",
+        importpath = "golang.org/x/xerrors",
+        sum = "h1:E7g+9GITq07hpfrRu66IVDexMakfv52eLZ2CXBWiKr4=",
+        version = "v0.0.0-20191204190536-9bdfabe68543",
     )
 
 def _maybe(repo_rule, name, **kwargs):

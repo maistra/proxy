@@ -33,13 +33,16 @@ import (
 )
 
 func (_ *goLang) Imports(_ *config.Config, r *rule.Rule, f *rule.File) []resolve.ImportSpec {
-	if !isGoLibrary(r.Kind()) {
+	if !isGoLibrary(r.Kind()) || isExtraLibrary(r) {
 		return nil
 	}
 	if importPath := r.AttrString("importpath"); importPath == "" {
 		return []resolve.ImportSpec{}
 	} else {
-		return []resolve.ImportSpec{{goName, importPath}}
+		return []resolve.ImportSpec{{
+			Lang: goName,
+			Imp:  importPath,
+		}}
 	}
 }
 
@@ -67,9 +70,14 @@ func (gl *goLang) Resolve(c *config.Config, ix *resolve.RuleIndex, rc *repo.Remo
 	}
 	imports := importsRaw.(rule.PlatformStrings)
 	r.DelAttr("deps")
-	resolve := ResolveGo
-	if r.Kind() == "go_proto_library" {
+	var resolve func(*config.Config, *resolve.RuleIndex, *repo.RemoteCache, string, label.Label) (label.Label, error)
+	switch r.Kind() {
+	case "go_proto_library":
 		resolve = resolveProto
+	case "go_tool_library":
+		resolve = resolveGoTool
+	default:
+		resolve = ResolveGo
 	}
 	deps, errs := imports.Map(func(imp string) (string, error) {
 		l, err := resolve(c, ix, rc, imp, from)
@@ -114,7 +122,6 @@ var (
 // (gomock). Gazelle calls Language.Resolve instead.
 func ResolveGo(c *config.Config, ix *resolve.RuleIndex, rc *repo.RemoteCache, imp string, from label.Label) (label.Label, error) {
 	gc := getGoConfig(c)
-	pcMode := getProtoMode(c)
 	if build.IsLocalImport(imp) {
 		cleanRel := path.Clean(path.Join(from.Pkg, imp))
 		if build.IsLocalImport(cleanRel) {
@@ -131,33 +138,7 @@ func ResolveGo(c *config.Config, ix *resolve.RuleIndex, rc *repo.RemoteCache, im
 		return l, nil
 	}
 
-	if pcMode.ShouldUseKnownImports() {
-		// These are commonly used libraries that depend on Well Known Types.
-		// They depend on the generated versions of these protos to avoid conflicts.
-		// However, since protoc-gen-go depends on these libraries, we generate
-		// its rules in disable_global mode (to avoid cyclic dependency), so the
-		// "go_default_library" versions of these libraries depend on the
-		// pre-generated versions of the proto libraries.
-		switch imp {
-		case "github.com/golang/protobuf/proto":
-			return label.New("com_github_golang_protobuf", "proto", "go_default_library"), nil
-		case "github.com/golang/protobuf/jsonpb":
-			return label.New("com_github_golang_protobuf", "jsonpb", "go_default_library_gen"), nil
-		case "github.com/golang/protobuf/descriptor":
-			return label.New("com_github_golang_protobuf", "descriptor", "go_default_library_gen"), nil
-		case "github.com/golang/protobuf/ptypes":
-			return label.New("com_github_golang_protobuf", "ptypes", "go_default_library_gen"), nil
-		case "github.com/golang/protobuf/protoc-gen-go/generator":
-			return label.New("com_github_golang_protobuf", "protoc-gen-go/generator", "go_default_library_gen"), nil
-		case "google.golang.org/grpc":
-			return label.New("org_golang_google_grpc", "", "go_default_library"), nil
-		}
-		if l, ok := knownGoProtoImports[imp]; ok {
-			return l, nil
-		}
-	}
-
-	if l, err := resolveWithIndexGo(ix, imp, from); err == nil || err == skipImportError {
+	if l, err := resolveWithIndexGo(c, ix, imp, from); err == nil || err == skipImportError {
 		return l, err
 	} else if err != notFoundError {
 		return label.NoLabel, err
@@ -180,14 +161,15 @@ func ResolveGo(c *config.Config, ix *resolve.RuleIndex, rc *repo.RemoteCache, im
 		// current repo
 		if pathtools.HasPrefix(imp, gc.prefix) {
 			pkg := path.Join(gc.prefixRel, pathtools.TrimPrefix(imp, gc.prefix))
-			return label.New("", pkg, defaultLibName), nil
+			libName := libNameByConvention(gc.goNamingConvention, imp, "")
+			return label.New("", pkg, libName), nil
 		}
 	}
 
 	if gc.depMode == externalMode {
-		return resolveExternal(gc.moduleMode, rc, imp)
+		return resolveExternal(c, rc, imp)
 	} else {
-		return resolveVendored(rc, imp)
+		return resolveVendored(gc, imp)
 	}
 }
 
@@ -196,8 +178,8 @@ func IsStandard(imp string) bool {
 	return stdPackages[imp]
 }
 
-func resolveWithIndexGo(ix *resolve.RuleIndex, imp string, from label.Label) (label.Label, error) {
-	matches := ix.FindRulesByImport(resolve.ImportSpec{Lang: "go", Imp: imp}, "go")
+func resolveWithIndexGo(c *config.Config, ix *resolve.RuleIndex, imp string, from label.Label) (label.Label, error) {
+	matches := ix.FindRulesByImportWithConfig(c, resolve.ImportSpec{Lang: "go", Imp: imp}, "go")
 	var bestMatch resolve.FindResult
 	var bestMatchIsVendored bool
 	var bestMatchVendorRoot string
@@ -252,7 +234,7 @@ func resolveWithIndexGo(ix *resolve.RuleIndex, imp string, from label.Label) (la
 
 var modMajorRex = regexp.MustCompile(`/v\d+(?:/|$)`)
 
-func resolveExternal(moduleMode bool, rc *repo.RemoteCache, imp string) (label.Label, error) {
+func resolveExternal(c *config.Config, rc *repo.RemoteCache, imp string) (label.Label, error) {
 	// If we're in module mode, use "go list" to find the module path and
 	// repository name. Otherwise, use special cases (for github.com, golang.org)
 	// or send a GET with ?go-get=1 to find the root. If the path contains
@@ -261,6 +243,8 @@ func resolveExternal(moduleMode bool, rc *repo.RemoteCache, imp string) (label.L
 	// Eventually module mode will be the only mode. But for now, it's expensive
 	// and not the common case, especially when known repositories aren't
 	// listed in WORKSPACE (which is currently the case within go_repository).
+	gc := getGoConfig(c)
+	moduleMode := gc.moduleMode
 	if !moduleMode {
 		moduleMode = pathWithoutSemver(imp) != ""
 	}
@@ -285,16 +269,38 @@ func resolveExternal(moduleMode bool, rc *repo.RemoteCache, imp string) (label.L
 		pkg = pathtools.TrimPrefix(impWithoutSemver, prefix)
 	}
 
-	return label.New(repo, pkg, defaultLibName), nil
+	// Determine what naming convention is used by the repository.
+	// If there is no known repository, it's probably declared in an http_archive
+	// somewhere like go_rules_dependencies, so use the old naming convention,
+	// unless the user has explicitly told us otherwise.
+	// If the repository uses the import_alias convention (default for
+	// go_repository), use the convention from the current directory unless the
+	// user has told us otherwise.
+	nc := gc.repoNamingConvention[repo]
+	if nc == unknownNamingConvention {
+		if gc.goNamingConventionExternal != unknownNamingConvention {
+			nc = gc.goNamingConventionExternal
+		} else {
+			nc = goDefaultLibraryNamingConvention
+		}
+	} else if nc == importAliasNamingConvention {
+		if gc.goNamingConventionExternal != unknownNamingConvention {
+			nc = gc.goNamingConventionExternal
+		} else {
+			nc = gc.goNamingConvention
+		}
+	}
+
+	name := libNameByConvention(nc, imp, "")
+	return label.New(repo, pkg, name), nil
 }
 
-func resolveVendored(rc *repo.RemoteCache, imp string) (label.Label, error) {
-	return label.New("", path.Join("vendor", imp), defaultLibName), nil
+func resolveVendored(gc *goConfig, imp string) (label.Label, error) {
+	name := libNameByConvention(gc.goNamingConvention, imp, "")
+	return label.New("", path.Join("vendor", imp), name), nil
 }
 
 func resolveProto(c *config.Config, ix *resolve.RuleIndex, rc *repo.RemoteCache, imp string, from label.Label) (label.Label, error) {
-	pcMode := getProtoMode(c)
-
 	if wellKnownProtos[imp] {
 		return label.NoLabel, skipImportError
 	}
@@ -303,15 +309,7 @@ func resolveProto(c *config.Config, ix *resolve.RuleIndex, rc *repo.RemoteCache,
 		return l, nil
 	}
 
-	if l, ok := knownProtoImports[imp]; ok && pcMode.ShouldUseKnownImports() {
-		if l.Equal(from) {
-			return label.NoLabel, skipImportError
-		} else {
-			return l, nil
-		}
-	}
-
-	if l, err := resolveWithIndexProto(ix, imp, from); err == nil || err == skipImportError {
+	if l, err := resolveWithIndexProto(c, ix, imp, from); err == nil || err == skipImportError {
 		return l, err
 	} else if err != notFoundError {
 		return label.NoLabel, err
@@ -328,7 +326,21 @@ func resolveProto(c *config.Config, ix *resolve.RuleIndex, rc *repo.RemoteCache,
 	if from.Pkg == "vendor" || strings.HasPrefix(from.Pkg, "vendor/") {
 		rel = path.Join("vendor", rel)
 	}
-	return label.New("", rel, defaultLibName), nil
+	libName := libNameByConvention(getGoConfig(c).goNamingConvention, imp, "")
+	return label.New("", rel, libName), nil
+}
+
+func resolveGoTool(c *config.Config, ix *resolve.RuleIndex, rc *repo.RemoteCache, imp string, from label.Label) (label.Label, error) {
+	if isToolLibImportPath(imp) {
+		gc := getGoConfig(c)
+		var repo string
+		if gc.prefix != "golang.org/x/tools" {
+			repo = "org_golang_x_tools"
+		}
+		pkg := strings.TrimPrefix(imp, "golang.org/x/tools/")
+		return label.Label{Repo: repo, Pkg: pkg, Name: "go_tool_library"}, nil
+	}
+	return ResolveGo(c, ix, rc, imp, from)
 }
 
 // wellKnownProtos is the set of proto sets for which we don't need to add
@@ -350,8 +362,8 @@ var wellKnownProtos = map[string]bool{
 	"google/protobuf/wrappers.proto":        true,
 }
 
-func resolveWithIndexProto(ix *resolve.RuleIndex, imp string, from label.Label) (label.Label, error) {
-	matches := ix.FindRulesByImport(resolve.ImportSpec{Lang: "proto", Imp: imp}, "go")
+func resolveWithIndexProto(c *config.Config, ix *resolve.RuleIndex, imp string, from label.Label) (label.Label, error) {
+	matches := ix.FindRulesByImportWithConfig(c, resolve.ImportSpec{Lang: "proto", Imp: imp}, "go")
 	if len(matches) == 0 {
 		return label.NoLabel, notFoundError
 	}
@@ -370,4 +382,21 @@ func isGoLibrary(kind string) bool {
 
 func isGoProtoLibrary(kind string) bool {
 	return kind == "go_proto_library" || kind == "go_grpc_library"
+}
+
+// isExtraLibrary returns true if this rule is one of a handful of proto
+// libraries generated by maybeGenerateExtraLib. It should not be indexed for
+// dependency resolution.
+func isExtraLibrary(r *rule.Rule) bool {
+	if !strings.HasSuffix(r.Name(), "_gen") {
+		return false
+	}
+	switch r.AttrString("importpath") {
+	case "github.com/golang/protobuf/descriptor",
+		"github.com/golang/protobuf/protoc-gen-go/generator",
+		"github.com/golang/protobuf/ptypes":
+		return true
+	default:
+		return false
+	}
 }

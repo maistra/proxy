@@ -1,0 +1,14 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "another",
+    srcs = ["another.go"],
+    importpath = "golang.org/x/tools/internal/lsp/testdata/rename/crosspkg/another",
+    visibility = ["//:__subpackages__"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":another",
+    visibility = ["//:__subpackages__"],
+)

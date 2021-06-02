@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//bazel:grpc_build_system.bzl", "grpc_cc_library", "grpc_cc_test", "grpc_cc_binary", "grpc_package")
+load("//bazel:grpc_build_system.bzl", "grpc_cc_binary", "grpc_cc_library", "grpc_cc_test", "grpc_package")
 
 licenses(["notice"])  # Apache v2
 
@@ -25,26 +25,30 @@ grpc_fuzzer(
     srcs = ["alts_credentials_fuzzer.cc"],
     corpus = "corpus/alts_credentials_corpus",
     language = "C++",
+    tags = ["no_windows"],
     deps = [
         "//:gpr",
         "//:grpc",
         "//test/core/util:grpc_test_util",
     ],
-    tags = ["no_windows"],
 )
 
 grpc_fuzzer(
     name = "ssl_server_fuzzer",
     srcs = ["ssl_server_fuzzer.cc"],
     corpus = "corpus/ssl_server_corpus",
+    data = [
+        "//src/core/tsi/test_creds:ca.pem",
+        "//src/core/tsi/test_creds:server1.key",
+        "//src/core/tsi/test_creds:server1.pem",
+    ],
     language = "C++",
+    tags = ["no_windows"],
     deps = [
         "//:gpr",
         "//:grpc",
-        "//test/core/end2end:ssl_test_data",
         "//test/core/util:grpc_test_util",
     ],
-    tags = ["no_windows"],
 )
 
 grpc_cc_library(
@@ -60,12 +64,24 @@ grpc_cc_test(
     name = "auth_context_test",
     srcs = ["auth_context_test.cc"],
     language = "C++",
+    uses_polling = False,
     deps = [
         "//:gpr",
         "//:grpc",
         "//test/core/util:grpc_test_util",
     ],
-    uses_polling = False,
+)
+
+grpc_cc_test(
+    name = "authorization_engine_test",
+    srcs = ["authorization_engine_test.cc"],
+    external_deps = ["gtest"],
+    language = "C++",
+    deps = [
+        "//:gpr",
+        "//:grpc",
+        "//test/core/util:grpc_test_util",
+    ],
 )
 
 grpc_cc_test(
@@ -80,15 +96,28 @@ grpc_cc_test(
 )
 
 grpc_cc_test(
-    name = "control_plane_credentials_test",
-    srcs = ["control_plane_credentials_test.cc"],
+    name = "aws_request_signer_test",
+    srcs = ["aws_request_signer_test.cc"],
+    external_deps = ["gtest"],
     language = "C++",
     deps = [
         "//:gpr",
         "//:grpc",
-        "//test/core/end2end:cq_verifier",
-        "//test/core/end2end:ssl_test_data",
+        "//:grpc_secure",
         "//test/core/util:grpc_test_util",
+    ],
+)
+
+grpc_cc_test(
+    name = "evaluate_args_test",
+    srcs = ["evaluate_args_test.cc"],
+    external_deps = ["gtest"],
+    language = "C++",
+    deps = [
+        "//:gpr",
+        "//:grpc",
+        "//test/core/util:grpc_test_util",
+        "//test/core/util:grpc_test_util_base",
     ],
 )
 
@@ -96,24 +125,24 @@ grpc_cc_test(
     name = "json_token_test",
     srcs = ["json_token_test.cc"],
     language = "C++",
+    uses_polling = False,
     deps = [
         "//:gpr",
         "//:grpc",
         "//test/core/util:grpc_test_util",
     ],
-    uses_polling = False,
 )
 
 grpc_cc_test(
     name = "jwt_verifier_test",
     srcs = ["jwt_verifier_test.cc"],
     language = "C++",
+    uses_polling = False,
     deps = [
         "//:gpr",
         "//:grpc",
         "//test/core/util:grpc_test_util",
     ],
-    uses_polling = False,
 )
 
 grpc_cc_test(
@@ -259,17 +288,72 @@ grpc_cc_test(
 )
 
 grpc_cc_test(
-    name = "spiffe_security_connector_test",
-    srcs = ["spiffe_security_connector_test.cc"],
-    language = "C++",
+    name = "tls_security_connector_test",
+    srcs = ["tls_security_connector_test.cc"],
+    data = [
+        "//src/core/tsi/test_creds:ca.pem",
+        "//src/core/tsi/test_creds:multi-domain.key",
+        "//src/core/tsi/test_creds:multi-domain.pem",
+        "//src/core/tsi/test_creds:server0.key",
+        "//src/core/tsi/test_creds:server0.pem",
+        "//src/core/tsi/test_creds:server1.key",
+        "//src/core/tsi/test_creds:server1.pem",
+    ],
     external_deps = [
-      "gtest",
+        "gtest",
+    ],
+    language = "C++",
+    deps = [
+        "//:gpr",
+        "//:grpc",
+        "//:grpc_secure",
+        "//:tsi",
+        "//:tsi_interface",
+        "//test/core/util:grpc_test_util",
+    ],
+)
+
+grpc_cc_test(
+    name = "grpc_tls_credentials_options_test",
+    srcs = ["grpc_tls_credentials_options_test.cc"],
+    data = [
+        "//src/core/tsi/test_creds:ca.pem",
+        "//src/core/tsi/test_creds:server1.key",
+        "//src/core/tsi/test_creds:server1.pem",
+    ],
+    external_deps = ["gtest"],
+    language = "C++",
+    deps = [
+        "//:gpr",
+        "//:grpc",
+        "//:grpc_secure",
+        "//test/core/util:grpc_test_util",
+    ],
+)
+
+grpc_cc_test(
+    name = "grpc_tls_certificate_distributor_test",
+    srcs = ["grpc_tls_certificate_distributor_test.cc"],
+    external_deps = ["gtest"],
+    language = "C++",
+    deps = [
+        "//:gpr",
+        "//:grpc",
+        "//:grpc_secure",
+        "//test/core/util:grpc_test_util",
+    ],
+)
+
+grpc_cc_test(
+    name = "insecure_security_connector_test",
+    srcs = ["insecure_security_connector_test.cc"],
+    external_deps = [
+        "gtest",
     ],
     deps = [
         "//:gpr",
         "//:grpc",
         "//:grpc_secure",
         "//test/core/util:grpc_test_util",
-        "//test/core/end2end:ssl_test_data",
     ],
 )

@@ -1,0 +1,31 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "interactionmodel",
+    srcs = [
+        "conditional_event.pb.go",
+        "event_handler.pb.go",
+        "global_intent_event.pb.go",
+        "intent.pb.go",
+        "intent_event.pb.go",
+        "scene.pb.go",
+        "slot.pb.go",
+    ],
+    importpath = "google.golang.org/genproto/googleapis/actions/sdk/v2/interactionmodel",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//googleapis/actions/sdk/v2/interactionmodel/prompt",
+        "//googleapis/actions/sdk/v2/interactionmodel/type",
+        "//googleapis/api/annotations",
+        "@com_github_golang_protobuf//proto:go_default_library",
+        "@org_golang_google_protobuf//reflect/protoreflect:go_default_library",
+        "@org_golang_google_protobuf//runtime/protoimpl:go_default_library",
+        "@org_golang_google_protobuf//types/known/structpb:go_default_library",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":interactionmodel",
+    visibility = ["//visibility:public"],
+)

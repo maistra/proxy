@@ -8,11 +8,13 @@ import (
 	"context"
 
 	"golang.org/x/tools/internal/lsp/protocol"
+	"golang.org/x/tools/internal/lsp/source"
 	"golang.org/x/tools/internal/span"
 	errors "golang.org/x/xerrors"
 )
 
-func (s *Server) changeFolders(ctx context.Context, event protocol.WorkspaceFoldersChangeEvent) error {
+func (s *Server) didChangeWorkspaceFolders(ctx context.Context, params *protocol.DidChangeWorkspaceFoldersParams) error {
+	event := params.Event
 	for _, folder := range event.Removed {
 		view := s.session.View(folder.Name)
 		if view != nil {
@@ -21,25 +23,85 @@ func (s *Server) changeFolders(ctx context.Context, event protocol.WorkspaceFold
 			return errors.Errorf("view %s for %v not found", folder.Name, folder.URI)
 		}
 	}
+	return s.addFolders(ctx, event.Added)
+}
 
-	for _, folder := range event.Added {
-		if err := s.addView(ctx, folder.Name, span.NewURI(folder.URI)); err != nil {
+func (s *Server) addView(ctx context.Context, name string, uri, tempWorkspace span.URI) (source.Snapshot, func(), error) {
+	s.stateMu.Lock()
+	state := s.state
+	s.stateMu.Unlock()
+	if state < serverInitialized {
+		return nil, func() {}, errors.Errorf("addView called before server initialized")
+	}
+	options := s.session.Options().Clone()
+	if err := s.fetchConfig(ctx, name, uri, options); err != nil {
+		return nil, func() {}, err
+	}
+	_, snapshot, release, err := s.session.NewView(ctx, name, uri, tempWorkspace, options)
+	return snapshot, release, err
+}
+
+func (s *Server) didChangeConfiguration(ctx context.Context, _ *protocol.DidChangeConfigurationParams) error {
+	// Apply any changes to the session-level settings.
+	options := s.session.Options().Clone()
+	semanticTokensRegistered := options.SemanticTokens
+	if err := s.fetchConfig(ctx, "", "", options); err != nil {
+		return err
+	}
+	s.session.SetOptions(options)
+
+	// Go through each view, getting and updating its configuration.
+	for _, view := range s.session.Views() {
+		options := s.session.Options().Clone()
+		if err := s.fetchConfig(ctx, view.Name(), view.Folder(), options); err != nil {
+			return err
+		}
+		view, err := view.SetOptions(ctx, options)
+		if err != nil {
+			return err
+		}
+		go func() {
+			snapshot, release := view.Snapshot(ctx)
+			defer release()
+			s.diagnoseDetached(snapshot)
+		}()
+	}
+
+	// Update any session-specific registrations or unregistrations.
+	if !semanticTokensRegistered && options.SemanticTokens {
+		if err := s.client.RegisterCapability(ctx, &protocol.RegistrationParams{
+			Registrations: []protocol.Registration{semanticTokenRegistration()},
+		}); err != nil {
+			return err
+		}
+	} else if semanticTokensRegistered && !options.SemanticTokens {
+		if err := s.client.UnregisterCapability(ctx, &protocol.UnregistrationParams{
+			Unregisterations: []protocol.Unregistration{
+				{
+					ID:     semanticTokenRegistration().ID,
+					Method: semanticTokenRegistration().Method,
+				},
+			},
+		}); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (s *Server) addView(ctx context.Context, name string, uri span.URI) error {
-	s.stateMu.Lock()
-	state := s.state
-	s.stateMu.Unlock()
-	if state < serverInitialized {
-		return errors.Errorf("addView called before server initialized")
+func semanticTokenRegistration() protocol.Registration {
+	return protocol.Registration{
+		ID:     "textDocument/semanticTokens",
+		Method: "textDocument/semanticTokens",
+		RegisterOptions: &protocol.SemanticTokensOptions{
+			Legend: protocol.SemanticTokensLegend{
+				// TODO(pjw): trim these to what we use (and an unused one
+				// at position 0 of TokTypes, to catch typos)
+				TokenTypes:     SemanticTypes(),
+				TokenModifiers: SemanticModifiers(),
+			},
+			Full:  true,
+			Range: true,
+		},
 	}
-
-	options := s.session.Options()
-	s.fetchConfig(ctx, name, uri, &options)
-	s.session.NewView(ctx, name, uri, options)
-	return nil
 }

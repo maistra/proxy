@@ -473,6 +473,7 @@ TEST(DisasmIa320) {
 
     __ movapd(xmm0, xmm1);
     __ movapd(xmm0, Operand(edx, 4));
+    __ movupd(xmm0, Operand(edx, 4));
 
     __ movd(xmm0, edi);
     __ movd(xmm0, Operand(ebx, ecx, times_4, 10000));
@@ -546,6 +547,9 @@ TEST(DisasmIa320) {
     __ pinsrw(xmm5, edx, 5);
     __ pinsrw(xmm5, Operand(edx, 4), 5);
 
+    __ movmskps(edx, xmm5);
+    __ pmovmskb(edx, xmm5);
+
 #define EMIT_SSE2_INSTR(instruction, notUsed1, notUsed2, notUsed3) \
   __ instruction(xmm5, xmm1);                                      \
   __ instruction(xmm5, Operand(edx, 4));
@@ -592,6 +596,7 @@ TEST(DisasmIa320) {
     if (CpuFeatures::IsSupported(SSSE3)) {
       CpuFeatureScope scope(&assm, SSSE3);
       SSSE3_INSTRUCTION_LIST(EMIT_SSE34_INSTR)
+      SSSE3_UNOP_INSTRUCTION_LIST(EMIT_SSE34_INSTR)
       __ palignr(xmm5, xmm1, 5);
       __ palignr(xmm5, Operand(edx, 4), 5);
     }
@@ -682,9 +687,12 @@ TEST(DisasmIa320) {
       __ vsqrtps(xmm1, Operand(ebx, ecx, times_4, 10000));
       __ vrsqrtps(xmm1, xmm0);
       __ vrsqrtps(xmm1, Operand(ebx, ecx, times_4, 10000));
+      __ vmovups(xmm0, xmm1);
+      __ vmovups(xmm0, Operand(edx, 4));
       __ vmovaps(xmm0, xmm1);
       __ vmovapd(xmm0, xmm1);
       __ vmovapd(xmm0, Operand(ebx, ecx, times_4, 10000));
+      __ vmovupd(xmm0, Operand(ebx, ecx, times_4, 10000));
       __ vshufps(xmm0, xmm1, xmm2, 3);
       __ vshufps(xmm0, xmm1, Operand(edx, 4), 3);
       __ vhaddps(xmm0, xmm1, xmm2);
@@ -781,6 +789,10 @@ TEST(DisasmIa320) {
       __ vmovd(xmm0, Operand(ebx, ecx, times_4, 10000));
       __ vmovd(eax, xmm1);
       __ vmovd(Operand(ebx, ecx, times_4, 10000), xmm1);
+
+      __ vmovmskps(edx, xmm5);
+      __ vpmovmskb(ebx, xmm1);
+
 #define EMIT_SSE2_AVXINSTR(instruction, notUsed1, notUsed2, notUsed3) \
   __ v##instruction(xmm7, xmm5, xmm1);                                \
   __ v##instruction(xmm7, xmm5, Operand(edx, 4));
@@ -802,6 +814,7 @@ TEST(DisasmIa320) {
   __ v##instruction(xmm5, xmm1);                                         \
   __ v##instruction(xmm5, Operand(edx, 4));
 
+      SSSE3_UNOP_INSTRUCTION_LIST(EMIT_SSE4_RM_AVXINSTR)
       SSE4_RM_INSTRUCTION_LIST(EMIT_SSE4_RM_AVXINSTR)
 #undef EMIT_SSE4_RM_AVXINSTR
     }
@@ -929,6 +942,12 @@ TEST(DisasmIa320) {
     }
   }
 
+  // xadd.
+  {
+    __ xadd(Operand(eax, 8), eax);
+    __ xadd_w(Operand(ebx, 8), eax);
+    __ xadd_b(Operand(ebx, 8), eax);
+  }
   // xchg.
   {
     __ xchg_b(eax, Operand(eax, 8));
@@ -969,7 +988,8 @@ TEST(DisasmIa320) {
 
   CodeDesc desc;
   assm.GetCode(isolate, &desc);
-  Handle<Code> code = Factory::CodeBuilder(isolate, desc, Code::STUB).Build();
+  Handle<Code> code =
+      Factory::CodeBuilder(isolate, desc, CodeKind::FOR_TESTING).Build();
   USE(code);
 #ifdef OBJECT_PRINT
   StdoutStream os;

@@ -5,13 +5,17 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "absl/base/attributes.h"
+#include "absl/container/node_hash_set.h"
 #include "absl/strings/match.h"
 #include "eval/public/activation.h"
 #include "eval/public/builtin_func_registrar.h"
 #include "eval/public/cel_expr_builder_factory.h"
 #include "eval/public/cel_expression.h"
 #include "eval/public/cel_value.h"
+#include "eval/public/containers/container_backed_list_impl.h"
+#include "eval/public/structs/cel_proto_wrapper.h"
 #include "eval/tests/request_context.pb.h"
+#include "base/status_macros.h"
 
 namespace google {
 namespace api {
@@ -29,7 +33,7 @@ using google::api::expr::v1alpha1::SourceInfo;
 static void BM_Eval(benchmark::State& state) {
   auto builder = CreateCelExpressionBuilder();
   auto reg_status = RegisterBuiltinFunctions(builder->GetRegistry());
-  CHECK_OK(reg_status);
+  ASSERT_OK(reg_status);
 
   int len = state.range(0);
 
@@ -47,7 +51,7 @@ static void BM_Eval(benchmark::State& state) {
 
   SourceInfo source_info;
   auto cel_expr_status = builder->CreateExpression(&root_expr, &source_info);
-  CHECK_OK(cel_expr_status.status());
+  ASSERT_OK(cel_expr_status.status());
 
   std::unique_ptr<CelExpression> cel_expr = std::move(cel_expr_status.value());
 
@@ -55,15 +59,57 @@ static void BM_Eval(benchmark::State& state) {
     google::protobuf::Arena arena;
     Activation activation;
     auto eval_result = cel_expr->Evaluate(activation, &arena);
-    CHECK_OK(eval_result.status());
+    ASSERT_OK(eval_result.status());
 
     CelValue result = eval_result.value();
-    GOOGLE_CHECK(result.IsInt64());
-    GOOGLE_CHECK(result.Int64OrDie() == len + 1);
+    ASSERT_TRUE(result.IsInt64());
+    ASSERT_TRUE(result.Int64OrDie() == len + 1);
   }
 }
 
 BENCHMARK(BM_Eval)->Range(1, 32768);
+
+// Benchmark test
+// Evaluates cel expression:
+// '"a" + "a" + "a" .... + "a"'
+static void BM_EvalString(benchmark::State& state) {
+  auto builder = CreateCelExpressionBuilder();
+  auto reg_status = RegisterBuiltinFunctions(builder->GetRegistry());
+  ASSERT_OK(reg_status);
+
+  int len = state.range(0);
+
+  Expr root_expr;
+  Expr* cur_expr = &root_expr;
+
+  for (int i = 0; i < len; i++) {
+    Expr::Call* call = cur_expr->mutable_call_expr();
+    call->set_function("_+_");
+    call->add_args()->mutable_const_expr()->set_string_value("a");
+    cur_expr = call->add_args();
+  }
+
+  cur_expr->mutable_const_expr()->set_string_value("a");
+
+  SourceInfo source_info;
+  auto cel_expr_status = builder->CreateExpression(&root_expr, &source_info);
+  ASSERT_OK(cel_expr_status.status());
+
+  std::unique_ptr<CelExpression> cel_expr = std::move(cel_expr_status.value());
+
+  for (auto _ : state) {
+    google::protobuf::Arena arena;
+    Activation activation;
+    auto eval_result = cel_expr->Evaluate(activation, &arena);
+    ASSERT_OK(eval_result.status());
+
+    CelValue result = eval_result.value();
+    ASSERT_TRUE(result.IsString());
+    ASSERT_TRUE(result.StringOrDie().value().size() == len + 1);
+  }
+}
+
+BENCHMARK(BM_EvalString)->Range(1, 32768);
 
 std::string CELAstFlattenedMap() {
   return R"(
@@ -542,12 +588,12 @@ const char kToken[] = "admin";
 
 ABSL_ATTRIBUTE_NOINLINE
 bool NativeCheck(std::map<std::string, std::string>& attributes,
-                 const std::unordered_set<std::string>& blacklists,
-                 const std::unordered_set<std::string>& whitelists) {
+                 const std::unordered_set<std::string>& denylists,
+                 const absl::node_hash_set<std::string>& allowlists) {
   auto& ip = attributes["ip"];
   auto& path = attributes["path"];
   auto& token = attributes["token"];
-  if (blacklists.find(ip) != blacklists.end()) {
+  if (denylists.find(ip) != denylists.end()) {
     return false;
   }
   if (absl::StartsWith(path, "v1")) {
@@ -560,7 +606,7 @@ bool NativeCheck(std::map<std::string, std::string>& attributes,
     }
   } else if (absl::StartsWith(path, "/admin")) {
     if (token == "admin") {
-      if (whitelists.find(ip) != whitelists.end()) {
+      if (allowlists.find(ip) != allowlists.end()) {
         return true;
       }
     }
@@ -569,15 +615,15 @@ bool NativeCheck(std::map<std::string, std::string>& attributes,
 }
 
 void BM_PolicyNative(benchmark::State& state) {
-  const auto blacklists =
+  const auto denylists =
       std::unordered_set<std::string>{"10.0.1.4", "10.0.1.5", "10.0.1.6"};
-  const auto whitelists =
-      std::unordered_set<std::string>{"10.0.1.1", "10.0.1.2", "10.0.1.3"};
+  const auto allowlists =
+      absl::node_hash_set<std::string>{"10.0.1.1", "10.0.1.2", "10.0.1.3"};
   auto attributes = std::map<std::string, std::string>{
       {"ip", kIP}, {"token", kToken}, {"path", kPath}};
   for (auto _ : state) {
-    auto result = NativeCheck(attributes, blacklists, whitelists);
-    GOOGLE_CHECK(result);
+    auto result = NativeCheck(attributes, denylists, allowlists);
+    ASSERT_TRUE(result);
   }
 }
 
@@ -604,11 +650,11 @@ void BM_PolicySymbolic(benchmark::State& state) {
   options.constant_arena = &arena;
 
   auto builder = CreateCelExpressionBuilder(options);
-  CHECK_OK(RegisterBuiltinFunctions(builder->GetRegistry()));
+  ASSERT_OK(RegisterBuiltinFunctions(builder->GetRegistry()));
 
   SourceInfo source_info;
   auto cel_expression_status = builder->CreateExpression(&expr, &source_info);
-  CHECK_OK(cel_expression_status.status());
+  ASSERT_OK(cel_expression_status.status());
 
   auto cel_expression = std::move(cel_expression_status.value());
   Activation activation;
@@ -618,8 +664,8 @@ void BM_PolicySymbolic(benchmark::State& state) {
 
   for (auto _ : state) {
     auto eval_result = cel_expression->Evaluate(activation, &arena);
-    CHECK_OK(eval_result.status());
-    GOOGLE_CHECK(eval_result.value().BoolOrDie());
+    ASSERT_OK(eval_result.status());
+    ASSERT_TRUE(eval_result.value().BoolOrDie());
   }
 }
 
@@ -652,11 +698,11 @@ void BM_PolicySymbolicMap(benchmark::State& state) {
   google::protobuf::TextFormat::ParseFromString(CELAst(), &expr);
 
   auto builder = CreateCelExpressionBuilder();
-  CHECK_OK(RegisterBuiltinFunctions(builder->GetRegistry()));
+  ASSERT_OK(RegisterBuiltinFunctions(builder->GetRegistry()));
 
   SourceInfo source_info;
   auto cel_expression_status = builder->CreateExpression(&expr, &source_info);
-  CHECK_OK(cel_expression_status.status());
+  ASSERT_OK(cel_expression_status.status());
 
   auto cel_expression = std::move(cel_expression_status.value());
   Activation activation;
@@ -665,8 +711,8 @@ void BM_PolicySymbolicMap(benchmark::State& state) {
 
   for (auto _ : state) {
     auto eval_result = cel_expression->Evaluate(activation, &arena);
-    CHECK_OK(eval_result.status());
-    GOOGLE_CHECK(eval_result.value().BoolOrDie());
+    ASSERT_OK(eval_result.status());
+    ASSERT_TRUE(eval_result.value().BoolOrDie());
   }
 }
 
@@ -679,11 +725,11 @@ void BM_PolicySymbolicProto(benchmark::State& state) {
   google::protobuf::TextFormat::ParseFromString(CELAst(), &expr);
 
   auto builder = CreateCelExpressionBuilder();
-  CHECK_OK(RegisterBuiltinFunctions(builder->GetRegistry()));
+  ASSERT_OK(RegisterBuiltinFunctions(builder->GetRegistry()));
 
   SourceInfo source_info;
   auto cel_expression_status = builder->CreateExpression(&expr, &source_info);
-  CHECK_OK(cel_expression_status.status());
+  ASSERT_OK(cel_expression_status.status());
 
   auto cel_expression = std::move(cel_expression_status.value());
   Activation activation;
@@ -691,16 +737,244 @@ void BM_PolicySymbolicProto(benchmark::State& state) {
   request.set_ip(kIP);
   request.set_path(kPath);
   request.set_token(kToken);
-  activation.InsertValue("request", CelValue::CreateMessage(&request, &arena));
+  activation.InsertValue("request",
+                         CelProtoWrapper::CreateMessage(&request, &arena));
 
   for (auto _ : state) {
     auto eval_result = cel_expression->Evaluate(activation, &arena);
-    CHECK_OK(eval_result.status());
-    GOOGLE_CHECK(eval_result.value().BoolOrDie());
+    ASSERT_OK(eval_result.status());
+    ASSERT_TRUE(eval_result.value().BoolOrDie());
   }
 }
 
 BENCHMARK(BM_PolicySymbolicProto);
+
+constexpr char kListSum[] = R"(
+id: 1
+comprehension_expr: <
+  accu_var: "__result__"
+  iter_var: "x"
+  iter_range: <
+    id: 2
+    ident_expr: <
+      name: "list"
+    >
+  >
+  accu_init: <
+    id: 3
+    const_expr: <
+      int64_value: 0
+    >
+  >
+  loop_step: <
+    id: 4
+    call_expr: <
+      function: "_+_"
+      args: <
+        id: 5
+        ident_expr: <
+          name: "__result__"
+        >
+      >
+      args: <
+        id: 6
+        ident_expr: <
+          name: "x"
+        >
+      >
+    >
+  >
+  loop_condition: <
+    id: 7
+    const_expr: <
+      bool_value: true
+    >
+  >
+  result: <
+    id: 8
+    ident_expr: <
+      name: "__result__"
+    >
+  >
+>)";
+
+void BM_Comprehension(benchmark::State& state) {
+  google::protobuf::Arena arena;
+  Expr expr;
+  Activation activation;
+  ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(kListSum, &expr));
+
+  int len = state.range(0);
+  std::vector<CelValue> list;
+  list.reserve(len);
+  for (int i = 0; i < len; i++) {
+    list.push_back(CelValue::CreateInt64(1));
+  }
+
+  ContainerBackedListImpl cel_list(std::move(list));
+  activation.InsertValue("list", CelValue::CreateList(&cel_list));
+  auto builder = CreateCelExpressionBuilder();
+  ASSERT_OK(RegisterBuiltinFunctions(builder->GetRegistry()));
+  auto expr_plan = builder->CreateExpression(&expr, nullptr);
+  ASSERT_OK(expr_plan.status());
+  for (auto _ : state) {
+    auto result = expr_plan.value()->Evaluate(activation, &arena);
+    ASSERT_OK(result.status());
+    ASSERT_TRUE(result->IsInt64());
+    ASSERT_EQ(result->Int64OrDie(), len);
+  }
+}
+
+BENCHMARK(BM_Comprehension)->Range(1, 1 << 20);
+
+// Sum a square with a nested comprehension
+constexpr char kNestedListSum[] = R"(
+id: 1
+comprehension_expr: <
+  accu_var: "__result__"
+  iter_var: "x"
+  iter_range: <
+    id: 2
+    ident_expr: <
+      name: "list"
+    >
+  >
+  accu_init: <
+    id: 3
+    const_expr: <
+      int64_value: 0
+    >
+  >
+  loop_step: <
+    id: 4
+    call_expr: <
+      function: "_+_"
+      args: <
+        id: 5
+        ident_expr: <
+          name: "__result__"
+        >
+      >
+      args: <
+        id: 6
+        comprehension_expr: <
+          accu_var: "__result__"
+          iter_var: "x"
+          iter_range: <
+            id: 9
+            ident_expr: <
+              name: "list"
+            >
+          >
+          accu_init: <
+            id: 10
+            const_expr: <
+              int64_value: 0
+            >
+          >
+          loop_step: <
+            id: 11
+            call_expr: <
+              function: "_+_"
+              args: <
+                id: 12
+                ident_expr: <
+                  name: "__result__"
+                >
+              >
+              args: <
+                id: 13
+                ident_expr: <
+                  name: "x"
+                >
+              >
+            >
+          >
+          loop_condition: <
+            id: 14
+            const_expr: <
+              bool_value: true
+            >
+          >
+          result: <
+            id: 15
+            ident_expr: <
+              name: "__result__"
+            >
+          >
+        >
+      >
+    >
+  >
+  loop_condition: <
+    id: 7
+    const_expr: <
+      bool_value: true
+    >
+  >
+  result: <
+    id: 8
+    ident_expr: <
+      name: "__result__"
+    >
+  >
+>)";
+
+void BM_NestedComprehension(benchmark::State& state) {
+  google::protobuf::Arena arena;
+  Expr expr;
+  Activation activation;
+  ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(kNestedListSum, &expr));
+
+  int len = state.range(0);
+  std::vector<CelValue> list;
+  list.reserve(len);
+  for (int i = 0; i < len; i++) {
+    list.push_back(CelValue::CreateInt64(1));
+  }
+
+  ContainerBackedListImpl cel_list(std::move(list));
+  activation.InsertValue("list", CelValue::CreateList(&cel_list));
+  auto builder = CreateCelExpressionBuilder();
+  ASSERT_OK(RegisterBuiltinFunctions(builder->GetRegistry()));
+  auto expr_plan = builder->CreateExpression(&expr, nullptr);
+  ASSERT_OK(expr_plan.status());
+  for (auto _ : state) {
+    auto result = expr_plan.value()->Evaluate(activation, &arena);
+    ASSERT_OK(result.status());
+    ASSERT_TRUE(result->IsInt64());
+    ASSERT_EQ(result->Int64OrDie(), len * len);
+  }
+}
+
+BENCHMARK(BM_NestedComprehension)->Range(1, 1 << 10);
+
+void BM_ComprehensionCpp(benchmark::State& state) {
+  google::protobuf::Arena arena;
+  Expr expr;
+  Activation activation;
+
+  int len = state.range(0);
+  std::vector<CelValue> list;
+  list.reserve(len);
+  for (int i = 0; i < len; i++) {
+    list.push_back(CelValue::CreateInt64(1));
+  }
+
+  auto op = [&list]() {
+    int sum = 0;
+    for (const auto& value : list) {
+      sum += value.Int64OrDie();
+    }
+    return sum;
+  };
+  for (auto _ : state) {
+    int result = op();
+    ASSERT_EQ(result, len);
+  }
+}
+
+BENCHMARK(BM_ComprehensionCpp)->Range(1, 1 << 20);
 
 }  // namespace
 

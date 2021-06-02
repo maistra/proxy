@@ -60,13 +60,13 @@ def _my_c_compile_impl(ctx):
         arguments = command_line,
         env = env,
         inputs = depset(
-            items = [source_file],
+            [source_file],
             transitive = [cc_toolchain.all_files],
         ),
         outputs = [output_file],
     )
     return [
-        DefaultInfo(files = depset(items = [output_file])),
+        DefaultInfo(files = depset([output_file])),
         MyCCompileInfo(object = output_file),
     ]
 
@@ -77,5 +77,6 @@ my_c_compile = rule(
         "_cc_toolchain": attr.label(default = Label("@bazel_tools//tools/cpp:current_cc_toolchain")),
     },
     toolchains = ["@bazel_tools//tools/cpp:toolchain_type"],
+    incompatible_use_toolchain_transition = True,
     fragments = ["cpp"],
 )

@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
-    name = "go_default_library",
+    name = "ssautil",
     srcs = [
         "load.go",
         "switch.go",
@@ -10,67 +10,81 @@ go_library(
     importpath = "golang.org/x/tools/go/ssa/ssautil",
     visibility = ["//visibility:public"],
     deps = [
-        "//go/loader:go_default_library",
-        "//go/packages:go_default_library",
-        "//go/ssa:go_default_library",
+        "//go/loader",
+        "//go/packages",
+        "//go/ssa",
     ],
 )
 
+alias(
+    name = "go_default_library",
+    actual = ":ssautil",
+    visibility = ["//visibility:public"],
+)
+
 go_test(
-    name = "go_default_test",
+    name = "ssautil_test",
     srcs = [
         "load_test.go",
         "switch_test.go",
     ],
     data = glob(["testdata/**"]),
-    embed = [":go_default_library"],
     deps = [
-        "//go/packages:go_default_library",
-        "//internal/testenv:go_default_library",
+        ":ssautil",
+        "//go/packages",
+        "//internal/testenv",
     ] + select({
+        "@io_bazel_rules_go//go/platform:aix": [
+            "//go/loader",
+            "//go/ssa",
+        ],
         "@io_bazel_rules_go//go/platform:darwin": [
-            "//go/loader:go_default_library",
-            "//go/ssa:go_default_library",
+            "//go/loader",
+            "//go/ssa",
         ],
         "@io_bazel_rules_go//go/platform:dragonfly": [
-            "//go/loader:go_default_library",
-            "//go/ssa:go_default_library",
+            "//go/loader",
+            "//go/ssa",
         ],
         "@io_bazel_rules_go//go/platform:freebsd": [
-            "//go/loader:go_default_library",
-            "//go/ssa:go_default_library",
+            "//go/loader",
+            "//go/ssa",
+        ],
+        "@io_bazel_rules_go//go/platform:illumos": [
+            "//go/loader",
+            "//go/ssa",
         ],
         "@io_bazel_rules_go//go/platform:ios": [
-            "//go/loader:go_default_library",
-            "//go/ssa:go_default_library",
+            "//go/loader",
+            "//go/ssa",
+        ],
+        "@io_bazel_rules_go//go/platform:js": [
+            "//go/loader",
+            "//go/ssa",
         ],
         "@io_bazel_rules_go//go/platform:linux": [
-            "//go/loader:go_default_library",
-            "//go/ssa:go_default_library",
-        ],
-        "@io_bazel_rules_go//go/platform:nacl": [
-            "//go/loader:go_default_library",
-            "//go/ssa:go_default_library",
+            "//go/loader",
+            "//go/ssa",
         ],
         "@io_bazel_rules_go//go/platform:netbsd": [
-            "//go/loader:go_default_library",
-            "//go/ssa:go_default_library",
+            "//go/loader",
+            "//go/ssa",
         ],
         "@io_bazel_rules_go//go/platform:openbsd": [
-            "//go/loader:go_default_library",
-            "//go/ssa:go_default_library",
+            "//go/loader",
+            "//go/ssa",
         ],
         "@io_bazel_rules_go//go/platform:plan9": [
-            "//go/loader:go_default_library",
-            "//go/ssa:go_default_library",
+            "//go/loader",
+            "//go/ssa",
         ],
         "@io_bazel_rules_go//go/platform:solaris": [
-            "//go/loader:go_default_library",
-            "//go/ssa:go_default_library",
+            "//go/loader",
+            "//go/ssa",
         ],
         "@io_bazel_rules_go//go/platform:windows": [
-            "//go/loader:go_default_library",
-            "//go/ssa:go_default_library",
+            "//go/loader",
+            "//go/ssa",
         ],
         "//conditions:default": [],
     }),

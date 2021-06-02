@@ -56,12 +56,16 @@ void GeneratorBuiltinsAssembler::InnerResume(
                                  SmiConstant(resume_mode));
 
   // Resume the {receiver} using our trampoline.
+  // Close the generator if there was an exception.
   TVARIABLE(Object, var_exception);
   Label if_exception(this, Label::kDeferred), if_final_return(this);
-  TNode<Object> result = CallStub(CodeFactory::ResumeGenerator(isolate()),
-                                  context, value, receiver);
-  // Make sure we close the generator if there was an exception.
-  GotoIfException(result, &if_exception, &var_exception);
+  TNode<Object> result;
+  {
+    compiler::ScopedExceptionHandler handler(this, &if_exception,
+                                             &var_exception);
+    result = CallStub(CodeFactory::ResumeGenerator(isolate()), context, value,
+                      receiver);
+  }
 
   // If the generator is not suspended (i.e., its state is 'executing'),
   // close it and wrap the return value in IteratorResult.
@@ -133,13 +137,12 @@ void GeneratorBuiltinsAssembler::GeneratorPrototypeResume(
 TF_BUILTIN(AsyncModuleEvaluate, GeneratorBuiltinsAssembler) {
   const int kValueArg = 0;
 
-  TNode<Int32T> argc =
-      UncheckedCast<Int32T>(Parameter(Descriptor::kJSActualArgumentsCount));
+  auto argc = UncheckedParameter<Int32T>(Descriptor::kJSActualArgumentsCount);
   CodeStubArguments args(this, argc);
 
   TNode<Object> receiver = args.GetReceiver();
   TNode<Object> value = args.GetOptionalArgumentValue(kValueArg);
-  TNode<Context> context = Cast(Parameter(Descriptor::kContext));
+  auto context = Parameter<Context>(Descriptor::kContext);
 
   // AsyncModules act like JSAsyncFunctions. Thus we check here
   // that the {receiver} is a JSAsyncFunction.
@@ -155,13 +158,12 @@ TF_BUILTIN(AsyncModuleEvaluate, GeneratorBuiltinsAssembler) {
 TF_BUILTIN(GeneratorPrototypeNext, GeneratorBuiltinsAssembler) {
   const int kValueArg = 0;
 
-  TNode<Int32T> argc =
-      UncheckedCast<Int32T>(Parameter(Descriptor::kJSActualArgumentsCount));
+  auto argc = UncheckedParameter<Int32T>(Descriptor::kJSActualArgumentsCount);
   CodeStubArguments args(this, argc);
 
   TNode<Object> receiver = args.GetReceiver();
   TNode<Object> value = args.GetOptionalArgumentValue(kValueArg);
-  TNode<Context> context = CAST(Parameter(Descriptor::kContext));
+  auto context = Parameter<Context>(Descriptor::kContext);
 
   GeneratorPrototypeResume(&args, receiver, value, context,
                            JSGeneratorObject::kNext,
@@ -172,13 +174,12 @@ TF_BUILTIN(GeneratorPrototypeNext, GeneratorBuiltinsAssembler) {
 TF_BUILTIN(GeneratorPrototypeReturn, GeneratorBuiltinsAssembler) {
   const int kValueArg = 0;
 
-  TNode<Int32T> argc =
-      UncheckedCast<Int32T>(Parameter(Descriptor::kJSActualArgumentsCount));
+  auto argc = UncheckedParameter<Int32T>(Descriptor::kJSActualArgumentsCount);
   CodeStubArguments args(this, argc);
 
   TNode<Object> receiver = args.GetReceiver();
   TNode<Object> value = args.GetOptionalArgumentValue(kValueArg);
-  TNode<Context> context = CAST(Parameter(Descriptor::kContext));
+  auto context = Parameter<Context>(Descriptor::kContext);
 
   GeneratorPrototypeResume(&args, receiver, value, context,
                            JSGeneratorObject::kReturn,
@@ -189,13 +190,12 @@ TF_BUILTIN(GeneratorPrototypeReturn, GeneratorBuiltinsAssembler) {
 TF_BUILTIN(GeneratorPrototypeThrow, GeneratorBuiltinsAssembler) {
   const int kExceptionArg = 0;
 
-  TNode<Int32T> argc =
-      UncheckedCast<Int32T>(Parameter(Descriptor::kJSActualArgumentsCount));
+  auto argc = UncheckedParameter<Int32T>(Descriptor::kJSActualArgumentsCount);
   CodeStubArguments args(this, argc);
 
   TNode<Object> receiver = args.GetReceiver();
   TNode<Object> exception = args.GetOptionalArgumentValue(kExceptionArg);
-  TNode<Context> context = CAST(Parameter(Descriptor::kContext));
+  auto context = Parameter<Context>(Descriptor::kContext);
 
   GeneratorPrototypeResume(&args, receiver, exception, context,
                            JSGeneratorObject::kThrow,

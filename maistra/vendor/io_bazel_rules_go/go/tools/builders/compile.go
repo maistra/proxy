@@ -29,21 +29,21 @@ import (
 
 func compile(args []string) error {
 	// Parse arguments.
-	args, err := readParamsFiles(args)
+	args, err := expandParamsFiles(args)
 	if err != nil {
 		return err
 	}
 	builderArgs, toolArgs := splitArgs(args)
 	flags := flag.NewFlagSet("GoCompile", flag.ExitOnError)
 	unfiltered := multiFlag{}
-	archives := compileArchiveMultiFlag{}
+	archives := archiveMultiFlag{}
 	goenv := envFlags(flags)
 	packagePath := flags.String("p", "", "The package path (importmap) of the package being compiled")
 	flags.Var(&unfiltered, "src", "A source file to be filtered and compiled")
 	flags.Var(&archives, "arc", "Import path, package path, and file name of a direct dependency, separated by '='")
 	nogo := flags.String("nogo", "", "The nogo binary")
-	outExport := flags.String("x", "", "Path to nogo that should be written")
-	output := flags.String("o", "", "The output object file to write")
+	outExport := flags.String("x", "", "The output archive file to write export data and nogo facts")
+	output := flags.String("o", "", "The output archive file to write compiled code")
 	asmhdr := flags.String("asmhdr", "", "Path to assembly header file to write")
 	packageList := flags.String("package_list", "", "The file containing the list of standard library packages")
 	testfilter := flags.String("testfilter", "off", "Controls test package filtering")
@@ -155,41 +155,76 @@ func compile(args []string) error {
 		return fmt.Errorf("error starting compiler: %v", err)
 	}
 
+	// tempdir to store nogo facts and pkgdef for packaging later
+	xTempDir, err := ioutil.TempDir(filepath.Dir(*outExport), "x_files")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(xTempDir)
 	// Run nogo concurrently.
 	var nogoOutput bytes.Buffer
-	nogoFailed := false
+	nogoStatus := nogoNotRun
+	outFact := filepath.Join(xTempDir, nogoFact)
 	if *nogo != "" {
 		var nogoargs []string
 		nogoargs = append(nogoargs, "-p", *packagePath)
 		nogoargs = append(nogoargs, "-importcfg", importcfgName)
 		for _, arc := range archives {
-			if arc.xFile != "" {
-				nogoargs = append(nogoargs, "-fact", fmt.Sprintf("%s=%s", arc.importPath, arc.xFile))
-			}
+			nogoargs = append(nogoargs, "-fact", fmt.Sprintf("%s=%s", arc.importPath, arc.file))
 		}
-		nogoargs = append(nogoargs, "-x", *outExport)
+		nogoargs = append(nogoargs, "-x", outFact)
 		nogoargs = append(nogoargs, filenames...)
 		nogoCmd := exec.Command(*nogo, nogoargs...)
 		nogoCmd.Stdout, nogoCmd.Stderr = &nogoOutput, &nogoOutput
 		if err := nogoCmd.Run(); err != nil {
 			if _, ok := err.(*exec.ExitError); ok {
 				// Only fail the build if nogo runs and finds errors in source code.
-				nogoFailed = true
+				nogoStatus = nogoFailed
 			} else {
 				// All errors related to running nogo will merely be printed.
 				nogoOutput.WriteString(fmt.Sprintf("error running nogo: %v\n", err))
+				nogoStatus = nogoError
 			}
+		} else {
+			nogoStatus = nogoSucceeded
 		}
 	}
 	if err := cmd.Wait(); err != nil {
 		return fmt.Errorf("error running compiler: %v", err)
 	}
+
 	// Only print the output of nogo if compilation succeeds.
-	if nogoFailed {
+	if nogoStatus == nogoFailed {
 		return fmt.Errorf("%s", nogoOutput.String())
 	}
 	if nogoOutput.Len() != 0 {
 		fmt.Fprintln(os.Stderr, nogoOutput.String())
 	}
-	return nil
+
+	// Extract the export data file and pack it in an .x archive together with the
+	// nogo facts file (if there is one). This allows compile actions to depend
+	// on .x files only, so we don't need to recompile a package when one of its
+	// imports changes in a way that doesn't affect export data.
+	// TODO(golang/go#33820): Ideally, we would use -linkobj to tell the compiler
+	// to create separate .a and .x files for compiled code and export data, then
+	// copy the nogo facts into the .x file. Unfortunately, when building a plugin,
+	// the linker needs export data in the .a file. To work around this, we copy
+	// the export data into the .x file ourselves.
+	if err = extractFileFromArchive(*output, xTempDir, pkgDef); err != nil {
+		return err
+	}
+	pkgDefPath := filepath.Join(xTempDir, pkgDef)
+	if nogoStatus == nogoSucceeded {
+		return appendFiles(goenv, *outExport, []string{pkgDefPath, outFact})
+	}
+	return appendFiles(goenv, *outExport, []string{pkgDefPath})
 }
+
+type nogoResult int
+
+const (
+	nogoNotRun nogoResult = iota
+	nogoError
+	nogoFailed
+	nogoSucceeded
+)

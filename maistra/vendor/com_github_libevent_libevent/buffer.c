@@ -1440,9 +1440,11 @@ evbuffer_pullup(struct evbuffer *buf, ev_ssize_t size)
 	for (; chain != NULL && (size_t)size >= chain->off; chain = next) {
 		next = chain->next;
 
-		memcpy(buffer, chain->buffer + chain->misalign, chain->off);
-		size -= chain->off;
-		buffer += chain->off;
+		if (chain->buffer) {
+			memcpy(buffer, chain->buffer + chain->misalign, chain->off);
+			size -= chain->off;
+			buffer += chain->off;
+		}
 		if (chain == last_with_data)
 			removed_last_with_data = 1;
 		if (&chain->next == buf->last_with_datap)
@@ -3226,7 +3228,6 @@ evbuffer_add_file_segment(struct evbuffer *buf,
 			}
 		}
 	}
-	++seg->refcnt;
 	EVLOCK_UNLOCK(seg->lock, 0);
 
 	if (buf->freeze_end)
@@ -3290,6 +3291,9 @@ evbuffer_add_file_segment(struct evbuffer *buf,
 		chain->off = length;
 	}
 
+	EVLOCK_LOCK(seg->lock, 0);
+	++seg->refcnt;
+	EVLOCK_UNLOCK(seg->lock, 0);
 	extra->segment = seg;
 	buf->n_add_for_cb += length;
 	evbuffer_chain_insert(buf, chain);
@@ -3321,7 +3325,7 @@ evbuffer_add_file(struct evbuffer *buf, int fd, ev_off_t offset, ev_off_t length
 	return r;
 }
 
-void
+int
 evbuffer_setcb(struct evbuffer *buffer, evbuffer_cb cb, void *cbarg)
 {
 	EVBUFFER_LOCK(buffer);
@@ -3332,10 +3336,15 @@ evbuffer_setcb(struct evbuffer *buffer, evbuffer_cb cb, void *cbarg)
 	if (cb) {
 		struct evbuffer_cb_entry *ent =
 		    evbuffer_add_cb(buffer, NULL, cbarg);
+		if (!ent) {
+			EVBUFFER_UNLOCK(buffer);
+			return -1;
+		}
 		ent->cb.cb_obsolete = cb;
 		ent->flags |= EVBUFFER_CB_OBSOLETE;
 	}
 	EVBUFFER_UNLOCK(buffer);
+	return 0;
 }
 
 struct evbuffer_cb_entry *

@@ -62,7 +62,7 @@ def mako_plugin(dictionary):
         for lst in FILEGROUP_LISTS:
             fg[lst] = fg.get(lst, [])
             fg['own_%s' % lst] = list(fg[lst])
-        for attr, val in FILEGROUP_DEFAULTS.iteritems():
+        for attr, val in FILEGROUP_DEFAULTS.items():
             if attr not in fg:
                 fg[attr] = val
 
@@ -107,11 +107,13 @@ def mako_plugin(dictionary):
 
     # build reverse dependency map
     things = {}
-    for thing in dictionary['libs'] + dictionary['targets'] + dictionary['filegroups']:
+    for thing in dictionary['libs'] + dictionary['targets'] + dictionary[
+            'filegroups']:
         things[thing['name']] = thing
         thing['used_by'] = []
-    thing_deps = lambda t: t.get('uses', []) + t.get('filegroups', []) + t.get('deps', [])
-    for thing in things.itervalues():
+    thing_deps = lambda t: t.get('uses', []) + t.get('filegroups', []) + t.get(
+        'deps', [])
+    for thing in things.values():
         done = set()
         todo = thing_deps(thing)
         while todo:
@@ -123,7 +125,7 @@ def mako_plugin(dictionary):
             done.add(cur)
 
     # the above expansion can introduce duplicate filenames: contract them here
-    for fg in filegroups.itervalues():
+    for fg in filegroups.values():
         for lst in FILEGROUP_LISTS:
             fg[lst] = uniquify(fg.get(lst, []))
 
@@ -150,7 +152,7 @@ def mako_plugin(dictionary):
                 lib[lst] = vals
             lib['plugins'] = plugins
         if lib.get('generate_plugin_registry', False):
-            lib['src'].append(
-                'src/core/plugin_registry/%s_plugin_registry.cc' % lib['name'])
+            lib['src'].append('src/core/plugin_registry/%s_plugin_registry.cc' %
+                              lib['name'])
         for lst in FILEGROUP_LISTS:
             lib[lst] = uniquify(lib.get(lst, []))

@@ -25,6 +25,8 @@ import (
 	"strings"
 
 	"github.com/bazelbuild/bazel-gazelle/config"
+	"github.com/bazelbuild/bazel-gazelle/internal/wspace"
+	"github.com/bazelbuild/bazel-gazelle/label"
 	"github.com/bazelbuild/bazel-gazelle/language"
 	"github.com/bazelbuild/bazel-gazelle/merger"
 	"github.com/bazelbuild/bazel-gazelle/repo"
@@ -98,7 +100,7 @@ func (*updateReposConfigurer) CheckFlags(fs *flag.FlagSet, c *config.Config) err
 	}
 
 	var err error
-	workspacePath := filepath.Join(c.RepoRoot, "WORKSPACE")
+	workspacePath := wspace.FindWORKSPACEFile(c.RepoRoot)
 	uc.workspace, err = rule.LoadWorkspaceFile(workspacePath, "")
 	if err != nil {
 		return fmt.Errorf("loading WORKSPACE file: %v", err)
@@ -154,7 +156,7 @@ func updateRepos(args []string) (err error) {
 	}()
 
 	// Fix the workspace file with each language.
-	for _, lang := range languages {
+	for _, lang := range filterLanguages(c, languages) {
 		lang.Fix(c, uc.workspace)
 	}
 
@@ -175,7 +177,16 @@ func updateRepos(args []string) (err error) {
 	var newGen []*rule.Rule
 	genForFiles := make(map[*rule.File][]*rule.Rule)
 	emptyForFiles := make(map[*rule.File][]*rule.Rule)
+	genNames := make(map[string]*rule.Rule)
 	for _, r := range gen {
+		if existingRule := genNames[r.Name()]; existingRule != nil {
+			import1 := existingRule.AttrString("importpath")
+			import2 := r.AttrString("importpath")
+			return fmt.Errorf("imports %s and %s resolve to the same repository rule name %s",
+				import1, import2, r.Name())
+		} else {
+			genNames[r.Name()] = r
+		}
 		f := uc.repoFileMap[r.Name()]
 		if f != nil {
 			genForFiles[f] = append(genForFiles[f], r)
@@ -197,7 +208,7 @@ func updateRepos(args []string) (err error) {
 		macroPath = filepath.Join(c.RepoRoot, filepath.Clean(uc.macroFileName))
 	}
 	for f := range genForFiles {
-		if macroPath == "" && filepath.Base(f.Path) == "WORKSPACE" ||
+		if macroPath == "" && wspace.IsWORKSPACE(f.Path) ||
 			macroPath != "" && f.Path == macroPath && f.DefName == uc.macroDefName {
 			newGenFile = f
 			break
@@ -221,6 +232,11 @@ func updateRepos(args []string) (err error) {
 	}
 	genForFiles[newGenFile] = append(genForFiles[newGenFile], newGen...)
 
+	workspaceInsertIndex := findWorkspaceInsertIndex(uc.workspace, kinds, loads)
+	for _, r := range genForFiles[uc.workspace] {
+		r.SetPrivateAttr(merger.UnstableInsertIndexKey, workspaceInsertIndex)
+	}
+
 	// Merge rules and fix loads in each file.
 	seenFile := make(map[*rule.File]bool)
 	sortedFiles := make([]*rule.File, 0, len(genForFiles))
@@ -234,6 +250,12 @@ func updateRepos(args []string) (err error) {
 		if !seenFile[f] {
 			seenFile[f] = true
 			sortedFiles = append(sortedFiles, f)
+		}
+	}
+	if ensureMacroInWorkspace(uc, workspaceInsertIndex) {
+		if !seenFile[uc.workspace] {
+			seenFile[uc.workspace] = true
+			sortedFiles = append(sortedFiles, uc.workspace)
 		}
 	}
 	sort.Slice(sortedFiles, func(i, j int) bool {
@@ -259,8 +281,13 @@ func updateRepos(args []string) (err error) {
 			updatedFiles[f.Path] = f
 		}
 	}
+
+	// Write updated files to disk.
 	for _, f := range sortedFiles {
 		if uf := updatedFiles[f.Path]; uf != nil {
+			if f.DefName != "" {
+				uf.SortMacro()
+			}
 			if err := uf.Save(uf.Path); err != nil {
 				return err
 			}
@@ -321,7 +348,7 @@ func updateRepoImports(c *config.Config, rc *repo.RemoteCache) (gen []*rule.Rule
 	// For now, only use the first language that implements the interface.
 	uc := getUpdateReposConfig(c)
 	var updater language.RepoUpdater
-	for _, lang := range languages {
+	for _, lang := range filterLanguages(c, languages) {
 		if u, ok := lang.(language.RepoUpdater); ok {
 			updater = u
 			break
@@ -342,7 +369,7 @@ func importRepos(c *config.Config, rc *repo.RemoteCache) (gen, empty []*rule.Rul
 	uc := getUpdateReposConfig(c)
 	importSupported := false
 	var importer language.RepoImporter
-	for _, lang := range languages {
+	for _, lang := range filterLanguages(c, languages) {
 		if i, ok := lang.(language.RepoImporter); ok {
 			importSupported = true
 			if i.CanImport(uc.repoFilePath) {
@@ -365,4 +392,135 @@ func importRepos(c *config.Config, rc *repo.RemoteCache) (gen, empty []*rule.Rul
 		Cache:  rc,
 	})
 	return res.Gen, res.Empty, res.Error
+}
+
+// findWorkspaceInsertIndex reads a WORKSPACE file and finds an index within
+// f.File.Stmt where new direct dependencies should be inserted. In general, new
+// dependencies should be inserted after repository rules are loaded (described
+// by kinds) but before macros declaring indirect dependencies.
+func findWorkspaceInsertIndex(f *rule.File, kinds map[string]rule.KindInfo, loads []rule.LoadInfo) int {
+	loadFiles := make(map[string]struct{})
+	loadRepos := make(map[string]struct{})
+	for _, li := range loads {
+		name, err := label.Parse(li.Name)
+		if err != nil {
+			continue
+		}
+		loadFiles[li.Name] = struct{}{}
+		loadRepos[name.Repo] = struct{}{}
+	}
+
+	// Find the first index after load statements from files that contain
+	// repository rules (for example, "@bazel_gazelle//:deps.bzl") and after
+	// repository rules declaring those files (http_archive for bazel_gazelle).
+	// It doesn't matter whether the repository rules are actually loaded.
+	insertAfter := 0
+
+	for _, ld := range f.Loads {
+		if _, ok := loadFiles[ld.Name()]; !ok {
+			continue
+		}
+		if idx := ld.Index(); idx > insertAfter {
+			insertAfter = idx
+		}
+	}
+
+	for _, r := range f.Rules {
+		if _, ok := loadRepos[r.Name()]; !ok {
+			continue
+		}
+		if idx := r.Index(); idx > insertAfter {
+			insertAfter = idx
+		}
+	}
+
+	// There may be many direct dependencies after that index (perhaps
+	// 'update-repos' inserted them previously). We want to insert after those.
+	// So find the highest index after insertAfter before a call to something
+	// that doesn't look like a direct dependency.
+	insertBefore := len(f.File.Stmt)
+	for _, r := range f.Rules {
+		kind := r.Kind()
+		if kind == "local_repository" || kind == "http_archive" || kind == "git_repository" {
+			// Built-in or well-known repository rules.
+			continue
+		}
+		if _, ok := kinds[kind]; ok {
+			// Repository rule Gazelle might generate.
+			continue
+		}
+		if r.Name() != "" {
+			// Has a name attribute, probably still a repository rule.
+			continue
+		}
+		if idx := r.Index(); insertAfter < idx && idx < insertBefore {
+			insertBefore = idx
+		}
+	}
+
+	return insertBefore
+}
+
+// ensureMacroInWorkspace adds a call to the repository macro if the -to_macro
+// flag was used, and the macro was not called or declared with a
+// '# gazelle:repository_macro' directive.
+//
+// ensureMacroInWorkspace returns true if the WORKSPACE file was updated
+// and should be saved.
+func ensureMacroInWorkspace(uc *updateReposConfig, insertIndex int) (updated bool) {
+	if uc.macroFileName == "" {
+		return false
+	}
+
+	// Check whether the macro is already declared.
+	// We won't add a call if the macro is declared but not called. It might
+	// be called somewhere else.
+	macroValue := uc.macroFileName + "%" + uc.macroDefName
+	for _, d := range uc.workspace.Directives {
+		if d.Key == "repository_macro" && d.Value == macroValue {
+			return false
+		}
+	}
+
+	// Try to find a load and a call.
+	var load *rule.Load
+	var call *rule.Rule
+	var loadedDefName string
+	for _, l := range uc.workspace.Loads {
+		switch l.Name() {
+		case ":" + uc.macroFileName, "//:" + uc.macroFileName, "@//:" + uc.macroFileName:
+			load = l
+			pairs := l.SymbolPairs()
+			for _, pair := range pairs {
+				if pair.From == uc.macroDefName {
+					loadedDefName = pair.To
+				}
+			}
+		}
+	}
+
+	for _, r := range uc.workspace.Rules {
+		if r.Kind() == loadedDefName {
+			call = r
+		}
+	}
+
+	// Add the load and call if they're missing.
+	if call == nil {
+		if load == nil {
+			load = rule.NewLoad("//:" + uc.macroFileName)
+			load.Insert(uc.workspace, insertIndex)
+		}
+		if loadedDefName == "" {
+			load.Add(uc.macroDefName)
+		}
+
+		call = rule.NewRule(uc.macroDefName, "")
+		call.InsertAt(uc.workspace, insertIndex)
+	}
+
+	// Add the directive to the call.
+	call.AddComment("# gazelle:repository_macro " + macroValue)
+
+	return true
 }

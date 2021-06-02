@@ -29,6 +29,7 @@
 #include "src/core/lib/iomgr/port.h"
 #include "src/core/lib/iomgr/wakeup_fd_posix.h"
 
+#include "test/core/util/test_config.h"
 #include "test/cpp/microbenchmarks/helpers.h"
 #include "test/cpp/util/test_config.h"
 
@@ -157,24 +158,22 @@ static void BM_PollAddFd(benchmark::State& state) {
 }
 BENCHMARK(BM_PollAddFd);
 
-class Closure : public grpc_closure {
+class TestClosure : public grpc_closure {
  public:
-  virtual ~Closure() {}
+  virtual ~TestClosure() {}
 };
 
 template <class F>
-Closure* MakeClosure(F f, grpc_closure_scheduler* scheduler) {
-  struct C : public Closure {
-    C(F f, grpc_closure_scheduler* scheduler) : f_(f) {
-      GRPC_CLOSURE_INIT(this, C::cbfn, this, scheduler);
-    }
+TestClosure* MakeTestClosure(F f) {
+  struct C : public TestClosure {
+    explicit C(F f) : f_(f) { GRPC_CLOSURE_INIT(this, C::cbfn, this, nullptr); }
     static void cbfn(void* arg, grpc_error* /*error*/) {
       C* p = static_cast<C*>(arg);
       p->f_();
     }
     F f_;
   };
-  return new C(f, scheduler);
+  return new C(f);
 }
 
 #ifdef GRPC_LINUX_MULTIPOLL_WITH_EPOLL
@@ -223,17 +222,15 @@ static void BM_SingleThreadPollOneFd(benchmark::State& state) {
   grpc_fd* wakeup = grpc_fd_create(wakeup_fd.read_fd, "wakeup_read", false);
   grpc_pollset_add_fd(ps, wakeup);
   bool done = false;
-  Closure* continue_closure = MakeClosure(
-      [&]() {
-        GRPC_ERROR_UNREF(grpc_wakeup_fd_consume_wakeup(&wakeup_fd));
-        if (!state.KeepRunning()) {
-          done = true;
-          return;
-        }
-        GRPC_ERROR_UNREF(grpc_wakeup_fd_wakeup(&wakeup_fd));
-        grpc_fd_notify_on_read(wakeup, continue_closure);
-      },
-      grpc_schedule_on_exec_ctx);
+  TestClosure* continue_closure = MakeTestClosure([&]() {
+    GRPC_ERROR_UNREF(grpc_wakeup_fd_consume_wakeup(&wakeup_fd));
+    if (!state.KeepRunning()) {
+      done = true;
+      return;
+    }
+    GRPC_ERROR_UNREF(grpc_wakeup_fd_wakeup(&wakeup_fd));
+    grpc_fd_notify_on_read(wakeup, continue_closure);
+  });
   GRPC_ERROR_UNREF(grpc_wakeup_fd_wakeup(&wakeup_fd));
   grpc_fd_notify_on_read(wakeup, continue_closure);
   gpr_mu_lock(mu);
@@ -262,6 +259,7 @@ void RunTheBenchmarksNamespaced() { RunSpecifiedBenchmarks(); }
 }  // namespace benchmark
 
 int main(int argc, char** argv) {
+  grpc::testing::TestEnvironment env(argc, argv);
   LibraryInitializer libInit;
   ::benchmark::Initialize(&argc, argv);
   ::grpc::testing::InitTest(&argc, &argv, false);

@@ -74,9 +74,7 @@ ABSL_NAMESPACE_END
 #if !ABSL_USE_CYCLECLOCK_FOR_GET_CURRENT_TIME_NANOS
 namespace absl {
 ABSL_NAMESPACE_BEGIN
-int64_t GetCurrentTimeNanos() {
-  return GET_CURRENT_TIME_NANOS_FROM_SYSTEM();
-}
+int64_t GetCurrentTimeNanos() { return GET_CURRENT_TIME_NANOS_FROM_SYSTEM(); }
 ABSL_NAMESPACE_END
 }  // namespace absl
 #else  // Use the cyclecounter-based implementation below.
@@ -226,9 +224,9 @@ static_assert(((kMinNSBetweenSamples << (kScale + 1)) >> (kScale + 1)) ==
 
 // A reader-writer lock protecting the static locations below.
 // See SeqAcquire() and SeqRelease() above.
-static absl::base_internal::SpinLock lock(
-    absl::base_internal::kLinkerInitialized);
-static std::atomic<uint64_t> seq(0);
+ABSL_CONST_INIT static absl::base_internal::SpinLock lock(
+    absl::kConstInit, base_internal::SCHEDULE_KERNEL_ONLY);
+ABSL_CONST_INIT static std::atomic<uint64_t> seq(0);
 
 // data from a sample of the kernel's time value
 struct TimeSampleAtomic {

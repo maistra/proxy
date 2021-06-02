@@ -1,4 +1,5 @@
-load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_source", "go_test")
+load("//go:def.bzl", "go_binary", "go_source", "go_test")
+load("//go/private/rules:transition.bzl", "go_reset_target")
 
 go_test(
     name = "filter_test",
@@ -25,6 +26,7 @@ filegroup(
         "flags.go",
         "generate_nogo_main.go",
         "generate_test_main.go",
+        "imports.go",
         "importcfg.go",
         "link.go",
         "pack.go",
@@ -49,6 +51,7 @@ go_source(
         "env.go",
         "flags.go",
         "nogo_main.go",
+        "pack.go",
     ],
     # //go/tools/builders:nogo_srcs is considered a different target by
     # Bazel's visibility check than
@@ -66,7 +69,11 @@ go_source(
 
 go_binary(
     name = "go_path",
-    srcs = ["go_path.go"],
+    srcs = [
+        "env.go",
+        "flags.go",
+        "go_path.go",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -89,12 +96,18 @@ go_binary(
 )
 
 go_binary(
-    name = "go-protoc",
+    name = "go-protoc-bin",
     srcs = [
         "env.go",
         "flags.go",
         "protoc.go",
     ],
+    visibility = ["//visibility:private"],
+)
+
+go_reset_target(
+    name = "go-protoc",
+    dep = ":go-protoc-bin",
     visibility = ["//visibility:public"],
 )
 

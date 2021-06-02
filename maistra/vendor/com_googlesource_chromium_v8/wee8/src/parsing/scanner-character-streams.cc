@@ -331,7 +331,7 @@ class UnbufferedCharacterStream : public Utf16CharacterStream {
 
 // Provides a unbuffered utf-16 view on the bytes from the underlying
 // ByteStream.
-class RelocatingCharacterStream
+class RelocatingCharacterStream final
     : public UnbufferedCharacterStream<OnHeapStream> {
  public:
   template <class... TArgs>
@@ -422,7 +422,7 @@ bool BufferedUtf16CharacterStream::ReadBlock() {
 // TODO(verwaest): Decode utf8 chunks into utf16 chunks on the blink side
 // instead so we don't need to buffer.
 
-class Utf8ExternalStreamingStream : public BufferedUtf16CharacterStream {
+class Utf8ExternalStreamingStream final : public BufferedUtf16CharacterStream {
  public:
   Utf8ExternalStreamingStream(
       ScriptCompiler::ExternalSourceStream* source_stream)
@@ -792,10 +792,35 @@ std::unique_ptr<Utf16CharacterStream> ScannerStream::ForTesting(
 
 std::unique_ptr<Utf16CharacterStream> ScannerStream::ForTesting(
     const char* data, size_t length) {
+  if (data == nullptr) {
+    DCHECK_EQ(length, 0);
+
+    // We don't want to pass in a null pointer into the the character stream,
+    // because then the one-past-the-end pointer is undefined, so instead pass
+    // through this static array.
+    static const char non_null_empty_string[1] = {0};
+    data = non_null_empty_string;
+  }
+
   return std::unique_ptr<Utf16CharacterStream>(
       new BufferedCharacterStream<TestingStream>(
-          static_cast<size_t>(0), reinterpret_cast<const uint8_t*>(data),
-          static_cast<size_t>(length)));
+          0, reinterpret_cast<const uint8_t*>(data), length));
+}
+
+std::unique_ptr<Utf16CharacterStream> ScannerStream::ForTesting(
+    const uint16_t* data, size_t length) {
+  if (data == nullptr) {
+    DCHECK_EQ(length, 0);
+
+    // We don't want to pass in a null pointer into the the character stream,
+    // because then the one-past-the-end pointer is undefined, so instead pass
+    // through this static array.
+    static const uint16_t non_null_empty_uint16_t_string[1] = {0};
+    data = non_null_empty_uint16_t_string;
+  }
+
+  return std::unique_ptr<Utf16CharacterStream>(
+      new UnbufferedCharacterStream<TestingStream>(0, data, length));
 }
 
 Utf16CharacterStream* ScannerStream::For(

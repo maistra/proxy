@@ -1,23 +1,30 @@
 #include "eval/eval/function_step.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
+#include "google/api/expr/v1alpha1/syntax.pb.h"
 #include "google/protobuf/arena.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "eval/eval/attribute_trail.h"
 #include "eval/eval/evaluator_core.h"
 #include "eval/eval/expression_build_warning.h"
 #include "eval/eval/expression_step_base.h"
+#include "eval/public/activation.h"
 #include "eval/public/cel_builtins.h"
+#include "eval/public/cel_function.h"
 #include "eval/public/cel_function_provider.h"
 #include "eval/public/cel_function_registry.h"
 #include "eval/public/cel_value.h"
+#include "eval/public/unknown_attribute_set.h"
 #include "eval/public/unknown_function_result_set.h"
 #include "eval/public/unknown_set.h"
 #include "base/status_macros.h"
@@ -29,19 +36,15 @@ namespace runtime {
 
 namespace {
 
-// Non-strict functions are allowed to consume errors and UnknownSets.
-// If short-circuiting is turned off, and, or and ternary use the function
-// implementations instead of special logic steps, so they need to be
-// whitelisted here to behave correctly.
+// Non-strict functions are allowed to consume errors and UnknownSets. Currently
+// only the special function "@not_strictly_false" is allowed to do this.
 bool IsNonStrict(const std::string& name) {
   return (name == builtin::kNotStrictlyFalse ||
-          name == builtin::kNotStrictlyFalseDeprecated ||
-          name == builtin::kAnd || name == builtin::kOr ||
-          name == builtin::kTernary);
+          name == builtin::kNotStrictlyFalseDeprecated);
 }
 
 // Determine if the overload should be considered. Overloads that can consume
-// errors or unknown sets must be whitelisted as a non-strict function.
+// errors or unknown sets must be allowed as a non-strict function.
 bool ShouldAcceptOverload(const CelFunction* function,
                           absl::Span<const CelValue> arguments) {
   if (function == nullptr) {
@@ -66,7 +69,7 @@ std::vector<CelValue> CheckForPartialUnknowns(
   std::vector<CelValue> result;
   result.reserve(args.size());
   for (size_t i = 0; i < args.size(); i++) {
-    auto attr_set = frame->unknowns_utility().CheckForUnknowns(
+    auto attr_set = frame->attribute_utility().CheckForUnknowns(
         attrs.subspan(i, 1), /*use_partial=*/true);
     if (!attr_set.attributes().empty()) {
       auto unknown_set = google::protobuf::Arena::Create<UnknownSet>(frame->arena(),
@@ -86,17 +89,21 @@ std::vector<CelValue> CheckForPartialUnknowns(
 class AbstractFunctionStep : public ExpressionStepBase {
  public:
   // Constructs FunctionStep that uses overloads specified.
-  AbstractFunctionStep(size_t num_arguments, int64_t expr_id)
-      : ExpressionStepBase(expr_id), num_arguments_(num_arguments) {}
+  AbstractFunctionStep(const std::string& name, size_t num_arguments,
+                       int64_t expr_id)
+      : ExpressionStepBase(expr_id),
+        name_(name),
+        num_arguments_(num_arguments) {}
 
   absl::Status Evaluate(ExecutionFrame* frame) const override;
 
   absl::Status DoEvaluate(ExecutionFrame* frame, CelValue* result) const;
 
-  virtual cel_base::StatusOr<const CelFunction*> ResolveFunction(
+  virtual absl::StatusOr<const CelFunction*> ResolveFunction(
       absl::Span<const CelValue> args, const ExecutionFrame* frame) const = 0;
 
  protected:
+  std::string name_;
   size_t num_arguments_;
 };
 
@@ -154,7 +161,7 @@ absl::Status AbstractFunctionStep::DoEvaluate(ExecutionFrame* frame,
     if (frame->enable_unknowns()) {
       // Already converted partial unknowns to unknown sets so just merge.
       auto unknown_set =
-          frame->unknowns_utility().MergeUnknowns(input_args, nullptr);
+          frame->attribute_utility().MergeUnknowns(input_args, nullptr);
       if (unknown_set != nullptr) {
         *result = CelValue::CreateUnknownSet(unknown_set);
         return absl::OkStatus();
@@ -188,10 +195,10 @@ absl::Status AbstractFunctionStep::Evaluate(ExecutionFrame* frame) const {
 class EagerFunctionStep : public AbstractFunctionStep {
  public:
   EagerFunctionStep(std::vector<const CelFunction*>&& overloads,
-                    size_t num_args, int64_t expr_id)
-      : AbstractFunctionStep(num_args, expr_id), overloads_(overloads) {}
+                    const std::string& name, size_t num_args, int64_t expr_id)
+      : AbstractFunctionStep(name, num_args, expr_id), overloads_(overloads) {}
 
-  cel_base::StatusOr<const CelFunction*> ResolveFunction(
+  absl::StatusOr<const CelFunction*> ResolveFunction(
       absl::Span<const CelValue> input_args,
       const ExecutionFrame* frame) const override;
 
@@ -199,7 +206,7 @@ class EagerFunctionStep : public AbstractFunctionStep {
   std::vector<const CelFunction*> overloads_;
 };
 
-cel_base::StatusOr<const CelFunction*> EagerFunctionStep::ResolveFunction(
+absl::StatusOr<const CelFunction*> EagerFunctionStep::ResolveFunction(
     absl::Span<const CelValue> input_args, const ExecutionFrame* frame) const {
   const CelFunction* matched_function = nullptr;
 
@@ -225,22 +232,20 @@ class LazyFunctionStep : public AbstractFunctionStep {
                    bool receiver_style,
                    const std::vector<const CelFunctionProvider*>& providers,
                    int64_t expr_id)
-      : AbstractFunctionStep(num_args, expr_id),
-        name_(name),
+      : AbstractFunctionStep(name, num_args, expr_id),
         receiver_style_(receiver_style),
         providers_(providers) {}
 
-  cel_base::StatusOr<const CelFunction*> ResolveFunction(
+  absl::StatusOr<const CelFunction*> ResolveFunction(
       absl::Span<const CelValue> input_args,
       const ExecutionFrame* frame) const override;
 
  private:
-  std::string name_;
   bool receiver_style_;
   std::vector<const CelFunctionProvider*> providers_;
 };
 
-cel_base::StatusOr<const CelFunction*> LazyFunctionStep::ResolveFunction(
+absl::StatusOr<const CelFunction*> LazyFunctionStep::ResolveFunction(
     absl::Span<const CelValue> input_args, const ExecutionFrame* frame) const {
   const CelFunction* matched_function = nullptr;
 
@@ -274,7 +279,7 @@ cel_base::StatusOr<const CelFunction*> LazyFunctionStep::ResolveFunction(
 
 }  // namespace
 
-cel_base::StatusOr<std::unique_ptr<ExpressionStep>> CreateFunctionStep(
+absl::StatusOr<std::unique_ptr<ExpressionStep>> CreateFunctionStep(
     const google::api::expr::v1alpha1::Expr::Call* call_expr, int64_t expr_id,
     const CelFunctionRegistry& function_registry,
     BuilderWarnings* builder_warnings) {
@@ -303,7 +308,7 @@ cel_base::StatusOr<std::unique_ptr<ExpressionStep>> CreateFunctionStep(
   }
 
   std::unique_ptr<ExpressionStep> step = absl::make_unique<EagerFunctionStep>(
-      std::move(overloads), num_args, expr_id);
+      std::move(overloads), name, num_args, expr_id);
   return std::move(step);
 }
 

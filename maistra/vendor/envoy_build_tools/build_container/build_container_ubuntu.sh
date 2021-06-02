@@ -5,9 +5,9 @@ set -e
 ARCH="$(uname -m)"
 
 # Setup basic requirements and install them.
-apt-get update
 export DEBIAN_FRONTEND=noninteractive
-apt-get install -y --no-install-recommends software-properties-common apt-transport-https curl
+apt-get update -y
+apt-get install -y --no-install-recommends software-properties-common apt-transport-https curl gpg-agent
 
 # gcc-9
 add-apt-repository -y ppa:ubuntu-toolchain-r/test
@@ -37,51 +37,72 @@ case $ARCH in
         add-apt-repository "deb [arch=arm64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
         ;;
 esac
+
+# CMake
+curl -fsSL https://apt.kitware.com/keys/kitware-archive-latest.asc | apt-key add -
+apt-add-repository "deb https://apt.kitware.com/ubuntu/ $(lsb_release -cs) main"
+
 apt-get update -y
 
-apt-get install -y --no-install-recommends docker-ce-cli wget make cmake git python python-pip python-setuptools python3 python3-pip \
-  python3-setuptools python3-yaml unzip bc libtool automake zip time gdb strace tshark tcpdump patch xz-utils rsync ssh-client \
-  google-cloud-sdk libncurses-dev doxygen graphviz
+PACKAGES=(
+    automake
+    bc
+    bzip2
+    cmake
+    docker-ce-cli
+    doxygen
+    gdb
+    git
+    google-cloud-sdk
+    graphviz
+    libncurses-dev
+    libtool
+    make
+    ninja-build
+    patch
+    python
+    python-pip
+    python-setuptools
+    python3
+    python3-pip
+    python3-setuptools
+    python3-yaml
+    python3.8
+    rsync
+    ssh-client
+    strace
+    sudo
+    tcpdump
+    time
+    tshark
+    unzip
+    wget
+    xz-utils
+    zip)
 
-# Python 3.8
-add-apt-repository -y ppa:deadsnakes/ppa
-apt-get update
-apt install -y python3.8
+# todo: remove this once kitware repo is fixed
+if [[ "$ARCH" == "aarch64" ]]; then
+    PACKAGES+=("cmake-data=3.10.2-1ubuntu2.18.04.1")
+else
+    PACKAGES+=("cmake-data")
+fi
 
-# Install ninja-build 1.8.2 from binary
-case $ARCH in
-    'ppc64le' )
-        ninja_deb="ninja-build_1.8.2-1_ppc64el.deb"
-        ;;
-    'x86_64' )
-        ninja_deb="ninja-build_1.8.2-1_amd64.deb"
-        ;;
-    'aarch64' )
-        ninja_deb="ninja-build_1.8.2-1_arm64.deb"
-        ;;
-esac
-wget https://launchpad.net/ubuntu/+archive/primary/+files/${ninja_deb}
-dpkg -i ${ninja_deb}
-rm ${ninja_deb}
+apt-get install -y --no-install-recommends "${PACKAGES[@]}"
 
 # Set LLVM version for each cpu architecture.
+LLVM_VERSION=10.0.0
 case $ARCH in
     'ppc64le' )
-        LLVM_VERSION=9.0.0
         LLVM_DISTRO=powerpc64le-linux-ubuntu-16.04
-        LLVM_SHA256SUM=a8e7dc00e9eac47ea769eb1f5145e1e28f0610289f07f3275021f0556c169ddf
+        LLVM_SHA256SUM=2d6298720d6aae7fcada4e909f0949d63e94fd0370d20b8882cdd91ceae7511c
         ;;
     'x86_64' )
-        LLVM_VERSION=9.0.0
-        LLVM_DISTRO=x86_64-linux-gnu-ubuntu-16.04
-        LLVM_SHA256SUM=5c1473c2611e1eac4ed1aeea5544eac5e9d266f40c5623bbaeb1c6555815a27d
+        LLVM_DISTRO=x86_64-linux-gnu-ubuntu-18.04
+        LLVM_SHA256SUM=b25f592a0c00686f03e3b7db68ca6dc87418f681f4ead4df4745a01d9be63843
         ;;
     'aarch64' )
-        # When using clang 9.0.0 to build envoy test, there are some errors about toolchain.
-        # So we just use an older version to walk-around until clang 10.0.0 pubished.
-        LLVM_VERSION=8.0.0
         LLVM_DISTRO=aarch64-linux-gnu
-        LLVM_SHA256SUM=998e9ae6e89bd3f029ed031ad9355c8b43441302c0e17603cf1de8ee9939e5c9
+        LLVM_SHA256SUM=c2072390dc6c8b4cc67737f487ef384148253a6a97b38030e012c4d7214b7295
         ;;
 esac
 
@@ -105,11 +126,21 @@ case $ARCH in
         ;;
 esac
 
-apt-get install -y aspell
+# additional apt installs
+apt-get install -y aspell expect
 rm -rf /var/lib/apt/lists/*
 
+# upstream install of shellcheck (taken from https://askubuntu.com/a/1228181)
+pushd /tmp || exit 1
+echo "c37d4f51e26ec8ab96b03d84af8c050548d7288a47f755ffb57706c6c458e027  /tmp/shellcheck-v0.7.0/shellcheck" > sc.checksum
+wget -qO- https://github.com/koalaman/shellcheck/releases/download/v0.7.0/shellcheck-v0.7.0.linux.x86_64.tar.xz | tar -xJf -
+sha256sum -c sc.checksum
+sudo cp shellcheck-v0.7.0/shellcheck /usr/local/bin
+rm -rf shellcheck-v0.7.0/ sc.checksum
+popd || exit 1
+
 # Setup tcpdump for non-root.
-groupadd pcap
+groupadd -r pcap
 chgrp pcap /usr/sbin/tcpdump
 chmod 750 /usr/sbin/tcpdump
 setcap cap_net_raw,cap_net_admin=eip /usr/sbin/tcpdump

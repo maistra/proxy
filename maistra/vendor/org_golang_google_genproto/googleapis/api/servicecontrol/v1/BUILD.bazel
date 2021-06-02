@@ -1,0 +1,38 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "servicecontrol",
+    srcs = [
+        "check_error.pb.go",
+        "distribution.pb.go",
+        "http_request.pb.go",
+        "log_entry.pb.go",
+        "metric_value.pb.go",
+        "operation.pb.go",
+        "quota_controller.pb.go",
+        "service_controller.pb.go",
+    ],
+    importpath = "google.golang.org/genproto/googleapis/api/servicecontrol/v1",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//googleapis/api/annotations",
+        "//googleapis/logging/type",
+        "//googleapis/rpc/status",
+        "@com_github_golang_protobuf//proto:go_default_library",
+        "@org_golang_google_grpc//:go_default_library",
+        "@org_golang_google_grpc//codes:go_default_library",
+        "@org_golang_google_grpc//status:go_default_library",
+        "@org_golang_google_protobuf//reflect/protoreflect:go_default_library",
+        "@org_golang_google_protobuf//runtime/protoimpl:go_default_library",
+        "@org_golang_google_protobuf//types/known/anypb:go_default_library",
+        "@org_golang_google_protobuf//types/known/durationpb:go_default_library",
+        "@org_golang_google_protobuf//types/known/structpb:go_default_library",
+        "@org_golang_google_protobuf//types/known/timestamppb:go_default_library",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":servicecontrol",
+    visibility = ["//visibility:public"],
+)

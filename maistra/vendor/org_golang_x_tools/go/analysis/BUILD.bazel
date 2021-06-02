@@ -1,7 +1,7 @@
-load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_tool_library")
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test", "go_tool_library")
 
 go_library(
-    name = "go_default_library",
+    name = "analysis",
     srcs = [
         "analysis.go",
         "diagnostic.go",
@@ -10,6 +10,7 @@ go_library(
     ],
     importpath = "golang.org/x/tools/go/analysis",
     visibility = ["//visibility:public"],
+    deps = ["//internal/analysisinternal"],
 )
 
 go_tool_library(
@@ -22,4 +23,17 @@ go_tool_library(
     ],
     importpath = "golang.org/x/tools/go/analysis",
     visibility = ["//visibility:public"],
+    deps = ["//internal/analysisinternal:go_tool_library"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":analysis",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "analysis_test",
+    srcs = ["validate_test.go"],
+    embed = [":analysis"],
 )

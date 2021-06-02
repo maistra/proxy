@@ -1,0 +1,2 @@
+# DO NOT EDIT: automatically generated WORKSPACE file for bazel_version rule
+workspace(name = "rules_foreign_cc_bazel_version")

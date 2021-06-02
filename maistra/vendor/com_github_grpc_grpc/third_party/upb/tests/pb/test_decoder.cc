@@ -509,8 +509,8 @@ void do_run_decoder(VerboseParserEnvironment* env, upb::pb::DecoderPtr decoder,
     }
 
     bool ok = env->Start() &&
-              parse(env, decoder, i) &&
-              parse(env, decoder, j - i) &&
+              parse(env, decoder, (int)i) &&
+              parse(env, decoder, (int)(j - i)) &&
               parse(env, decoder, -1) &&
               env->End();
 
@@ -569,7 +569,7 @@ string wrap_text(int32_t fn, const string& text) {
       LINE("<"),
       num2string(fn), LINE(":{")
       "  ", wrapped_text,
-      LINE("}")
+      LINE("  }")
       LINE(">"));
   return wrapped_text;
 }
@@ -922,7 +922,7 @@ void test_valid() {
       LINE("%u:{")
       LINE("  <")
       LINE("  >")
-      LINE("}")
+      LINE("  }")
       LINE(">"), UPB_DESCRIPTOR_TYPE_MESSAGE);
 
   assert_successful_parse(
@@ -933,7 +933,7 @@ void test_valid() {
       LINE("%u:{")
       LINE("  <")
       LINE("  >")
-      LINE("}")
+      LINE("  }")
       LINE("%u:5")
       LINE(">"), UPB_DESCRIPTOR_TYPE_MESSAGE, UPB_DESCRIPTOR_TYPE_INT32);
 
@@ -957,9 +957,9 @@ void test_valid() {
       LINE("    <")
       LINE("    %u:2345678")
       LINE("    >")
-      LINE("  }")
+      LINE("    }")
       LINE("  >")
-      LINE("}")
+      LINE("  }")
       LINE("%u:22222")
       LINE(">"), msg_type, msg_type, int32_type, int32_type);
 
@@ -984,7 +984,7 @@ void test_valid() {
       LINE("  %u:(5)\"abcde")
       LINE("    %u:\"")
       LINE("  >")
-      LINE("}")
+      LINE("  }")
       LINE(">"), msg_fn, UPB_DESCRIPTOR_TYPE_STRING,
                  UPB_DESCRIPTOR_TYPE_STRING);
 
@@ -1014,11 +1014,11 @@ void test_valid() {
       LINE("    %u:{")
       LINE("      <")
       LINE("      >")
-      LINE("    }")
+      LINE("      }")
       LINE("    >")
-      LINE("  }")
+      LINE("    }")
       LINE("  >")
-      LINE("}")
+      LINE("  }")
       LINE(">"), msg_fn, msg_fn, msg_fn);
 
   uint32_t repm_fn = rep_fn(UPB_DESCRIPTOR_TYPE_MESSAGE);
@@ -1032,10 +1032,10 @@ void test_valid() {
       LINE("      %u:{")
       LINE("        <")
       LINE("        >")
-      LINE("      }")
+      LINE("        }")
       LINE("    ]")
       LINE("    >")
-      LINE("  }")
+      LINE("    }")
       LINE("]")
       LINE(">"), repm_fn, repm_fn, repm_fn, repm_fn);
 
@@ -1099,7 +1099,7 @@ void test_valid() {
   textbuf.append(">\n");
   for (int i = 0; i < total; i++) {
     indentbuf(&textbuf, total - i - 1);
-    textbuf.append("}\n");
+    textbuf.append("  }\n");
     indentbuf(&textbuf, total - i - 1);
     textbuf.append(">\n");
   }
@@ -1108,7 +1108,7 @@ void test_valid() {
   run_decoder(buf, &textbuf);
 }
 
-void empty_callback(const void *closure, upb::Handlers* h_ptr) {}
+void empty_callback(const void* /* closure */, upb::Handlers* /* h_ptr */) {}
 
 void test_emptyhandlers(upb::SymbolTable* symtab) {
   // Create an empty handlers to make sure that the decoder can handle empty
@@ -1176,7 +1176,7 @@ extern "C" {
 
 int run_tests(int argc, char *argv[]) {
   if (argc > 1)
-    filter_hash = strtol(argv[1], NULL, 16);
+    filter_hash = (uint32_t)strtol(argv[1], NULL, 16);
   for (int i = 0; i < MAX_NESTING; i++) {
     closures[i] = i;
   }

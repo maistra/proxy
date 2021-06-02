@@ -12,39 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@io_bazel_rules_go//go/private:mode.bzl", "mode_string")
-
+# A represenatation of the inputs to a go package.
+# This is a configuration independent provider.
+# You must call resolve with a mode to produce a GoSource.
+# See go/providers.rst#GoLibrary for full documentation.
 GoLibrary = provider()
-"""
-A represenatation of the inputs to a go package.
-This is a configuration independent provider.
-You must call resolve with a mode to produce a GoSource.
-See go/providers.rst#GoLibrary for full documentation.
-"""
 
+# The filtered inputs and dependencies needed to build a GoArchive
+# This is a configuration specific provider.
+# It has no transitive information.
+# See go/providers.rst#GoSource for full documentation.
 GoSource = provider()
-"""
-The filtered inputs and dependencies needed to build a GoArchive
-This is a configuration specific provider.
-It has no transitive information.
-See go/providers.rst#GoSource for full documentation.
-"""
 
+# This compiled form of a package used in transitive dependencies.
+# This is a configuration specific provider.
+# See go/providers.rst#GoArchiveData for full documentation.
 GoArchiveData = provider()
-"""
-This compiled form of a package used in transitive dependencies.
-This is a configuration specific provider.
-See go/providers.rst#GoArchiveData for full documentation.
-"""
 
+# The compiled form of a GoLibrary, with everything needed to link it into a binary.
+# This is a configuration specific provider.
+# See go/providers.rst#GoArchive for full documentation.
 GoArchive = provider()
-"""
-The compiled form of a GoLibrary, with everything needed to link it into a binary.
-This is a configuration specific provider.
-See go/providers.rst#GoArchive for full documentation.
-"""
-
-GoAspectProviders = provider()
 
 GoPath = provider()
 
@@ -71,7 +59,11 @@ GoSDK = provider(
 
 GoStdLib = provider()
 
-CgoContextData = provider()
+GoConfigInfo = provider()
+
+GoContextInfo = provider()
+
+CgoContextInfo = provider()
 
 EXPLICIT_PATH = "explicit"
 
@@ -82,20 +74,15 @@ EXPORT_PATH = "export"
 def get_source(dep):
     if type(dep) == "struct":
         return dep
-    if GoAspectProviders in dep:
-        return dep[GoAspectProviders].source
     return dep[GoSource]
 
 def get_archive(dep):
     if type(dep) == "struct":
         return dep
-    if GoAspectProviders in dep:
-        return dep[GoAspectProviders].archive
     return dep[GoArchive]
 
 def effective_importpath_pkgpath(lib):
-    """Returns import and package paths for a given lib with some
-    modifications for display.
+    """Returns import and package paths for a given lib with modifications for display.
 
     This is used when we need to represent sources in a manner compatible with Go
     build (e.g., for packaging or coverage data listing). _test suffixes are

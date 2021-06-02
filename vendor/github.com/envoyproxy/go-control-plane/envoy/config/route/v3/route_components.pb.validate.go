@@ -39,9 +39,6 @@ var (
 	_ = v3.RequestMethod(0)
 )
 
-// define the regex for a UUID once up-front
-var _route_components_uuidPattern = regexp.MustCompile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
-
 // Validate checks the field values on VirtualHost with the rules defined in
 // the proto definition for this message. If any rules are violated, an error
 // is returned.
@@ -50,10 +47,10 @@ func (m *VirtualHost) Validate() error {
 		return nil
 	}
 
-	if len(m.GetName()) < 1 {
+	if utf8.RuneCountInString(m.GetName()) < 1 {
 		return VirtualHostValidationError{
 			field:  "Name",
-			reason: "value length must be at least 1 bytes",
+			reason: "value length must be at least 1 runes",
 		}
 	}
 
@@ -153,10 +150,10 @@ func (m *VirtualHost) Validate() error {
 	for idx, item := range m.GetRequestHeadersToRemove() {
 		_, _ = idx, item
 
-		if len(item) < 1 {
+		if utf8.RuneCountInString(item) < 1 {
 			return VirtualHostValidationError{
 				field:  fmt.Sprintf("RequestHeadersToRemove[%v]", idx),
-				reason: "value length must be at least 1 bytes",
+				reason: "value length must be at least 1 runes",
 			}
 		}
 
@@ -194,10 +191,10 @@ func (m *VirtualHost) Validate() error {
 	for idx, item := range m.GetResponseHeadersToRemove() {
 		_, _ = idx, item
 
-		if len(item) < 1 {
+		if utf8.RuneCountInString(item) < 1 {
 			return VirtualHostValidationError{
 				field:  fmt.Sprintf("ResponseHeadersToRemove[%v]", idx),
-				reason: "value length must be at least 1 bytes",
+				reason: "value length must be at least 1 runes",
 			}
 		}
 
@@ -524,10 +521,10 @@ func (m *Route) Validate() error {
 	for idx, item := range m.GetRequestHeadersToRemove() {
 		_, _ = idx, item
 
-		if len(item) < 1 {
+		if utf8.RuneCountInString(item) < 1 {
 			return RouteValidationError{
 				field:  fmt.Sprintf("RequestHeadersToRemove[%v]", idx),
-				reason: "value length must be at least 1 bytes",
+				reason: "value length must be at least 1 runes",
 			}
 		}
 
@@ -565,10 +562,10 @@ func (m *Route) Validate() error {
 	for idx, item := range m.GetResponseHeadersToRemove() {
 		_, _ = idx, item
 
-		if len(item) < 1 {
+		if utf8.RuneCountInString(item) < 1 {
 			return RouteValidationError{
 				field:  fmt.Sprintf("ResponseHeadersToRemove[%v]", idx),
-				reason: "value length must be at least 1 bytes",
+				reason: "value length must be at least 1 runes",
 			}
 		}
 
@@ -662,6 +659,18 @@ func (m *Route) Validate() error {
 			if err := v.Validate(); err != nil {
 				return RouteValidationError{
 					field:  "FilterAction",
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	case *Route_NonForwardingAction:
+
+		if v, ok := interface{}(m.GetNonForwardingAction()).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return RouteValidationError{
+					field:  "NonForwardingAction",
 					reason: "embedded message failed validation",
 					cause:  err,
 				}
@@ -1395,6 +1404,16 @@ func (m *RouteAction) Validate() error {
 		}
 	}
 
+	if v, ok := interface{}(m.GetMaxStreamDuration()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return RouteActionValidationError{
+				field:  "MaxStreamDuration",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
 	if v, ok := interface{}(m.GetHiddenEnvoyDeprecatedRequestMirrorPolicy()).(interface{ Validate() error }); ok {
 		if err := v.Validate(); err != nil {
 			return RouteActionValidationError{
@@ -1409,19 +1428,19 @@ func (m *RouteAction) Validate() error {
 
 	case *RouteAction_Cluster:
 
-		if len(m.GetCluster()) < 1 {
+		if utf8.RuneCountInString(m.GetCluster()) < 1 {
 			return RouteActionValidationError{
 				field:  "Cluster",
-				reason: "value length must be at least 1 bytes",
+				reason: "value length must be at least 1 runes",
 			}
 		}
 
 	case *RouteAction_ClusterHeader:
 
-		if len(m.GetClusterHeader()) < 1 {
+		if utf8.RuneCountInString(m.GetClusterHeader()) < 1 {
 			return RouteActionValidationError{
 				field:  "ClusterHeader",
-				reason: "value length must be at least 1 bytes",
+				reason: "value length must be at least 1 runes",
 			}
 		}
 
@@ -1871,6 +1890,18 @@ func (m *RedirectAction) Validate() error {
 			}
 		}
 
+	case *RedirectAction_RegexRewrite:
+
+		if v, ok := interface{}(m.GetRegexRewrite()).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return RedirectActionValidationError{
+					field:  "RegexRewrite",
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
 	}
 
 	return nil
@@ -2020,6 +2051,73 @@ var _ interface {
 	ErrorName() string
 } = DirectResponseActionValidationError{}
 
+// Validate checks the field values on NonForwardingAction with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, an error is returned.
+func (m *NonForwardingAction) Validate() error {
+	if m == nil {
+		return nil
+	}
+
+	return nil
+}
+
+// NonForwardingActionValidationError is the validation error returned by
+// NonForwardingAction.Validate if the designated constraints aren't met.
+type NonForwardingActionValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e NonForwardingActionValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e NonForwardingActionValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e NonForwardingActionValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e NonForwardingActionValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e NonForwardingActionValidationError) ErrorName() string {
+	return "NonForwardingActionValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e NonForwardingActionValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sNonForwardingAction.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = NonForwardingActionValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = NonForwardingActionValidationError{}
+
 // Validate checks the field values on Decorator with the rules defined in the
 // proto definition for this message. If any rules are violated, an error is returned.
 func (m *Decorator) Validate() error {
@@ -2027,10 +2125,10 @@ func (m *Decorator) Validate() error {
 		return nil
 	}
 
-	if len(m.GetOperation()) < 1 {
+	if utf8.RuneCountInString(m.GetOperation()) < 1 {
 		return DecoratorValidationError{
 			field:  "Operation",
-			reason: "value length must be at least 1 bytes",
+			reason: "value length must be at least 1 runes",
 		}
 	}
 
@@ -2233,10 +2331,10 @@ func (m *VirtualCluster) Validate() error {
 
 	}
 
-	if len(m.GetName()) < 1 {
+	if utf8.RuneCountInString(m.GetName()) < 1 {
 		return VirtualClusterValidationError{
 			field:  "Name",
-			reason: "value length must be at least 1 bytes",
+			reason: "value length must be at least 1 runes",
 		}
 	}
 
@@ -2423,10 +2521,10 @@ func (m *HeaderMatcher) Validate() error {
 		return nil
 	}
 
-	if len(m.GetName()) < 1 {
+	if utf8.RuneCountInString(m.GetName()) < 1 {
 		return HeaderMatcherValidationError{
 			field:  "Name",
-			reason: "value length must be at least 1 bytes",
+			reason: "value length must be at least 1 runes",
 		}
 	}
 
@@ -2473,19 +2571,28 @@ func (m *HeaderMatcher) Validate() error {
 
 	case *HeaderMatcher_PrefixMatch:
 
-		if len(m.GetPrefixMatch()) < 1 {
+		if utf8.RuneCountInString(m.GetPrefixMatch()) < 1 {
 			return HeaderMatcherValidationError{
 				field:  "PrefixMatch",
-				reason: "value length must be at least 1 bytes",
+				reason: "value length must be at least 1 runes",
 			}
 		}
 
 	case *HeaderMatcher_SuffixMatch:
 
-		if len(m.GetSuffixMatch()) < 1 {
+		if utf8.RuneCountInString(m.GetSuffixMatch()) < 1 {
 			return HeaderMatcherValidationError{
 				field:  "SuffixMatch",
-				reason: "value length must be at least 1 bytes",
+				reason: "value length must be at least 1 runes",
+			}
+		}
+
+	case *HeaderMatcher_ContainsMatch:
+
+		if utf8.RuneCountInString(m.GetContainsMatch()) < 1 {
+			return HeaderMatcherValidationError{
+				field:  "ContainsMatch",
+				reason: "value length must be at least 1 runes",
 			}
 		}
 
@@ -2567,10 +2674,17 @@ func (m *QueryParameterMatcher) Validate() error {
 		return nil
 	}
 
-	if l := len(m.GetName()); l < 1 || l > 1024 {
+	if utf8.RuneCountInString(m.GetName()) < 1 {
 		return QueryParameterMatcherValidationError{
 			field:  "Name",
-			reason: "value length must be between 1 and 1024 bytes, inclusive",
+			reason: "value length must be at least 1 runes",
+		}
+	}
+
+	if len(m.GetName()) > 1024 {
+		return QueryParameterMatcherValidationError{
+			field:  "Name",
+			reason: "value length must be at most 1024 bytes",
 		}
 	}
 
@@ -2772,6 +2886,83 @@ var _ interface {
 	ErrorName() string
 } = InternalRedirectPolicyValidationError{}
 
+// Validate checks the field values on FilterConfig with the rules defined in
+// the proto definition for this message. If any rules are violated, an error
+// is returned.
+func (m *FilterConfig) Validate() error {
+	if m == nil {
+		return nil
+	}
+
+	if v, ok := interface{}(m.GetConfig()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return FilterConfigValidationError{
+				field:  "Config",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	// no validation rules for IsOptional
+
+	return nil
+}
+
+// FilterConfigValidationError is the validation error returned by
+// FilterConfig.Validate if the designated constraints aren't met.
+type FilterConfigValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e FilterConfigValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e FilterConfigValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e FilterConfigValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e FilterConfigValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e FilterConfigValidationError) ErrorName() string { return "FilterConfigValidationError" }
+
+// Error satisfies the builtin error interface
+func (e FilterConfigValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sFilterConfig.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = FilterConfigValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = FilterConfigValidationError{}
+
 // Validate checks the field values on WeightedCluster_ClusterWeight with the
 // rules defined in the proto definition for this message. If any rules are
 // violated, an error is returned.
@@ -2780,10 +2971,10 @@ func (m *WeightedCluster_ClusterWeight) Validate() error {
 		return nil
 	}
 
-	if len(m.GetName()) < 1 {
+	if utf8.RuneCountInString(m.GetName()) < 1 {
 		return WeightedCluster_ClusterWeightValidationError{
 			field:  "Name",
-			reason: "value length must be at least 1 bytes",
+			reason: "value length must be at least 1 runes",
 		}
 	}
 
@@ -2829,6 +3020,18 @@ func (m *WeightedCluster_ClusterWeight) Validate() error {
 
 	}
 
+	for idx, item := range m.GetRequestHeadersToRemove() {
+		_, _ = idx, item
+
+		if !_WeightedCluster_ClusterWeight_RequestHeadersToRemove_Pattern.MatchString(item) {
+			return WeightedCluster_ClusterWeightValidationError{
+				field:  fmt.Sprintf("RequestHeadersToRemove[%v]", idx),
+				reason: "value does not match regex pattern \"^[^\\x00\\n\\r]*$\"",
+			}
+		}
+
+	}
+
 	if len(m.GetResponseHeadersToAdd()) > 1000 {
 		return WeightedCluster_ClusterWeightValidationError{
 			field:  "ResponseHeadersToAdd",
@@ -2846,6 +3049,18 @@ func (m *WeightedCluster_ClusterWeight) Validate() error {
 					reason: "embedded message failed validation",
 					cause:  err,
 				}
+			}
+		}
+
+	}
+
+	for idx, item := range m.GetResponseHeadersToRemove() {
+		_, _ = idx, item
+
+		if !_WeightedCluster_ClusterWeight_ResponseHeadersToRemove_Pattern.MatchString(item) {
+			return WeightedCluster_ClusterWeightValidationError{
+				field:  fmt.Sprintf("ResponseHeadersToRemove[%v]", idx),
+				reason: "value does not match regex pattern \"^[^\\x00\\n\\r]*$\"",
 			}
 		}
 
@@ -2944,6 +3159,10 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = WeightedCluster_ClusterWeightValidationError{}
+
+var _WeightedCluster_ClusterWeight_RequestHeadersToRemove_Pattern = regexp.MustCompile("^[^\x00\n\r]*$")
+
+var _WeightedCluster_ClusterWeight_ResponseHeadersToRemove_Pattern = regexp.MustCompile("^[^\x00\n\r]*$")
 
 // Validate checks the field values on RouteMatch_GrpcRouteMatchOptions with
 // the rules defined in the proto definition for this message. If any rules
@@ -3176,10 +3395,10 @@ func (m *RouteAction_RequestMirrorPolicy) Validate() error {
 		return nil
 	}
 
-	if len(m.GetCluster()) < 1 {
+	if utf8.RuneCountInString(m.GetCluster()) < 1 {
 		return RouteAction_RequestMirrorPolicyValidationError{
 			field:  "Cluster",
-			reason: "value length must be at least 1 bytes",
+			reason: "value length must be at least 1 runes",
 		}
 	}
 
@@ -3412,6 +3631,13 @@ func (m *RouteAction_UpgradeConfig) Validate() error {
 		return nil
 	}
 
+	if utf8.RuneCountInString(m.GetUpgradeType()) < 1 {
+		return RouteAction_UpgradeConfigValidationError{
+			field:  "UpgradeType",
+			reason: "value length must be at least 1 runes",
+		}
+	}
+
 	if !_RouteAction_UpgradeConfig_UpgradeType_Pattern.MatchString(m.GetUpgradeType()) {
 		return RouteAction_UpgradeConfigValidationError{
 			field:  "UpgradeType",
@@ -3500,6 +3726,104 @@ var _ interface {
 
 var _RouteAction_UpgradeConfig_UpgradeType_Pattern = regexp.MustCompile("^[^\x00\n\r]*$")
 
+// Validate checks the field values on RouteAction_MaxStreamDuration with the
+// rules defined in the proto definition for this message. If any rules are
+// violated, an error is returned.
+func (m *RouteAction_MaxStreamDuration) Validate() error {
+	if m == nil {
+		return nil
+	}
+
+	if v, ok := interface{}(m.GetMaxStreamDuration()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return RouteAction_MaxStreamDurationValidationError{
+				field:  "MaxStreamDuration",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if v, ok := interface{}(m.GetGrpcTimeoutHeaderMax()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return RouteAction_MaxStreamDurationValidationError{
+				field:  "GrpcTimeoutHeaderMax",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if v, ok := interface{}(m.GetGrpcTimeoutHeaderOffset()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return RouteAction_MaxStreamDurationValidationError{
+				field:  "GrpcTimeoutHeaderOffset",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	return nil
+}
+
+// RouteAction_MaxStreamDurationValidationError is the validation error
+// returned by RouteAction_MaxStreamDuration.Validate if the designated
+// constraints aren't met.
+type RouteAction_MaxStreamDurationValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e RouteAction_MaxStreamDurationValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e RouteAction_MaxStreamDurationValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e RouteAction_MaxStreamDurationValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e RouteAction_MaxStreamDurationValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e RouteAction_MaxStreamDurationValidationError) ErrorName() string {
+	return "RouteAction_MaxStreamDurationValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e RouteAction_MaxStreamDurationValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sRouteAction_MaxStreamDuration.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = RouteAction_MaxStreamDurationValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = RouteAction_MaxStreamDurationValidationError{}
+
 // Validate checks the field values on RouteAction_HashPolicy_Header with the
 // rules defined in the proto definition for this message. If any rules are
 // violated, an error is returned.
@@ -3508,10 +3832,10 @@ func (m *RouteAction_HashPolicy_Header) Validate() error {
 		return nil
 	}
 
-	if len(m.GetHeaderName()) < 1 {
+	if utf8.RuneCountInString(m.GetHeaderName()) < 1 {
 		return RouteAction_HashPolicy_HeaderValidationError{
 			field:  "HeaderName",
-			reason: "value length must be at least 1 bytes",
+			reason: "value length must be at least 1 runes",
 		}
 	}
 
@@ -3602,10 +3926,10 @@ func (m *RouteAction_HashPolicy_Cookie) Validate() error {
 		return nil
 	}
 
-	if len(m.GetName()) < 1 {
+	if utf8.RuneCountInString(m.GetName()) < 1 {
 		return RouteAction_HashPolicy_CookieValidationError{
 			field:  "Name",
-			reason: "value length must be at least 1 bytes",
+			reason: "value length must be at least 1 runes",
 		}
 	}
 
@@ -3759,10 +4083,10 @@ func (m *RouteAction_HashPolicy_QueryParameter) Validate() error {
 		return nil
 	}
 
-	if len(m.GetName()) < 1 {
+	if utf8.RuneCountInString(m.GetName()) < 1 {
 		return RouteAction_HashPolicy_QueryParameterValidationError{
 			field:  "Name",
-			reason: "value length must be at least 1 bytes",
+			reason: "value length must be at least 1 runes",
 		}
 	}
 
@@ -3834,10 +4158,10 @@ func (m *RouteAction_HashPolicy_FilterState) Validate() error {
 		return nil
 	}
 
-	if len(m.GetKey()) < 1 {
+	if utf8.RuneCountInString(m.GetKey()) < 1 {
 		return RouteAction_HashPolicy_FilterStateValidationError{
 			field:  "Key",
-			reason: "value length must be at least 1 bytes",
+			reason: "value length must be at least 1 runes",
 		}
 	}
 
@@ -3919,6 +4243,8 @@ func (m *RouteAction_UpgradeConfig_ConnectConfig) Validate() error {
 		}
 	}
 
+	// no validation rules for AllowPost
+
 	return nil
 }
 
@@ -3987,10 +4313,10 @@ func (m *RetryPolicy_RetryPriority) Validate() error {
 		return nil
 	}
 
-	if len(m.GetName()) < 1 {
+	if utf8.RuneCountInString(m.GetName()) < 1 {
 		return RetryPolicy_RetryPriorityValidationError{
 			field:  "Name",
-			reason: "value length must be at least 1 bytes",
+			reason: "value length must be at least 1 runes",
 		}
 	}
 
@@ -4089,10 +4415,10 @@ func (m *RetryPolicy_RetryHostPredicate) Validate() error {
 		return nil
 	}
 
-	if len(m.GetName()) < 1 {
+	if utf8.RuneCountInString(m.GetName()) < 1 {
 		return RetryPolicy_RetryHostPredicateValidationError{
 			field:  "Name",
-			reason: "value length must be at least 1 bytes",
+			reason: "value length must be at least 1 runes",
 		}
 	}
 
@@ -4308,10 +4634,10 @@ func (m *RetryPolicy_ResetHeader) Validate() error {
 		return nil
 	}
 
-	if len(m.GetName()) < 1 {
+	if utf8.RuneCountInString(m.GetName()) < 1 {
 		return RetryPolicy_ResetHeaderValidationError{
 			field:  "Name",
-			reason: "value length must be at least 1 bytes",
+			reason: "value length must be at least 1 runes",
 		}
 	}
 
@@ -4589,6 +4915,30 @@ func (m *RateLimit_Action) Validate() error {
 			if err := v.Validate(); err != nil {
 				return RateLimit_ActionValidationError{
 					field:  "DynamicMetadata",
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	case *RateLimit_Action_Metadata:
+
+		if v, ok := interface{}(m.GetMetadata()).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return RateLimit_ActionValidationError{
+					field:  "Metadata",
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	case *RateLimit_Action_Extension:
+
+		if v, ok := interface{}(m.GetExtension()).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return RateLimit_ActionValidationError{
+					field:  "Extension",
 					reason: "embedded message failed validation",
 					cause:  err,
 				}
@@ -4893,10 +5243,10 @@ func (m *RateLimit_Action_RequestHeaders) Validate() error {
 		return nil
 	}
 
-	if len(m.GetHeaderName()) < 1 {
+	if utf8.RuneCountInString(m.GetHeaderName()) < 1 {
 		return RateLimit_Action_RequestHeadersValidationError{
 			field:  "HeaderName",
-			reason: "value length must be at least 1 bytes",
+			reason: "value length must be at least 1 runes",
 		}
 	}
 
@@ -4907,10 +5257,10 @@ func (m *RateLimit_Action_RequestHeaders) Validate() error {
 		}
 	}
 
-	if len(m.GetDescriptorKey()) < 1 {
+	if utf8.RuneCountInString(m.GetDescriptorKey()) < 1 {
 		return RateLimit_Action_RequestHeadersValidationError{
 			field:  "DescriptorKey",
-			reason: "value length must be at least 1 bytes",
+			reason: "value length must be at least 1 runes",
 		}
 	}
 
@@ -5054,12 +5404,14 @@ func (m *RateLimit_Action_GenericKey) Validate() error {
 		return nil
 	}
 
-	if len(m.GetDescriptorValue()) < 1 {
+	if utf8.RuneCountInString(m.GetDescriptorValue()) < 1 {
 		return RateLimit_Action_GenericKeyValidationError{
 			field:  "DescriptorValue",
-			reason: "value length must be at least 1 bytes",
+			reason: "value length must be at least 1 runes",
 		}
 	}
+
+	// no validation rules for DescriptorKey
 
 	return nil
 }
@@ -5129,10 +5481,10 @@ func (m *RateLimit_Action_HeaderValueMatch) Validate() error {
 		return nil
 	}
 
-	if len(m.GetDescriptorValue()) < 1 {
+	if utf8.RuneCountInString(m.GetDescriptorValue()) < 1 {
 		return RateLimit_Action_HeaderValueMatchValidationError{
 			field:  "DescriptorValue",
-			reason: "value length must be at least 1 bytes",
+			reason: "value length must be at least 1 runes",
 		}
 	}
 
@@ -5236,10 +5588,10 @@ func (m *RateLimit_Action_DynamicMetaData) Validate() error {
 		return nil
 	}
 
-	if len(m.GetDescriptorKey()) < 1 {
+	if utf8.RuneCountInString(m.GetDescriptorKey()) < 1 {
 		return RateLimit_Action_DynamicMetaDataValidationError{
 			field:  "DescriptorKey",
-			reason: "value length must be at least 1 bytes",
+			reason: "value length must be at least 1 runes",
 		}
 	}
 
@@ -5321,6 +5673,106 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = RateLimit_Action_DynamicMetaDataValidationError{}
+
+// Validate checks the field values on RateLimit_Action_MetaData with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, an error is returned.
+func (m *RateLimit_Action_MetaData) Validate() error {
+	if m == nil {
+		return nil
+	}
+
+	if utf8.RuneCountInString(m.GetDescriptorKey()) < 1 {
+		return RateLimit_Action_MetaDataValidationError{
+			field:  "DescriptorKey",
+			reason: "value length must be at least 1 runes",
+		}
+	}
+
+	if m.GetMetadataKey() == nil {
+		return RateLimit_Action_MetaDataValidationError{
+			field:  "MetadataKey",
+			reason: "value is required",
+		}
+	}
+
+	if v, ok := interface{}(m.GetMetadataKey()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return RateLimit_Action_MetaDataValidationError{
+				field:  "MetadataKey",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	// no validation rules for DefaultValue
+
+	if _, ok := RateLimit_Action_MetaData_Source_name[int32(m.GetSource())]; !ok {
+		return RateLimit_Action_MetaDataValidationError{
+			field:  "Source",
+			reason: "value must be one of the defined enum values",
+		}
+	}
+
+	return nil
+}
+
+// RateLimit_Action_MetaDataValidationError is the validation error returned by
+// RateLimit_Action_MetaData.Validate if the designated constraints aren't met.
+type RateLimit_Action_MetaDataValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e RateLimit_Action_MetaDataValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e RateLimit_Action_MetaDataValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e RateLimit_Action_MetaDataValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e RateLimit_Action_MetaDataValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e RateLimit_Action_MetaDataValidationError) ErrorName() string {
+	return "RateLimit_Action_MetaDataValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e RateLimit_Action_MetaDataValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sRateLimit_Action_MetaData.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = RateLimit_Action_MetaDataValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = RateLimit_Action_MetaDataValidationError{}
 
 // Validate checks the field values on RateLimit_Override_DynamicMetadata with
 // the rules defined in the proto definition for this message. If any rules

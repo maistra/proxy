@@ -1,19 +1,28 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
-    name = "go_default_library",
+    name = "diff",
     srcs = [
         "diff.go",
         "unified.go",
     ],
     importpath = "golang.org/x/tools/internal/lsp/diff",
     visibility = ["//:__subpackages__"],
-    deps = ["//internal/span:go_default_library"],
+    deps = ["//internal/span"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":diff",
+    visibility = ["//:__subpackages__"],
 )
 
 go_test(
-    name = "go_default_test",
+    name = "diff_test",
     srcs = ["diff_test.go"],
-    embed = [":go_default_library"],
-    deps = ["//internal/span:go_default_library"],
+    deps = [
+        ":diff",
+        "//internal/lsp/diff/difftest",
+        "//internal/span",
+    ],
 )

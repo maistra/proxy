@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
-    name = "go_default_library",
+    name = "rename",
     srcs = [
         "check.go",
         "mvpkg.go",
@@ -12,24 +12,30 @@ go_library(
     importpath = "golang.org/x/tools/refactor/rename",
     visibility = ["//visibility:public"],
     deps = [
-        "//go/ast/astutil:go_default_library",
-        "//go/buildutil:go_default_library",
-        "//go/loader:go_default_library",
-        "//go/types/typeutil:go_default_library",
-        "//refactor/importgraph:go_default_library",
-        "//refactor/satisfy:go_default_library",
+        "//go/ast/astutil",
+        "//go/buildutil",
+        "//go/loader",
+        "//go/types/typeutil",
+        "//refactor/importgraph",
+        "//refactor/satisfy",
     ],
 )
 
+alias(
+    name = "go_default_library",
+    actual = ":rename",
+    visibility = ["//visibility:public"],
+)
+
 go_test(
-    name = "go_default_test",
+    name = "rename_test",
     srcs = [
         "mvpkg_test.go",
         "rename_test.go",
     ],
-    embed = [":go_default_library"],
+    embed = [":rename"],
     deps = [
-        "//go/buildutil:go_default_library",
-        "//internal/testenv:go_default_library",
+        "//go/buildutil",
+        "//internal/testenv",
     ],
 )

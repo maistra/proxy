@@ -1,37 +1,45 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
-    name = "go_default_library",
+    name = "packagestest",
     srcs = [
         "expect.go",
         "export.go",
         "gopath.go",
         "modules.go",
         "modules_111.go",
-        "modules_112.go",
-        "modules_113.go",
     ],
     importpath = "golang.org/x/tools/go/packages/packagestest",
     visibility = ["//visibility:public"],
     deps = [
-        "//go/expect:go_default_library",
-        "//go/packages:go_default_library",
-        "//internal/span:go_default_library",
-        "//internal/testenv:go_default_library",
+        "//go/expect",
+        "//go/packages",
+        "//internal/gocommand",
+        "//internal/packagesinternal",
+        "//internal/proxydir",
+        "//internal/span",
+        "//internal/testenv",
     ],
 )
 
+alias(
+    name = "go_default_library",
+    actual = ":packagestest",
+    visibility = ["//visibility:public"],
+)
+
 go_test(
-    name = "go_default_test",
+    name = "packagestest_test",
     srcs = [
         "expect_test.go",
         "export_test.go",
         "gopath_test.go",
         "modules_test.go",
     ],
-    embed = [":go_default_library"],
     deps = [
-        "//go/expect:go_default_library",
-        "//internal/span:go_default_library",
+        ":packagestest",
+        "//go/expect",
+        "//internal/span",
+        "//internal/testenv",
     ],
 )

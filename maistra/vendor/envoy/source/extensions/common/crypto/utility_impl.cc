@@ -48,7 +48,6 @@ const VerificationOutput UtilityImpl::verifySignature(absl::string_view hash, Cr
   if (md == nullptr) {
     return {false, absl::StrCat(hash, " is not supported.")};
   }
-
   // Step 3: initialize EVP_DigestVerify
   auto pkey_wrapper = Common::Crypto::Access::getTyped<Common::Crypto::PublicKeyObject>(key);
   EVP_PKEY* pkey = pkey_wrapper->getEVP_PKEY();

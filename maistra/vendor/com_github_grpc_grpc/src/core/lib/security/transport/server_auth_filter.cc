@@ -123,8 +123,9 @@ static grpc_filtered_mdelem remove_consumed_md(void* user_data,
   for (i = 0; i < calld->num_consumed_md; i++) {
     const grpc_metadata* consumed_md = &calld->consumed_md[i];
     if (grpc_slice_eq(GRPC_MDKEY(md), consumed_md->key) &&
-        grpc_slice_eq(GRPC_MDVALUE(md), consumed_md->value))
+        grpc_slice_eq(GRPC_MDVALUE(md), consumed_md->value)) {
       return GRPC_FILTERED_REMOVE();
+    }
   }
   return GRPC_FILTERED_MDELEM(md);
 }
@@ -159,7 +160,7 @@ static void on_md_processing_done_inner(grpc_call_element* elem,
                              calld->recv_trailing_metadata_error,
                              "continue recv_trailing_metadata_ready");
   }
-  GRPC_CLOSURE_SCHED(closure, error);
+  grpc_core::ExecCtx::Run(DEBUG_LOCATION, closure, error);
 }
 
 // Called from application code.
@@ -238,7 +239,7 @@ static void recv_initial_metadata_ready(void* arg, grpc_error* error) {
                              calld->recv_trailing_metadata_error,
                              "continue recv_trailing_metadata_ready");
   }
-  GRPC_CLOSURE_RUN(closure, GRPC_ERROR_REF(error));
+  grpc_core::Closure::Run(DEBUG_LOCATION, closure, GRPC_ERROR_REF(error));
 }
 
 static void recv_trailing_metadata_ready(void* user_data, grpc_error* err) {
@@ -254,7 +255,8 @@ static void recv_trailing_metadata_ready(void* user_data, grpc_error* err) {
   }
   err = grpc_error_add_child(
       GRPC_ERROR_REF(err), GRPC_ERROR_REF(calld->recv_initial_metadata_error));
-  GRPC_CLOSURE_RUN(calld->original_recv_trailing_metadata_ready, err);
+  grpc_core::Closure::Run(DEBUG_LOCATION,
+                          calld->original_recv_trailing_metadata_ready, err);
 }
 
 static void server_auth_start_transport_stream_op_batch(
@@ -286,8 +288,8 @@ static grpc_error* server_auth_init_call_elem(
 
 /* Destructor for call_data */
 static void server_auth_destroy_call_elem(
-    grpc_call_element* elem, const grpc_call_final_info* final_info,
-    grpc_closure* ignored) {
+    grpc_call_element* elem, const grpc_call_final_info* /*final_info*/,
+    grpc_closure* /*ignored*/) {
   call_data* calld = static_cast<call_data*>(elem->call_data);
   calld->~call_data();
 }

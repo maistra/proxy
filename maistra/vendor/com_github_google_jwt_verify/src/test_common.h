@@ -15,16 +15,15 @@
 #pragma once
 
 #include <functional>
+#include <iostream>
+
 #include "jwt_verify_lib/jwt.h"
 
 namespace google {
 namespace jwt_verify {
 
-/**
- * This function fuzz the signature in two loops
- */
-void fuzzJwtSignature(const Jwt& jwt,
-                      std::function<void(const Jwt& jwt)> test_fn) {
+void fuzzJwtSignatureBits(const Jwt& jwt,
+                          std::function<void(const Jwt& jwt)> test_fn) {
   // alter 1 bit
   for (size_t b = 0; b < jwt.signature_.size(); ++b) {
     for (int bit = 0; bit < 8; ++bit) {
@@ -35,13 +34,22 @@ void fuzzJwtSignature(const Jwt& jwt,
       test_fn(fuzz_jwt);
     }
   }
+}
 
+void fuzzJwtSignatureLength(const Jwt& jwt,
+                            std::function<void(const Jwt& jwt)> test_fn) {
   // truncate bytes
   for (size_t count = 1; count < jwt.signature_.size(); ++count) {
     Jwt fuzz_jwt(jwt);
     fuzz_jwt.signature_ = jwt.signature_.substr(0, count);
     test_fn(fuzz_jwt);
   }
+}
+
+void fuzzJwtSignature(const Jwt& jwt,
+                      std::function<void(const Jwt& jwt)> test_fn) {
+  fuzzJwtSignatureBits(jwt, test_fn);
+  fuzzJwtSignatureLength(jwt, test_fn);
 }
 
 // copy from ESP:
@@ -105,6 +113,18 @@ const std::string kRealX509Jwks = R"(
   "aeb0d379d4a71b561b77e1e05fe5a8a0ef2cf089": "-----BEGIN CERTIFICATE-----\nMIIC+jCCAeKgAwIBAgIIJWEK8Mx3fIgwDQYJKoZIhvcNAQEFBQAwIDEeMBwGA1UE\nAxMVMTA2OTQ3MDEyMjYwNDg4NzM2MTU3MB4XDTE2MDMwMTE3NDExM1oXDTI2MDIy\nNzE3NDExM1owIDEeMBwGA1UEAxMVMTA2OTQ3MDEyMjYwNDg4NzM2MTU3MIIBIjAN\nBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAt/D2PDPvrMb4KPJM712b9J3CQDLe\nBN5FxNh0/C72QngZFRyVSdarwen2MlddZGD6zsNSBwDVM0mkGi+fFHOgEe6WRlRT\nYnKUFibhR0Oh+G4jKVeMbed8wWGBhq4Fxo5i3230NMK0Iqkvc83wy1IpCHtK5dU1\natuOunh1DoKV9pM0bZwevHigLoNBjbyzpu6MaMh9WIGZ1JRTBtN1TdXI+yBvoNCA\nG284CjeTy1NTOynj11Nw8FevzeVWsOyKH5kzbvNZICfxeELD3GyQVF7WG5U80c8R\nxpcvm6wkYXoEoeQ9uOey9cJpXfvz1FLMts5IpafEf2STqjfl6vRdfhOOuQIDAQAB\nozgwNjAMBgNVHRMBAf8EAjAAMA4GA1UdDwEB/wQEAwIHgDAWBgNVHSUBAf8EDDAK\nBggrBgEFBQcDAjANBgkqhkiG9w0BAQUFAAOCAQEAWTWrwEoWodbxXBtCrlHTAyrv\nigJio3mMZFVcEQJ23/H83R4+sk2Pri4QnR575Jyz/ddOn/b6QU7j/oYf5PUK93Gg\nTQ/5BZBXGTRno8YM2tO/joiIV3hwKtZNh51uiB+/0zkq76yEQ38lu9ZrRMMlsr85\nZ8tdMf6qlxIlbU46X1Jq0x8ETuhS5qtxKovqo6XwSAvcZaUNf5PgZ7lXEV3i/Og4\nQJGVjh9vuAfanZWMvoaMOtEiYyaRdpKVcXA+Tsrq13XUlk5cUgxrOj0gUO85WiPk\nFGSx3g1sIdsD/bUpy5XGV5CDFN4QUXDvTzwdeFPh8WH/alf1jp2xMoiYYx5HeQ==\n-----END CERTIFICATE-----\n"
 }
 )";
+
+/**
+ * Provide an overloaded << to output a Status to std::ostream for better error
+ * messages in test output
+ * @param os the std::ostream to write to
+ * @param status is the enum status.
+ * @return the std::ostream os
+ */
+std::ostream& operator<<(std::ostream& os, const Status& status) {
+  return os << "Status(" << static_cast<int>(status) << ", "
+            << getStatusString(status) << ")";
+}
 
 }  // namespace jwt_verify
 }  // namespace google

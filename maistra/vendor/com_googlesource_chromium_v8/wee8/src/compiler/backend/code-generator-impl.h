@@ -62,6 +62,10 @@ class InstructionOperandConverter {
     return static_cast<int8_t>(InputInt32(index));
   }
 
+  uint8_t InputUint8(size_t index) {
+    return bit_cast<uint8_t>(InputInt8(index));
+  }
+
   int16_t InputInt16(size_t index) {
     return static_cast<int16_t>(InputInt32(index));
   }
@@ -252,11 +256,6 @@ class OutOfLineCode : public ZoneObject {
   TurboAssembler* const tasm_;
   OutOfLineCode* const next_;
 };
-
-inline bool HasCallDescriptorFlag(Instruction* instr,
-                                  CallDescriptor::Flag flag) {
-  return MiscField::decode(instr->opcode()) & flag;
-}
 
 }  // namespace compiler
 }  // namespace internal

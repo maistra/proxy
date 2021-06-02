@@ -43,7 +43,7 @@
 
 GPR_GLOBAL_CONFIG_DEFINE_BOOL(grpc_enable_fork_support,
                               GRPC_ENABLE_FORK_SUPPORT_DEFAULT,
-                              "Enable folk support");
+                              "Enable fork support");
 
 namespace grpc_core {
 namespace internal {
@@ -54,7 +54,7 @@ namespace internal {
 // When blocked, the exec_ctx_count is 0-indexed.  Note that ExecCtx
 // creation can only be blocked if there is exactly 1 outstanding ExecCtx,
 // meaning that BLOCKED and UNBLOCKED counts partition the integers
-#define UNBLOCKED(n) (n + 2)
+#define UNBLOCKED(n) ((n) + 2)
 #define BLOCKED(n) (n)
 
 class ExecCtxState {
@@ -164,7 +164,7 @@ class ThreadState {
   int count_;
 };
 
-}  // namespace
+}  // namespace internal
 
 void Fork::GlobalInit() {
   if (!override_enabled_) {
@@ -172,15 +172,15 @@ void Fork::GlobalInit() {
                            MemoryOrder::RELAXED);
   }
   if (support_enabled_.Load(MemoryOrder::RELAXED)) {
-    exec_ctx_state_ = grpc_core::New<internal::ExecCtxState>();
-    thread_state_ = grpc_core::New<internal::ThreadState>();
+    exec_ctx_state_ = new internal::ExecCtxState();
+    thread_state_ = new internal::ThreadState();
   }
 }
 
 void Fork::GlobalShutdown() {
   if (support_enabled_.Load(MemoryOrder::RELAXED)) {
-    grpc_core::Delete(exec_ctx_state_);
-    grpc_core::Delete(thread_state_);
+    delete exec_ctx_state_;
+    delete thread_state_;
   }
 }
 

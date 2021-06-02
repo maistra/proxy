@@ -22,6 +22,8 @@ class V8_EXPORT_PRIVATE InterpreterAssembler : public CodeStubAssembler {
   InterpreterAssembler(compiler::CodeAssemblerState* state, Bytecode bytecode,
                        OperandScale operand_scale);
   ~InterpreterAssembler();
+  InterpreterAssembler(const InterpreterAssembler&) = delete;
+  InterpreterAssembler& operator=(const InterpreterAssembler&) = delete;
 
   // Returns the 32-bit unsigned count immediate for bytecode operand
   // |operand_index| in the current bytecode.
@@ -38,6 +40,9 @@ class V8_EXPORT_PRIVATE InterpreterAssembler : public CodeStubAssembler {
   // Returns the smi index immediate for bytecode operand |operand_index|
   // in the current bytecode.
   TNode<Smi> BytecodeOperandIdxSmi(int operand_index);
+  // Returns the TaggedIndex immediate for bytecode operand |operand_index|
+  // in the current bytecode.
+  TNode<TaggedIndex> BytecodeOperandIdxTaggedIndex(int operand_index);
   // Returns the 32-bit unsigned immediate for bytecode operand |operand_index|
   // in the current bytecode.
   TNode<Uint32T> BytecodeOperandUImm(int operand_index);
@@ -188,12 +193,10 @@ class V8_EXPORT_PRIVATE InterpreterAssembler : public CodeStubAssembler {
                                     TNode<UintPtrT> slot_id,
                                     TNode<HeapObject> maybe_feedback_vector);
 
-  // Call runtime function with |args| arguments which will return |return_size|
-  // number of values.
-  compiler::Node* CallRuntimeN(TNode<Uint32T> function_id,
-                               TNode<Context> context,
-                               const RegListNodePair& args,
-                               int return_size = 1);
+  // Call runtime function with |args| arguments.
+  template <class T = Object>
+  TNode<T> CallRuntimeN(TNode<Uint32T> function_id, TNode<Context> context,
+                        const RegListNodePair& args, int return_count);
 
   // Jump forward relative to the current bytecode by the |jump_offset|.
   void Jump(TNode<IntPtrT> jump_offset);
@@ -399,8 +402,6 @@ class V8_EXPORT_PRIVATE InterpreterAssembler : public CodeStubAssembler {
   bool made_call_;
   bool reloaded_frame_ptr_;
   bool bytecode_array_valid_;
-
-  DISALLOW_COPY_AND_ASSIGN(InterpreterAssembler);
 };
 
 }  // namespace interpreter

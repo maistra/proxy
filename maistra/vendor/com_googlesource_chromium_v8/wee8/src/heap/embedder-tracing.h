@@ -20,6 +20,23 @@ class V8_EXPORT_PRIVATE LocalEmbedderHeapTracer final {
   using WrapperInfo = std::pair<void*, void*>;
   using WrapperCache = std::vector<WrapperInfo>;
 
+  // WrapperInfo is passed over the API. Use VerboseWrapperInfo to access pair
+  // internals in a named way. See ProcessingScope::TracePossibleJSWrapper()
+  // below on how a V8 object is parsed to gather the information.
+  struct VerboseWrapperInfo {
+    explicit VerboseWrapperInfo(const WrapperInfo& raw_info)
+        : raw_info(raw_info) {}
+
+    // Information describing the type pointed to via instance().
+    void* type_info() const { return raw_info.first; }
+    // Direct pointer to an instance described by type_info().
+    void* instance() const { return raw_info.second; }
+
+    bool is_valid() const { return type_info(); }
+
+    const WrapperInfo& raw_info;
+  };
+
   class V8_EXPORT_PRIVATE ProcessingScope {
    public:
     explicit ProcessingScope(LocalEmbedderHeapTracer* tracer);
@@ -37,6 +54,8 @@ class V8_EXPORT_PRIVATE LocalEmbedderHeapTracer final {
     LocalEmbedderHeapTracer* const tracer_;
     WrapperCache wrapper_cache_;
   };
+
+  static WrapperInfo ExtractWrapperInfo(Isolate* isolate, JSObject js_object);
 
   explicit LocalEmbedderHeapTracer(Isolate* isolate) : isolate_(isolate) {}
 
@@ -69,15 +88,9 @@ class V8_EXPORT_PRIVATE LocalEmbedderHeapTracer final {
     remote_tracer_->ResetHandleInNonTracingGC(handle);
   }
 
-  void NotifyV8MarkingWorklistWasEmpty() {
-    num_v8_marking_worklist_was_empty_++;
-  }
-
   bool ShouldFinalizeIncrementalMarking() {
-    static const size_t kMaxIncrementalFixpointRounds = 3;
     return !FLAG_incremental_marking_wrappers || !InUse() ||
-           (IsRemoteTracingDone() && embedder_worklist_empty_) ||
-           num_v8_marking_worklist_was_empty_ > kMaxIncrementalFixpointRounds;
+           (IsRemoteTracingDone() && embedder_worklist_empty_);
   }
 
   void SetEmbedderStackStateForNextFinalization(
@@ -114,9 +127,8 @@ class V8_EXPORT_PRIVATE LocalEmbedderHeapTracer final {
   Isolate* const isolate_;
   EmbedderHeapTracer* remote_tracer_ = nullptr;
 
-  size_t num_v8_marking_worklist_was_empty_ = 0;
   EmbedderHeapTracer::EmbedderStackState embedder_stack_state_ =
-      EmbedderHeapTracer::kUnknown;
+      EmbedderHeapTracer::EmbedderStackState::kMayContainHeapPointers;
   // Indicates whether the embedder worklist was observed empty on the main
   // thread. This is opportunistic as concurrent marking tasks may hold local
   // segments of potential embedder fields to move to the main thread.
@@ -145,7 +157,8 @@ class V8_EXPORT_PRIVATE EmbedderStackStateScope final {
       : local_tracer_(local_tracer),
         old_stack_state_(local_tracer_->embedder_stack_state_) {
     local_tracer_->embedder_stack_state_ = stack_state;
-    if (EmbedderHeapTracer::EmbedderStackState::kEmpty == stack_state) {
+    if (EmbedderHeapTracer::EmbedderStackState::kNoHeapPointers ==
+        stack_state) {
       if (local_tracer->remote_tracer())
         local_tracer->remote_tracer()->NotifyEmptyEmbedderStack();
     }

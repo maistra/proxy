@@ -1,5 +1,3 @@
-licenses(["notice"])  # Apache 2
-
 load(
     "//bazel:envoy_build_system.bzl",
     "envoy_basic_cc_library",
@@ -11,12 +9,18 @@ load(
     "envoy_package",
 )
 
+licenses(["notice"])  # Apache 2
+
 envoy_package()
 
 envoy_cc_library(
     name = "assert_lib",
     srcs = ["assert.cc"],
     hdrs = ["assert.h"],
+    external_deps = [
+        "abseil_base",
+        "abseil_synchronization",
+    ],
     deps = [":minimal_logger_lib"],
 )
 
@@ -33,7 +37,7 @@ envoy_cc_library(
     deps = [
         ":assert_lib",
         "//include/envoy/common:backoff_strategy_interface",
-        "//include/envoy/runtime:runtime_interface",
+        "//include/envoy/common:random_generator_interface",
     ],
 )
 
@@ -69,6 +73,11 @@ envoy_cc_library(
 envoy_cc_library(
     name = "compiler_requirements_lib",
     hdrs = ["compiler_requirements.h"],
+)
+
+envoy_cc_library(
+    name = "documentation_url_lib",
+    hdrs = ["documentation_url.h"],
 )
 
 envoy_cc_library(
@@ -108,6 +117,11 @@ envoy_cc_library(
 )
 
 envoy_cc_library(
+    name = "interval_value",
+    hdrs = ["interval_value.h"],
+)
+
+envoy_cc_library(
     name = "linked_object",
     hdrs = ["linked_object.h"],
     deps = [":assert_lib"],
@@ -128,8 +142,14 @@ envoy_cc_library(
 # Contains minimal code for logging to stderr.
 envoy_cc_library(
     name = "minimal_logger_lib",
-    srcs = ["logger.cc"],
-    hdrs = ["logger.h"],
+    srcs = [
+        "fancy_logger.cc",
+        "logger.cc",
+    ],
+    hdrs = [
+        "fancy_logger.h",
+        "logger.h",
+    ],
     external_deps = ["abseil_synchronization"],
     deps = [
         ":base_logger_lib",
@@ -195,6 +215,15 @@ envoy_cc_library(
 )
 
 envoy_cc_library(
+    name = "basic_resource_lib",
+    hdrs = ["basic_resource_impl.h"],
+    deps = [
+        "//include/envoy/common:resource_interface",
+        "//include/envoy/runtime:runtime_interface",
+    ],
+)
+
+envoy_cc_library(
     name = "macros",
     hdrs = ["macros.h"],
 )
@@ -217,6 +246,21 @@ envoy_cc_library(
 )
 
 envoy_cc_library(
+    name = "random_generator_lib",
+    srcs = [
+        "random_generator.cc",
+    ],
+    hdrs = [
+        "random_generator.h",
+    ],
+    external_deps = ["ssl"],
+    deps = [
+        ":assert_lib",
+        "//include/envoy/common:random_generator_interface",
+    ],
+)
+
+envoy_cc_library(
     name = "regex_lib",
     srcs = ["regex.cc"],
     hdrs = ["regex.h"],
@@ -224,6 +268,7 @@ envoy_cc_library(
         ":assert_lib",
         "//include/envoy/common:regex_interface",
         "//source/common/protobuf:utility_lib",
+        "//source/common/stats:symbol_table_lib",
         "@com_googlesource_code_re2//:re2",
         "@envoy_api//envoy/type/matcher/v3:pkg_cc_proto",
     ],
@@ -273,7 +318,10 @@ envoy_cc_library(
     name = "thread_lib",
     hdrs = ["thread.h"],
     external_deps = ["abseil_synchronization"],
-    deps = envoy_cc_platform_dep("thread_impl_lib"),
+    deps = envoy_cc_platform_dep("thread_impl_lib") + [
+        ":non_copyable",
+        "//source/common/singleton:threadsafe_singleton",
+    ],
 )
 
 envoy_cc_posix_library(
@@ -311,6 +359,7 @@ envoy_cc_library(
     name = "utility_lib",
     srcs = ["utility.cc"],
     hdrs = ["utility.h"],
+    external_deps = ["abseil_node_hash_map"],
     deps = [
         ":assert_lib",
         ":hash_lib",
@@ -318,64 +367,6 @@ envoy_cc_library(
         "//include/envoy/common:interval_set_interface",
         "//include/envoy/common:time_interface",
         "//source/common/singleton:const_singleton",
-    ],
-)
-
-genrule(
-    name = "generate_version_number",
-    srcs = ["//:VERSION"],
-    outs = ["version_number.h"],
-    cmd = """echo "#define BUILD_VERSION_NUMBER \\"$$(cat $<)\\"" >$@""",
-)
-
-genrule(
-    name = "generate_version_linkstamp",
-    outs = ["lib/version_linkstamp.h"],
-    cmd = "$(location :generate_version_linkstamp.sh) >> $@",
-    # Undocumented attr to depend on workspace status files.
-    # https://github.com/bazelbuild/bazel/issues/4942
-    # Used here because generate_version_linkstamp.sh depends on the workspace status files.
-    stamp = 1,
-    tools = [":generate_version_linkstamp.sh"],
-)
-
-genrule(
-    name = "generate_version_linkstamp_empty",
-    outs = ["empty/version_linkstamp.h"],
-    cmd = """>$@""",
-)
-
-envoy_cc_library(
-    name = "version_includes",
-    hdrs = [
-        "version.h",
-        ":generate_version_number",
-    ],
-    deps = [
-        "//source/common/singleton:const_singleton",
-        "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
-    ],
-)
-
-envoy_cc_library(
-    name = "version_lib",
-    srcs = ["version.cc"],
-    hdrs = select({
-        "//bazel:manual_stamp": [":generate_version_linkstamp"],
-        # By default the header file is empty.
-        # This is done so that the definitions linked via the linkstamp rule don't cause collisions.
-        "//conditions:default": [":generate_version_linkstamp_empty"],
-    }),
-    copts = ["-DENVOY_SSL_VERSION=\\\"OpenSSL_1.1.1d\\\""],
-    linkstamp = "version_linkstamp.cc",
-    strip_include_prefix = select({
-        "//bazel:manual_stamp": "lib",
-        "//conditions:default": "empty",
-    }),
-    deps = [
-        ":version_includes",
-        "//source/common/common:macros",
-        "//source/common/protobuf:utility_lib",
     ],
 )
 
@@ -417,11 +408,9 @@ envoy_cc_library(
 )
 
 envoy_cc_library(
-    name = "zlib_base_lib",
-    srcs = ["zlib/base.cc"],
-    hdrs = ["zlib/base.h"],
-    external_deps = ["zlib"],
+    name = "statusor_lib",
+    hdrs = ["statusor.h"],
     deps = [
-        "//source/common/buffer:buffer_lib",
+        "@com_google_absl//absl/status:statusor",
     ],
 )

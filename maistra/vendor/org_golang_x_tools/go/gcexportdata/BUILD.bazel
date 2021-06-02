@@ -1,14 +1,14 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test", "go_tool_library")
 
 go_library(
-    name = "go_default_library",
+    name = "gcexportdata",
     srcs = [
         "gcexportdata.go",
         "importer.go",
     ],
     importpath = "golang.org/x/tools/go/gcexportdata",
     visibility = ["//visibility:public"],
-    deps = ["//go/internal/gcimporter:go_default_library"],
+    deps = ["//go/internal/gcimporter"],
 )
 
 go_tool_library(
@@ -22,12 +22,18 @@ go_tool_library(
     deps = ["//go/internal/gcimporter:go_tool_library"],
 )
 
+alias(
+    name = "go_default_library",
+    actual = ":gcexportdata",
+    visibility = ["//visibility:public"],
+)
+
 go_test(
-    name = "go_default_test",
+    name = "gcexportdata_test",
     srcs = [
         "example_test.go",
         "gcexportdata_test.go",
     ],
     data = glob(["testdata/**"]),
-    embed = [":go_default_library"],
+    deps = [":gcexportdata"],
 )

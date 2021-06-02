@@ -4,6 +4,10 @@
 
 #include "src/inspector/v8-heap-profiler-agent-impl.h"
 
+#include "include/v8-inspector.h"
+#include "include/v8-profiler.h"
+#include "include/v8-version.h"
+#include "src/base/platform/mutex.h"
 #include "src/inspector/injected-script.h"
 #include "src/inspector/inspected-context.h"
 #include "src/inspector/protocol/Protocol.h"
@@ -11,10 +15,6 @@
 #include "src/inspector/v8-debugger.h"
 #include "src/inspector/v8-inspector-impl.h"
 #include "src/inspector/v8-inspector-session-impl.h"
-
-#include "include/v8-inspector.h"
-#include "include/v8-profiler.h"
-#include "include/v8-version.h"
 
 namespace v8_inspector {
 
@@ -27,7 +27,7 @@ static const char allocationTrackingEnabled[] = "allocationTrackingEnabled";
 static const char samplingHeapProfilerEnabled[] = "samplingHeapProfilerEnabled";
 static const char samplingHeapProfilerInterval[] =
     "samplingHeapProfilerInterval";
-}
+}  // namespace HeapProfilerAgentState
 
 class HeapSnapshotProgress final : public v8::ActivityControl {
  public:
@@ -143,6 +143,36 @@ class HeapStatsStream final : public v8::OutputStream {
 
 }  // namespace
 
+struct V8HeapProfilerAgentImpl::AsyncGC {
+  v8::base::Mutex m_mutex;
+  bool m_canceled = false;
+  bool m_pending = false;
+  std::vector<std::unique_ptr<CollectGarbageCallback>> m_pending_callbacks;
+};
+
+class V8HeapProfilerAgentImpl::GCTask : public v8::Task {
+ public:
+  GCTask(v8::Isolate* isolate, std::shared_ptr<AsyncGC> async_gc)
+      : m_isolate(isolate), m_async_gc(async_gc) {}
+
+  void Run() override {
+    std::shared_ptr<AsyncGC> async_gc = m_async_gc.lock();
+    if (!async_gc) return;
+    v8::base::MutexGuard lock(&async_gc->m_mutex);
+    if (async_gc->m_canceled) return;
+    v8::debug::ForceGarbageCollection(
+        m_isolate, v8::EmbedderHeapTracer::EmbedderStackState::kNoHeapPointers);
+    for (auto& callback : async_gc->m_pending_callbacks) {
+      callback->sendSuccess();
+    }
+    async_gc->m_pending_callbacks.clear();
+  }
+
+ private:
+  v8::Isolate* m_isolate;
+  std::weak_ptr<AsyncGC> m_async_gc;
+};
+
 V8HeapProfilerAgentImpl::V8HeapProfilerAgentImpl(
     V8InspectorSessionImpl* session, protocol::FrontendChannel* frontendChannel,
     protocol::DictionaryValue* state)
@@ -150,9 +180,14 @@ V8HeapProfilerAgentImpl::V8HeapProfilerAgentImpl(
       m_isolate(session->inspector()->isolate()),
       m_frontend(frontendChannel),
       m_state(state),
-      m_hasTimer(false) {}
+      m_hasTimer(false),
+      m_async_gc(std::make_shared<AsyncGC>()) {}
 
-V8HeapProfilerAgentImpl::~V8HeapProfilerAgentImpl() = default;
+V8HeapProfilerAgentImpl::~V8HeapProfilerAgentImpl() {
+  v8::base::MutexGuard lock(&m_async_gc->m_mutex);
+  m_async_gc->m_canceled = true;
+  m_async_gc->m_pending_callbacks.clear();
+}
 
 void V8HeapProfilerAgentImpl::restore() {
   if (m_state->booleanProperty(HeapProfilerAgentState::heapProfilerEnabled,
@@ -171,9 +206,15 @@ void V8HeapProfilerAgentImpl::restore() {
   }
 }
 
-Response V8HeapProfilerAgentImpl::collectGarbage() {
-  m_isolate->LowMemoryNotification();
-  return Response::OK();
+void V8HeapProfilerAgentImpl::collectGarbage(
+    std::unique_ptr<CollectGarbageCallback> callback) {
+  v8::base::MutexGuard lock(&m_async_gc->m_mutex);
+  m_async_gc->m_pending_callbacks.push_back(std::move(callback));
+  if (!m_async_gc->m_pending) {
+    v8::debug::GetCurrentPlatform()
+        ->GetForegroundTaskRunner(m_isolate)
+        ->PostNonNestableTask(std::make_unique<GCTask>(m_isolate, m_async_gc));
+  }
 }
 
 Response V8HeapProfilerAgentImpl::startTrackingHeapObjects(
@@ -183,7 +224,7 @@ Response V8HeapProfilerAgentImpl::startTrackingHeapObjects(
   m_state->setBoolean(HeapProfilerAgentState::allocationTrackingEnabled,
                       allocationTrackingEnabled);
   startTrackingHeapObjectsInternal(allocationTrackingEnabled);
-  return Response::OK();
+  return Response::Success();
 }
 
 Response V8HeapProfilerAgentImpl::stopTrackingHeapObjects(
@@ -192,12 +233,12 @@ Response V8HeapProfilerAgentImpl::stopTrackingHeapObjects(
   takeHeapSnapshot(std::move(reportProgress),
                    std::move(treatGlobalObjectsAsRoots));
   stopTrackingHeapObjectsInternal();
-  return Response::OK();
+  return Response::Success();
 }
 
 Response V8HeapProfilerAgentImpl::enable() {
   m_state->setBoolean(HeapProfilerAgentState::heapProfilerEnabled, true);
-  return Response::OK();
+  return Response::Success();
 }
 
 Response V8HeapProfilerAgentImpl::disable() {
@@ -209,13 +250,13 @@ Response V8HeapProfilerAgentImpl::disable() {
   }
   m_isolate->GetHeapProfiler()->ClearObjectIds();
   m_state->setBoolean(HeapProfilerAgentState::heapProfilerEnabled, false);
-  return Response::OK();
+  return Response::Success();
 }
 
 Response V8HeapProfilerAgentImpl::takeHeapSnapshot(
     Maybe<bool> reportProgress, Maybe<bool> treatGlobalObjectsAsRoots) {
   v8::HeapProfiler* profiler = m_isolate->GetHeapProfiler();
-  if (!profiler) return Response::Error("Cannot access v8 heap profiler");
+  if (!profiler) return Response::ServerError("Cannot access v8 heap profiler");
   std::unique_ptr<HeapSnapshotProgress> progress;
   if (reportProgress.fromMaybe(false))
     progress.reset(new HeapSnapshotProgress(&m_frontend));
@@ -223,11 +264,11 @@ Response V8HeapProfilerAgentImpl::takeHeapSnapshot(
   GlobalObjectNameResolver resolver(m_session);
   const v8::HeapSnapshot* snapshot = profiler->TakeHeapSnapshot(
       progress.get(), &resolver, treatGlobalObjectsAsRoots.fromMaybe(true));
-  if (!snapshot) return Response::Error("Failed to take heap snapshot");
+  if (!snapshot) return Response::ServerError("Failed to take heap snapshot");
   HeapSnapshotOutputStream stream(&m_frontend);
   snapshot->Serialize(&stream);
   const_cast<v8::HeapSnapshot*>(snapshot)->Delete();
-  return Response::OK();
+  return Response::Success();
 }
 
 Response V8HeapProfilerAgentImpl::getObjectByHeapObjectId(
@@ -235,36 +276,38 @@ Response V8HeapProfilerAgentImpl::getObjectByHeapObjectId(
     std::unique_ptr<protocol::Runtime::RemoteObject>* result) {
   bool ok;
   int id = heapSnapshotObjectId.toInteger(&ok);
-  if (!ok) return Response::Error("Invalid heap snapshot object id");
+  if (!ok) return Response::ServerError("Invalid heap snapshot object id");
 
   v8::HandleScope handles(m_isolate);
   v8::Local<v8::Object> heapObject = objectByHeapObjectId(m_isolate, id);
-  if (heapObject.IsEmpty()) return Response::Error("Object is not available");
+  if (heapObject.IsEmpty())
+    return Response::ServerError("Object is not available");
 
   if (!m_session->inspector()->client()->isInspectableHeapObject(heapObject))
-    return Response::Error("Object is not available");
+    return Response::ServerError("Object is not available");
 
   *result = m_session->wrapObject(heapObject->CreationContext(), heapObject,
                                   objectGroup.fromMaybe(""), false);
-  if (!*result) return Response::Error("Object is not available");
-  return Response::OK();
+  if (!*result) return Response::ServerError("Object is not available");
+  return Response::Success();
 }
 
 Response V8HeapProfilerAgentImpl::addInspectedHeapObject(
     const String16& inspectedHeapObjectId) {
   bool ok;
   int id = inspectedHeapObjectId.toInteger(&ok);
-  if (!ok) return Response::Error("Invalid heap snapshot object id");
+  if (!ok) return Response::ServerError("Invalid heap snapshot object id");
 
   v8::HandleScope handles(m_isolate);
   v8::Local<v8::Object> heapObject = objectByHeapObjectId(m_isolate, id);
-  if (heapObject.IsEmpty()) return Response::Error("Object is not available");
+  if (heapObject.IsEmpty())
+    return Response::ServerError("Object is not available");
 
   if (!m_session->inspector()->client()->isInspectableHeapObject(heapObject))
-    return Response::Error("Object is not available");
+    return Response::ServerError("Object is not available");
   m_session->addInspectedObject(
       std::unique_ptr<InspectableHeapObject>(new InspectableHeapObject(id)));
-  return Response::OK();
+  return Response::Success();
 }
 
 Response V8HeapProfilerAgentImpl::getHeapObjectId(
@@ -274,12 +317,12 @@ Response V8HeapProfilerAgentImpl::getHeapObjectId(
   v8::Local<v8::Context> context;
   Response response =
       m_session->unwrapObject(objectId, &value, &context, nullptr);
-  if (!response.isSuccess()) return response;
+  if (!response.IsSuccess()) return response;
   if (value->IsUndefined()) return Response::InternalError();
 
   v8::SnapshotObjectId id = m_isolate->GetHeapProfiler()->GetObjectId(value);
   *heapSnapshotObjectId = String16::fromInteger(static_cast<size_t>(id));
-  return Response::OK();
+  return Response::Success();
 }
 
 void V8HeapProfilerAgentImpl::requestHeapStatsUpdate() {
@@ -320,7 +363,7 @@ void V8HeapProfilerAgentImpl::stopTrackingHeapObjectsInternal() {
 Response V8HeapProfilerAgentImpl::startSampling(
     Maybe<double> samplingInterval) {
   v8::HeapProfiler* profiler = m_isolate->GetHeapProfiler();
-  if (!profiler) return Response::Error("Cannot access v8 heap profiler");
+  if (!profiler) return Response::ServerError("Cannot access v8 heap profiler");
   const unsigned defaultSamplingInterval = 1 << 15;
   double samplingIntervalValue =
       samplingInterval.fromMaybe(defaultSamplingInterval);
@@ -331,7 +374,7 @@ Response V8HeapProfilerAgentImpl::startSampling(
   profiler->StartSamplingHeapProfiler(
       static_cast<uint64_t>(samplingIntervalValue), 128,
       v8::HeapProfiler::kSamplingForceGC);
-  return Response::OK();
+  return Response::Success();
 }
 
 namespace {
@@ -367,7 +410,7 @@ buildSampingHeapProfileNode(v8::Isolate* isolate,
 Response V8HeapProfilerAgentImpl::stopSampling(
     std::unique_ptr<protocol::HeapProfiler::SamplingHeapProfile>* profile) {
   Response result = getSamplingProfile(profile);
-  if (result.isSuccess()) {
+  if (result.IsSuccess()) {
     m_isolate->GetHeapProfiler()->StopSamplingHeapProfiler();
     m_state->setBoolean(HeapProfilerAgentState::samplingHeapProfilerEnabled,
                         false);
@@ -383,7 +426,7 @@ Response V8HeapProfilerAgentImpl::getSamplingProfile(
   std::unique_ptr<v8::AllocationProfile> v8Profile(
       profiler->GetAllocationProfile());
   if (!v8Profile)
-    return Response::Error("V8 sampling heap profiler was not started.");
+    return Response::ServerError("V8 sampling heap profiler was not started.");
   v8::AllocationProfile::Node* root = v8Profile->GetRootNode();
   auto samples = std::make_unique<
       protocol::Array<protocol::HeapProfiler::SamplingHeapProfileSample>>();
@@ -399,7 +442,7 @@ Response V8HeapProfilerAgentImpl::getSamplingProfile(
                  .setHead(buildSampingHeapProfileNode(m_isolate, root))
                  .setSamples(std::move(samples))
                  .build();
-  return Response::OK();
+  return Response::Success();
 }
 
 }  // namespace v8_inspector

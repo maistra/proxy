@@ -9,6 +9,10 @@ IF "%DEPOT_TOOLS_UPDATE%" == "0" GOTO :CALL_GCLIENT
 
 :: Synchronize the root directory before deferring control back to gclient.py.
 call "%~dp0update_depot_tools.bat" %*
+:: Abort the script if we failed to update depot_tools.
+IF %errorlevel% NEQ 0 (
+  goto :EOF
+)
 
 :CALL_GCLIENT
 :: Ensure that "depot_tools" is somewhere in PATH so this tool can be used
@@ -17,8 +21,12 @@ set PATH=%PATH%;%~dp0
 
 :: Defer control.
 IF "%GCLIENT_PY3%" == "1" (
-  :: TODO(1003139): Use vpython3 once vpython3 works on Windows.
-  python3 "%~dp0gclient.py" %*
+  :: Explicitly run on Python 3
+  call vpython3 "%~dp0gclient.py" %*
+) ELSE IF "%GCLIENT_PY3%" == "0" (
+  :: Explicitly run on Python 2
+  call vpython "%~dp0gclient.py" %*
 ) ELSE (
-  python "%~dp0gclient.py" %*
+  :: Run on Python 3, allows default to be flipped.
+  call vpython3 "%~dp0gclient.py" %*
 )

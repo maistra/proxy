@@ -72,6 +72,7 @@ public:
    * Resolve a URL.
    * @param url supplies the url to resolve.
    * @return Address::InstanceConstSharedPtr the resolved address.
+   * @throw EnvoyException if url is invalid.
    */
   static Address::InstanceConstSharedPtr resolveUrl(const std::string& url);
 
@@ -151,9 +152,21 @@ public:
    *        - "[1234:5678::9]:443"
    * @param v6only disable IPv4-IPv6 mapping for IPv6 addresses?
    * @return pointer to the Instance.
+   * @throw EnvoyException in case of a malformed IP address.
    */
   static Address::InstanceConstSharedPtr parseInternetAddressAndPort(const std::string& ip_address,
                                                                      bool v6only = true);
+
+  /**
+   * Create a new Instance from an internet host address (IPv4 or IPv6) and port.
+   * @param ip_addr string to be parsed as an internet address and port. Examples:
+   *        - "1.2.3.4:80"
+   *        - "[1234:5678::9]:443"
+   * @param v6only disable IPv4-IPv6 mapping for IPv6 addresses?
+   * @return pointer to the Instance, or a nullptr in case of a malformed IP address.
+   */
+  static Address::InstanceConstSharedPtr
+  parseInternetAddressAndPortNoThrow(const std::string& ip_address, bool v6only = true);
 
   /**
    * Get the local address of the first interface address that is of type
@@ -229,13 +242,13 @@ public:
                                                             uint32_t port);
 
   /**
-   * Retrieve the original destination address from an accepted fd.
+   * Retrieve the original destination address from an accepted socket.
    * The address (IP and port) may be not local and the port may differ from
    * the listener port if the packets were redirected using iptables
-   * @param fd is the descriptor returned by accept()
+   * @param sock is accepted socket
    * @return the original destination or nullptr if not available.
    */
-  static Address::InstanceConstSharedPtr getOriginalDst(os_fd_t fd);
+  static Address::InstanceConstSharedPtr getOriginalDst(Socket& sock);
 
   /**
    * Parses a string containing a comma-separated list of port numbers and/or
@@ -286,7 +299,7 @@ public:
    * @param proto_address the address protobuf
    * @return socket type
    */
-  static Address::SocketType
+  static Socket::Type
   protobufAddressSocketType(const envoy::config::core::v3::Address& proto_address);
 
   /**

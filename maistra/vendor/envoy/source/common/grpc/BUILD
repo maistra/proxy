@@ -1,5 +1,3 @@
-licenses(["notice"])  # Apache 2
-
 load(
     "//bazel:envoy_build_system.bzl",
     "envoy_cc_library",
@@ -7,6 +5,8 @@ load(
     "envoy_package",
     "envoy_select_google_grpc",
 )
+
+licenses(["notice"])  # Apache 2
 
 envoy_package()
 
@@ -33,6 +33,7 @@ envoy_cc_library(
         ":typed_async_client_lib",
         "//include/envoy/grpc:async_client_interface",
         "//source/common/buffer:zero_copy_input_stream_lib",
+        "//source/common/config:version_converter_lib",
         "//source/common/http:async_client_lib",
         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
     ],
@@ -94,6 +95,7 @@ envoy_cc_library(
         "//source/common/common:macros",
         "//source/common/common:utility_lib",
         "//source/common/grpc:status_lib",
+        "//source/common/http:header_utility_lib",
         "//source/common/http:headers_lib",
         "//source/common/http:message_lib",
         "//source/common/http:utility_lib",
@@ -114,6 +116,7 @@ envoy_cc_library(
         "//include/envoy/stats:stats_interface",
         "//source/common/common:hash_lib",
         "//source/common/stats:symbol_table_lib",
+        "//source/common/stats:utility_lib",
     ],
 )
 
@@ -168,7 +171,7 @@ envoy_cc_library(
         "//include/envoy/api:api_interface",
         "//include/envoy/grpc:google_grpc_creds_interface",
         "//include/envoy/thread:thread_interface",
-        "//include/envoy/thread_local:thread_local_interface",
+        "//include/envoy/thread_local:thread_local_object",
         "//source/common/common:base64_lib",
         "//source/common/common:empty_string",
         "//source/common/common:linked_object",
@@ -201,5 +204,20 @@ envoy_cc_library(
         "//include/envoy/registry",
         "//source/common/config:datasource_lib",
         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+    ],
+)
+
+envoy_cc_library(
+    name = "google_async_client_cache",
+    srcs = ["google_async_client_cache.cc"],
+    hdrs = ["google_async_client_cache.h"],
+    external_deps = [
+        "grpc",
+    ],
+    deps = [
+        "//include/envoy/grpc:async_client_manager_interface",
+        "//include/envoy/server:factory_context_interface",
+        "//include/envoy/singleton:instance_interface",
+        "//include/envoy/thread_local:thread_local_interface",
     ],
 )

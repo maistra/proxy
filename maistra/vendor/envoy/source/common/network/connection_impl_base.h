@@ -11,12 +11,21 @@ namespace Network {
 class ConnectionImplBase : public FilterManagerConnection,
                            protected Logger::Loggable<Logger::Id::connection> {
 public:
+  /**
+   * Add a connection id to a hash key
+   * @param hash_key the current hash key -- the function will only append to this vector
+   * @param connection_id the 64-bit connection id
+   */
+  static void addIdToHashKey(std::vector<uint8_t>& hash_key, uint64_t connection_id);
+
   ConnectionImplBase(Event::Dispatcher& dispatcher, uint64_t id);
 
   // Network::Connection
   void addConnectionCallbacks(ConnectionCallbacks& cb) override;
+  void removeConnectionCallbacks(ConnectionCallbacks& cb) override;
   Event::Dispatcher& dispatcher() override { return dispatcher_; }
   uint64_t id() const override { return id_; }
+  void hashKey(std::vector<uint8_t>& hash) const override;
   void setConnectionStats(const ConnectionStats& stats) override;
   void setDelayedCloseTimeout(std::chrono::milliseconds timeout) override;
 
@@ -45,11 +54,13 @@ protected:
   DelayedCloseState delayed_close_state_{DelayedCloseState::None};
 
   Event::TimerPtr delayed_close_timer_;
+  MonotonicTime last_timer_enable_;
   std::chrono::milliseconds delayed_close_timeout_{0};
   Event::Dispatcher& dispatcher_;
   const uint64_t id_;
   std::list<ConnectionCallbacks*> callbacks_;
   std::unique_ptr<ConnectionStats> connection_stats_;
+  void enableDelayedCloseTimer();
 
 private:
   // Callback issued when a delayed close timeout triggers.

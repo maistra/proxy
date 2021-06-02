@@ -15,10 +15,10 @@
 namespace v8 {
 namespace internal {
 
+#include "torque-generated/src/objects/template-objects-tq-inl.inc"
+
 TQ_OBJECT_CONSTRUCTORS_IMPL(TemplateObjectDescription)
 TQ_OBJECT_CONSTRUCTORS_IMPL(CachedTemplateObject)
-
-TQ_SMI_ACCESSORS(CachedTemplateObject, slot_id)
 
 }  // namespace internal
 }  // namespace v8

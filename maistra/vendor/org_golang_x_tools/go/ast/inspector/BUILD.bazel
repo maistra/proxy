@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test", "go_tool_library")
 
 go_library(
-    name = "go_default_library",
+    name = "inspector",
     srcs = [
         "inspector.go",
         "typeof.go",
@@ -20,8 +20,14 @@ go_tool_library(
     visibility = ["//visibility:public"],
 )
 
+alias(
+    name = "go_default_library",
+    actual = ":inspector",
+    visibility = ["//visibility:public"],
+)
+
 go_test(
-    name = "go_default_test",
+    name = "inspector_test",
     srcs = ["inspector_test.go"],
-    embed = [":go_default_library"],
+    deps = [":inspector"],
 )

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 load(
-    "@io_bazel_rules_go//go/private:mode.bzl",
+    "//go/private:mode.bzl",
     "link_mode_args",
 )
 load(
@@ -24,11 +24,10 @@ load(
 def _archive(v):
     importpaths = [v.data.importpath]
     importpaths.extend(v.data.importpath_aliases)
-    return "{}={}={}={}".format(
+    return "{}={}={}".format(
         ":".join(importpaths),
         v.data.importmap,
-        v.data.file.path,
-        v.data.export_file.path if v.data.export_file else "",
+        v.data.export_file.path if v.data.export_file else v.data.file.path,
     )
 
 def emit_compilepkg(
@@ -51,23 +50,27 @@ def emit_compilepkg(
         out_cgo_export_h = None,
         gc_goopts = [],
         testfilter = None):  # TODO: remove when test action compiles packages
+    """Compiles a complete Go package."""
     if sources == None:
         fail("sources is a required parameter")
     if out_lib == None:
         fail("out_lib is a required parameter")
 
     inputs = (sources + [go.package_list] +
-              [archive.data.file for archive in archives] +
+              [archive.data.export_file for archive in archives] +
               go.sdk.tools + go.sdk.headers + go.stdlib.libs)
-    outputs = [out_lib]
+    outputs = [out_lib, out_export]
     env = go.env
 
     args = go.builder_args(go, "compilepkg")
     args.add_all(sources, before_each = "-src")
     if cover and go.coverdata:
-        inputs.append(go.coverdata.data.file)
+        inputs.append(go.coverdata.data.export_file)
         args.add("-arc", _archive(go.coverdata))
-        args.add("-cover_mode", "set")
+        if go.mode.race:
+            args.add("-cover_mode", "atomic")
+        else:
+            args.add("-cover_mode", "set")
         args.add_all(cover, before_each = "-cover")
     args.add_all(archives, before_each = "-arc", map_each = _archive)
     if importpath:
@@ -77,12 +80,10 @@ def emit_compilepkg(
     args.add("-package_list", go.package_list)
 
     args.add("-o", out_lib)
+    args.add("-x", out_export)
     if go.nogo:
         args.add("-nogo", go.nogo)
-        args.add("-x", out_export)
         inputs.append(go.nogo)
-        inputs.extend([archive.data.export_file for archive in archives if archive.data.export_file])
-        outputs.append(out_export)
     if out_cgo_export_h:
         args.add("-cgoexport", out_cgo_export_h)
         outputs.append(out_cgo_export_h)

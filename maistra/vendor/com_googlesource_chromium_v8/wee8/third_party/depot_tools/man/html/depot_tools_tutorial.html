@@ -875,12 +875,12 @@ Litmus Test
 <div class="content">
 <pre><code><strong><span class="white">$ git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git</span></strong></code></pre>
 </div></div>
-<div class="paragraph"><p>Add <em>depot_tools</em> to the <em>end</em> of your PATH (you will probably want to put this
+<div class="paragraph"><p>Add <em>depot_tools</em> to the <em>front</em> of your PATH (you will probably want to put this
 in your <code>~/.bashrc</code> or <code>~/.zshrc</code>). Assuming you cloned <em>depot_tools</em> to
 <code>/path/to/depot_tools</code>:</p></div>
 <div class="listingblock">
 <div class="content">
-<pre><code><strong><span class="white">$ export PATH=$PATH:/path/to/depot_tools</span></strong></code></pre>
+<pre><code><strong><span class="white">$ export PATH=/path/to/depot_tools:$PATH</span></strong></code></pre>
 </div></div>
 </div>
 <div class="sect3">
@@ -898,7 +898,7 @@ extract the hidden &#8220;.git&#8221; folder which is necessary for <em>depot_to
 autoupdate itself. You can use &#8220;Extract all&#8230;&#8221; from the context menu though.</td>
 </tr></table>
 </div>
-<div class="paragraph"><p>Add <em>depot_tools</em> to the <em>start</em> of your PATH (must be ahead of any installs of
+<div class="paragraph"><p>Add <em>depot_tools</em> to the <em>front</em> of your PATH (must be ahead of any installs of
 Python). Assuming you unzipped the bundle to <code>C:\workspace\depot_tools</code>:</p></div>
 <div class="dlist"><dl>
 <dt class="hdlist1">
@@ -1105,8 +1105,22 @@ you started on.</p></div>
 <td class="icon">
 <div class="title">Note</div>
 </td>
-<td class="content">Running <code>git rebase-update</code> will update all your branches, but it will not
-automatically run <code>gclient sync</code> to update your dependencies.</td>
+<td class="content">
+<div class="ulist"><ul>
+<li>
+<p>
+Running <code>git rebase-update</code> will update all your branches, but it will not
+automatically run <code>gclient sync</code> to update your dependencies.
+</p>
+</li>
+<li>
+<p>
+Use caution when running <code>git reset</code> on branches managed by <code>depot_tools</code>.
+These tools track the set of "commits contained in the branch" from a branch&#8217;s "merge point"
+to the current branch value. See <code>git help mark-merge-base</code> for more discussion of the merge base.
+</p>
+</li>
+</ul></div>
 </tr></table>
 </div>
 </div>
@@ -1579,14 +1593,14 @@ LKGR
 <div class="sectionbody">
 <div class="paragraph"><p>Part of the chromium <a href="depot_tools.html">depot_tools(7)</a> suite. These tools are meant to
 assist with the development of chromium and related projects. Download the tools
-from <a href="https://chromium.googlesource.com/chromium/tools/depot_tools.git">here</a>.</p></div>
+by checking out the <a href="https://chromium.googlesource.com/chromium/tools/depot_tools.git">git repository</a>.</p></div>
 </div>
 </div>
 </div>
 <div id="footnotes"><hr /></div>
 <div id="footer">
 <div id="footer-text">
-Last updated 2019-05-03 10:40:16 EDT
+Last updated 2020-08-10 17:51:13 CEST
 </div>
 </div>
 </body>

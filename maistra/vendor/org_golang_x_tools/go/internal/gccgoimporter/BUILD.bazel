@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
-    name = "go_default_library",
+    name = "gccgoimporter",
     srcs = [
         "ar.go",
         "backdoor.go",
@@ -15,8 +15,14 @@ go_library(
     visibility = ["//go:__subpackages__"],
 )
 
+alias(
+    name = "go_default_library",
+    actual = ":gccgoimporter",
+    visibility = ["//go:__subpackages__"],
+)
+
 go_test(
-    name = "go_default_test",
+    name = "gccgoimporter_test",
     srcs = [
         "gccgoinstallation_test.go",
         "importer_test.go",
@@ -24,5 +30,5 @@ go_test(
         "testenv_test.go",
     ],
     data = glob(["testdata/**"]),
-    embed = [":go_default_library"],
+    embed = [":gccgoimporter"],
 )

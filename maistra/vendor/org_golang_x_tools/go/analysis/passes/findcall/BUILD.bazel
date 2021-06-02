@@ -1,11 +1,11 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test", "go_tool_library")
 
 go_library(
-    name = "go_default_library",
+    name = "findcall",
     srcs = ["findcall.go"],
     importpath = "golang.org/x/tools/go/analysis/passes/findcall",
     visibility = ["//visibility:public"],
-    deps = ["//go/analysis:go_default_library"],
+    deps = ["//go/analysis"],
 )
 
 go_tool_library(
@@ -16,9 +16,17 @@ go_tool_library(
     deps = ["//go/analysis:go_tool_library"],
 )
 
+alias(
+    name = "go_default_library",
+    actual = ":findcall",
+    visibility = ["//visibility:public"],
+)
+
 go_test(
-    name = "go_default_test",
+    name = "findcall_test",
     srcs = ["findcall_test.go"],
-    embed = [":go_default_library"],
-    deps = ["//go/analysis/analysistest:go_default_library"],
+    deps = [
+        ":findcall",
+        "//go/analysis/analysistest",
+    ],
 )

@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "godex_lib",
     srcs = [
         "doc.go",
         "gc.go",
@@ -19,6 +19,6 @@ go_library(
 
 go_binary(
     name = "godex",
-    embed = [":go_default_library"],
+    embed = [":godex_lib"],
     visibility = ["//visibility:public"],
 )

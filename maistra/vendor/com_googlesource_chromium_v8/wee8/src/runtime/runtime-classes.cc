@@ -2,15 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "src/runtime/runtime-utils.h"
-
 #include <stdlib.h>
+
 #include <limits>
 
 #include "src/builtins/accessors.h"
 #include "src/common/message-template.h"
 #include "src/debug/debug.h"
 #include "src/execution/arguments-inl.h"
+#include "src/execution/frames-inl.h"
 #include "src/execution/isolate-inl.h"
 #include "src/logging/counters.h"
 #include "src/logging/log.h"
@@ -20,6 +20,7 @@
 #include "src/objects/lookup-inl.h"
 #include "src/objects/smi.h"
 #include "src/objects/struct-inl.h"
+#include "src/runtime/runtime-utils.h"
 #include "src/runtime/runtime.h"
 
 namespace v8 {
@@ -138,8 +139,9 @@ inline void SetHomeObject(Isolate* isolate, JSFunction method,
   if (method.shared().needs_home_object()) {
     const InternalIndex kPropertyIndex(
         JSFunction::kMaybeHomeObjectDescriptorIndex);
-    CHECK_EQ(method.map().instance_descriptors().GetKey(kPropertyIndex),
-             ReadOnlyRoots(isolate).home_object_symbol());
+    CHECK_EQ(
+        method.map().instance_descriptors(kRelaxedLoad).GetKey(kPropertyIndex),
+        ReadOnlyRoots(isolate).home_object_symbol());
 
     FieldIndex field_index =
         FieldIndex::ForDescriptor(method.map(), kPropertyIndex);
@@ -157,7 +159,8 @@ inline void SetHomeObject(Isolate* isolate, JSFunction method,
 //    shared name.
 template <typename Dictionary>
 MaybeHandle<Object> GetMethodAndSetHomeObjectAndName(
-    Isolate* isolate, Arguments& args,  // NOLINT(runtime/references)
+    Isolate* isolate,
+    RuntimeArguments& args,  // NOLINT(runtime/references)
     Smi index, Handle<JSObject> home_object, Handle<String> name_prefix,
     Handle<Object> key) {
   int int_index = index.value();
@@ -195,7 +198,7 @@ MaybeHandle<Object> GetMethodAndSetHomeObjectAndName(
 // shared name.
 Object GetMethodWithSharedNameAndSetHomeObject(
     Isolate* isolate,
-    Arguments& args,  // NOLINT(runtime/references)
+    RuntimeArguments& args,  // NOLINT(runtime/references)
     Object index, JSObject home_object) {
   DisallowHeapAllocation no_gc;
   int int_index = Smi::ToInt(index);
@@ -235,7 +238,7 @@ Handle<Dictionary> ShallowCopyDictionaryTemplate(
 template <typename Dictionary>
 bool SubstituteValues(Isolate* isolate, Handle<Dictionary> dictionary,
                       Handle<JSObject> receiver,
-                      Arguments& args,  // NOLINT(runtime/references)
+                      RuntimeArguments& args,  // NOLINT(runtime/references)
                       bool* install_name_accessor = nullptr) {
   Handle<Name> name_string = isolate->factory()->name_string();
 
@@ -312,7 +315,8 @@ bool AddDescriptorsByTemplate(
     Isolate* isolate, Handle<Map> map,
     Handle<DescriptorArray> descriptors_template,
     Handle<NumberDictionary> elements_dictionary_template,
-    Handle<JSObject> receiver, Arguments& args) {  // NOLINT(runtime/references)
+    Handle<JSObject> receiver,
+    RuntimeArguments& args) {  // NOLINT(runtime/references)
   int nof_descriptors = descriptors_template->number_of_descriptors();
 
   Handle<DescriptorArray> descriptors =
@@ -423,7 +427,7 @@ bool AddDescriptorsByTemplate(
     Handle<NumberDictionary> elements_dictionary_template,
     Handle<FixedArray> computed_properties, Handle<JSObject> receiver,
     bool install_name_accessor,
-    Arguments& args) {  // NOLINT(runtime/references)
+    RuntimeArguments& args) {  // NOLINT(runtime/references)
   int computed_properties_length = computed_properties->length();
 
   // Shallow-copy properties template.
@@ -511,7 +515,7 @@ bool InitClassPrototype(Isolate* isolate,
                         Handle<JSObject> prototype,
                         Handle<HeapObject> prototype_parent,
                         Handle<JSFunction> constructor,
-                        Arguments& args) {  // NOLINT(runtime/references)
+                        RuntimeArguments& args) {  // NOLINT(runtime/references)
   Handle<Map> map(prototype->map(), isolate);
   map = Map::CopyDropDescriptors(isolate, map);
   map->set_is_prototype_map(true);
@@ -535,7 +539,7 @@ bool InitClassPrototype(Isolate* isolate,
     map->set_may_have_interesting_symbols(true);
     map->set_construction_counter(Map::kNoSlackTracking);
 
-    // We care about name property only for class constructor.
+    // Class prototypes do not have a name accessor.
     const bool install_name_accessor = false;
 
     return AddDescriptorsByTemplate(
@@ -555,11 +559,10 @@ bool InitClassPrototype(Isolate* isolate,
   }
 }
 
-bool InitClassConstructor(Isolate* isolate,
-                          Handle<ClassBoilerplate> class_boilerplate,
-                          Handle<HeapObject> constructor_parent,
-                          Handle<JSFunction> constructor,
-                          Arguments& args) {  // NOLINT(runtime/references)
+bool InitClassConstructor(
+    Isolate* isolate, Handle<ClassBoilerplate> class_boilerplate,
+    Handle<HeapObject> constructor_parent, Handle<JSFunction> constructor,
+    RuntimeArguments& args) {  // NOLINT(runtime/references)
   Handle<Map> map(constructor->map(), isolate);
   map = Map::CopyDropDescriptors(isolate, map);
   DCHECK(map->is_prototype_map());
@@ -591,8 +594,8 @@ bool InitClassConstructor(Isolate* isolate,
     map->set_may_have_interesting_symbols(true);
     map->set_construction_counter(Map::kNoSlackTracking);
 
-    bool install_name_accessor =
-        class_boilerplate->install_class_name_accessor() != 0;
+    // All class constructors have a name accessor.
+    const bool install_name_accessor = true;
 
     return AddDescriptorsByTemplate(
         isolate, map, properties_dictionary_template,
@@ -611,7 +614,7 @@ bool InitClassConstructor(Isolate* isolate,
 MaybeHandle<Object> DefineClass(
     Isolate* isolate, Handle<ClassBoilerplate> class_boilerplate,
     Handle<Object> super_class, Handle<JSFunction> constructor,
-    Arguments& args) {  // NOLINT(runtime/references)
+    RuntimeArguments& args) {  // NOLINT(runtime/references)
   Handle<Object> prototype_parent;
   Handle<HeapObject> constructor_parent;
 
@@ -661,11 +664,14 @@ MaybeHandle<Object> DefineClass(
     return MaybeHandle<Object>();
   }
   if (FLAG_trace_maps) {
+    Handle<Map> empty_map;
     LOG(isolate,
-        MapEvent("InitialMap", Map(), constructor->map(),
-                 "init class constructor", constructor->shared().DebugName()));
-    LOG(isolate, MapEvent("InitialMap", Map(), prototype->map(),
-                          "init class prototype"));
+        MapEvent("InitialMap", empty_map, handle(constructor->map(), isolate),
+                 "init class constructor",
+                 handle(constructor->shared().DebugName(), isolate)));
+    LOG(isolate,
+        MapEvent("InitialMap", empty_map, handle(prototype->map(), isolate),
+                 "init class prototype"));
   }
 
   return prototype;

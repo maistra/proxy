@@ -395,7 +395,7 @@ class MockEDNSChannelTest : public MockFlagsChannelOptsTest {
 
 TEST_P(MockEDNSChannelTest, RetryWithoutEDNS) {
   DNSPacket rspfail;
-  rspfail.set_response().set_aa().set_rcode(ns_r_servfail)
+  rspfail.set_response().set_aa().set_rcode(ns_r_formerr)
     .add_question(new DNSQuestion("www.google.com", ns_t_a));
   DNSPacket rspok;
   rspok.set_response()
@@ -934,6 +934,21 @@ TEST_P(MockChannelTest, GetHostByNameDestroyRelative) {
   EXPECT_TRUE(result.done_);  // Synchronous
   EXPECT_EQ(ARES_EDESTRUCTION, result.status_);
   EXPECT_EQ(0, result.timeouts_);
+}
+
+TEST_P(MockChannelTest, GetHostByNameCNAMENoData) {
+  DNSPacket response;
+  response.set_response().set_aa()
+    .add_question(new DNSQuestion("cname.first.com", ns_t_a))
+    .add_answer(new DNSCnameRR("cname.first.com", 100, "a.first.com"));
+  ON_CALL(server_, OnRequest("cname.first.com", ns_t_a))
+    .WillByDefault(SetReply(&server_, &response));
+
+  HostResult result;
+  ares_gethostbyname(channel_, "cname.first.com", AF_INET, HostCallback, &result);
+  Process();
+  EXPECT_TRUE(result.done_);
+  EXPECT_EQ(ARES_ENODATA, result.status_);
 }
 
 TEST_P(MockChannelTest, GetHostByAddrDestroy) {

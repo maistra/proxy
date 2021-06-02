@@ -1,4 +1,5 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_import", "cc_library")
 
 go_test(
     name = "opts_test",
@@ -55,7 +56,7 @@ cc_import(
 cc_binary(
     name = "libimported.dylib",
     srcs = ["imported.c"],
-    linkopts = ["-install_name @rpath/libimported.dylib"],
+    linkopts = ["-Wl,-install_name,@rpath/libimported.dylib"],
     linkshared = True,
     tags = ["manual"],
 )
@@ -216,11 +217,51 @@ go_test(
         "cgo_link_test.go",
         "cgo_ref.go",
     ],
-    cgo = True,
     cdeps = [":cgo_link_dep"],
+    cgo = True,
 )
 
 cc_library(
     name = "cgo_link_dep",
     srcs = ["cgo_link_dep.c"],
+)
+
+go_test(
+    name = "split_import_test",
+    srcs = [
+        "split_import_i_test.go",
+        "split_import_x_test.go",
+    ],
+    embed = [":split_import_a"],
+    deps = [":split_import_b"],
+)
+
+go_library(
+    name = "split_import_a",
+    srcs = ["split_import_a.go"],
+    importpath = "github.com/bazelbuild/rules_go/tests/core/cgo/split_import/a",
+)
+
+go_library(
+    name = "split_import_b",
+    srcs = ["split_import_b.go"],
+    importpath = "github.com/bazelbuild/rules_go/tests/core/cgo/split_import/b",
+    deps = [
+        ":split_import_a",
+        ":split_import_cgo",
+    ],
+)
+
+go_library(
+    name = "split_import_cgo",
+    srcs = ["split_import_cgo.go"],
+    cdeps = [":split_import_c"],
+    cgo = True,
+    importpath = "github.com/bazelbuild/rules_go/tests/core/cgo/split_import/cgo",
+)
+
+cc_library(
+    name = "split_import_c",
+    srcs = ["split_import_c.c"],
+    hdrs = ["split_import_c.h"],
 )

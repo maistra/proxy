@@ -1,6 +1,12 @@
 #ifndef THIRD_PARTY_CEL_CPP_EVAL_EVAL_FUNCTION_STEP_H_
 #define THIRD_PARTY_CEL_CPP_EVAL_EVAL_FUNCTION_STEP_H_
 
+#include <stdint.h>
+
+#include <memory>
+
+#include "google/api/expr/v1alpha1/syntax.pb.h"
+#include "absl/status/statusor.h"
 #include "eval/eval/evaluator_core.h"
 #include "eval/eval/expression_build_warning.h"
 #include "eval/public/activation.h"
@@ -15,7 +21,7 @@ namespace runtime {
 
 // Factory method for Call - based Execution step
 // Looks up function registry using data provided through Call parameter.
-cel_base::StatusOr<std::unique_ptr<ExpressionStep>> CreateFunctionStep(
+absl::StatusOr<std::unique_ptr<ExpressionStep>> CreateFunctionStep(
     const google::api::expr::v1alpha1::Expr::Call* call, int64_t expr_id,
     const CelFunctionRegistry& function_registry,
     BuilderWarnings* builder_warnings);

@@ -1,27 +1,31 @@
 
 'use strict';
 
-let hostrefs = {};
-let hostsym = Symbol("hostref");
-function hostref(s) {
-  if (! (s in hostrefs)) hostrefs[s] = {[hostsym]: s};
-  return hostrefs[s];
+let externrefs = {};
+let externsym = Symbol("externref");
+function externref(s) {
+  if (! (s in externrefs)) externrefs[s] = {[externsym]: s};
+  return externrefs[s];
 }
-function is_hostref(x) {
-  return (x !== null && hostsym in x) ? 1 : 0;
+function is_externref(x) {
+  return (x !== null && externsym in x) ? 1 : 0;
 }
 function is_funcref(x) {
   return typeof x === "function" ? 1 : 0;
 }
-function eq_ref(x, y) {
+function eq_externref(x, y) {
+  return x === y ? 1 : 0;
+}
+function eq_funcref(x, y) {
   return x === y ? 1 : 0;
 }
 
 let spectest = {
-  hostref: hostref,
-  is_hostref: is_hostref,
+  externref: externref,
+  is_externref: is_externref,
   is_funcref: is_funcref,
-  eq_ref: eq_ref,
+  eq_externref: eq_externref,
+  eq_funcref: eq_funcref,
   print: console.log.bind(console),
   print_i32: console.log.bind(console),
   print_i32_f32: console.log.bind(console),
@@ -132,37 +136,43 @@ function assert_exhaustion(action) {
   throw new Error("Wasm resource exhaustion expected");
 }
 
-function assert_return(action, expected) {
+function assert_return(action, ...expected) {
   let actual = action();
-  switch (expected) {
-    case "nan:canonical":
-    case "nan:arithmetic":
-    case "nan:any":
-      // Note that JS can't reliably distinguish different NaN values,
-      // so there's no good way to test that it's a canonical NaN.
-      if (!Number.isNaN(actual)) {
-        throw new Error("Wasm return value NaN expected, got " + actual);
-      };
-      return;
-    default:
-      if (!Object.is(actual, expected)) {
-        throw new Error("Wasm return value " + expected + " expected, got " + actual);
-      };
+  if (actual === undefined) {
+    actual = [];
+  } else if (!Array.isArray(actual)) {
+    actual = [actual];
   }
-}
-
-function assert_return_ref(action) {
-  let actual = action();
-  if (actual === null || typeof actual !== "object" && typeof actual !== "function") {
-    throw new Error("Wasm reference return value expected, got " + actual);
-  };
-}
-
-function assert_return_func(action) {
-  let actual = action();
-  if (typeof actual !== "function") {
-    throw new Error("Wasm function return value expected, got " + actual);
-  };
+  if (actual.length !== expected.length) {
+    throw new Error(expected.length + " value(s) expected, got " + actual.length);
+  }
+  for (let i = 0; i < actual.length; ++i) {
+    switch (expected[i]) {
+      case "nan:canonical":
+      case "nan:arithmetic":
+      case "nan:any":
+        // Note that JS can't reliably distinguish different NaN values,
+        // so there's no good way to test that it's a canonical NaN.
+        if (!Number.isNaN(actual[i])) {
+          throw new Error("Wasm return value NaN expected, got " + actual[i]);
+        };
+        return;
+      case "ref.func":
+        if (typeof actual !== "function") {
+          throw new Error("Wasm function return value expected, got " + actual);
+        };
+        return;
+      case "ref.extern":
+        if (actual === null) {
+          throw new Error("Wasm reference return value expected, got " + actual);
+        };
+        return;
+      default:
+        if (!Object.is(actual[i], expected[i])) {
+          throw new Error("Wasm return value " + expected[i] + " expected, got " + actual[i]);
+        };
+    }
+  }
 }
 
 // table_fill.wast:1
@@ -184,85 +194,85 @@ assert_return(() => call($1, "get", [4]), null);
 assert_return(() => call($1, "get", [5]), null);
 
 // table_fill.wast:19
-assert_return(() => call($1, "fill", [2, hostref(1), 3]));
+assert_return(() => call($1, "fill", [2, externref(1), 3]));
 
 // table_fill.wast:20
 assert_return(() => call($1, "get", [1]), null);
 
 // table_fill.wast:21
-assert_return(() => call($1, "get", [2]), hostref(1));
+assert_return(() => call($1, "get", [2]), externref(1));
 
 // table_fill.wast:22
-assert_return(() => call($1, "get", [3]), hostref(1));
+assert_return(() => call($1, "get", [3]), externref(1));
 
 // table_fill.wast:23
-assert_return(() => call($1, "get", [4]), hostref(1));
+assert_return(() => call($1, "get", [4]), externref(1));
 
 // table_fill.wast:24
 assert_return(() => call($1, "get", [5]), null);
 
 // table_fill.wast:26
-assert_return(() => call($1, "fill", [4, hostref(2), 2]));
+assert_return(() => call($1, "fill", [4, externref(2), 2]));
 
 // table_fill.wast:27
-assert_return(() => call($1, "get", [3]), hostref(1));
+assert_return(() => call($1, "get", [3]), externref(1));
 
 // table_fill.wast:28
-assert_return(() => call($1, "get", [4]), hostref(2));
+assert_return(() => call($1, "get", [4]), externref(2));
 
 // table_fill.wast:29
-assert_return(() => call($1, "get", [5]), hostref(2));
+assert_return(() => call($1, "get", [5]), externref(2));
 
 // table_fill.wast:30
 assert_return(() => call($1, "get", [6]), null);
 
 // table_fill.wast:32
-assert_return(() => call($1, "fill", [4, hostref(3), 0]));
+assert_return(() => call($1, "fill", [4, externref(3), 0]));
 
 // table_fill.wast:33
-assert_return(() => call($1, "get", [3]), hostref(1));
+assert_return(() => call($1, "get", [3]), externref(1));
 
 // table_fill.wast:34
-assert_return(() => call($1, "get", [4]), hostref(2));
+assert_return(() => call($1, "get", [4]), externref(2));
 
 // table_fill.wast:35
-assert_return(() => call($1, "get", [5]), hostref(2));
+assert_return(() => call($1, "get", [5]), externref(2));
 
 // table_fill.wast:37
-assert_return(() => call($1, "fill", [8, hostref(4), 2]));
+assert_return(() => call($1, "fill", [8, externref(4), 2]));
 
 // table_fill.wast:38
 assert_return(() => call($1, "get", [7]), null);
 
 // table_fill.wast:39
-assert_return(() => call($1, "get", [8]), hostref(4));
+assert_return(() => call($1, "get", [8]), externref(4));
 
 // table_fill.wast:40
-assert_return(() => call($1, "get", [9]), hostref(4));
+assert_return(() => call($1, "get", [9]), externref(4));
 
 // table_fill.wast:42
 assert_return(() => call($1, "fill", [9, null, 1]));
 
 // table_fill.wast:43
-assert_return(() => call($1, "get", [8]), hostref(4));
+assert_return(() => call($1, "get", [8]), externref(4));
 
 // table_fill.wast:44
 assert_return(() => call($1, "get", [9]), null);
 
 // table_fill.wast:46
-assert_return(() => call($1, "fill", [10, hostref(5), 0]));
+assert_return(() => call($1, "fill", [10, externref(5), 0]));
 
 // table_fill.wast:47
 assert_return(() => call($1, "get", [9]), null);
 
 // table_fill.wast:49
-assert_trap(() => call($1, "fill", [8, hostref(6), 3]));
+assert_trap(() => call($1, "fill", [8, externref(6), 3]));
 
 // table_fill.wast:53
 assert_return(() => call($1, "get", [7]), null);
 
 // table_fill.wast:54
-assert_return(() => call($1, "get", [8]), hostref(4));
+assert_return(() => call($1, "get", [8]), externref(4));
 
 // table_fill.wast:55
 assert_return(() => call($1, "get", [9]), null);
@@ -277,25 +287,25 @@ assert_trap(() => call($1, "fill", [11, null, 10]));
 assert_invalid("\x00\x61\x73\x6d\x01\x00\x00\x00\x01\x84\x80\x80\x80\x00\x01\x60\x00\x00\x03\x82\x80\x80\x80\x00\x01\x00\x04\x84\x80\x80\x80\x00\x01\x6f\x00\x0a\x0a\x8b\x80\x80\x80\x00\x01\x85\x80\x80\x80\x00\x00\xfc\x11\x00\x0b");
 
 // table_fill.wast:79
-assert_invalid("\x00\x61\x73\x6d\x01\x00\x00\x00\x01\x84\x80\x80\x80\x00\x01\x60\x00\x00\x03\x82\x80\x80\x80\x00\x01\x00\x04\x84\x80\x80\x80\x00\x01\x6f\x00\x0a\x0a\x8e\x80\x80\x80\x00\x01\x88\x80\x80\x80\x00\x00\xd0\x41\x01\xfc\x11\x00\x0b");
+assert_invalid("\x00\x61\x73\x6d\x01\x00\x00\x00\x01\x84\x80\x80\x80\x00\x01\x60\x00\x00\x03\x82\x80\x80\x80\x00\x01\x00\x04\x84\x80\x80\x80\x00\x01\x6f\x00\x0a\x0a\x8f\x80\x80\x80\x00\x01\x89\x80\x80\x80\x00\x00\xd0\x6f\x41\x01\xfc\x11\x00\x0b");
 
 // table_fill.wast:88
 assert_invalid("\x00\x61\x73\x6d\x01\x00\x00\x00\x01\x84\x80\x80\x80\x00\x01\x60\x00\x00\x03\x82\x80\x80\x80\x00\x01\x00\x04\x84\x80\x80\x80\x00\x01\x6f\x00\x0a\x0a\x8f\x80\x80\x80\x00\x01\x89\x80\x80\x80\x00\x00\x41\x01\x41\x01\xfc\x11\x00\x0b");
 
 // table_fill.wast:97
-assert_invalid("\x00\x61\x73\x6d\x01\x00\x00\x00\x01\x84\x80\x80\x80\x00\x01\x60\x00\x00\x03\x82\x80\x80\x80\x00\x01\x00\x04\x84\x80\x80\x80\x00\x01\x6f\x00\x0a\x0a\x8e\x80\x80\x80\x00\x01\x88\x80\x80\x80\x00\x00\x41\x01\xd0\xfc\x11\x00\x0b");
+assert_invalid("\x00\x61\x73\x6d\x01\x00\x00\x00\x01\x84\x80\x80\x80\x00\x01\x60\x00\x00\x03\x82\x80\x80\x80\x00\x01\x00\x04\x84\x80\x80\x80\x00\x01\x6f\x00\x0a\x0a\x8f\x80\x80\x80\x00\x01\x89\x80\x80\x80\x00\x00\x41\x01\xd0\x6f\xfc\x11\x00\x0b");
 
 // table_fill.wast:106
-assert_invalid("\x00\x61\x73\x6d\x01\x00\x00\x00\x01\x84\x80\x80\x80\x00\x01\x60\x00\x00\x03\x82\x80\x80\x80\x00\x01\x00\x04\x84\x80\x80\x80\x00\x01\x6f\x00\x00\x0a\x93\x80\x80\x80\x00\x01\x8d\x80\x80\x80\x00\x00\x43\x00\x00\x80\x3f\xd0\x41\x01\xfc\x11\x00\x0b");
+assert_invalid("\x00\x61\x73\x6d\x01\x00\x00\x00\x01\x84\x80\x80\x80\x00\x01\x60\x00\x00\x03\x82\x80\x80\x80\x00\x01\x00\x04\x84\x80\x80\x80\x00\x01\x6f\x00\x00\x0a\x94\x80\x80\x80\x00\x01\x8e\x80\x80\x80\x00\x00\x43\x00\x00\x80\x3f\xd0\x6f\x41\x01\xfc\x11\x00\x0b");
 
 // table_fill.wast:115
 assert_invalid("\x00\x61\x73\x6d\x01\x00\x00\x00\x01\x85\x80\x80\x80\x00\x01\x60\x01\x6f\x00\x03\x82\x80\x80\x80\x00\x01\x00\x04\x84\x80\x80\x80\x00\x01\x70\x00\x00\x0a\x91\x80\x80\x80\x00\x01\x8b\x80\x80\x80\x00\x00\x41\x01\x20\x00\x41\x01\xfc\x11\x00\x0b");
 
 // table_fill.wast:124
-assert_invalid("\x00\x61\x73\x6d\x01\x00\x00\x00\x01\x84\x80\x80\x80\x00\x01\x60\x00\x00\x03\x82\x80\x80\x80\x00\x01\x00\x04\x84\x80\x80\x80\x00\x01\x6f\x00\x00\x0a\x93\x80\x80\x80\x00\x01\x8d\x80\x80\x80\x00\x00\x41\x01\xd0\x43\x00\x00\x80\x3f\xfc\x11\x00\x0b");
+assert_invalid("\x00\x61\x73\x6d\x01\x00\x00\x00\x01\x84\x80\x80\x80\x00\x01\x60\x00\x00\x03\x82\x80\x80\x80\x00\x01\x00\x04\x84\x80\x80\x80\x00\x01\x6f\x00\x00\x0a\x94\x80\x80\x80\x00\x01\x8e\x80\x80\x80\x00\x00\x41\x01\xd0\x6f\x43\x00\x00\x80\x3f\xfc\x11\x00\x0b");
 
 // table_fill.wast:134
 assert_invalid("\x00\x61\x73\x6d\x01\x00\x00\x00\x01\x85\x80\x80\x80\x00\x01\x60\x01\x6f\x00\x03\x82\x80\x80\x80\x00\x01\x00\x04\x87\x80\x80\x80\x00\x02\x6f\x00\x01\x70\x00\x01\x0a\x91\x80\x80\x80\x00\x01\x8b\x80\x80\x80\x00\x00\x41\x00\x20\x00\x41\x01\xfc\x11\x01\x0b");
 
 // table_fill.wast:145
-assert_invalid("\x00\x61\x73\x6d\x01\x00\x00\x00\x01\x85\x80\x80\x80\x00\x01\x60\x00\x01\x7f\x03\x82\x80\x80\x80\x00\x01\x00\x04\x84\x80\x80\x80\x00\x01\x6f\x00\x01\x0a\x90\x80\x80\x80\x00\x01\x8a\x80\x80\x80\x00\x00\x41\x00\xd0\x41\x01\xfc\x11\x00\x0b");
+assert_invalid("\x00\x61\x73\x6d\x01\x00\x00\x00\x01\x85\x80\x80\x80\x00\x01\x60\x00\x01\x7f\x03\x82\x80\x80\x80\x00\x01\x00\x04\x84\x80\x80\x80\x00\x01\x6f\x00\x01\x0a\x91\x80\x80\x80\x00\x01\x8b\x80\x80\x80\x00\x00\x41\x00\xd0\x6f\x41\x01\xfc\x11\x00\x0b");

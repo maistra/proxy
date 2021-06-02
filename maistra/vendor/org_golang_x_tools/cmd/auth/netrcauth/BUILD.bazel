@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "netrcauth_lib",
     srcs = ["netrcauth.go"],
     importpath = "golang.org/x/tools/cmd/auth/netrcauth",
     visibility = ["//visibility:private"],
@@ -9,6 +9,6 @@ go_library(
 
 go_binary(
     name = "netrcauth",
-    embed = [":go_default_library"],
+    embed = [":netrcauth_lib"],
     visibility = ["//visibility:public"],
 )

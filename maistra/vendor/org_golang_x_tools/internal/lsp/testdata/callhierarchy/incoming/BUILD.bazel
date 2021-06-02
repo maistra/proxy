@@ -1,0 +1,14 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "incoming",
+    srcs = ["incoming.go"],
+    importpath = "golang.org/x/tools/internal/lsp/testdata/callhierarchy/incoming",
+    visibility = ["//:__subpackages__"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":incoming",
+    visibility = ["//:__subpackages__"],
+)

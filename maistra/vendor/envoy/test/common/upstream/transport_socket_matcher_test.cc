@@ -15,7 +15,7 @@
 #include "server/transport_socket_config_impl.h"
 
 #include "test/mocks/network/mocks.h"
-#include "test/mocks/server/mocks.h"
+#include "test/mocks/server/transport_socket_factory_context.h"
 #include "test/test_common/registry.h"
 #include "test/test_common/utility.h"
 
@@ -31,6 +31,7 @@ namespace {
 class FakeTransportSocketFactory : public Network::TransportSocketFactory {
 public:
   MOCK_METHOD(bool, implementsSecureTransport, (), (const));
+  MOCK_METHOD(bool, usesProxyProtocolOptions, (), (const));
   MOCK_METHOD(Network::TransportSocketPtr, createTransportSocket,
               (Network::TransportSocketOptionsSharedPtr), (const));
   FakeTransportSocketFactory(std::string id) : id_(std::move(id)) {}
@@ -46,6 +47,7 @@ class FooTransportSocketFactory
       Logger::Loggable<Logger::Id::upstream> {
 public:
   MOCK_METHOD(bool, implementsSecureTransport, (), (const));
+  MOCK_METHOD(bool, usesProxyProtocolOptions, (), (const));
   MOCK_METHOD(Network::TransportSocketPtr, createTransportSocket,
               (Network::TransportSocketOptionsSharedPtr), (const));
 
@@ -70,7 +72,7 @@ public:
 class TransportSocketMatcherTest : public testing::Test {
 public:
   TransportSocketMatcherTest()
-      : mock_default_factory_(new FakeTransportSocketFactory("default")),
+      : registration_(factory_), mock_default_factory_(new FakeTransportSocketFactory("default")),
         stats_scope_(stats_store_.createScope("transport_socket_match.test")) {}
 
   void init(const std::vector<std::string>& match_yaml) {
@@ -90,6 +92,10 @@ public:
   }
 
 protected:
+  FooTransportSocketFactory factory_;
+  Registry::InjectFactory<Server::Configuration::UpstreamTransportSocketConfigFactory>
+      registration_;
+
   TransportSocketMatcherPtr matcher_;
   NiceMock<Server::Configuration::MockTransportSocketFactoryContext> mock_factory_context_;
   Network::TransportSocketFactoryPtr mock_default_factory_;
@@ -104,7 +110,8 @@ match:
   hasSidecar: "true"
 transport_socket:
   name: "foo"
-  config:
+  typed_config:
+    "@type": type.googleapis.com/envoy.config.core.v3.Node
     id: "abc"
  )EOF"});
 
@@ -119,7 +126,8 @@ match:
   sidecar: "true"
 transport_socket:
   name: "foo"
-  config:
+  typed_config:
+    "@type": type.googleapis.com/envoy.config.core.v3.Node
     id: "sidecar")EOF",
         R"EOF(
 name: "http_socket"
@@ -127,7 +135,8 @@ match:
   protocol: "http"
 transport_socket:
   name: "foo"
-  config:
+  typed_config:
+    "@type": type.googleapis.com/envoy.config.core.v3.Node
     id: "http"
  )EOF"});
 
@@ -155,7 +164,8 @@ match:
   protocol: "http"
 transport_socket:
   name: "foo"
-  config:
+  typed_config:
+    "@type": type.googleapis.com/envoy.config.core.v3.Node
     id: "sidecar_http"
  )EOF",
         R"EOF(
@@ -164,7 +174,8 @@ match:
   sidecar: "true"
 transport_socket:
   name: "foo"
-  config:
+  typed_config:
+    "@type": type.googleapis.com/envoy.config.core.v3.Node
     id: "sidecar"
  )EOF"});
   envoy::config::core::v3::Metadata metadata;
@@ -182,7 +193,8 @@ name: "match_all"
 match: {}
 transport_socket:
   name: "foo"
-  config:
+  typed_config:
+    "@type": type.googleapis.com/envoy.config.core.v3.Node
     id: "match_all"
  )EOF"});
   envoy::config::core::v3::Metadata metadata;
@@ -194,9 +206,6 @@ filter_metadata:
                             metadata);
   validate(metadata, "match_all");
 }
-
-REGISTER_FACTORY(FooTransportSocketFactory,
-                 Server::Configuration::UpstreamTransportSocketConfigFactory);
 
 } // namespace
 } // namespace Upstream

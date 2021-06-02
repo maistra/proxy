@@ -58,6 +58,12 @@ public:
    * stream object and no further callbacks will be invoked.
    */
   virtual void resetStream() PURE;
+
+  /***
+   * @returns if the stream has enough buffered outbound data to be over the configured buffer
+   * limits
+   */
+  virtual bool isAboveWriteBufferHighWatermark() const PURE;
 };
 
 class RawAsyncRequestCallbacks {
@@ -181,6 +187,7 @@ public:
 };
 
 using RawAsyncClientPtr = std::unique_ptr<RawAsyncClient>;
+using RawAsyncClientSharedPtr = std::shared_ptr<RawAsyncClient>;
 
 } // namespace Grpc
 } // namespace Envoy

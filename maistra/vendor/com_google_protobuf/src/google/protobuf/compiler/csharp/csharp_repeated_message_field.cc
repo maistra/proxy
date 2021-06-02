@@ -93,15 +93,27 @@ void RepeatedMessageFieldGenerator::GenerateMergingCode(io::Printer* printer) {
 }
 
 void RepeatedMessageFieldGenerator::GenerateParsingCode(io::Printer* printer) {
+  GenerateParsingCode(printer, true);
+}
+
+void RepeatedMessageFieldGenerator::GenerateParsingCode(io::Printer* printer, bool use_parse_context) {
   printer->Print(
     variables_,
-    "$name$_.AddEntriesFrom(input, _repeated_$name$_codec);\n");
+    use_parse_context
+    ? "$name$_.AddEntriesFrom(ref input, _repeated_$name$_codec);\n"
+    : "$name$_.AddEntriesFrom(input, _repeated_$name$_codec);\n");
 }
 
 void RepeatedMessageFieldGenerator::GenerateSerializationCode(io::Printer* printer) {
+  GenerateSerializationCode(printer, true);
+}
+
+void RepeatedMessageFieldGenerator::GenerateSerializationCode(io::Printer* printer, bool use_write_context) {
   printer->Print(
     variables_,
-    "$name$_.WriteTo(output, _repeated_$name$_codec);\n");
+    use_write_context
+    ? "$name$_.WriteTo(ref output, _repeated_$name$_codec);\n"
+    : "$name$_.WriteTo(output, _repeated_$name$_codec);\n");
 }
 
 void RepeatedMessageFieldGenerator::GenerateSerializedSizeCode(io::Printer* printer) {
@@ -135,6 +147,25 @@ void RepeatedMessageFieldGenerator::GenerateCloningCode(io::Printer* printer) {
 }
 
 void RepeatedMessageFieldGenerator::GenerateFreezingCode(io::Printer* printer) {
+}
+
+void RepeatedMessageFieldGenerator::GenerateExtensionCode(io::Printer* printer) {
+  WritePropertyDocComment(printer, descriptor_);
+  AddDeprecatedFlag(printer);
+  printer->Print(
+    variables_,
+    "$access_level$ static readonly pb::RepeatedExtension<$extended_type$, $type_name$> $property_name$ =\n"
+    "  new pb::RepeatedExtension<$extended_type$, $type_name$>($number$, ");
+  if (IsWrapperType(descriptor_)) {
+    std::unique_ptr<FieldGeneratorBase> single_generator(
+      new WrapperFieldGenerator(descriptor_, -1, this->options()));
+    single_generator->GenerateCodecCode(printer);
+  } else {
+    std::unique_ptr<FieldGeneratorBase> single_generator(
+      new MessageFieldGenerator(descriptor_, -1, this->options()));
+    single_generator->GenerateCodecCode(printer);
+  }
+  printer->Print(");\n");
 }
 
 }  // namespace csharp

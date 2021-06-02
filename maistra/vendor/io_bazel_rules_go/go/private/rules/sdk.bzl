@@ -13,7 +13,7 @@
 # limitations under the License.
 
 load(
-    "@io_bazel_rules_go//go/private:providers.bzl",
+    "//go/private:providers.bzl",
     "GoSDK",
 )
 
@@ -71,7 +71,7 @@ go_sdk = rule(
         ),
         "tools": attr.label_list(
             allow_files = True,
-            cfg = "host",
+            cfg = "exec",
             doc = ("List of executable files in the SDK built for " +
                    "the execution platform, excluding the go binary"),
         ),
@@ -79,7 +79,7 @@ go_sdk = rule(
             mandatory = True,
             allow_single_file = True,
             executable = True,
-            cfg = "host",
+            cfg = "exec",
             doc = "The go binary",
         ),
     },

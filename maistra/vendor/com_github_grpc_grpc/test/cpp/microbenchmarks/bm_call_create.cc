@@ -41,9 +41,9 @@
 #include "src/core/lib/profiling/timers.h"
 #include "src/core/lib/surface/channel.h"
 #include "src/core/lib/transport/transport_impl.h"
-
 #include "src/cpp/client/create_channel_internal.h"
 #include "src/proto/grpc/testing/echo.grpc.pb.h"
+#include "test/core/util/test_config.h"
 #include "test/cpp/microbenchmarks/helpers.h"
 #include "test/cpp/util/test_config.h"
 
@@ -414,7 +414,7 @@ void SetPollsetSet(grpc_transport* /*self*/, grpc_stream* /*stream*/,
 /* implementation of grpc_transport_perform_stream_op */
 void PerformStreamOp(grpc_transport* /*self*/, grpc_stream* /*stream*/,
                      grpc_transport_stream_op_batch* op) {
-  GRPC_CLOSURE_SCHED(op->on_complete, GRPC_ERROR_NONE);
+  grpc_core::ExecCtx::Run(DEBUG_LOCATION, op->on_complete, GRPC_ERROR_NONE);
 }
 
 /* implementation of grpc_transport_perform_op */
@@ -508,12 +508,13 @@ static void BM_IsolatedFilter(benchmark::State& state) {
 
   grpc_core::ExecCtx exec_ctx;
   size_t channel_size = grpc_channel_stack_size(
-      filters.size() == 0 ? nullptr : &filters[0], filters.size());
+      filters.empty() ? nullptr : &filters[0], filters.size());
   grpc_channel_stack* channel_stack =
       static_cast<grpc_channel_stack*>(gpr_zalloc(channel_size));
   GPR_ASSERT(GRPC_LOG_IF_ERROR(
       "channel_stack_init",
-      grpc_channel_stack_init(1, FilterDestroy, channel_stack, &filters[0],
+      grpc_channel_stack_init(1, FilterDestroy, channel_stack,
+                              filters.empty() ? nullptr : &filters[0],
                               filters.size(), &channel_args,
                               fixture.flags & REQUIRES_TRANSPORT
                                   ? &dummy_transport::dummy_transport
@@ -528,9 +529,10 @@ static void BM_IsolatedFilter(benchmark::State& state) {
   grpc_call_final_info final_info;
   TestOp test_op_data;
   const int kArenaSize = 4096;
+  grpc_call_context_element context[GRPC_CONTEXT_COUNT] = {};
   grpc_call_element_args call_args{call_stack,
                                    nullptr,
-                                   nullptr,
+                                   context,
                                    method,
                                    start_time,
                                    deadline,
@@ -636,7 +638,7 @@ static void StartTransportOp(grpc_channel_element* /*elem*/,
   if (op->disconnect_with_error != GRPC_ERROR_NONE) {
     GRPC_ERROR_UNREF(op->disconnect_with_error);
   }
-  GRPC_CLOSURE_SCHED(op->on_consumed, GRPC_ERROR_NONE);
+  grpc_core::ExecCtx::Run(DEBUG_LOCATION, op->on_consumed, GRPC_ERROR_NONE);
 }
 
 static grpc_error* InitCallElem(grpc_call_element* elem,
@@ -652,7 +654,7 @@ static void SetPollsetOrPollsetSet(grpc_call_element* /*elem*/,
 static void DestroyCallElem(grpc_call_element* /*elem*/,
                             const grpc_call_final_info* /*final_info*/,
                             grpc_closure* then_sched_closure) {
-  GRPC_CLOSURE_SCHED(then_sched_closure, GRPC_ERROR_NONE);
+  grpc_core::ExecCtx::Run(DEBUG_LOCATION, then_sched_closure, GRPC_ERROR_NONE);
 }
 
 grpc_error* InitChannelElem(grpc_channel_element* /*elem*/,
@@ -701,7 +703,7 @@ class IsolatedCallFixture : public TrackCounters {
     cq_ = grpc_completion_queue_create_for_next(nullptr);
   }
 
-  void Finish(benchmark::State& state) {
+  void Finish(benchmark::State& state) override {
     grpc_completion_queue_destroy(cq_);
     grpc_channel_destroy(channel_);
     TrackCounters::Finish(state);
@@ -823,6 +825,7 @@ void RunTheBenchmarksNamespaced() { RunSpecifiedBenchmarks(); }
 }  // namespace benchmark
 
 int main(int argc, char** argv) {
+  grpc::testing::TestEnvironment env(argc, argv);
   LibraryInitializer libInit;
   ::benchmark::Initialize(&argc, argv);
   ::grpc::testing::InitTest(&argc, &argv, false);

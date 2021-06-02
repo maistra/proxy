@@ -33,6 +33,7 @@
 #include "src/core/lib/transport/static_metadata.h"
 #include "src/core/lib/transport/timeout_encoding.h"
 
+#include "test/core/util/test_config.h"
 #include "test/cpp/microbenchmarks/helpers.h"
 #include "test/cpp/util/test_config.h"
 
@@ -440,7 +441,7 @@ static void BM_HpackParserInitDestroy(benchmark::State& state) {
     grpc_chttp2_hpack_parser_init(&p);
     // Note that grpc_chttp2_hpack_parser_destroy frees the table dynamic
     // elements so we need to recreate it here. In actual operation,
-    // grpc_core::New<grpc_chttp2_hpack_parser_destroy> allocates the table once
+    // new grpc_chttp2_hpack_parser_destroy allocates the table once
     // and for all.
     new (&p.table) grpc_chttp2_hptbl();
     grpc_chttp2_hpack_parser_destroy(&p);
@@ -937,6 +938,7 @@ void RunTheBenchmarksNamespaced() { RunSpecifiedBenchmarks(); }
 }  // namespace benchmark
 
 int main(int argc, char** argv) {
+  grpc::testing::TestEnvironment env(argc, argv);
   LibraryInitializer libInit;
   ::benchmark::Initialize(&argc, argv);
   ::grpc::testing::InitTest(&argc, &argv, false);

@@ -84,9 +84,11 @@ const char kAlsoRunDisabledTestsFlag[] = "also_run_disabled_tests";
 const char kBreakOnFailureFlag[] = "break_on_failure";
 const char kCatchExceptionsFlag[] = "catch_exceptions";
 const char kColorFlag[] = "color";
+const char kFailFast[] = "fail_fast";
 const char kFilterFlag[] = "filter";
 const char kListTestsFlag[] = "list_tests";
 const char kOutputFlag[] = "output";
+const char kBriefFlag[] = "brief";
 const char kPrintTimeFlag[] = "print_time";
 const char kPrintUTF8Flag[] = "print_utf8";
 const char kRandomSeedFlag[] = "random_seed";
@@ -164,10 +166,12 @@ class GTestFlagSaver {
     color_ = GTEST_FLAG(color);
     death_test_style_ = GTEST_FLAG(death_test_style);
     death_test_use_fork_ = GTEST_FLAG(death_test_use_fork);
+    fail_fast_ = GTEST_FLAG(fail_fast);
     filter_ = GTEST_FLAG(filter);
     internal_run_death_test_ = GTEST_FLAG(internal_run_death_test);
     list_tests_ = GTEST_FLAG(list_tests);
     output_ = GTEST_FLAG(output);
+    brief_ = GTEST_FLAG(brief);
     print_time_ = GTEST_FLAG(print_time);
     print_utf8_ = GTEST_FLAG(print_utf8);
     random_seed_ = GTEST_FLAG(random_seed);
@@ -187,9 +191,11 @@ class GTestFlagSaver {
     GTEST_FLAG(death_test_style) = death_test_style_;
     GTEST_FLAG(death_test_use_fork) = death_test_use_fork_;
     GTEST_FLAG(filter) = filter_;
+    GTEST_FLAG(fail_fast) = fail_fast_;
     GTEST_FLAG(internal_run_death_test) = internal_run_death_test_;
     GTEST_FLAG(list_tests) = list_tests_;
     GTEST_FLAG(output) = output_;
+    GTEST_FLAG(brief) = brief_;
     GTEST_FLAG(print_time) = print_time_;
     GTEST_FLAG(print_utf8) = print_utf8_;
     GTEST_FLAG(random_seed) = random_seed_;
@@ -208,10 +214,12 @@ class GTestFlagSaver {
   std::string color_;
   std::string death_test_style_;
   bool death_test_use_fork_;
+  bool fail_fast_;
   std::string filter_;
   std::string internal_run_death_test_;
   bool list_tests_;
   std::string output_;
+  bool brief_;
   bool print_time_;
   bool print_utf8_;
   int32_t random_seed_;
@@ -698,6 +706,10 @@ class GTEST_API_ UnitTestImpl {
     return parameterized_test_registry_;
   }
 
+  std::set<std::string>* ignored_parameterized_test_suites() {
+    return &ignored_parameterized_test_suites_;
+  }
+
   // Returns TypeParameterizedTestSuiteRegistry object used to keep track of
   // type-parameterized tests and instantiations of them.
   internal::TypeParameterizedTestSuiteRegistry&
@@ -883,6 +895,10 @@ class GTEST_API_ UnitTestImpl {
   internal::ParameterizedTestSuiteRegistry parameterized_test_registry_;
   internal::TypeParameterizedTestSuiteRegistry
       type_parameterized_test_registry_;
+
+  // The set holding the name of parameterized
+  // test suites that may go uninstantiated.
+  std::set<std::string> ignored_parameterized_test_suites_;
 
   // Indicates whether RegisterParameterizedTests() has been called already.
   bool parameterized_tests_registered_;

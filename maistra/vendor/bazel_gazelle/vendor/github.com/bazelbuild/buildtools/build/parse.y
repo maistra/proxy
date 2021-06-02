@@ -25,8 +25,9 @@ package build
 	// partial syntax trees
 	expr      Expr
 	exprs     []Expr
+	kv        *KeyValueExpr
+	kvs       []*KeyValueExpr
 	string    *StringExpr
-	strings   []*StringExpr
 	ifstmt    *IfStmt
 	loadarg   *struct{from Ident; to Ident}
 	loadargs  []*struct{from Ident; to Ident}
@@ -80,7 +81,7 @@ package build
 %token	<pos>	_FOR     // keyword for
 %token	<pos>	_GE      // operator >=
 %token	<pos>	_IDENT   // non-keyword identifier
-%token	<pos>	_NUMBER  // number
+%token	<pos>	_INT     // integer number
 %token	<pos>	_IF      // keyword if
 %token	<pos>	_ELSE    // keyword else
 %token	<pos>	_ELIF    // keyword elif
@@ -118,9 +119,7 @@ package build
 %type	<expr>		primary_expr
 %type	<expr>		expr
 %type	<expr>		expr_opt
-%type <exprs>		tests
-%type	<exprs>		exprs
-%type	<exprs>		exprs_opt
+%type	<exprs>		tests
 %type	<expr>		loop_vars
 %type	<expr>		for_clause
 %type	<exprs>		for_clause_with_if_clauses_opt
@@ -132,15 +131,14 @@ package build
 %type	<expr>		block_stmt    // a single for/if/def statement
 %type	<ifstmt>	if_else_block // a complete if-elif-else block
 %type	<ifstmt>	if_chain      // an elif-elif-else chain
-%type <pos>		elif          // `elif` or `else if` token(s)
+%type	<pos>		elif          // `elif` or `else if` token(s)
 %type	<exprs>		simple_stmt   // One or many small_stmts on one line, e.g. 'a = f(x); return str(a)'
 %type	<expr>		small_stmt    // A single statement, e.g. 'a = f(x)'
-%type <exprs>		small_stmts_continuation  // A sequence of `';' small_stmt`
-%type	<expr>		keyvalue
-%type	<exprs>		keyvalues
-%type	<exprs>		keyvalues_no_comma
+%type	<exprs>		small_stmts_continuation  // A sequence of `';' small_stmt`
+%type	<kv>		keyvalue
+%type	<kvs>		keyvalues
+%type	<kvs>		keyvalues_no_comma
 %type	<string>	string
-%type	<strings>	strings
 %type	<exprs>		suite
 %type	<exprs>		comments
 %type	<loadarg>	load_argument
@@ -179,8 +177,8 @@ package build
 %left  '+' '-'
 %left  '*' '/' '%' _INT_DIV
 %left  '.' '[' '('
-%right _UNARY
 %left  _STRING
+%right _UNARY
 
 %%
 
@@ -218,7 +216,7 @@ suite:
 		$$ = statements
 		$<lastStmt>$ = $<lastStmt>4
 	}
-|	simple_stmt linebreaks_opt
+|	simple_stmt linebreaks_opt %prec ShiftInstead
 	{
 		$$ = $1
 	}
@@ -464,6 +462,10 @@ semi_opt:
 primary_expr:
 	ident
 |	number
+|	string
+	{
+		$$ = $1
+	}
 |	primary_expr '.' _IDENT
 	{
 		$$ = &DotExpr{
@@ -531,18 +533,6 @@ primary_expr:
 			End: $8,
 		}
 	}
-|	strings %prec ShiftInstead
-	{
-		if len($1) == 1 {
-			$$ = $1[0]
-			break
-		}
-		$$ = $1[0]
-		for _, x := range $1[1:] {
-			_, end := $$.Span()
-			$$ = binary($$, end, "+", x)
-		}
-	}
 |	'[' tests_opt ']'
 	{
 		$$ = &ListExpr{
@@ -576,14 +566,18 @@ primary_expr:
 	}
 |	'{' keyvalues '}'
 	{
+		exprValues := make([]Expr, 0, len($2))
+		for _, kv := range $2 {
+			exprValues = append(exprValues, Expr(kv))
+		}
 		$$ = &DictExpr{
 			Start: $1,
 			List: $2,
 			End: End{Pos: $3},
-			ForceMultiLine: forceMultiLine($1, $2, $3),
+			ForceMultiLine: forceMultiLine($1, exprValues, $3),
 		}
 	}
-|	'{' tests comma_opt '}'  // TODO: remove, not supported
+|	'{' tests comma_opt '}'
 	{
 		$$ = &SetExpr{
 			Start: $1,
@@ -728,7 +722,7 @@ parameter:
 	}
 
 expr:
-	test
+	test %prec ShiftInstead
 |	expr ',' test
 	{
 		tuple, ok := $1.(*TupleExpr)
@@ -750,28 +744,9 @@ expr_opt:
 	}
 |	expr
 
-exprs:
-	expr
-	{
-		$$ = []Expr{$1}
-	}
-|	exprs ',' expr
-	{
-		$$ = append($1, $3)
-	}
-
-exprs_opt:
-	{
-		$$ = nil
-	}
-|	exprs comma_opt
-	{
-		$$ = $1
-	}
-
 test:
 	primary_expr
-|	_LAMBDA exprs_opt ':' expr  // TODO: remove, not supported
+|	_LAMBDA parameters_opt ':' expr
 	{
 		$$ = &LambdaExpr{
 			Function: Function{
@@ -872,7 +847,7 @@ keyvalue:
 keyvalues_no_comma:
 	keyvalue
 	{
-		$$ = []Expr{$1}
+		$$ = []*KeyValueExpr{$1}
 	}
 |	keyvalues_no_comma ',' keyvalue
 	{
@@ -921,16 +896,6 @@ string:
 		}
 	}
 
-strings:
-	string
-	{
-		$$ = []*StringExpr{$1}
-	}
-|	strings string
-	{
-		$$ = append($1, $2)
-	}
-
 ident:
 	_IDENT
 	{
@@ -938,7 +903,19 @@ ident:
 	}
 
 number:
-	_NUMBER
+	_INT '.' _INT
+	{
+		$$ = &LiteralExpr{Start: $1, Token: $<tok>1 + "." + $<tok>3}
+	}
+|	_INT '.'
+	{
+		$$ = &LiteralExpr{Start: $1, Token: $<tok>1 + "."}
+	}
+|	'.' _INT
+	{
+		$$ = &LiteralExpr{Start: $1, Token: "." + $<tok>2}
+	}
+|	_INT %prec ShiftInstead
 	{
 		$$ = &LiteralExpr{Start: $1, Token: $<tok>1}
 	}
@@ -955,10 +932,12 @@ for_clause:
 	}
 
 for_clause_with_if_clauses_opt:
-	for_clause {
+	for_clause
+	{
 		$$ = []Expr{$1}
 	}
-|	for_clause_with_if_clauses_opt _IF test {
+|	for_clause_with_if_clauses_opt _IF test
+	{
 		$$ = append($1, &IfClause{
 			If: $2,
 			Cond: $3,
@@ -970,7 +949,8 @@ for_clauses_with_if_clauses_opt:
 	{
 		$$ = $1
 	}
-|	for_clauses_with_if_clauses_opt for_clause_with_if_clauses_opt {
+|	for_clauses_with_if_clauses_opt for_clause_with_if_clauses_opt
+	{
 		$$ = append($1, $2...)
 	}
 

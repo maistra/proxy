@@ -62,12 +62,17 @@ func main() {
 // run returns an error if there is a problem loading the package or if any
 // analysis fails.
 func run(args []string) error {
+	args, err := expandParamsFiles(args)
+	if err != nil {
+		return fmt.Errorf("error reading paramfiles: %v", err)
+	}
+
 	factMap := factMultiFlag{}
 	flags := flag.NewFlagSet("nogo", flag.ExitOnError)
 	flags.Var(&factMap, "fact", "Import path and file containing facts for that library, separated by '=' (may be repeated)'")
 	importcfg := flags.String("importcfg", "", "The import configuration file")
 	packagePath := flags.String("p", "", "The package path (importmap) of the package being compiled")
-	xPath := flags.String("x", "", "The file where serialized facts should be written")
+	xPath := flags.String("x", "", "The archive file where serialized facts should be written")
 	flags.Parse(args)
 	srcs := flags.Args()
 
@@ -381,7 +386,13 @@ func checkAnalysisResults(actions []*action, pkg *goPackage) string {
 		}
 		// Discard diagnostics based on the analyzer configuration.
 		for _, d := range act.diagnostics {
-			filename := pkg.fset.File(d.Pos).Name()
+			// NOTE(golang.org/issue/31008): nilness does not set positions,
+			// so don't assume the position is valid.
+			f := pkg.fset.File(d.Pos)
+			filename := "-"
+			if f != nil {
+				filename = f.Name()
+			}
 			include := true
 			if len(config.onlyFiles) > 0 {
 				// This analyzer emits diagnostics for only a set of files.
@@ -502,8 +513,8 @@ func (i *importer) Import(path string) (*types.Package, error) {
 }
 
 func (i *importer) readFacts(path string) ([]byte, error) {
-	factPath := i.factMap[path]
-	if factPath == "" {
+	archive := i.factMap[path]
+	if archive == "" {
 		// Packages that were not built with the nogo toolchain will not be
 		// analyzed, so there's no opportunity to store facts. This includes
 		// packages in the standard library and packages built with go_tool_library,
@@ -513,11 +524,18 @@ func (i *importer) readFacts(path string) ([]byte, error) {
 		// fmt.Printf accepts a format string.
 		return nil, nil
 	}
-	data, err := ioutil.ReadFile(factPath)
-	if err != nil {
-		return nil, fmt.Errorf("could not read analysis facts for %q: %v", factPath, err)
+	factReader, err := readFileInArchive(nogoFact, archive)
+	if os.IsNotExist(err) {
+		// Packages that were not built with the nogo toolchain will not be
+		// analyzed, so there's no opportunity to store facts. This includes
+		// packages in the standard library and packages built with go_tool_library,
+		// such as coverdata.
+		return nil, nil
+	} else if err != nil {
+		return nil, err
 	}
-	return data, nil
+	defer factReader.Close()
+	return ioutil.ReadAll(factReader)
 }
 
 type factMultiFlag map[string]string

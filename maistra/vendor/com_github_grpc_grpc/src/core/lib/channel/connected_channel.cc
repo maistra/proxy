@@ -38,13 +38,12 @@ typedef struct connected_channel_channel_data {
   grpc_transport* transport;
 } channel_data;
 
-typedef struct {
+struct callback_state {
   grpc_closure closure;
   grpc_closure* original_closure;
   grpc_core::CallCombiner* call_combiner;
   const char* reason;
-} callback_state;
-
+};
 typedef struct connected_channel_call_data {
   grpc_core::CallCombiner* call_combiner;
   // Closures used for returning results on the call combiner.
@@ -91,9 +90,12 @@ static callback_state* get_state_for_batch(
 /* We perform a small hack to locate transport data alongside the connected
    channel data in call allocations, to allow everything to be pulled in minimal
    cache line requests */
-#define TRANSPORT_STREAM_FROM_CALL_DATA(calld) ((grpc_stream*)((calld) + 1))
+#define TRANSPORT_STREAM_FROM_CALL_DATA(calld) \
+  ((grpc_stream*)(((char*)(calld)) +           \
+                  GPR_ROUND_UP_TO_ALIGNMENT_SIZE(sizeof(call_data))))
 #define CALL_DATA_FROM_TRANSPORT_STREAM(transport_stream) \
-  (((call_data*)(transport_stream)) - 1)
+  ((call_data*)(((char*)(transport_stream)) -             \
+                GPR_ROUND_UP_TO_ALIGNMENT_SIZE(sizeof(call_data))))
 
 /* Intercept a call operation and either push it directly up or translate it
    into transport stream operations */
@@ -167,7 +169,7 @@ static void set_pollset_or_pollset_set(grpc_call_element* elem,
 
 /* Destructor for call_data */
 static void connected_channel_destroy_call_elem(
-    grpc_call_element* elem, const grpc_call_final_info* final_info,
+    grpc_call_element* elem, const grpc_call_final_info* /*final_info*/,
     grpc_closure* then_schedule_closure) {
   call_data* calld = static_cast<call_data*>(elem->call_data);
   channel_data* chand = static_cast<channel_data*>(elem->channel_data);
@@ -195,7 +197,8 @@ static void connected_channel_destroy_channel_elem(grpc_channel_element* elem) {
 
 /* No-op. */
 static void connected_channel_get_channel_info(
-    grpc_channel_element* elem, const grpc_channel_info* channel_info) {}
+    grpc_channel_element* /*elem*/, const grpc_channel_info* /*channel_info*/) {
+}
 
 const grpc_channel_filter grpc_connected_filter = {
     connected_channel_start_transport_stream_op_batch,

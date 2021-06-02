@@ -1,6 +1,7 @@
 #include "eval/eval/create_list_step.h"
 
-#include "eval/eval/container_backed_list_impl.h"
+#include "absl/status/statusor.h"
+#include "eval/public/containers/container_backed_list_impl.h"
 
 namespace google {
 namespace api {
@@ -37,7 +38,7 @@ absl::Status CreateListStep::Evaluate(ExecutionFrame* frame) const {
 
   const UnknownSet* unknown_set = nullptr;
   if (frame->enable_unknowns()) {
-    unknown_set = frame->unknowns_utility().MergeUnknowns(
+    unknown_set = frame->attribute_utility().MergeUnknowns(
         args, frame->value_stack().GetAttributeSpan(list_size_),
         /*initial_set=*/nullptr,
         /*use_partial=*/true);
@@ -61,7 +62,7 @@ absl::Status CreateListStep::Evaluate(ExecutionFrame* frame) const {
 }  // namespace
 
 // Factory method for CreateList - based Execution step
-cel_base::StatusOr<std::unique_ptr<ExpressionStep>> CreateCreateListStep(
+absl::StatusOr<std::unique_ptr<ExpressionStep>> CreateCreateListStep(
     const google::api::expr::v1alpha1::Expr::CreateList* create_list_expr,
     int64_t expr_id) {
   std::unique_ptr<ExpressionStep> step = absl::make_unique<CreateListStep>(

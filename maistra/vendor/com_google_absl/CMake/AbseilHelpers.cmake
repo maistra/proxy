@@ -23,7 +23,9 @@ include(AbseilInstallDirs)
 # project that sets
 #    set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 # For example, Visual Studio supports folders.
-set(ABSL_IDE_FOLDER Abseil)
+if(NOT DEFINED ABSL_IDE_FOLDER)
+  set(ABSL_IDE_FOLDER Abseil)
+endif()
 
 # absl_cc_library()
 #
@@ -120,7 +122,11 @@ function(absl_cc_library)
   # 4. "static"  -- This target does not depend on the DLL and should be built
   #                 statically.
   if (${ABSL_BUILD_DLL})
-    absl_internal_dll_contains(TARGET ${_NAME} OUTPUT _in_dll)
+    if(ABSL_ENABLE_INSTALL)
+      absl_internal_dll_contains(TARGET ${_NAME} OUTPUT _in_dll)
+    else()
+      absl_internal_dll_contains(TARGET ${ABSL_CC_LIB_NAME} OUTPUT _in_dll)
+    endif()
     if (${_in_dll})
       # This target should be replaced by the DLL
       set(_build_type "dll")
@@ -133,6 +139,47 @@ function(absl_cc_library)
     set(_build_type "shared")
   else()
     set(_build_type "static")
+  endif()
+
+  # Generate a pkg-config file for every library:
+  if(${_build_type} STREQUAL "static" OR ${_build_type} STREQUAL "shared")
+    if(NOT ABSL_CC_LIB_TESTONLY)
+      if(absl_VERSION)
+        set(PC_VERSION "${absl_VERSION}")
+      else()
+        set(PC_VERSION "head")
+      endif()
+      foreach(dep ${ABSL_CC_LIB_DEPS})
+        if(${dep} MATCHES "^absl::(.*)")
+          set(PC_DEPS "${PC_DEPS} absl_${CMAKE_MATCH_1} = ${PC_VERSION}")
+        endif()
+      endforeach()
+      foreach(cflag ${ABSL_CC_LIB_COPTS})
+        if(${cflag} MATCHES "^(-Wno|/wd)")
+          # These flags are needed to suppress warnings that might fire in our headers.
+          set(PC_CFLAGS "${PC_CFLAGS} ${cflag}")
+        elseif(${cflag} MATCHES "^(-W|/w[1234eo])")
+          # Don't impose our warnings on others.
+        else()
+          set(PC_CFLAGS "${PC_CFLAGS} ${cflag}")
+        endif()
+      endforeach()
+      FILE(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/lib/pkgconfig/absl_${_NAME}.pc" CONTENT "\
+prefix=${CMAKE_INSTALL_PREFIX}\n\
+exec_prefix=\${prefix}\n\
+libdir=\${prefix}/lib\n\
+includedir=\${prefix}/include\n\
+\n\
+Name: absl_${_NAME}\n\
+Description: Abseil ${_NAME} library\n\
+URL: https://abseil.io/\n\
+Version: ${PC_VERSION}\n\
+Requires.private:${PC_DEPS}\n\
+Libs: -L\${libdir} $<JOIN:${ABSL_CC_LIB_LINKOPTS}, > $<$<NOT:$<BOOL:${ABSL_CC_LIB_IS_INTERFACE}>>:-labsl_${_NAME}>\n\
+Cflags: -I\${includedir}${PC_CFLAGS}\n")
+      INSTALL(FILES "${CMAKE_BINARY_DIR}/lib/pkgconfig/absl_${_NAME}.pc"
+              DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/pkgconfig")
+    endif()
   endif()
 
   if(NOT ABSL_CC_LIB_IS_INTERFACE)
@@ -213,6 +260,8 @@ function(absl_cc_library)
     if(ABSL_ENABLE_INSTALL)
       set_target_properties(${_NAME} PROPERTIES
         OUTPUT_NAME "absl_${_NAME}"
+        # TODO(b/173696973): Figure out how to set SOVERSION for LTS releases.
+        SOVERSION 0
       )
     endif()
   else()

@@ -2,13 +2,12 @@
 #define THIRD_PARTY_CEL_CPP_EVAL_PUBLIC_CEL_FUNCTION_ADAPTER_H_
 #include <functional>
 
-#include "google/protobuf/duration.pb.h"
-#include "google/protobuf/timestamp.pb.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "eval/public/cel_function.h"
 #include "eval/public/cel_function_registry.h"
-#include "base/statusor.h"
+#include "eval/public/structs/cel_proto_wrapper.h"
 
 namespace google {
 namespace api {
@@ -85,7 +84,7 @@ class FunctionAdapter : public CelFunction {
   FunctionAdapter(const CelFunctionDescriptor& descriptor, FuncType handler)
       : CelFunction(descriptor), handler_(std::move(handler)) {}
 
-  static cel_base::StatusOr<std::unique_ptr<CelFunction>> Create(
+  static absl::StatusOr<std::unique_ptr<CelFunction>> Create(
       absl::string_view name, bool receiver_type,
       std::function<ReturnType(::google::protobuf::Arena*, Arguments...)> handler) {
     std::vector<CelValue::Type> arg_types;
@@ -243,7 +242,7 @@ class FunctionAdapter : public CelFunction {
       return absl::Status(absl::StatusCode::kInvalidArgument,
                           "Null Message pointer returned");
     }
-    *result = CelValue::CreateMessage(value, arena);
+    *result = CelProtoWrapper::CreateMessage(value, arena);
     return absl::OkStatus();
   }
 
@@ -267,6 +266,12 @@ class FunctionAdapter : public CelFunction {
     return absl::OkStatus();
   }
 
+  static absl::Status CreateReturnValue(CelValue::CelTypeHolder value,
+                                        ::google::protobuf::Arena*, CelValue* result) {
+    *result = CelValue::CreateCelType(value);
+    return absl::OkStatus();
+  }
+
   static absl::Status CreateReturnValue(const CelError* value, ::google::protobuf::Arena*,
                                         CelValue* result) {
     if (value == nullptr) {
@@ -284,7 +289,7 @@ class FunctionAdapter : public CelFunction {
   }
 
   template <typename T>
-  static absl::Status CreateReturnValue(const cel_base::StatusOr<T>& value,
+  static absl::Status CreateReturnValue(const absl::StatusOr<T>& value,
                                         ::google::protobuf::Arena*, CelValue*) {
     if (!value) {
       return value.status();

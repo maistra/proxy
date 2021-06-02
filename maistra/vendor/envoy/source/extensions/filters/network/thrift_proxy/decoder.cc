@@ -1,9 +1,8 @@
 #include "extensions/filters/network/thrift_proxy/decoder.h"
 
-#include <unordered_map>
-
 #include "envoy/common/exception.h"
 
+#include "common/buffer/buffer_impl.h"
 #include "common/common/assert.h"
 #include "common/common/macros.h"
 
@@ -14,8 +13,22 @@ namespace Extensions {
 namespace NetworkFilters {
 namespace ThriftProxy {
 
+// PassthroughData -> PassthroughData
+// PassthroughData -> MessageEnd (all body bytes received)
+DecoderStateMachine::DecoderStatus DecoderStateMachine::passthroughData(Buffer::Instance& buffer) {
+  if (body_bytes_ > buffer.length()) {
+    return {ProtocolState::WaitForData};
+  }
+
+  Buffer::OwnedImpl body;
+  body.move(buffer, body_bytes_);
+
+  return {ProtocolState::MessageEnd, handler_.passthroughData(body)};
+}
+
 // MessageBegin -> StructBegin
 DecoderStateMachine::DecoderStatus DecoderStateMachine::messageBegin(Buffer::Instance& buffer) {
+  const auto total = buffer.length();
   if (!proto_.readMessageBegin(buffer, *metadata_)) {
     return {ProtocolState::WaitForData};
   }
@@ -23,7 +36,14 @@ DecoderStateMachine::DecoderStatus DecoderStateMachine::messageBegin(Buffer::Ins
   stack_.clear();
   stack_.emplace_back(Frame(ProtocolState::MessageEnd));
 
-  return {ProtocolState::StructBegin, handler_.messageBegin(metadata_)};
+  const auto status = handler_.messageBegin(metadata_);
+
+  if (callbacks_.passthroughEnabled()) {
+    body_bytes_ = metadata_->frameSize() - (total - buffer.length());
+    return {ProtocolState::PassthroughData, status};
+  }
+
+  return {ProtocolState::StructBegin, status};
 }
 
 // MessageEnd -> Done
@@ -111,13 +131,16 @@ DecoderStateMachine::DecoderStatus DecoderStateMachine::listBegin(Buffer::Instan
 // ListValue -> ListEnd
 DecoderStateMachine::DecoderStatus DecoderStateMachine::listValue(Buffer::Instance& buffer) {
   ASSERT(!stack_.empty());
-  Frame& frame = stack_.back();
-  if (frame.remaining_ == 0) {
+  const uint32_t index = stack_.size() - 1;
+  if (stack_[index].remaining_ == 0) {
     return {popReturnState(), FilterStatus::Continue};
   }
-  frame.remaining_--;
+  DecoderStatus status = handleValue(buffer, stack_[index].elem_type_, ProtocolState::ListValue);
+  if (status.next_state_ != ProtocolState::WaitForData) {
+    stack_[index].remaining_--;
+  }
 
-  return handleValue(buffer, frame.elem_type_, ProtocolState::ListValue);
+  return status;
 }
 
 // ListEnd -> stack's return state
@@ -159,11 +182,14 @@ DecoderStateMachine::DecoderStatus DecoderStateMachine::mapKey(Buffer::Instance&
 // MapValue -> MapKey
 DecoderStateMachine::DecoderStatus DecoderStateMachine::mapValue(Buffer::Instance& buffer) {
   ASSERT(!stack_.empty());
-  Frame& frame = stack_.back();
-  ASSERT(frame.remaining_ != 0);
-  frame.remaining_--;
+  const uint32_t index = stack_.size() - 1;
+  ASSERT(stack_[index].remaining_ != 0);
+  DecoderStatus status = handleValue(buffer, stack_[index].value_type_, ProtocolState::MapKey);
+  if (status.next_state_ != ProtocolState::WaitForData) {
+    stack_[index].remaining_--;
+  }
 
-  return handleValue(buffer, frame.value_type_, ProtocolState::MapKey);
+  return status;
 }
 
 // MapEnd -> stack's return state
@@ -193,13 +219,16 @@ DecoderStateMachine::DecoderStatus DecoderStateMachine::setBegin(Buffer::Instanc
 // SetValue -> SetEnd
 DecoderStateMachine::DecoderStatus DecoderStateMachine::setValue(Buffer::Instance& buffer) {
   ASSERT(!stack_.empty());
-  Frame& frame = stack_.back();
-  if (frame.remaining_ == 0) {
+  const uint32_t index = stack_.size() - 1;
+  if (stack_[index].remaining_ == 0) {
     return {popReturnState(), FilterStatus::Continue};
   }
-  frame.remaining_--;
+  DecoderStatus status = handleValue(buffer, stack_[index].elem_type_, ProtocolState::SetValue);
+  if (status.next_state_ != ProtocolState::WaitForData) {
+    stack_[index].remaining_--;
+  }
 
-  return handleValue(buffer, frame.elem_type_, ProtocolState::SetValue);
+  return status;
 }
 
 // SetEnd -> stack's return state
@@ -286,6 +315,8 @@ DecoderStateMachine::DecoderStatus DecoderStateMachine::handleValue(Buffer::Inst
 
 DecoderStateMachine::DecoderStatus DecoderStateMachine::handleState(Buffer::Instance& buffer) {
   switch (state_) {
+  case ProtocolState::PassthroughData:
+    return passthroughData(buffer);
   case ProtocolState::MessageBegin:
     return messageBegin(buffer);
   case ProtocolState::StructBegin:
@@ -409,7 +440,7 @@ FilterStatus Decoder::onData(Buffer::Instance& data, bool& buffer_underflow) {
     request_ = std::make_unique<ActiveRequest>(callbacks_.newDecoderEventHandler());
     frame_started_ = true;
     state_machine_ =
-        std::make_unique<DecoderStateMachine>(protocol_, metadata_, request_->handler_);
+        std::make_unique<DecoderStateMachine>(protocol_, metadata_, request_->handler_, callbacks_);
 
     if (request_->handler_.transportBegin(metadata_) == FilterStatus::StopIteration) {
       return FilterStatus::StopIteration;

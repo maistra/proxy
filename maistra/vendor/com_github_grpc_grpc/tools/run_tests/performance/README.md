@@ -1,7 +1,7 @@
 # Overview of performance test suite, with steps for manual runs:
 
 For design of the tests, see
-https://grpc.io/docs/guides/benchmarking.html.
+https://grpc.io/docs/guides/benchmarking.
 
 ## Pre-reqs for running these manually:
 In general the benchmark workers and driver build scripts expect
@@ -48,7 +48,7 @@ $ tools/run_tests/performance/run_worker_<language>.sh
 
 ```
 $ cd <grpc-java-repo>
-$ ./gradlew -PskipCodegen=true :grpc-benchmarks:installDist
+$ ./gradlew -PskipCodegen=true -PskipAndroid=true :grpc-benchmarks:installDist
 $ benchmarks/build/install/grpc-benchmarks/bin/benchmark_worker --driver_port <driver_port>
 ```
 

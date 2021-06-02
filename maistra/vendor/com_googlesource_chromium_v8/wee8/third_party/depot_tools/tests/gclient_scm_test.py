@@ -214,9 +214,6 @@ from :3
     self.relpath = '.'
     self.base_path = join(self.root_dir, self.relpath)
     self.enabled = self.CreateGitRepo(self.sample_git_import, self.base_path)
-    self._original_GitBinaryExists = gclient_scm.GitWrapper.BinaryExists
-    mock.patch('gclient_scm.GitWrapper.BinaryExists',
-               staticmethod(lambda : True)).start()
     mock.patch('sys.stdout', StringIO()).start()
     self.addCleanup(mock.patch.stopall)
     self.addCleanup(gclient_utils.rmtree, self.root_dir)
@@ -984,6 +981,79 @@ class CipdWrapperTestCase(unittest.TestCase):
     scm.update(None, (), [])
 
 
+class BranchHeadsFakeRepo(fake_repos.FakeReposBase):
+  def populateGit(self):
+    # Creates a tree that looks like this:
+    #
+    #    5 refs/branch-heads/5
+    #    |
+    #    4
+    #    |
+    # 1--2--3 refs/heads/master
+    self._commit_git('repo_1', {'commit 1': 'touched'})
+    self._commit_git('repo_1', {'commit 2': 'touched'})
+    self._commit_git('repo_1', {'commit 3': 'touched'})
+    self._create_ref('repo_1', 'refs/heads/master', 3)
+
+    self._commit_git('repo_1', {'commit 4': 'touched'}, base=2)
+    self._commit_git('repo_1', {'commit 5': 'touched'}, base=2)
+    self._create_ref('repo_1', 'refs/branch-heads/5', 5)
+
+
+class BranchHeadsTest(fake_repos.FakeReposTestBase):
+  FAKE_REPOS_CLASS = BranchHeadsFakeRepo
+
+  def setUp(self):
+    super(BranchHeadsTest, self).setUp()
+    self.enabled = self.FAKE_REPOS.set_up_git()
+    self.options = BaseGitWrapperTestCase.OptionsObject()
+    self.url = self.git_base + 'repo_1'
+    self.mirror = None
+    mock.patch('sys.stdout', StringIO()).start()
+    self.addCleanup(mock.patch.stopall)
+
+  def setUpMirror(self):
+    self.mirror = tempfile.mkdtemp('mirror')
+    git_cache.Mirror.SetCachePath(self.mirror)
+    self.addCleanup(gclient_utils.rmtree, self.mirror)
+    self.addCleanup(git_cache.Mirror.SetCachePath, None)
+
+  def testCheckoutBranchHeads(self):
+    scm = gclient_scm.GitWrapper(self.url, self.root_dir, '.')
+    file_list = []
+
+    self.options.revision = 'refs/branch-heads/5'
+    scm.update(self.options, None, file_list)
+    self.assertEqual(self.githash('repo_1', 5), self.gitrevparse(self.root_dir))
+
+  def testCheckoutUpdatedBranchHeads(self):
+    # Travel back in time, and set refs/branch-heads/5 to its parent.
+    subprocess2.check_call(
+        ['git', 'update-ref', 'refs/branch-heads/5', self.githash('repo_1', 4)],
+        cwd=self.url)
+
+    # Sync to refs/branch-heads/5
+    scm = gclient_scm.GitWrapper(self.url, self.root_dir, '.')
+    self.options.revision = 'refs/branch-heads/5'
+    scm.update(self.options, None, [])
+
+    # Set refs/branch-heads/5 back to its original value.
+    subprocess2.check_call(
+        ['git', 'update-ref', 'refs/branch-heads/5', self.githash('repo_1', 5)],
+        cwd=self.url)
+
+    # Attempt to sync to refs/branch-heads/5 again.
+    self.testCheckoutBranchHeads()
+
+  def testCheckoutBranchHeadsMirror(self):
+    self.setUpMirror()
+    self.testCheckoutBranchHeads()
+
+  def testCheckoutUpdatedBranchHeadsMirror(self):
+    self.setUpMirror()
+    self.testCheckoutUpdatedBranchHeads()
+
+
 class GerritChangesFakeRepo(fake_repos.FakeReposBase):
   def populateGit(self):
     # Creates a tree that looks like this:
@@ -1052,7 +1122,7 @@ class GerritChangesTest(fake_repos.FakeReposTestBase):
     self.options = BaseGitWrapperTestCase.OptionsObject()
     self.url = self.git_base + 'repo_1'
     self.mirror = None
-    mock.patch('sys.stdout').start()
+    mock.patch('sys.stdout', StringIO()).start()
     self.addCleanup(mock.patch.stopall)
 
   def setUpMirror(self):

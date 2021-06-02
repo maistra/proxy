@@ -78,19 +78,25 @@ TEST_F(DynamicOpenTracingDriverTest, DISABLED_InitializeDriver) {
 // See https://github.com/envoyproxy/envoy/issues/7647 for the discussion
 // TODO (dmitri-d) there currently isn't a way to resolve this: some tests will fail when libstdc++ is
 // dynamically linked, this test fails when it's statically linked
-TEST_F(DynamicOpenTracingDriverTest, DISABLED_FlushSpans) {
+#ifndef GCC_COMPILER
+TEST_F(DynamicOpenTracingDriverTest, FlushSpans) {
   setupValidDriver();
 
-  Tracing::SpanPtr first_span = driver_->startSpan(config_, request_headers_, operation_name_,
-                                                   start_time_, {Tracing::Reason::Sampling, true});
-  first_span->finishSpan();
-  driver_->tracer().Close();
+  {
+    Tracing::SpanPtr first_span = driver_->startSpan(
+        config_, request_headers_, operation_name_, start_time_, {Tracing::Reason::Sampling, true});
+    first_span->finishSpan();
+    driver_->tracer().Close();
+  }
+
+  driver_ = nullptr;
 
   const Json::ObjectSharedPtr spans_json =
       TestEnvironment::jsonLoadFromString(TestEnvironment::readFileToStringForTest(spans_file_));
   EXPECT_NE(spans_json, nullptr);
   EXPECT_EQ(spans_json->asObjectArray().size(), 1);
 }
+#endif
 
 } // namespace
 } // namespace DynamicOt

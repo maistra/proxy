@@ -13,16 +13,12 @@
 # limitations under the License.
 
 load(
-    "@io_bazel_rules_go//go/private:context.bzl",
+    "//go/private:context.bzl",
     "go_context",
 )
 load(
-    "@io_bazel_rules_go//go/private:providers.bzl",
+    "//go/private:providers.bzl",
     "GoLibrary",
-)
-load(
-    "@io_bazel_rules_go//go/private:rules/rule.bzl",
-    "go_rule",
 )
 
 def _go_source_impl(ctx):
@@ -38,15 +34,17 @@ def _go_source_impl(ctx):
         ),
     ]
 
-go_source = go_rule(
-    _go_source_impl,
-    bootstrap = True,
+go_source = rule(
+    implementation = _go_source_impl,
     attrs = {
         "data": attr.label_list(allow_files = True),
         "srcs": attr.label_list(allow_files = True),
         "deps": attr.label_list(providers = [GoLibrary]),
         "embed": attr.label_list(providers = [GoLibrary]),
         "gc_goopts": attr.string_list(),
+        "_go_config": attr.label(default = "//:go_config"),
+        "_cgo_context_data": attr.label(default = "//:cgo_context_data_proxy"),
     },
+    toolchains = ["@io_bazel_rules_go//go:toolchain"],
 )
-"""See go/core.rst#go_source for full documentation."""
+# See go/core.rst#go_source for full documentation.

@@ -13,22 +13,19 @@
 # limitations under the License.
 
 load(
-    "@io_bazel_rules_go//go/private:context.bzl",
+    "//go/private:context.bzl",
     "go_context",
 )
 load(
-    "@io_bazel_rules_go//go/private:providers.bzl",
+    "//go/private:providers.bzl",
     "EXPORT_PATH",
-)
-load(
-    "@io_bazel_rules_go//go/private:rules/rule.bzl",
-    "go_rule",
-)
-load(
-    "@io_bazel_rules_go//go/private:providers.bzl",
     "GoArchive",
     "GoLibrary",
     "get_archive",
+)
+load(
+    "//go/private/rules:transition.bzl",
+    "go_reset_transition",
 )
 
 def _nogo_impl(ctx):
@@ -39,7 +36,7 @@ def _nogo_impl(ctx):
 
     # Generate the source for the nogo binary.
     go = go_context(ctx)
-    nogo_main = go.declare_file(go, "nogo_main.go")
+    nogo_main = go.declare_file(go, path = "nogo_main.go")
     nogo_args = ctx.actions.args()
     nogo_args.add("gennogomain")
     nogo_args.add("-output", nogo_main)
@@ -86,12 +83,8 @@ def _nogo_impl(ctx):
         executable = executable,
     )]
 
-nogo = go_rule(
-    _nogo_impl,
-    bootstrap_attrs = [
-        "_builders",
-        "_stdlib",
-    ],
+nogo = rule(
+    implementation = _nogo_impl,
     attrs = {
         "deps": attr.label_list(
             providers = [GoArchive],
@@ -102,7 +95,15 @@ nogo = go_rule(
         "_nogo_srcs": attr.label(
             default = "@io_bazel_rules_go//go/tools/builders:nogo_srcs",
         ),
+        "_cgo_context_data": attr.label(default = "//:cgo_context_data_proxy"),
+        "_go_config": attr.label(default = "//:go_config"),
+        "_stdlib": attr.label(default = "//:stdlib"),
+        "_whitelist_function_transition": attr.label(
+            default = "@bazel_tools//tools/whitelists/function_transition_whitelist",
+        ),
     },
+    toolchains = ["@io_bazel_rules_go//go:toolchain"],
+    cfg = go_reset_transition,
 )
 
 def nogo_wrapper(**kwargs):

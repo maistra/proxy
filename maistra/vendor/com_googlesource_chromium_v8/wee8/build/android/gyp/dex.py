@@ -22,6 +22,16 @@ sys.path.insert(1, os.path.join(os.path.dirname(__file__), os.path.pardir))
 import convert_dex_profile
 
 
+_IGNORE_WARNINGS = (
+    # Caused by Play Services:
+    r'Type `libcore.io.Memory` was not found',
+    # Filter out warnings caused by our fake main dex list used to enable
+    # multidex on library targets.
+    # Warning: Application does not contain `Foo` as referenced in main-dex-list
+    r'does not contain `Foo`',
+)
+
+
 def _ParseArgs(args):
   args = build_utils.ExpandFileArgs(args)
   parser = argparse.ArgumentParser()
@@ -52,7 +62,24 @@ def _ParseArgs(args):
       '--multi-dex',
       action='store_true',
       help='Allow multiple dex files within output.')
+  parser.add_argument('--library',
+                      action='store_true',
+                      help='Allow numerous dex files within output.')
   parser.add_argument('--r8-jar-path', required=True, help='Path to R8 jar.')
+  parser.add_argument('--desugar', action='store_true')
+  parser.add_argument(
+      '--bootclasspath',
+      action='append',
+      help='GN-list of bootclasspath. Needed for --desugar')
+  parser.add_argument(
+      '--desugar-jdk-libs-json', help='Path to desugar_jdk_libs.json.')
+  parser.add_argument('--show-desugar-default-interface-warnings',
+                      action='store_true',
+                      help='Enable desugaring warnings.')
+  parser.add_argument(
+      '--classpath',
+      action='append',
+      help='GN-list of full classpath. Needed for --desugar')
   parser.add_argument(
       '--release',
       action='store_true',
@@ -61,6 +88,12 @@ def _ParseArgs(args):
       'main dex and keeps all line number information, and then some.')
   parser.add_argument(
       '--min-api', help='Minimum Android API level compatibility.')
+  parser.add_argument('--force-enable-assertions',
+                      action='store_true',
+                      help='Forcefully enable javac generated assertion code.')
+  parser.add_argument('--warnings-as-errors',
+                      action='store_true',
+                      help='Treat all warnings as errors.')
 
   group = parser.add_argument_group('Dexlayout')
   group.add_argument(
@@ -98,6 +131,8 @@ def _ParseArgs(args):
   options.class_inputs = build_utils.ParseGnList(options.class_inputs)
   options.class_inputs_filearg = build_utils.ParseGnList(
       options.class_inputs_filearg)
+  options.bootclasspath = build_utils.ParseGnList(options.bootclasspath)
+  options.classpath = build_utils.ParseGnList(options.classpath)
   options.dex_inputs = build_utils.ParseGnList(options.dex_inputs)
   options.dex_inputs_filearg = build_utils.ParseGnList(
       options.dex_inputs_filearg)
@@ -105,9 +140,52 @@ def _ParseArgs(args):
   return options
 
 
-def _RunD8(dex_cmd, input_paths, output_path):
+def CreateStderrFilter(show_desugar_default_interface_warnings):
+  def filter_stderr(output):
+    patterns = _IGNORE_WARNINGS
+    # When using Bazel's Desugar tool to desugar lambdas and interface methods,
+    # we do not provide D8 with a classpath, which causes a lot of warnings
+    # from D8's default interface desugaring pass.
+    # Not having a classpath makes incremental dexing much more effective.
+    # D8 still does backported method desugaring.
+    if not show_desugar_default_interface_warnings:
+      patterns = list(patterns) + ['default or static interface methods']
+
+    combined_pattern = '|'.join(re.escape(p) for p in patterns)
+    output = build_utils.FilterLines(output, combined_pattern)
+
+    # Each warning has a prefix line of the file it's from. If we've filtered
+    # out the warning, then also filter out the file header.
+    # E.g.:
+    # Warning in path/to/Foo.class:
+    #   Error message #1 indented here.
+    #   Error message #2 indented here.
+    output = re.sub(r'^Warning in .*?:\n(?!  )', '', output, flags=re.MULTILINE)
+    return output
+
+  return filter_stderr
+
+
+def _RunD8(dex_cmd, input_paths, output_path, warnings_as_errors,
+           show_desugar_default_interface_warnings):
   dex_cmd = dex_cmd + ['--output', output_path] + input_paths
-  build_utils.CheckOutput(dex_cmd, print_stderr=False)
+
+  stderr_filter = CreateStderrFilter(show_desugar_default_interface_warnings)
+
+  with tempfile.NamedTemporaryFile() as flag_file:
+    # Chosen arbitrarily. Needed to avoid command-line length limits.
+    MAX_ARGS = 50
+    if len(dex_cmd) > MAX_ARGS:
+      flag_file.write('\n'.join(dex_cmd[MAX_ARGS:]))
+      flag_file.flush()
+      dex_cmd = dex_cmd[:MAX_ARGS]
+      dex_cmd.append('@' + flag_file.name)
+
+    # stdout sometimes spams with things like:
+    # Stripped invalid locals information from 1 method.
+    build_utils.CheckOutput(dex_cmd,
+                            stderr_filter=stderr_filter,
+                            fail_on_output=warnings_as_errors)
 
 
 def _EnvWithArtLibPath(binary_path):
@@ -206,7 +284,7 @@ def _ZipMultidex(file_dir, dex_files):
   """
   ordered_files = []  # List of (archive name, file name)
   for f in dex_files:
-    if f.endswith('classes.dex.zip'):
+    if f.endswith('dex.jar'):
       ordered_files.append(('classes.dex', f))
       break
   if not ordered_files:
@@ -271,15 +349,25 @@ def _PerformDexlayout(tmp_dir, tmp_dex_output, options):
 
 def _CreateFinalDex(d8_inputs, output, tmp_dir, dex_cmd, options=None):
   tmp_dex_output = os.path.join(tmp_dir, 'tmp_dex_output.zip')
-  if (output.endswith('.dex')
-      or not all(f.endswith('.dex') for f in d8_inputs)):
-    if options and options.main_dex_list_path:
-      # Provides a list of classes that should be included in the main dex file.
-      dex_cmd = dex_cmd + ['--main-dex-list', options.main_dex_list_path]
+  needs_dexing = not all(f.endswith('.dex') for f in d8_inputs)
+  needs_dexmerge = output.endswith('.dex') or not (options and options.library)
+  if needs_dexing or needs_dexmerge:
+    if options:
+      if options.main_dex_list_path:
+        dex_cmd = dex_cmd + ['--main-dex-list', options.main_dex_list_path]
+      elif options.library and int(options.min_api or 1) < 21:
+        # When dexing D8 requires a main dex list pre-21. For library targets,
+        # it doesn't matter what's in the main dex, so just use a dummy one.
+        tmp_main_dex_list_path = os.path.join(tmp_dir, 'main_list.txt')
+        with open(tmp_main_dex_list_path, 'w') as f:
+          f.write('Foo.class\n')
+        dex_cmd = dex_cmd + ['--main-dex-list', tmp_main_dex_list_path]
 
     tmp_dex_dir = os.path.join(tmp_dir, 'tmp_dex_dir')
     os.mkdir(tmp_dex_dir)
-    _RunD8(dex_cmd, d8_inputs, tmp_dex_dir)
+    _RunD8(dex_cmd, d8_inputs, tmp_dex_dir,
+           (not options or options.warnings_as_errors),
+           (options and options.show_desugar_default_interface_warnings))
     logging.debug('Performed dex merging')
 
     dex_files = [os.path.join(tmp_dex_dir, f) for f in os.listdir(tmp_dex_dir)]
@@ -342,12 +430,16 @@ def _CreateIntermediateDexFiles(changes, options, tmp_dir, dex_cmd):
   tmp_extract_dir = os.path.join(tmp_dir, 'tmp_extract_dir')
   os.mkdir(tmp_extract_dir)
 
-  # Check whether changes were to a non-jar file, requiring full re-dex.
-  # E.g. r8.jar updated.
-  rebuild_all = changes.HasStringChanges() or not all(
-      p.endswith('.jar') for p in changes.IterChangedPaths())
+  # Do a full rebuild when changes are to classpath or other non-input files.
+  allowed_changed = set(options.class_inputs)
+  allowed_changed.update(options.dex_inputs)
+  strings_changed = changes.HasStringChanges()
+  non_direct_input_changed = next(
+      (p for p in changes.IterChangedPaths() if p not in allowed_changed), None)
 
-  if rebuild_all:
+  if strings_changed or non_direct_input_changed:
+    logging.debug('Full dex required: strings_changed=%s path_changed=%s',
+                  strings_changed, non_direct_input_changed)
     changes = None
   class_files = _ExtractClassFiles(changes, tmp_extract_dir,
                                    options.class_inputs)
@@ -356,8 +448,10 @@ def _CreateIntermediateDexFiles(changes, options, tmp_dir, dex_cmd):
   # If the only change is deleting a file, class_files will be empty.
   if class_files:
     # Dex necessary classes into intermediate dex files.
-    dex_cmd = dex_cmd + ['--intermediate', '--file-per-class']
-    _RunD8(dex_cmd, class_files, options.incremental_dir)
+    dex_cmd = dex_cmd + ['--intermediate', '--file-per-class-file']
+    _RunD8(dex_cmd, class_files, options.incremental_dir,
+           options.warnings_as_errors,
+           options.show_desugar_default_interface_warnings)
     logging.debug('Dexed class files.')
 
 
@@ -378,11 +472,10 @@ def _OnStaleMd5(changes, options, final_dex_inputs, dex_cmd):
 
 
 def MergeDexForIncrementalInstall(r8_jar_path, src_paths, dest_dex_jar):
-  dex_cmd = [
-      build_utils.JAVA_PATH,
-      '-jar',
+  dex_cmd = build_utils.JavaCmd(verify=False) + [
+      '-cp',
       r8_jar_path,
-      'd8',
+      'com.android.tools.r8.D8',
   ]
   with build_utils.TempDir() as tmp_dir:
     _CreateFinalDex(src_paths, dest_dex_jar, tmp_dir, dex_cmd)
@@ -400,36 +493,58 @@ def main(args):
     input_paths.append(options.main_dex_list_path)
   input_paths.append(options.r8_jar_path)
 
+  depfile_deps = options.class_inputs_filearg + options.dex_inputs_filearg
+
   output_paths = [options.output]
 
   if options.incremental_dir:
     final_dex_inputs = _IntermediateDexFilePathsFromInputJars(
         options.class_inputs, options.incremental_dir)
     output_paths += final_dex_inputs
-    track_subpaths_whitelist = options.class_inputs
+    track_subpaths_allowlist = options.class_inputs
   else:
     final_dex_inputs = list(options.class_inputs)
-    track_subpaths_whitelist = None
+    track_subpaths_allowlist = None
   final_dex_inputs += options.dex_inputs
 
-  dex_cmd = [
-      build_utils.JAVA_PATH, '-jar', options.r8_jar_path, 'd8',
-      '--no-desugaring'
+  dex_cmd = build_utils.JavaCmd(options.warnings_as_errors) + [
+      '-cp',
+      options.r8_jar_path,
+      'com.android.tools.r8.D8',
   ]
   if options.release:
     dex_cmd += ['--release']
   if options.min_api:
     dex_cmd += ['--min-api', options.min_api]
 
+  if not options.desugar:
+    dex_cmd += ['--no-desugaring']
+  elif options.classpath:
+    # Don't pass classpath when Desugar.jar is doing interface desugaring.
+    dex_cmd += ['--lib', build_utils.JAVA_HOME]
+    for path in options.bootclasspath:
+      dex_cmd += ['--lib', path]
+    for path in options.classpath:
+      dex_cmd += ['--classpath', path]
+    depfile_deps += options.classpath
+    depfile_deps += options.bootclasspath
+    input_paths += options.classpath
+    input_paths += options.bootclasspath
+
+  if options.desugar_jdk_libs_json:
+    dex_cmd += ['--desugared-lib', options.desugar_jdk_libs_json]
+  if options.force_enable_assertions:
+    dex_cmd += ['--force-enable-assertions']
+
   md5_check.CallAndWriteDepfileIfStale(
       lambda changes: _OnStaleMd5(changes, options, final_dex_inputs, dex_cmd),
       options,
-      depfile_deps=options.class_inputs_filearg + options.dex_inputs_filearg,
-      output_paths=output_paths,
       input_paths=input_paths,
       input_strings=dex_cmd + [bool(options.incremental_dir)],
+      output_paths=output_paths,
       pass_changes=True,
-      track_subpaths_whitelist=track_subpaths_whitelist)
+      track_subpaths_allowlist=track_subpaths_allowlist,
+      depfile_deps=depfile_deps)
 
 
 if __name__ == '__main__':

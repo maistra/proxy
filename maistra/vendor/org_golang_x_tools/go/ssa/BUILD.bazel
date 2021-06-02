@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test", "go_tool_library")
 
 go_library(
-    name = "go_default_library",
+    name = "ssa",
     srcs = [
         "blockopt.go",
         "builder.go",
@@ -28,8 +28,8 @@ go_library(
     importpath = "golang.org/x/tools/go/ssa",
     visibility = ["//visibility:public"],
     deps = [
-        "//go/ast/astutil:go_default_library",
-        "//go/types/typeutil:go_default_library",
+        "//go/ast/astutil",
+        "//go/types/typeutil",
     ],
 )
 
@@ -66,8 +66,14 @@ go_tool_library(
     ],
 )
 
+alias(
+    name = "go_default_library",
+    actual = ":ssa",
+    visibility = ["//visibility:public"],
+)
+
 go_test(
-    name = "go_default_test",
+    name = "ssa_test",
     srcs = [
         "builder_test.go",
         "example_test.go",
@@ -77,57 +83,65 @@ go_test(
         "testmain_test.go",
     ],
     data = glob(["testdata/**"]),
-    embed = [":go_default_library"],
     deps = [
-        "//go/ast/astutil:go_default_library",
-        "//go/expect:go_default_library",
-        "//go/loader:go_default_library",
-        "//go/packages:go_default_library",
-        "//go/ssa/ssautil:go_default_library",
+        ":ssa",
+        "//go/ast/astutil",
+        "//go/expect",
+        "//go/loader",
+        "//go/packages",
+        "//go/ssa/ssautil",
     ] + select({
+        "@io_bazel_rules_go//go/platform:aix": [
+            "//go/buildutil",
+            "//internal/testenv",
+        ],
         "@io_bazel_rules_go//go/platform:darwin": [
-            "//go/buildutil:go_default_library",
-            "//internal/testenv:go_default_library",
+            "//go/buildutil",
+            "//internal/testenv",
         ],
         "@io_bazel_rules_go//go/platform:dragonfly": [
-            "//go/buildutil:go_default_library",
-            "//internal/testenv:go_default_library",
+            "//go/buildutil",
+            "//internal/testenv",
         ],
         "@io_bazel_rules_go//go/platform:freebsd": [
-            "//go/buildutil:go_default_library",
-            "//internal/testenv:go_default_library",
+            "//go/buildutil",
+            "//internal/testenv",
+        ],
+        "@io_bazel_rules_go//go/platform:illumos": [
+            "//go/buildutil",
+            "//internal/testenv",
         ],
         "@io_bazel_rules_go//go/platform:ios": [
-            "//go/buildutil:go_default_library",
-            "//internal/testenv:go_default_library",
+            "//go/buildutil",
+            "//internal/testenv",
+        ],
+        "@io_bazel_rules_go//go/platform:js": [
+            "//go/buildutil",
+            "//internal/testenv",
         ],
         "@io_bazel_rules_go//go/platform:linux": [
-            "//go/buildutil:go_default_library",
-            "//internal/testenv:go_default_library",
-        ],
-        "@io_bazel_rules_go//go/platform:nacl": [
-            "//go/buildutil:go_default_library",
-            "//internal/testenv:go_default_library",
+            "//go/buildutil",
+            "//internal/testenv",
         ],
         "@io_bazel_rules_go//go/platform:netbsd": [
-            "//go/buildutil:go_default_library",
-            "//internal/testenv:go_default_library",
+            "//go/buildutil",
+            "//internal/testenv",
         ],
         "@io_bazel_rules_go//go/platform:openbsd": [
-            "//go/buildutil:go_default_library",
-            "//internal/testenv:go_default_library",
+            "//go/buildutil",
+            "//internal/testenv",
         ],
         "@io_bazel_rules_go//go/platform:plan9": [
-            "//go/buildutil:go_default_library",
-            "//internal/testenv:go_default_library",
+            "//go/buildutil",
+            "//internal/testenv",
         ],
         "@io_bazel_rules_go//go/platform:solaris": [
-            "//go/buildutil:go_default_library",
-            "//internal/testenv:go_default_library",
+            "//go/buildutil",
+            "//internal/testenv",
         ],
         "@io_bazel_rules_go//go/platform:windows": [
-            "//go/buildutil:go_default_library",
-            "//internal/testenv:go_default_library",
+            "//go/buildutil",
+            "//internal/testenv",
         ],
         "//conditions:default": [],
     }),

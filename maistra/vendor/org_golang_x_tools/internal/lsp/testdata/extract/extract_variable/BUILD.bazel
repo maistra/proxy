@@ -1,0 +1,18 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "extract_variable",
+    srcs = [
+        "extract_basic_lit.go",
+        "extract_func_call.go",
+        "extract_scope.go",
+    ],
+    importpath = "golang.org/x/tools/internal/lsp/testdata/extract/extract_variable",
+    visibility = ["//:__subpackages__"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":extract_variable",
+    visibility = ["//:__subpackages__"],
+)

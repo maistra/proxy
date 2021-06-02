@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
 
 go_library(
-    name = "go_default_library",
+    name = "fiximports_lib",
     srcs = ["main.go"],
     importpath = "golang.org/x/tools/cmd/fiximports",
     visibility = ["//visibility:private"],
@@ -9,47 +9,53 @@ go_library(
 
 go_binary(
     name = "fiximports",
-    embed = [":go_default_library"],
+    embed = [":fiximports_lib"],
     visibility = ["//visibility:public"],
 )
 
 go_test(
-    name = "go_default_test",
+    name = "fiximports_test",
     srcs = ["main_test.go"],
-    embed = [":go_default_library"],
+    embed = [":fiximports_lib"],
     deps = select({
+        "@io_bazel_rules_go//go/platform:aix": [
+            "//internal/testenv",
+        ],
         "@io_bazel_rules_go//go/platform:darwin": [
-            "//internal/testenv:go_default_library",
+            "//internal/testenv",
         ],
         "@io_bazel_rules_go//go/platform:dragonfly": [
-            "//internal/testenv:go_default_library",
+            "//internal/testenv",
         ],
         "@io_bazel_rules_go//go/platform:freebsd": [
-            "//internal/testenv:go_default_library",
+            "//internal/testenv",
+        ],
+        "@io_bazel_rules_go//go/platform:illumos": [
+            "//internal/testenv",
         ],
         "@io_bazel_rules_go//go/platform:ios": [
-            "//internal/testenv:go_default_library",
+            "//internal/testenv",
+        ],
+        "@io_bazel_rules_go//go/platform:js": [
+            "//internal/testenv",
         ],
         "@io_bazel_rules_go//go/platform:linux": [
-            "//internal/testenv:go_default_library",
-        ],
-        "@io_bazel_rules_go//go/platform:nacl": [
-            "//internal/testenv:go_default_library",
+            "//internal/testenv",
         ],
         "@io_bazel_rules_go//go/platform:netbsd": [
-            "//internal/testenv:go_default_library",
+            "//internal/testenv",
         ],
         "@io_bazel_rules_go//go/platform:openbsd": [
-            "//internal/testenv:go_default_library",
+            "//internal/testenv",
         ],
         "@io_bazel_rules_go//go/platform:plan9": [
-            "//internal/testenv:go_default_library",
+            "//internal/testenv",
         ],
         "@io_bazel_rules_go//go/platform:solaris": [
-            "//internal/testenv:go_default_library",
+            "//internal/testenv",
         ],
         "@io_bazel_rules_go//go/platform:windows": [
-            "//internal/testenv:go_default_library",
+            "//internal/testenv",
         ],
         "//conditions:default": [],
     }),

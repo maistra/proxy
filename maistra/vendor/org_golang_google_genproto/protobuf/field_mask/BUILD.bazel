@@ -1,0 +1,15 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "field_mask",
+    srcs = ["field_mask.go"],
+    importpath = "google.golang.org/genproto/protobuf/field_mask",
+    visibility = ["//visibility:public"],
+    deps = ["@org_golang_google_protobuf//types/known/fieldmaskpb:go_default_library"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":field_mask",
+    visibility = ["//visibility:public"],
+)

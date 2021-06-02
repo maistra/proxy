@@ -3,40 +3,57 @@ package output_groups
 import (
 	"os"
 	"path/filepath"
+	"runtime"
+	"sort"
 	"strings"
 	"testing"
+
+	"github.com/bazelbuild/rules_go/go/tools/bazel"
 )
 
 func TestCompilationOutputs(t *testing.T) {
-	expectedFiles := map[string]bool{
-		"compilation_outputs_test": true, // test binary; not relevant
-
-		"lib%/lib.a":                          true, // :lib archive
-		"lib_test%/lib.a":                     true, // :lib_test archive
-		"bin%/tests/core/output_groups/bin.a": true, // :bin archive
+	runfiles, err := bazel.ListRunfiles()
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
-		if info.IsDir() {
-			return nil
-		}
-		// Remove first directory of file (e.g. linux_amd64_stripped)
-		if firstSlash := strings.Index(path, "/"); firstSlash >= 0 {
-			path = path[firstSlash+1:]
-		}
-		if expectedFiles[path] {
-			delete(expectedFiles, path)
-		} else {
-			t.Errorf("Runfiles contains an unexpected file: %s", path)
-		}
-		return nil
-	})
+	exe := ""
+	if runtime.GOOS == "windows" {
+		exe = ".exe"
+	}
+	expectedFiles := map[string]bool{
+		"compilation_outputs_test" + exe: true, // test binary; not relevant
 
-	if len(expectedFiles) != 0 {
-		var missingFiles []string
-		for path := range expectedFiles {
+		"lib.a":               false, // :lib archive
+		"lib_test.internal.a": false, // :lib_test archive
+		"bin.a":               false, // :bin archive
+	}
+	for _, rf := range runfiles {
+		info, err := os.Stat(rf.Path)
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+		if info.IsDir() {
+			continue
+		}
+
+		base := filepath.Base(rf.Path)
+		if seen, ok := expectedFiles[base]; !ok {
+			t.Errorf("unexpected runfile: %s %s", rf.Path, base)
+		} else if !seen {
+			expectedFiles[base] = true
+		}
+	}
+
+	missingFiles := make([]string, 0, len(expectedFiles))
+	for path, seen := range expectedFiles {
+		if !seen {
 			missingFiles = append(missingFiles, path)
 		}
-		t.Errorf("Could find expected files: %v", missingFiles)
+	}
+	sort.Strings(missingFiles)
+	if len(missingFiles) > 0 {
+		t.Errorf("did not find expected files: %s", strings.Join(missingFiles, " "))
 	}
 }

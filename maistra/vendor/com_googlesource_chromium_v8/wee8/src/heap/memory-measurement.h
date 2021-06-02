@@ -8,6 +8,8 @@
 #include <list>
 #include <unordered_map>
 
+#include "src/base/platform/elapsed-timer.h"
+#include "src/base/utils/random-number-generator.h"
 #include "src/common/globals.h"
 #include "src/objects/contexts.h"
 #include "src/objects/map.h"
@@ -19,7 +21,7 @@ namespace internal {
 class Heap;
 class NativeContextStats;
 
-class V8_EXPORT_PRIVATE MemoryMeasurement {
+class MemoryMeasurement {
  public:
   explicit MemoryMeasurement(Isolate* isolate);
 
@@ -34,12 +36,13 @@ class V8_EXPORT_PRIVATE MemoryMeasurement {
       Handle<JSPromise> promise, v8::MeasureMemoryMode mode);
 
  private:
-  static const int kGCTaskDelayInSeconds = 60;
+  static const int kGCTaskDelayInSeconds = 10;
   struct Request {
     std::unique_ptr<v8::MeasureMemoryDelegate> delegate;
     Handle<WeakFixedArray> contexts;
     std::vector<size_t> sizes;
     size_t shared;
+    base::ElapsedTimer timer;
   };
   void ScheduleReportingTask();
   void ReportResults();
@@ -47,6 +50,7 @@ class V8_EXPORT_PRIVATE MemoryMeasurement {
   bool IsGCTaskPending(v8::MeasureMemoryExecution execution);
   void SetGCTaskPending(v8::MeasureMemoryExecution execution);
   void SetGCTaskDone(v8::MeasureMemoryExecution execution);
+  int NextGCTaskDelayInSeconds();
 
   std::list<Request> received_;
   std::list<Request> processing_;
@@ -55,6 +59,7 @@ class V8_EXPORT_PRIVATE MemoryMeasurement {
   bool reporting_task_pending_ = false;
   bool delayed_gc_task_pending_ = false;
   bool eager_gc_task_pending_ = false;
+  base::RandomNumberGenerator random_number_generator_;
 };
 
 // Infers the native context for some of the heap objects.
@@ -68,7 +73,10 @@ class V8_EXPORT_PRIVATE NativeContextInferrer {
                        Address* native_context);
 
  private:
-  bool InferForJSFunction(JSFunction function, Address* native_context);
+  bool InferForContext(Isolate* isolate, Context context,
+                       Address* native_context);
+  bool InferForJSFunction(Isolate* isolate, JSFunction function,
+                          Address* native_context);
   bool InferForJSObject(Isolate* isolate, Map map, JSObject object,
                         Address* native_context);
 };

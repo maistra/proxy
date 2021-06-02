@@ -3,10 +3,12 @@
 #include "google/api/expr/v1alpha1/syntax.pb.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "eval/eval/container_backed_list_impl.h"
-#include "eval/eval/container_backed_map_impl.h"
 #include "eval/eval/ident_step.h"
+#include "eval/public/containers/container_backed_list_impl.h"
+#include "eval/public/containers/container_backed_map_impl.h"
+#include "eval/public/structs/cel_proto_wrapper.h"
 #include "eval/testutil/test_message.pb.h"
 #include "testutil/util.h"
 #include "base/status_macros.h"
@@ -31,7 +33,7 @@ using google::api::expr::v1alpha1::Expr;
 
 // Helper method. Creates simple pipeline containing CreateStruct step that
 // builds message and runs it.
-cel_base::StatusOr<CelValue> RunExpression(absl::string_view field,
+absl::StatusOr<CelValue> RunExpression(absl::string_view field,
                                        const CelValue& value,
                                        google::protobuf::Arena* arena,
                                        bool enable_unknowns) {
@@ -74,10 +76,10 @@ cel_base::StatusOr<CelValue> RunExpression(absl::string_view field,
 void RunExpressionAndGetMessage(absl::string_view field, const CelValue& value,
                                 google::protobuf::Arena* arena, TestMessage* test_msg,
                                 bool enable_unknowns) {
-  auto status = RunExpression(field, value, arena, enable_unknowns);
-  ASSERT_OK(status);
+  auto result_status = RunExpression(field, value, arena, enable_unknowns);
+  ASSERT_OK(result_status);
+  auto result = result_status.value();
 
-  CelValue result = status.value();
   ASSERT_TRUE(result.IsMessage());
 
   const Message* msg = result.MessageOrDie();
@@ -95,10 +97,10 @@ void RunExpressionAndGetMessage(absl::string_view field,
 
   CelValue value = CelValue::CreateList(&cel_list);
 
-  auto status = RunExpression(field, value, arena, enable_unknowns);
-  ASSERT_OK(status);
+  auto result_status = RunExpression(field, value, arena, enable_unknowns);
+  ASSERT_OK(result_status);
+  auto result = result_status.value();
 
-  CelValue result = status.value();
   ASSERT_TRUE(result.IsMessage());
 
   const Message* msg = result.MessageOrDie();
@@ -110,7 +112,7 @@ void RunExpressionAndGetMessage(absl::string_view field,
 
 // Helper method. Creates simple pipeline containing CreateStruct step that
 // builds Map and runs it.
-cel_base::StatusOr<CelValue> RunCreateMapExpression(
+absl::StatusOr<CelValue> RunCreateMapExpression(
     const std::vector<std::pair<CelValue, CelValue>> values,
     google::protobuf::Arena* arena, bool enable_unknowns) {
   ExecutionPath path;
@@ -329,7 +331,7 @@ TEST_P(CreateCreateStructStepTest, TestSetDurationField) {
   TestMessage test_msg;
 
   ASSERT_NO_FATAL_FAILURE(RunExpressionAndGetMessage(
-      "duration_value", CelValue::CreateDuration(&test_duration), &arena,
+      "duration_value", CelProtoWrapper::CreateDuration(&test_duration), &arena,
       &test_msg, GetParam()));
   EXPECT_THAT(test_msg.duration_value(), EqualsProto(test_duration));
 }
@@ -344,8 +346,8 @@ TEST_P(CreateCreateStructStepTest, TestSetTimestampField) {
   TestMessage test_msg;
 
   ASSERT_NO_FATAL_FAILURE(RunExpressionAndGetMessage(
-      "timestamp_value", CelValue::CreateTimestamp(&test_timestamp), &arena,
-      &test_msg, GetParam()));
+      "timestamp_value", CelProtoWrapper::CreateTimestamp(&test_timestamp),
+      &arena, &test_msg, GetParam()));
   EXPECT_THAT(test_msg.timestamp_value(), EqualsProto(test_timestamp));
 }
 
@@ -361,9 +363,33 @@ TEST_P(CreateCreateStructStepTest, TestSetMessageField) {
   TestMessage test_msg;
 
   ASSERT_NO_FATAL_FAILURE(RunExpressionAndGetMessage(
-      "message_value", CelValue::CreateMessage(&orig_msg, &arena), &arena,
-      &test_msg, GetParam()));
+      "message_value", CelProtoWrapper::CreateMessage(&orig_msg, &arena),
+      &arena, &test_msg, GetParam()));
   EXPECT_THAT(test_msg.message_value(), EqualsProto(orig_msg));
+}
+
+// Test that fields of type Any are set correctly.
+TEST_P(CreateCreateStructStepTest, TestSetAnyField) {
+  Arena arena;
+
+  // Create payload message and set some fields.
+  TestMessage orig_embedded_msg;
+  orig_embedded_msg.set_bool_value(true);
+  orig_embedded_msg.set_string_value("embedded");
+
+  TestMessage orig_msg;
+  orig_msg.mutable_any_value()->PackFrom(orig_embedded_msg);
+
+  TestMessage test_msg;
+
+  ASSERT_NO_FATAL_FAILURE(RunExpressionAndGetMessage(
+      "any_value", CelProtoWrapper::CreateMessage(&orig_embedded_msg, &arena),
+      &arena, &test_msg, GetParam()));
+  EXPECT_THAT(test_msg, EqualsProto(orig_msg));
+
+  TestMessage test_embedded_msg;
+  ASSERT_TRUE(test_msg.any_value().UnpackTo(&test_embedded_msg));
+  EXPECT_THAT(test_embedded_msg, EqualsProto(orig_embedded_msg));
 }
 
 // Test that fields of type Message are set correctly.
@@ -532,7 +558,7 @@ TEST_P(CreateCreateStructStepTest, TestSetRepeatedMessageField) {
   kValues[1].set_string_value("test2");
   std::vector<CelValue> values;
   for (const auto& value : kValues) {
-    values.push_back(CelValue::CreateMessage(&value, &arena));
+    values.push_back(CelProtoWrapper::CreateMessage(&value, &arena));
   }
 
   ASSERT_NO_FATAL_FAILURE(RunExpressionAndGetMessage(

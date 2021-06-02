@@ -2,9 +2,11 @@
 
 #include "google/api/expr/v1alpha1/syntax.pb.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/substitute.h"
-#include "eval/eval/container_backed_map_impl.h"
-#include "eval/eval/field_access.h"
+#include "eval/public/containers/container_backed_map_impl.h"
+#include "eval/public/containers/field_access.h"
+#include "eval/public/structs/cel_proto_wrapper.h"
 
 namespace google {
 namespace api {
@@ -61,7 +63,7 @@ absl::Status CreateStructStepForMessage::DoEvaluate(ExecutionFrame* frame,
   absl::Span<const CelValue> args = frame->value_stack().GetSpan(entries_size);
 
   if (frame->enable_unknowns()) {
-    auto unknown_set = frame->unknowns_utility().MergeUnknowns(
+    auto unknown_set = frame->attribute_utility().MergeUnknowns(
         args, frame->value_stack().GetAttributeSpan(entries_size),
         /*initial_set=*/nullptr,
         /*use_partial=*/true);
@@ -184,7 +186,7 @@ absl::Status CreateStructStepForMessage::DoEvaluate(ExecutionFrame* frame,
     }
   }
 
-  *result = CelValue::CreateMessage(msg, frame->arena());
+  *result = CelProtoWrapper::CreateMessage(msg, frame->arena());
 
   return absl::OkStatus();
 }
@@ -214,7 +216,7 @@ absl::Status CreateStructStepForMap::DoEvaluate(ExecutionFrame* frame,
       frame->value_stack().GetSpan(2 * entry_count_);
 
   if (frame->enable_unknowns()) {
-    const UnknownSet* unknown_set = frame->unknowns_utility().MergeUnknowns(
+    const UnknownSet* unknown_set = frame->attribute_utility().MergeUnknowns(
         args, frame->value_stack().GetAttributeSpan(args.size()),
         /*initial_set=*/nullptr, true);
     if (unknown_set != nullptr) {
@@ -268,10 +270,11 @@ absl::Status CreateStructStepForMap::Evaluate(ExecutionFrame* frame) const {
 
 }  // namespace
 
-cel_base::StatusOr<std::unique_ptr<ExpressionStep>> CreateCreateStructStep(
+absl::StatusOr<std::unique_ptr<ExpressionStep>> CreateCreateStructStep(
     const google::api::expr::v1alpha1::Expr::CreateStruct* create_struct_expr,
     int64_t expr_id) {
   if (!create_struct_expr->message_name().empty()) {
+    // TODO(issues/92): Support resolving a type name within a container.
     // Make message-creating step.
     std::vector<CreateStructStepForMessage::FieldEntry> entries;
 
@@ -281,7 +284,8 @@ cel_base::StatusOr<std::unique_ptr<ExpressionStep>> CreateCreateStructStep(
 
     if (desc == nullptr) {
       return absl::InvalidArgumentError(
-          "Error configuring message creation: message descriptor not found");
+          "Error configuring message creation: message descriptor not found: " +
+          create_struct_expr->message_name());
     }
 
     for (const auto& entry : create_struct_expr->entries()) {

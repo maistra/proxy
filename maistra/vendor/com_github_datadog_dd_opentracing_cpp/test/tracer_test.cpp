@@ -6,6 +6,7 @@
 #include "../src/tracer_options.h"
 #include "mocks.h"
 
+#include <datadog/tags.h>
 #include <catch2/catch.hpp>
 using namespace datadog::opentracing;
 
@@ -21,9 +22,8 @@ TEST_CASE("tracer") {
   auto buffer = std::make_shared<MockBuffer>();
   TimeProvider get_time = [&time]() { return time; };  // Mock clock.
   IdProvider get_id = [&id]() { return id++; };        // Mock ID provider.
-  auto sampler = std::make_shared<KeepAllSampler>();
   TracerOptions tracer_options{"", 0, "service_name", "web"};
-  std::shared_ptr<Tracer> tracer{new Tracer{tracer_options, buffer, get_time, get_id, sampler}};
+  std::shared_ptr<Tracer> tracer{new Tracer{tracer_options, buffer, get_time, get_id}};
   const ot::StartSpanOptions span_options;
 
   SECTION("names spans correctly") {
@@ -132,7 +132,7 @@ TEST_CASE("env overrides") {
   // auto buffer = std::make_shared<MockBuffer>();
   TimeProvider get_time = [&time]() { return time; };  // Mock clock.
   IdProvider get_id = [&id]() { return id++; };        // Mock ID provider.
-  auto sampler = std::make_shared<KeepAllSampler>();
+  auto sampler = std::make_shared<RulesSampler>();
   auto mwriter = std::make_shared<MockWriter>(sampler);
   auto writer = std::shared_ptr<Writer>(mwriter);
   TracerOptions tracer_options{"", 0, "service_name", "web"};
@@ -144,6 +144,8 @@ TEST_CASE("env overrides") {
     std::string hostname;
     double rate;
     bool error;
+    std::string version;
+    std::map<std::string, std::string> extra_tags;
   };
 
   char buf[256];
@@ -152,15 +154,27 @@ TEST_CASE("env overrides") {
 
   auto env_test = GENERATE_COPY(values<EnvOverrideTest>({
       // Normal cases
-      {"DD_TRACE_REPORT_HOSTNAME", "true", hostname, std::nan(""), false},
-      {"DD_TRACE_ANALYTICS_ENABLED", "true", "", 1.0, false},
-      {"DD_TRACE_ANALYTICS_ENABLED", "false", "", 0.0, false},
-      {"DD_TRACE_ANALYTICS_SAMPLE_RATE", "0.5", "", 0.5, false},
-      {"", "", "", std::nan(""), false},
+      {"DD_TRACE_REPORT_HOSTNAME", "true", hostname, std::nan(""), false, "", {}},
+      {"DD_TRACE_ANALYTICS_ENABLED", "true", "", 1.0, false, "", {}},
+      {"DD_TRACE_ANALYTICS_ENABLED", "false", "", 0.0, false, "", {}},
+      {"DD_TRACE_ANALYTICS_SAMPLE_RATE", "0.5", "", 0.5, false, "", {}},
+      {"DD_TAGS",
+       "host:my-host-name,region:us-east-1,datacenter:us,partition:5",
+       "",
+       std::nan(""),
+       false,
+       "",
+       {
+           {"host", "my-host-name"},
+           {"region", "us-east-1"},
+           {"datacenter", "us"},
+           {"partition", "5"},
+       }},
+      {"", "", "", std::nan(""), false, "", {}},
       // Unexpected values handled gracefully
-      {"DD_TRACE_ANALYTICS_ENABLED", "yes please", "", std::nan(""), true},
-      {"DD_TRACE_ANALYTICS_SAMPLE_RATE", "1.1", "", std::nan(""), true},
-      {"DD_TRACE_ANALYTICS_SAMPLE_RATE", "half", "", std::nan(""), true},
+      {"DD_TRACE_ANALYTICS_ENABLED", "yes please", "", std::nan(""), true, "", {}},
+      {"DD_TRACE_ANALYTICS_SAMPLE_RATE", "1.1", "", std::nan(""), true, "", {}},
+      {"DD_TRACE_ANALYTICS_SAMPLE_RATE", "half", "", std::nan(""), true, "", {}},
   }));
 
   SECTION("set correct tags and metrics") {
@@ -181,7 +195,7 @@ TEST_CASE("env overrides") {
     span->FinishWithOptions(finish_options);
 
     auto& result = mwriter->traces[0][0];
-    // Check the analytics rate matches the expected value.
+    // Check the hostname matches the expected value.
     if (env_test.hostname.empty()) {
       REQUIRE(result->meta.find("_dd.hostname") == result->meta.end());
     } else {
@@ -193,6 +207,18 @@ TEST_CASE("env overrides") {
     } else {
       REQUIRE(result->metrics["_dd1.sr.eausr"] == env_test.rate);
     }
+    // Check the version matches the expected value.
+    if (env_test.version.empty()) {
+      REQUIRE(result->meta.find(datadog::tags::version) == result->meta.end());
+    } else {
+      REQUIRE(result->meta[datadog::tags::version] == env_test.hostname);
+    }
+    // Check spans are tagged with values from DD_TAGS
+    for (auto& tag : env_test.extra_tags) {
+      REQUIRE(result->meta.find(tag.first) != result->meta.end());
+      REQUIRE(result->meta[tag.first] == tag.second);
+    }
+
     // Tear-down
     ::unsetenv(env_test.env.c_str());
   }

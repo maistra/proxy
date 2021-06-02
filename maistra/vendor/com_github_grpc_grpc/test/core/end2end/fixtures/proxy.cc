@@ -41,8 +41,8 @@ struct grpc_end2end_proxy {
     memset(&new_call_metadata, 0, sizeof(new_call_metadata));
   }
   grpc_core::Thread thd;
-  grpc_core::UniquePtr<char> proxy_port;
-  grpc_core::UniquePtr<char> server_port;
+  std::string proxy_port;
+  std::string server_port;
   grpc_completion_queue* cq;
   grpc_server* server;
   grpc_channel* client;
@@ -89,17 +89,17 @@ grpc_end2end_proxy* grpc_end2end_proxy_create(const grpc_end2end_proxy_def* def,
   int proxy_port = grpc_pick_unused_port_or_die();
   int server_port = grpc_pick_unused_port_or_die();
 
-  grpc_end2end_proxy* proxy = grpc_core::New<grpc_end2end_proxy>();
+  grpc_end2end_proxy* proxy = new grpc_end2end_proxy();
 
-  grpc_core::JoinHostPort(&proxy->proxy_port, "localhost", proxy_port);
-  grpc_core::JoinHostPort(&proxy->server_port, "localhost", server_port);
+  proxy->proxy_port = grpc_core::JoinHostPort("localhost", proxy_port);
+  proxy->server_port = grpc_core::JoinHostPort("localhost", server_port);
 
-  gpr_log(GPR_DEBUG, "PROXY ADDR:%s BACKEND:%s", proxy->proxy_port.get(),
-          proxy->server_port.get());
+  gpr_log(GPR_DEBUG, "PROXY ADDR:%s BACKEND:%s", proxy->proxy_port.c_str(),
+          proxy->server_port.c_str());
 
   proxy->cq = grpc_completion_queue_create_for_next(nullptr);
-  proxy->server = def->create_server(proxy->proxy_port.get(), server_args);
-  proxy->client = def->create_client(proxy->server_port.get(), client_args);
+  proxy->server = def->create_server(proxy->proxy_port.c_str(), server_args);
+  proxy->client = def->create_client(proxy->server_port.c_str(), client_args);
 
   grpc_server_register_completion_queue(proxy->server, proxy->cq, nullptr);
   grpc_server_start(proxy->server);
@@ -134,7 +134,7 @@ void grpc_end2end_proxy_destroy(grpc_end2end_proxy* proxy) {
   grpc_channel_destroy(proxy->client);
   grpc_completion_queue_destroy(proxy->cq);
   grpc_call_details_destroy(&proxy->new_call_details);
-  grpc_core::Delete(proxy);
+  delete proxy;
 }
 
 static void unrefpc(proxy_call* pc, const char* /*reason*/) {
@@ -440,9 +440,9 @@ static void thread_main(void* arg) {
 }
 
 const char* grpc_end2end_proxy_get_client_target(grpc_end2end_proxy* proxy) {
-  return proxy->proxy_port.get();
+  return proxy->proxy_port.c_str();
 }
 
 const char* grpc_end2end_proxy_get_server_port(grpc_end2end_proxy* proxy) {
-  return proxy->server_port.get();
+  return proxy->server_port.c_str();
 }

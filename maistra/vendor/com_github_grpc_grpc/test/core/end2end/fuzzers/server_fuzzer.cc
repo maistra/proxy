@@ -20,10 +20,8 @@
 
 #include "src/core/ext/transport/chttp2/transport/chttp2_transport.h"
 #include "src/core/lib/iomgr/executor.h"
-#include "src/core/lib/security/credentials/credentials.h"
 #include "src/core/lib/slice/slice_internal.h"
 #include "src/core/lib/surface/server.h"
-#include "test/core/util/memory_counters.h"
 #include "test/core/util/mock_endpoint.h"
 
 bool squelch = true;
@@ -39,9 +37,7 @@ static void dont_log(gpr_log_func_args* /*args*/) {}
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   grpc_test_only_set_slice_hash_seed(0);
   if (squelch) gpr_set_log_function(dont_log);
-  grpc_core::testing::LeakDetector leak_detector(leak_check);
   grpc_init();
-  grpc_test_only_control_plane_credentials_force_init();
   {
     grpc_core::ExecCtx exec_ctx;
     grpc_core::Executor::SetThreadingAll(false);
@@ -62,7 +58,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     grpc_server_start(server);
     grpc_transport* transport =
         grpc_create_chttp2_transport(nullptr, mock_endpoint, false);
-    grpc_server_setup_transport(server, transport, nullptr, nullptr, nullptr);
+    server->core_server->SetupTransport(transport, nullptr, nullptr, nullptr);
     grpc_chttp2_transport_start_reading(transport, nullptr, nullptr);
 
     grpc_call* call1 = nullptr;
@@ -78,7 +74,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     requested_calls++;
 
     grpc_event ev;
-    while (1) {
+    while (true) {
       grpc_core::ExecCtx::Get()->Flush();
       ev = grpc_completion_queue_next(cq, gpr_inf_past(GPR_CLOCK_REALTIME),
                                       nullptr);
@@ -135,7 +131,6 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     grpc_server_destroy(server);
     grpc_completion_queue_destroy(cq);
   }
-  grpc_test_only_control_plane_credentials_destroy();
   grpc_shutdown();
   return 0;
 }

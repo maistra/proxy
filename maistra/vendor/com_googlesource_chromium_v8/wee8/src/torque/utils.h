@@ -5,11 +5,12 @@
 #ifndef V8_TORQUE_UTILS_H_
 #define V8_TORQUE_UTILS_H_
 
+#include <algorithm>
 #include <ostream>
+#include <queue>
 #include <streambuf>
 #include <string>
 #include <unordered_set>
-#include <vector>
 
 #include "src/base/functional.h"
 #include "src/base/optional.h"
@@ -47,6 +48,7 @@ std::string ToString(Args&&... args) {
 
 class V8_EXPORT_PRIVATE MessageBuilder {
  public:
+  MessageBuilder() = delete;
   MessageBuilder(const std::string& message, TorqueMessage::Kind kind);
 
   MessageBuilder& Position(SourcePosition position) {
@@ -62,7 +64,6 @@ class V8_EXPORT_PRIVATE MessageBuilder {
   }
 
  private:
-  MessageBuilder() = delete;
   void Report() const;
 
   TorqueMessage message_;
@@ -172,6 +173,11 @@ void PrintCommaSeparatedList(std::ostream& os, const T& list) {
 
 struct BottomOffset {
   size_t offset;
+
+  BottomOffset& operator=(std::size_t offset) {
+    this->offset = offset;
+    return *this;
+  }
   BottomOffset& operator++() {
     ++offset;
     return *this;
@@ -333,7 +339,7 @@ void EraseIf(Container* container, F f) {
 
 class NullStreambuf : public std::streambuf {
  public:
-  virtual int overflow(int c) {
+  int overflow(int c) override {
     setp(buffer_, buffer_ + sizeof(buffer_));
     return (c == traits_type::eof()) ? '\0' : c;
   }
@@ -363,10 +369,10 @@ class IfDefScope {
  public:
   IfDefScope(std::ostream& os, std::string d);
   ~IfDefScope();
-
- private:
   IfDefScope(const IfDefScope&) = delete;
   IfDefScope& operator=(const IfDefScope&) = delete;
+
+ private:
   std::ostream& os_;
   std::string d_;
 };
@@ -376,10 +382,10 @@ class NamespaceScope {
   NamespaceScope(std::ostream& os,
                  std::initializer_list<std::string> namespaces);
   ~NamespaceScope();
-
- private:
   NamespaceScope(const NamespaceScope&) = delete;
   NamespaceScope& operator=(const NamespaceScope&) = delete;
+
+ private:
   std::ostream& os_;
   std::vector<std::string> d_;
 };
@@ -388,10 +394,10 @@ class IncludeGuardScope {
  public:
   IncludeGuardScope(std::ostream& os, std::string file_name);
   ~IncludeGuardScope();
-
- private:
   IncludeGuardScope(const IncludeGuardScope&) = delete;
   IncludeGuardScope& operator=(const IncludeGuardScope&) = delete;
+
+ private:
   std::ostream& os_;
   std::string d_;
 };
@@ -400,10 +406,10 @@ class IncludeObjectMacrosScope {
  public:
   explicit IncludeObjectMacrosScope(std::ostream& os);
   ~IncludeObjectMacrosScope();
-
- private:
   IncludeObjectMacrosScope(const IncludeObjectMacrosScope&) = delete;
   IncludeObjectMacrosScope& operator=(const IncludeObjectMacrosScope&) = delete;
+
+ private:
   std::ostream& os_;
 };
 
@@ -487,6 +493,47 @@ class ResidueClass {
   // modulus.
   static const size_t kMaxModulusLog2 = 8 * sizeof(size_t);
 };
+
+template <typename T>
+class Worklist {
+ public:
+  bool IsEmpty() const {
+    DCHECK_EQ(queue_.size(), contained_.size());
+    return queue_.empty();
+  }
+
+  bool Enqueue(T value) {
+    if (contained_.find(value) != contained_.end()) return false;
+    queue_.push(value);
+    contained_.insert(value);
+    DCHECK_EQ(queue_.size(), contained_.size());
+    return true;
+  }
+
+  T Dequeue() {
+    DCHECK(!IsEmpty());
+    T value = queue_.front();
+    queue_.pop();
+    contained_.erase(value);
+    DCHECK_EQ(queue_.size(), contained_.size());
+    return value;
+  }
+
+ private:
+  std::queue<T> queue_;
+  std::unordered_set<T> contained_;
+};
+
+template <class T, class U, class F>
+std::vector<T> TransformVector(const std::vector<U>& v, F f) {
+  std::vector<T> result;
+  std::transform(v.begin(), v.end(), std::back_inserter(result), f);
+  return result;
+}
+template <class T, class U>
+std::vector<T> TransformVector(const std::vector<U>& v) {
+  return TransformVector<T>(v, [](const U& x) -> T { return x; });
+}
 
 }  // namespace torque
 }  // namespace internal

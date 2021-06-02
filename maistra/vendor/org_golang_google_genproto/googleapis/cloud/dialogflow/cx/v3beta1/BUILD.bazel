@@ -1,0 +1,48 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "v3beta1",
+    srcs = [
+        "agent.pb.go",
+        "audio_config.pb.go",
+        "entity_type.pb.go",
+        "environment.pb.go",
+        "flow.pb.go",
+        "fulfillment.pb.go",
+        "gcs.pb.go",
+        "intent.pb.go",
+        "ivr.pb.go",
+        "page.pb.go",
+        "response_message.pb.go",
+        "session.pb.go",
+        "session_entity_type.pb.go",
+        "transition_route_group.pb.go",
+        "version.pb.go",
+        "webhook.pb.go",
+    ],
+    importpath = "google.golang.org/genproto/googleapis/cloud/dialogflow/cx/v3beta1",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//googleapis/api/annotations",
+        "//googleapis/longrunning",
+        "//googleapis/rpc/status",
+        "//googleapis/type/latlng",
+        "@com_github_golang_protobuf//proto:go_default_library",
+        "@org_golang_google_grpc//:go_default_library",
+        "@org_golang_google_grpc//codes:go_default_library",
+        "@org_golang_google_grpc//status:go_default_library",
+        "@org_golang_google_protobuf//reflect/protoreflect:go_default_library",
+        "@org_golang_google_protobuf//runtime/protoimpl:go_default_library",
+        "@org_golang_google_protobuf//types/known/durationpb:go_default_library",
+        "@org_golang_google_protobuf//types/known/emptypb:go_default_library",
+        "@org_golang_google_protobuf//types/known/fieldmaskpb:go_default_library",
+        "@org_golang_google_protobuf//types/known/structpb:go_default_library",
+        "@org_golang_google_protobuf//types/known/timestamppb:go_default_library",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":v3beta1",
+    visibility = ["//visibility:public"],
+)

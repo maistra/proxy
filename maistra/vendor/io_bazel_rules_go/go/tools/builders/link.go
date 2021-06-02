@@ -19,6 +19,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -30,7 +31,7 @@ import (
 
 func link(args []string) error {
 	// Parse arguments.
-	args, err := readParamsFiles(args)
+	args, err := expandParamsFiles(args)
 	if err != nil {
 		return err
 	}
@@ -38,7 +39,7 @@ func link(args []string) error {
 	xstamps := multiFlag{}
 	stamps := multiFlag{}
 	xdefs := multiFlag{}
-	archives := linkArchiveMultiFlag{}
+	archives := archiveMultiFlag{}
 	flags := flag.NewFlagSet("link", flag.ExitOnError)
 	goenv := envFlags(flags)
 	main := flags.String("main", "", "Path to the main archive.")
@@ -50,11 +51,16 @@ func link(args []string) error {
 	flags.Var(&xdefs, "X", "A string variable to replace in the linked binary (repeated).")
 	flags.Var(&xstamps, "Xstamp", "Like -X but the values are looked up in the -stamp file.")
 	flags.Var(&stamps, "stamp", "The name of a file with stamping values.")
+	conflictErrMsg := flags.String("conflict_err", "", "Error message about conflicts to report if there's a link error.")
 	if err := flags.Parse(builderArgs); err != nil {
 		return err
 	}
 	if err := goenv.checkFlags(); err != nil {
 		return err
+	}
+
+	if *conflictErrMsg != "" {
+		return errors.New(*conflictErrMsg)
 	}
 
 	// On Windows, take the absolute path of the output file and main file.

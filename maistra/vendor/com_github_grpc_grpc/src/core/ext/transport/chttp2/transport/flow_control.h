@@ -140,8 +140,7 @@ class FlowControlTrace {
 };
 
 // Fat interface with all methods a flow control implementation needs to
-// support. gRPC C Core does not support pure virtual functions, so instead
-// we abort in any methods which require implementation in the base class.
+// support.
 class TransportFlowControlBase {
  public:
   TransportFlowControlBase() {}
@@ -149,30 +148,30 @@ class TransportFlowControlBase {
 
   // Is flow control enabled? This is needed in other codepaths like the checks
   // in parsing and in writing.
-  virtual bool flow_control_enabled() const { abort(); }
+  virtual bool flow_control_enabled() const = 0;
 
   // Called to check if the transport needs to send a WINDOW_UPDATE frame
-  virtual uint32_t MaybeSendUpdate(bool /* writing_anyway */) { abort(); }
+  virtual uint32_t MaybeSendUpdate(bool /* writing_anyway */) = 0;
 
   // Using the protected members, returns and Action to be taken by the
   // tranport.
-  virtual FlowControlAction MakeAction() { abort(); }
+  virtual FlowControlAction MakeAction() = 0;
 
   // Using the protected members, returns and Action to be taken by the
   // tranport. Also checks for updates to our BDP estimate and acts
   // accordingly.
-  virtual FlowControlAction PeriodicUpdate() { abort(); }
+  virtual FlowControlAction PeriodicUpdate() = 0;
 
   // Called to do bookkeeping when a stream owned by this transport sends
   // data on the wire
-  virtual void StreamSentData(int64_t /* size */) { abort(); }
+  virtual void StreamSentData(int64_t /* size */) = 0;
 
   // Called to do bookkeeping when a stream owned by this transport receives
   // data from the wire. Also does error checking for frame size.
-  virtual grpc_error* RecvData(int64_t /* incoming_frame_size */) { abort(); }
+  virtual grpc_error* RecvData(int64_t /* incoming_frame_size */) = 0;
 
   // Called to do bookkeeping when we receive a WINDOW_UPDATE frame.
-  virtual void RecvUpdate(uint32_t /* size */) { abort(); }
+  virtual void RecvUpdate(uint32_t /* size */) = 0;
 
   // Returns the BdpEstimator held by this object. Caller is responsible for
   // checking for nullptr. TODO(ncteisen): consider fully encapsulating all
@@ -222,7 +221,7 @@ class TransportFlowControlDisabled final : public TransportFlowControlBase {
 class TransportFlowControl final : public TransportFlowControlBase {
  public:
   TransportFlowControl(const grpc_chttp2_transport* t, bool enable_bdp_probe);
-  ~TransportFlowControl() {}
+  ~TransportFlowControl() override {}
 
   bool flow_control_enabled() const override { return true; }
 
@@ -280,16 +279,12 @@ class TransportFlowControl final : public TransportFlowControlBase {
   void PreUpdateAnnouncedWindowOverIncomingWindow(int64_t delta) {
     if (delta > 0) {
       announced_stream_total_over_incoming_window_ -= delta;
-    } else {
-      announced_stream_total_under_incoming_window_ += -delta;
     }
   }
 
   void PostUpdateAnnouncedWindowOverIncomingWindow(int64_t delta) {
     if (delta > 0) {
       announced_stream_total_over_incoming_window_ += delta;
-    } else {
-      announced_stream_total_under_incoming_window_ -= -delta;
     }
   }
 
@@ -325,7 +320,6 @@ class TransportFlowControl final : public TransportFlowControlBase {
       we want to adjust incoming_window such that:
       incoming_window = total_over - max(bdp - total_under, 0) */
   int64_t announced_stream_total_over_incoming_window_ = 0;
-  int64_t announced_stream_total_under_incoming_window_ = 0;
 
   /** should we probe bdp? */
   const bool enable_bdp_probe_;
@@ -339,8 +333,7 @@ class TransportFlowControl final : public TransportFlowControlBase {
 };
 
 // Fat interface with all methods a stream flow control implementation needs
-// to support. gRPC C Core does not support pure virtual functions, so instead
-// we abort in any methods which require implementation in the base class.
+// to support.
 class StreamFlowControlBase {
  public:
   StreamFlowControlBase() {}
@@ -353,19 +346,19 @@ class StreamFlowControlBase {
 
   // Using the protected members, returns an Action for this stream to be
   // taken by the tranport.
-  virtual FlowControlAction MakeAction() { abort(); }
+  virtual FlowControlAction MakeAction() = 0;
 
   // Bookkeeping for when data is sent on this stream.
-  virtual void SentData(int64_t /* outgoing_frame_size */) { abort(); }
+  virtual void SentData(int64_t /* outgoing_frame_size */) = 0;
 
   // Bookkeeping and error checking for when data is received by this stream.
-  virtual grpc_error* RecvData(int64_t /* incoming_frame_size */) { abort(); }
+  virtual grpc_error* RecvData(int64_t /* incoming_frame_size */) = 0;
 
   // Called to check if this stream needs to send a WINDOW_UPDATE frame.
-  virtual uint32_t MaybeSendUpdate() { abort(); }
+  virtual uint32_t MaybeSendUpdate() = 0;
 
   // Bookkeeping for receiving a WINDOW_UPDATE from for this stream.
-  virtual void RecvUpdate(uint32_t /* size */) { abort(); }
+  virtual void RecvUpdate(uint32_t /* size */) = 0;
 
   // Bookkeeping for when a call pulls bytes out of the transport. At this
   // point we consider the data 'used' and can thus let out peer know we are
@@ -416,7 +409,7 @@ class StreamFlowControlDisabled : public StreamFlowControlBase {
 class StreamFlowControl final : public StreamFlowControlBase {
  public:
   StreamFlowControl(TransportFlowControl* tfc, const grpc_chttp2_stream* s);
-  ~StreamFlowControl() {
+  ~StreamFlowControl() override {
     tfc_->PreUpdateAnnouncedWindowOverIncomingWindow(announced_window_delta_);
   }
 
@@ -472,6 +465,16 @@ class StreamFlowControl final : public StreamFlowControlBase {
     tfc->PostUpdateAnnouncedWindowOverIncomingWindow(announced_window_delta_);
   }
 };
+
+class TestOnlyTransportTargetWindowEstimatesMocker {
+ public:
+  virtual ~TestOnlyTransportTargetWindowEstimatesMocker() {}
+  virtual double ComputeNextTargetInitialWindowSizeFromPeriodicUpdate(
+      double current_target) = 0;
+};
+
+extern TestOnlyTransportTargetWindowEstimatesMocker*
+    g_test_only_transport_target_window_estimates_mocker;
 
 }  // namespace chttp2
 }  // namespace grpc_core

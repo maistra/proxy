@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test", "go_tool_library")
 
 go_library(
-    name = "go_default_library",
+    name = "facts",
     srcs = [
         "facts.go",
         "imports.go",
@@ -9,8 +9,8 @@ go_library(
     importpath = "golang.org/x/tools/go/analysis/internal/facts",
     visibility = ["//go/analysis:__subpackages__"],
     deps = [
-        "//go/analysis:go_default_library",
-        "//go/types/objectpath:go_default_library",
+        "//go/analysis",
+        "//go/types/objectpath",
     ],
 )
 
@@ -21,23 +21,26 @@ go_tool_library(
         "imports.go",
     ],
     importpath = "golang.org/x/tools/go/analysis/internal/facts",
-    visibility = [
-        "//go/analysis:__subpackages__",
-        "@io_bazel_rules_go//go/tools/builders:__pkg__",
-    ],
+    visibility = ["//visibility:public"],
     deps = [
         "//go/analysis:go_tool_library",
         "//go/types/objectpath:go_tool_library",
     ],
 )
 
+alias(
+    name = "go_default_library",
+    actual = ":facts",
+    visibility = ["//go/analysis:__subpackages__"],
+)
+
 go_test(
-    name = "go_default_test",
+    name = "facts_test",
     srcs = ["facts_test.go"],
-    embed = [":go_default_library"],
     deps = [
-        "//go/analysis/analysistest:go_default_library",
-        "//go/packages:go_default_library",
-        "//internal/testenv:go_default_library",
+        ":facts",
+        "//go/analysis/analysistest",
+        "//go/packages",
+        "//internal/testenv",
     ],
 )

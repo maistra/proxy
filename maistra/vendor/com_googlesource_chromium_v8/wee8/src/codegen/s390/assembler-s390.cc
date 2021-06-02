@@ -370,6 +370,15 @@ Assembler::Assembler(const AssemblerOptions& options,
 void Assembler::GetCode(Isolate* isolate, CodeDesc* desc,
                         SafepointTableBuilder* safepoint_table_builder,
                         int handler_table_offset) {
+  // As a crutch to avoid having to add manual Align calls wherever we use a
+  // raw workflow to create Code objects (mostly in tests), add another Align
+  // call here. It does no harm - the end of the Code object is aligned to the
+  // (larger) kCodeAlignment anyways.
+  // TODO(jgruber): Consider moving responsibility for proper alignment to
+  // metadata table builders (safepoint, handler, constant pool, code
+  // comments).
+  DataAlign(Code::kMetadataAlignment);
+
   EmitRelocations();
 
   int code_comments_size = WriteCodeComments();
@@ -578,16 +587,6 @@ void Assembler::next(Label* L) {
     DCHECK_GE(link, 0);
     L->link_to(link);
   }
-}
-
-bool Assembler::is_near(Label* L, Condition cond) {
-  DCHECK(L->is_bound());
-  if (L->is_bound() == false) return false;
-
-  int maxReach = ((cond == al) ? 26 : 16);
-  int offset = L->pos() - pc_offset();
-
-  return is_intn(offset, maxReach);
 }
 
 int Assembler::link(Label* L) {

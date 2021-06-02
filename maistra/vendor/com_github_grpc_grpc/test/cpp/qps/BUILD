@@ -14,8 +14,9 @@
 
 licenses(["notice"])  # Apache v2
 
-load("//bazel:grpc_build_system.bzl", "grpc_cc_test", "grpc_cc_library", "grpc_cc_binary", "grpc_package")
-load("//test/cpp/qps:qps_benchmark_script.bzl", "qps_json_driver_batch", "json_run_localhost_batch")
+load("//bazel:grpc_build_system.bzl", "grpc_cc_binary", "grpc_cc_library", "grpc_cc_test", "grpc_package")
+load("//test/cpp/qps:qps_benchmark_script.bzl", "json_run_localhost_batch", "qps_json_driver_batch")
+load("//bazel:custom_exec_properties.bzl", "LARGE_MACHINE")
 
 grpc_package(name = "test/cpp/qps")
 
@@ -44,9 +45,6 @@ grpc_cc_library(
         "qps_server_builder.h",
         "qps_worker.h",
         "server.h",
-    ],
-    external_deps = [
-        "gflags",
     ],
     deps = [
         ":histogram",
@@ -99,7 +97,7 @@ grpc_cc_library(
         "benchmark_config.h",
     ],
     external_deps = [
-        "gflags",
+        "absl/flags:flag",
     ],
     deps = [
         ":driver_impl",
@@ -115,14 +113,17 @@ grpc_cc_library(
         "histogram.h",
         "stats.h",
     ],
-    deps = ["//test/core/util:grpc_test_util"],
+    deps = [
+        "//src/proto/grpc/testing:stats_proto",
+        "//test/core/util:grpc_test_util",
+    ],
 )
 
 grpc_cc_binary(
     name = "qps_json_driver",
     srcs = ["qps_json_driver.cc"],
     external_deps = [
-        "gflags",
+        "absl/flags:flag",
     ],
     deps = [
         ":benchmark_config",
@@ -158,19 +159,19 @@ json_run_localhost_batch()
 grpc_cc_test(
     name = "qps_interarrival_test",
     srcs = ["qps_interarrival_test.cc"],
+    uses_polling = False,
     deps = [
         ":histogram",
         ":interarrival",
         "//test/cpp/util:test_config",
     ],
-    uses_polling = False,
 )
 
 grpc_cc_test(
     name = "qps_openloop_test",
     srcs = ["qps_openloop_test.cc"],
-    exec_compatible_with = ["//third_party/toolchains/machine_size:large"],
-    tags = ["no_windows"],  # machine_size:large is not configured for windows RBE
+    exec_properties = LARGE_MACHINE,
+    tags = ["no_windows"],  # LARGE_MACHINE is not configured for windows RBE
     deps = [
         ":benchmark_config",
         ":driver_impl",
@@ -202,6 +203,9 @@ grpc_cc_library(
 grpc_cc_binary(
     name = "qps_worker",
     srcs = ["worker.cc"],
+    external_deps = [
+        "absl/flags:flag",
+    ],
     deps = [
         ":qps_worker_impl",
         "//:grpc++",

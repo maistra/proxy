@@ -20,6 +20,7 @@ import (
 	"go/build"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -43,6 +44,12 @@ func stdlib(args []string) error {
 		return fmt.Errorf("GOROOT not set")
 	}
 	output := abs(*out)
+
+	// Fail fast if cgo is required but a toolchain is not configured.
+	if os.Getenv("CGO_ENABLED") == "1" && filepath.Base(os.Getenv("CC")) == "vc_installation_error.bat" {
+		return fmt.Errorf(`cgo is required, but a C toolchain has not been configured.
+You may need to use the flags --cpu=x64_windows --compiler=mingw-gcc.`)
+	}
 
 	// Link in the bare minimum needed to the new GOROOT
 	if err := replicate(goroot, output, replicatePaths("src", "pkg/tool", "pkg/include")); err != nil {
@@ -84,6 +91,18 @@ func stdlib(args []string) error {
 	// Strip path prefix from source files in debug information.
 	os.Setenv("CGO_CFLAGS", os.Getenv("CGO_CFLAGS")+" "+strings.Join(defaultCFlags(output), " "))
 	os.Setenv("CGO_LDFLAGS", os.Getenv("CGO_LDFLAGS")+" "+strings.Join(defaultLdFlags(), " "))
+
+	// Allow flags in CGO_LDFLAGS that wouldn't pass the security check.
+	// Workaround for golang.org/issue/42565.
+	var b strings.Builder
+	sep := ""
+	cgoLdflags, _ := splitQuoted(os.Getenv("CGO_LDFLAGS"))
+	for _, f := range cgoLdflags {
+		b.WriteString(sep)
+		sep = "|"
+		b.WriteString(regexp.QuoteMeta(f))
+	}
+	os.Setenv("CGO_LDFLAGS_ALLOW", b.String())
 
 	// Build the commands needed to build the std library in the right mode
 	// NOTE: the go command stamps compiled .a files with build ids, which are

@@ -17,6 +17,7 @@ else:
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import gclient_utils
 import git_footers
 
 class GitFootersTest(unittest.TestCase):
@@ -45,9 +46,15 @@ My commit message is my best friend. It is my life. I must master it.
         git_footers.split_footers('H\n\nBug:\nAlso: footer'),
         (['H', ''], ['Bug:', 'Also: footer'],
          [('Bug', ''), ('Also', 'footer')]))
+    self.assertEqual(git_footers.split_footers('H\n\nBug:      '),
+                     (['H', ''], ['Bug:'], [('Bug', '')]))
+    self.assertEqual(git_footers.split_footers('H\n\nBug: 1234     '),
+                     (['H', ''], ['Bug: 1234'], [('Bug', '1234')]))
     self.assertEqual(
-        git_footers.split_footers('H\n\nBug:      '),
-        (['H', ''], ['Bug:      '], [('Bug', '')]))
+        git_footers.split_footers('H\n\nBug: 1234\nChange-Id: Ib4321  '),
+        (['H', ''], ['Bug: 1234', 'Change-Id: Ib4321'], [('Bug', '1234'),
+                                                         ('Change-Id', 'Ib4321')
+                                                         ]))
 
     self.assertEqual(
         git_footers.parse_footers(self._message), {})
@@ -178,6 +185,9 @@ My commit message is my best friend. It is my life. I must master it.
         'Header.\n\nBug: v8\nChange-Id: Ix\nN=t\nT=z')
 
   def testAddFooter(self):
+    with self.assertRaises(ValueError):
+      git_footers.add_footer('', 'Invalid Footer', 'Value')
+
     self.assertEqual(
         git_footers.add_footer('', 'Key', 'Value'),
         '\nKey: Value')
@@ -253,15 +263,10 @@ My commit message is my best friend. It is my life. I must master it.
       'sys.stdin',
       StringIO('line\r\nany spaces\r\n\r\n\r\nFoo: 1\nBar: 2\nFoo: 3'))
   def testToJson(self):
-    with tempfile.NamedTemporaryFile(delete=False) as tmp:
-      try:
-        # NamedTemporaryFiles must be closed on Windows before being opened
-        # again.
-        tmp.close()
-        self.assertEqual(git_footers.main(['--json', tmp.name]), 0)
-        js = json.load(open(tmp.name))
-      finally:
-        os.remove(tmp.name)
+    with gclient_utils.temporary_file() as tmp:
+      self.assertEqual(git_footers.main(['--json', tmp]), 0)
+      with open(tmp) as f:
+        js = json.load(f)
     self.assertEqual(js, {'Foo': ['3', '1'], 'Bar': ['2']})
 
 

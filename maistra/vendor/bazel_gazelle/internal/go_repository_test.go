@@ -44,6 +44,7 @@ go_repository(
     commit = "30136e27e2ac8d167177e8a583aa4c3fea5be833",
     patches = ["@bazel_gazelle//internal:repository_rules_test_errors.patch"],
     patch_args = ["-p1"],
+    build_naming_convention = "go_default_library",
 )
 
 go_repository(
@@ -116,6 +117,25 @@ go_repository(
 `,
 		},
 	})
+}
+
+func TestModcacheRW(t *testing.T) {
+	if err := bazel_testing.RunBazel("query", "@errors_go_mod//:go_default_library"); err != nil {
+		t.Fatal(err)
+	}
+	out, err := bazel_testing.BazelOutput("info", "output_base")
+	if err != nil {
+		t.Fatal(err)
+	}
+	outputBase := strings.TrimSpace(string(out))
+	dir := filepath.Join(outputBase, "external/bazel_gazelle_go_repository_cache/pkg/mod/github.com/pkg/errors@v0.8.1")
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode()&0200 == 0 {
+		t.Fatal("module cache is read-only")
+	}
 }
 
 // TODO(bazelbuild/rules_go#2189): call bazel_testing.BazelOutput once implemented.

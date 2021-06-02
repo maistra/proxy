@@ -16,16 +16,6 @@ load(
     "@io_bazel_rules_go//go:def.bzl",
     "GoArchive",
     "go_context",
-    "go_rule",
-)
-load(
-    "@io_bazel_rules_go//go/private:rules/aspect.bzl",
-    "go_archive_aspect",
-)
-load(
-    "@io_bazel_rules_go//go/platform:list.bzl",
-    "GOARCH",
-    "GOOS",
 )
 
 def _gazelle_binary_impl(ctx):
@@ -84,63 +74,34 @@ var languages = []language.Language{{
         ),
     ]
 
-gazelle_binary = go_rule(
-    implementation = _gazelle_binary_impl,
-    attrs = {
+_gazelle_binary_kwargs = {
+    "implementation": _gazelle_binary_impl,
+    "attrs": {
         "languages": attr.label_list(
             doc = "A list of language extensions the Gazelle binary will use",
             providers = [GoArchive],
             mandatory = True,
             allow_empty = False,
-            aspects = [go_archive_aspect],
         ),
-        "pure": attr.string(
-            values = [
-                "on",
-                "off",
-                "auto",
-            ],
-            default = "auto",
-        ),
-        "static": attr.string(
-            values = [
-                "on",
-                "off",
-                "auto",
-            ],
-            default = "auto",
-        ),
-        "race": attr.string(
-            values = [
-                "on",
-                "off",
-                "auto",
-            ],
-            default = "auto",
-        ),
-        "msan": attr.string(
-            values = [
-                "on",
-                "off",
-                "auto",
-            ],
-            default = "auto",
-        ),
-        "goos": attr.string(
-            values = GOOS.keys() + ["auto"],
-            default = "auto",
-        ),
-        "goarch": attr.string(
-            values = GOARCH.keys() + ["auto"],
-            default = "auto",
-        ),
+        "_go_context_data": attr.label(default = "@io_bazel_rules_go//:go_context_data"),
+        # _stdlib is needed for rules_go versions before v0.23.0. After that,
+        # _go_context_data includes a dependency on stdlib.
+        "_stdlib": attr.label(default = "@io_bazel_rules_go//:stdlib"),
         "_srcs": attr.label(
-            default = "//cmd/gazelle:go_default_library",
-            aspects = [go_archive_aspect],
+            default = "//cmd/gazelle:gazelle_lib",
         ),
     },
-    executable = True,
-)
+    "executable": True,
+    "toolchains": ["@io_bazel_rules_go//go:toolchain"],
+}
+
+gazelle_binary = rule(**_gazelle_binary_kwargs)
+
+def gazelle_binary_wrapper(**kwargs):
+    for key in ("goos", "goarch", "static", "msan", "race", "pure", "strip", "debug", "linkmode", "gotags"):
+        if key in kwargs:
+            fail("gazelle_binary attribute '%s' is no longer supported (https://github.com/bazelbuild/bazel-gazelle/issues/803)" % key)
+    gazelle_binary(**kwargs)
 
 def _format_import(importpath):
     _, _, base = importpath.rpartition("/")

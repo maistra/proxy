@@ -1,9 +1,11 @@
-#include "envoy/config/trace/v3/trace.pb.h"
-#include "envoy/config/trace/v3/trace.pb.validate.h"
+#include "envoy/config/trace/v3/datadog.pb.h"
+#include "envoy/config/trace/v3/datadog.pb.validate.h"
+#include "envoy/config/trace/v3/http_tracer.pb.h"
 
 #include "extensions/tracers/datadog/config.h"
 
-#include "test/mocks/server/mocks.h"
+#include "test/mocks/server/tracer_factory.h"
+#include "test/mocks/server/tracer_factory_context.h"
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -20,18 +22,13 @@ namespace {
 
 TEST(DatadogTracerConfigTest, DatadogHttpTracer) {
   NiceMock<Server::Configuration::MockTracerFactoryContext> context;
-  EXPECT_CALL(context.server_factory_context_.cluster_manager_, get(Eq("fake_cluster")))
-      .WillRepeatedly(
-          Return(&context.server_factory_context_.cluster_manager_.thread_local_cluster_));
-  ON_CALL(*context.server_factory_context_.cluster_manager_.thread_local_cluster_.cluster_.info_,
-          features())
-      .WillByDefault(Return(Upstream::ClusterInfo::Features::HTTP2));
+  context.server_factory_context_.cluster_manager_.initializeClusters({"fake_cluster"}, {});
 
   const std::string yaml_string = R"EOF(
   http:
     name: datadog
     typed_config:
-      "@type": type.googleapis.com/envoy.config.trace.v2.DatadogConfig
+      "@type": type.googleapis.com/envoy.config.trace.v3.DatadogConfig
       collector_cluster: fake_cluster
       service_name: fake_file
    )EOF";

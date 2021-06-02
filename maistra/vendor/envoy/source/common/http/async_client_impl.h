@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "envoy/common/random_generator.h"
 #include "envoy/common/scope_tracker.h"
 #include "envoy/config/core/v3/base.pb.h"
 #include "envoy/config/route/v3/route_components.pb.h"
@@ -19,6 +20,7 @@
 #include "envoy/http/context.h"
 #include "envoy/http/header_map.h"
 #include "envoy/http/message.h"
+#include "envoy/router/context.h"
 #include "envoy/router/router.h"
 #include "envoy/router/router_ratelimit.h"
 #include "envoy/router/shadow_writer.h"
@@ -29,6 +31,7 @@
 #include "envoy/upstream/load_balancer.h"
 #include "envoy/upstream/upstream.h"
 
+#include "common/common/assert.h"
 #include "common/common/empty_string.h"
 #include "common/common/linked_object.h"
 #include "common/http/message_impl.h"
@@ -47,16 +50,14 @@ public:
   AsyncClientImpl(Upstream::ClusterInfoConstSharedPtr cluster, Stats::Store& stats_store,
                   Event::Dispatcher& dispatcher, const LocalInfo::LocalInfo& local_info,
                   Upstream::ClusterManager& cm, Runtime::Loader& runtime,
-                  Runtime::RandomGenerator& random, Router::ShadowWriterPtr&& shadow_writer,
-                  Http::Context& http_context);
+                  Random::RandomGenerator& random, Router::ShadowWriterPtr&& shadow_writer,
+                  Http::Context& http_context, Router::Context& router_context);
   ~AsyncClientImpl() override;
 
   // Http::AsyncClient
   Request* send(RequestMessagePtr&& request, Callbacks& callbacks,
                 const AsyncClient::RequestOptions& options) override;
-
   Stream* start(StreamCallbacks& callbacks, const AsyncClient::StreamOptions& options) override;
-
   Event::Dispatcher& dispatcher() override { return dispatcher_; }
 
 private:
@@ -77,7 +78,7 @@ class AsyncStreamImpl : public AsyncClient::Stream,
                         public StreamDecoderFilterCallbacks,
                         public Event::DeferredDeletable,
                         Logger::Loggable<Logger::Id::http>,
-                        LinkedObject<AsyncStreamImpl>,
+                        public LinkedObject<AsyncStreamImpl>,
                         public ScopeTrackedObject {
 public:
   AsyncStreamImpl(AsyncClientImpl& parent, AsyncClient::StreamCallbacks& callbacks,
@@ -87,13 +88,13 @@ public:
   void requestRouteConfigUpdate(Http::RouteConfigUpdatedCallbackSharedPtr) override {
     NOT_IMPLEMENTED_GCOVR_EXCL_LINE;
   }
-  absl::optional<Router::ConfigConstSharedPtr> routeConfig() override { return {}; }
 
   // Http::AsyncClient::Stream
   void sendHeaders(RequestHeaderMap& headers, bool end_stream) override;
   void sendData(Buffer::Instance& data, bool end_stream) override;
   void sendTrailers(RequestTrailerMap& trailers) override;
   void reset() override;
+  bool isAboveWriteBufferHighWatermark() const override { return high_watermark_calls_ > 0; }
 
 protected:
   bool remoteClosed() { return remote_closed_; }
@@ -152,16 +153,28 @@ private:
       return absl::nullopt;
     }
     absl::optional<std::chrono::milliseconds> maxInterval() const override { return absl::nullopt; }
+    const std::vector<Router::ResetHeaderParserSharedPtr>& resetHeaders() const override {
+      return reset_headers_;
+    }
+    std::chrono::milliseconds resetMaxInterval() const override {
+      return std::chrono::milliseconds(300000);
+    }
 
     const std::vector<uint32_t> retriable_status_codes_{};
     const std::vector<Http::HeaderMatcherSharedPtr> retriable_headers_{};
     const std::vector<Http::HeaderMatcherSharedPtr> retriable_request_headers_{};
+    const std::vector<Router::ResetHeaderParserSharedPtr> reset_headers_{};
   };
 
   struct NullConfig : public Router::Config {
     Router::RouteConstSharedPtr route(const Http::RequestHeaderMap&, const StreamInfo::StreamInfo&,
                                       uint64_t) const override {
       return nullptr;
+    }
+
+    Router::RouteConstSharedPtr route(const Router::RouteCallback&, const Http::RequestHeaderMap&,
+                                      const StreamInfo::StreamInfo&, uint64_t) const override {
+      NOT_IMPLEMENTED_GCOVR_EXCL_LINE;
     }
 
     const std::list<LowerCaseString>& internalOnlyHeaders() const override {
@@ -227,6 +240,9 @@ private:
     }
     const Router::RateLimitPolicy& rateLimitPolicy() const override { return rate_limit_policy_; }
     const Router::RetryPolicy& retryPolicy() const override { return retry_policy_; }
+    const Router::InternalRedirectPolicy& internalRedirectPolicy() const override {
+      return internal_redirect_policy_;
+    }
     uint32_t retryShadowBufferLimit() const override {
       return std::numeric_limits<uint32_t>::max();
     }
@@ -241,6 +257,15 @@ private:
       }
     }
     absl::optional<std::chrono::milliseconds> idleTimeout() const override { return absl::nullopt; }
+    absl::optional<std::chrono::milliseconds> maxStreamDuration() const override {
+      return absl::nullopt;
+    }
+    absl::optional<std::chrono::milliseconds> grpcTimeoutHeaderMax() const override {
+      return absl::nullopt;
+    }
+    absl::optional<std::chrono::milliseconds> grpcTimeoutHeaderOffset() const override {
+      return absl::nullopt;
+    }
     absl::optional<std::chrono::milliseconds> maxGrpcTimeout() const override {
       return absl::nullopt;
     }
@@ -268,19 +293,19 @@ private:
     const Router::RouteSpecificFilterConfig* perFilterConfig(const std::string&) const override {
       return nullptr;
     }
+    const absl::optional<ConnectConfig>& connectConfig() const override {
+      return connect_config_nullopt_;
+    }
 
     bool includeAttemptCountInRequest() const override { return false; }
     bool includeAttemptCountInResponse() const override { return false; }
     const Router::RouteEntry::UpgradeMap& upgradeMap() const override { return upgrade_map_; }
-    Router::InternalRedirectAction internalRedirectAction() const override {
-      return Router::InternalRedirectAction::PassThrough;
-    }
-    uint32_t maxInternalRedirects() const override { return 1; }
     const std::string& routeName() const override { return route_name_; }
     std::unique_ptr<const HashPolicyImpl> hash_policy_;
     static const NullHedgePolicy hedge_policy_;
     static const NullRateLimitPolicy rate_limit_policy_;
     static const NullRetryPolicy retry_policy_;
+    static const Router::InternalRedirectPolicyImpl internal_redirect_policy_;
     static const std::vector<Router::ShadowPolicyPtr> shadow_policies_;
     static const NullVirtualHost virtual_host_;
     static const std::multimap<std::string, std::string> opaque_config_;
@@ -292,6 +317,7 @@ private:
     Router::RouteEntry::UpgradeMap upgrade_map_;
     const std::string& cluster_name_;
     absl::optional<std::chrono::milliseconds> timeout_;
+    static const absl::optional<ConnectConfig> connect_config_nullopt_;
     const std::string route_name_;
   };
 
@@ -323,6 +349,9 @@ private:
   Event::Dispatcher& dispatcher() override { return parent_.dispatcher_; }
   void resetStream() override;
   Router::RouteConstSharedPtr route() override { return route_; }
+  Router::RouteConstSharedPtr route(const Router::RouteCallback&) override {
+    NOT_IMPLEMENTED_GCOVR_EXCL_LINE;
+  }
   Upstream::ClusterInfoConstSharedPtr clusterInfo() override { return parent_.cluster_; }
   void clearRouteCache() override {}
   uint64_t streamId() const override { return stream_id_; }
@@ -348,32 +377,46 @@ private:
                       std::function<void(ResponseHeaderMap& headers)> modify_headers,
                       const absl::optional<Grpc::Status::GrpcStatus> grpc_status,
                       absl::string_view details) override {
-    stream_info_.setResponseCodeDetails(details);
+    if (encoded_response_headers_) {
+      resetStream();
+      return;
+    }
     Utility::sendLocalReply(
-        is_grpc_request_,
-        [this, modify_headers](ResponseHeaderMapPtr&& headers, bool end_stream) -> void {
-          if (modify_headers != nullptr) {
-            modify_headers(*headers);
-          }
-          encodeHeaders(std::move(headers), end_stream);
-        },
-        [this](Buffer::Instance& data, bool end_stream) -> void { encodeData(data, end_stream); },
-        remote_closed_, code, body, grpc_status, is_head_request_);
+        remote_closed_,
+        Utility::EncodeFunctions{nullptr, nullptr,
+                                 [this, modify_headers, &details](ResponseHeaderMapPtr&& headers,
+                                                                  bool end_stream) -> void {
+                                   if (modify_headers != nullptr) {
+                                     modify_headers(*headers);
+                                   }
+                                   encodeHeaders(std::move(headers), end_stream, details);
+                                 },
+                                 [this](Buffer::Instance& data, bool end_stream) -> void {
+                                   encodeData(data, end_stream);
+                                 }},
+        Utility::LocalReplyData{is_grpc_request_, code, body, grpc_status, is_head_request_});
   }
   // The async client won't pause if sending an Expect: 100-Continue so simply
   // swallows any incoming encode100Continue.
   void encode100ContinueHeaders(ResponseHeaderMapPtr&&) override {}
-  void encodeHeaders(ResponseHeaderMapPtr&& headers, bool end_stream) override;
+  ResponseHeaderMapOptRef continueHeaders() const override { NOT_IMPLEMENTED_GCOVR_EXCL_LINE; }
+  void encodeHeaders(ResponseHeaderMapPtr&& headers, bool end_stream,
+                     absl::string_view details) override;
+  ResponseHeaderMapOptRef responseHeaders() const override { NOT_IMPLEMENTED_GCOVR_EXCL_LINE; }
   void encodeData(Buffer::Instance& data, bool end_stream) override;
   void encodeTrailers(ResponseTrailerMapPtr&& trailers) override;
+  ResponseTrailerMapOptRef responseTrailers() const override { NOT_IMPLEMENTED_GCOVR_EXCL_LINE; }
   void encodeMetadata(MetadataMapPtr&&) override {}
-  void onDecoderFilterAboveWriteBufferHighWatermark() override {}
-  void onDecoderFilterBelowWriteBufferLowWatermark() override {}
+  void onDecoderFilterAboveWriteBufferHighWatermark() override { ++high_watermark_calls_; }
+  void onDecoderFilterBelowWriteBufferLowWatermark() override {
+    ASSERT(high_watermark_calls_ != 0);
+    --high_watermark_calls_;
+  }
   void addDownstreamWatermarkCallbacks(DownstreamWatermarkCallbacks&) override {}
   void removeDownstreamWatermarkCallbacks(DownstreamWatermarkCallbacks&) override {}
   void setDecoderBufferLimit(uint32_t) override {}
   uint32_t decoderBufferLimit() override { return 0; }
-  bool recreateStream() override { return false; }
+  bool recreateStream(const ResponseHeaderMap*) override { return false; }
   const ScopeTrackedObject& scope() override { return *this; }
   void addUpstreamSocketOptions(const Network::Socket::OptionsSharedPtr&) override {}
   Network::Socket::OptionsSharedPtr getUpstreamSocketOptions() const override { return {}; }
@@ -392,9 +435,11 @@ private:
   Tracing::NullSpan active_span_;
   const Tracing::Config& tracing_config_;
   std::shared_ptr<RouteImpl> route_;
+  uint32_t high_watermark_calls_{};
   bool local_closed_{};
   bool remote_closed_{};
   Buffer::InstancePtr buffered_body_;
+  bool encoded_response_headers_{};
   bool is_grpc_request_{};
   bool is_head_request_{false};
   bool send_xff_{true};
@@ -428,7 +473,7 @@ private:
     // The request is already fully buffered. Note that this is only called via the async client's
     // internal use of the router filter which uses this function for buffering.
   }
-  const Buffer::Instance* decodingBuffer() override { return request_->body().get(); }
+  const Buffer::Instance* decodingBuffer() override { return &request_->body(); }
   void modifyDecodingBuffer(std::function<void(Buffer::Instance&)>) override {
     NOT_IMPLEMENTED_GCOVR_EXCL_LINE;
   }

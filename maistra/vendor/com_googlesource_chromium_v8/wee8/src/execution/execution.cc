@@ -194,10 +194,10 @@ MaybeHandle<Context> NewScriptContext(Isolate* isolate,
           // If envRec.HasLexicalDeclaration(name) is true, throw a SyntaxError
           // exception.
           MessageLocation location(script, 0, 1);
-          isolate->ThrowAt(isolate->factory()->NewSyntaxError(
-                               MessageTemplate::kVarRedeclaration, name),
-                           &location);
-          return MaybeHandle<Context>();
+          return isolate->ThrowAt<Context>(
+              isolate->factory()->NewSyntaxError(
+                  MessageTemplate::kVarRedeclaration, name),
+              &location);
         }
       }
     }
@@ -216,10 +216,10 @@ MaybeHandle<Context> NewScriptContext(Isolate* isolate,
         // ES#sec-globaldeclarationinstantiation 5.d:
         // If hasRestrictedGlobal is true, throw a SyntaxError exception.
         MessageLocation location(script, 0, 1);
-        isolate->ThrowAt(isolate->factory()->NewSyntaxError(
-                             MessageTemplate::kVarRedeclaration, name),
-                         &location);
-        return MaybeHandle<Context>();
+        return isolate->ThrowAt<Context>(
+            isolate->factory()->NewSyntaxError(
+                MessageTemplate::kVarRedeclaration, name),
+            &location);
       }
 
       JSGlobalObject::InvalidatePropertyCell(global_object, name);
@@ -229,16 +229,12 @@ MaybeHandle<Context> NewScriptContext(Isolate* isolate,
   Handle<Context> result =
       isolate->factory()->NewScriptContext(native_context, scope_info);
 
-  int header = scope_info->ContextHeaderLength();
-  for (int var = 0; var < scope_info->ContextLocalCount(); var++) {
-    if (scope_info->ContextLocalInitFlag(var) == kNeedsInitialization) {
-      result->set(header + var, ReadOnlyRoots(isolate).the_hole_value());
-    }
-  }
+  result->Initialize(isolate);
 
   Handle<ScriptContextTable> new_script_context_table =
       ScriptContextTable::Extend(script_context, result);
-  native_context->set_script_context_table(*new_script_context_table);
+  native_context->synchronized_set_script_context_table(
+      *new_script_context_table);
   return result;
 }
 

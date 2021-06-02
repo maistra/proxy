@@ -71,9 +71,7 @@ public:
 
   void createUpstreams() override {
     HttpIntegrationTest::createUpstreams();
-    fake_upstreams_.emplace_back(
-        new FakeUpstream(0, FakeHttpConnection::Type::HTTP2, version_, timeSystem()));
-    fake_upstreams_.back()->set_allow_unexpected_disconnects(true);
+    addFakeUpstream(FakeHttpConnection::Type::HTTP2);
   }
 
   /**
@@ -90,7 +88,7 @@ public:
       auto* squash_cluster = bootstrap.mutable_static_resources()->add_clusters();
       squash_cluster->MergeFrom(bootstrap.static_resources().clusters()[0]);
       squash_cluster->set_name("squash");
-      squash_cluster->mutable_http2_protocol_options();
+      ConfigHelper::setHttp2(*squash_cluster);
     });
 
     HttpIntegrationTest::initialize();
@@ -133,8 +131,8 @@ TEST_P(SquashFilterIntegrationTest, TestHappyPath) {
 
   response->waitForEndStream();
 
-  EXPECT_EQ("POST", create_stream->headers().Method()->value().getStringView());
-  EXPECT_EQ("/api/v2/debugattachment/", create_stream->headers().Path()->value().getStringView());
+  EXPECT_EQ("POST", create_stream->headers().getMethodValue());
+  EXPECT_EQ("/api/v2/debugattachment/", create_stream->headers().getPathValue());
   // Make sure the env var was replaced
   ProtobufWkt::Struct actualbody;
   TestUtility::loadFromJson(create_stream->body().toString(), actualbody);
@@ -146,11 +144,10 @@ TEST_P(SquashFilterIntegrationTest, TestHappyPath) {
 
   EXPECT_TRUE(MessageDifferencer::Equals(expectedbody, actualbody));
   // The second request should be for the created object
-  EXPECT_EQ("GET", get_stream->headers().Method()->value().getStringView());
-  EXPECT_EQ("/api/v2/debugattachment/oF8iVdiJs5",
-            get_stream->headers().Path()->value().getStringView());
+  EXPECT_EQ("GET", get_stream->headers().getMethodValue());
+  EXPECT_EQ("/api/v2/debugattachment/oF8iVdiJs5", get_stream->headers().getPathValue());
   EXPECT_TRUE(response->complete());
-  EXPECT_EQ("200", response->headers().Status()->value().getStringView());
+  EXPECT_EQ("200", response->headers().getStatusValue());
 }
 
 TEST_P(SquashFilterIntegrationTest, ErrorAttaching) {
@@ -164,7 +161,7 @@ TEST_P(SquashFilterIntegrationTest, ErrorAttaching) {
   response->waitForEndStream();
 
   EXPECT_TRUE(response->complete());
-  EXPECT_EQ("200", response->headers().Status()->value().getStringView());
+  EXPECT_EQ("200", response->headers().getStatusValue());
 }
 
 TEST_P(SquashFilterIntegrationTest, TimeoutAttaching) {
@@ -180,7 +177,7 @@ TEST_P(SquashFilterIntegrationTest, TimeoutAttaching) {
   response->waitForEndStream();
 
   EXPECT_TRUE(response->complete());
-  EXPECT_EQ("200", response->headers().Status()->value().getStringView());
+  EXPECT_EQ("200", response->headers().getStatusValue());
 }
 
 TEST_P(SquashFilterIntegrationTest, ErrorNoSquashServer) {
@@ -191,7 +188,7 @@ TEST_P(SquashFilterIntegrationTest, ErrorNoSquashServer) {
   response->waitForEndStream();
 
   EXPECT_TRUE(response->complete());
-  EXPECT_EQ("200", response->headers().Status()->value().getStringView());
+  EXPECT_EQ("200", response->headers().getStatusValue());
 }
 
 TEST_P(SquashFilterIntegrationTest, BadCreateResponse) {
@@ -203,7 +200,7 @@ TEST_P(SquashFilterIntegrationTest, BadCreateResponse) {
   response->waitForEndStream();
 
   EXPECT_TRUE(response->complete());
-  EXPECT_EQ("200", response->headers().Status()->value().getStringView());
+  EXPECT_EQ("200", response->headers().getStatusValue());
 }
 
 TEST_P(SquashFilterIntegrationTest, BadGetResponse) {
@@ -217,7 +214,7 @@ TEST_P(SquashFilterIntegrationTest, BadGetResponse) {
   response->waitForEndStream();
 
   EXPECT_TRUE(response->complete());
-  EXPECT_EQ("200", response->headers().Status()->value().getStringView());
+  EXPECT_EQ("200", response->headers().getStatusValue());
 }
 
 } // namespace Envoy

@@ -13,13 +13,13 @@
 # limitations under the License.
 
 load(
-    "@io_bazel_rules_go//go/private:mode.bzl",
+    "//go/private:mode.bzl",
     "LINKMODE_C_ARCHIVE",
     "LINKMODE_C_SHARED",
     "LINKMODE_PLUGIN",
 )
 load(
-    "@io_bazel_rules_go//go/private:common.bzl",
+    "//go/private:common.bzl",
     "ARCHIVE_EXTENSION",
     "has_shared_lib_extension",
 )
@@ -48,7 +48,7 @@ def emit_binary(
             extension = ARCHIVE_EXTENSION
         elif go.mode.link == LINKMODE_PLUGIN:
             extension = go.shared_extension
-        executable = go.declare_file(go, name = name, ext = extension)
+        executable = go.declare_file(go, path = name, ext = extension)
     go.link(
         go,
         archive = archive,

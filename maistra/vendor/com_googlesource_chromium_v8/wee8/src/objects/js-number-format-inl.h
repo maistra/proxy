@@ -18,29 +18,13 @@
 namespace v8 {
 namespace internal {
 
-OBJECT_CONSTRUCTORS_IMPL(JSNumberFormat, JSObject)
+#include "torque-generated/src/objects/js-number-format-tq-inl.inc"
 
-ACCESSORS(JSNumberFormat, locale, String, kLocaleOffset)
-ACCESSORS(JSNumberFormat, numberingSystem, String, kNumberingSystemOffset)
+TQ_OBJECT_CONSTRUCTORS_IMPL(JSNumberFormat)
+
 ACCESSORS(JSNumberFormat, icu_number_formatter,
           Managed<icu::number::LocalizedNumberFormatter>,
           kIcuNumberFormatterOffset)
-ACCESSORS(JSNumberFormat, bound_format, Object, kBoundFormatOffset)
-
-SMI_ACCESSORS(JSNumberFormat, flags, kFlagsOffset)
-
-inline void JSNumberFormat::set_style(Style style) {
-  DCHECK_GE(StyleBits::kMax, style);
-  int hints = flags();
-  hints = StyleBits::update(hints, style);
-  set_flags(hints);
-}
-
-inline JSNumberFormat::Style JSNumberFormat::style() const {
-  return StyleBits::decode(flags());
-}
-
-CAST_ACCESSOR(JSNumberFormat)
 
 }  // namespace internal
 }  // namespace v8

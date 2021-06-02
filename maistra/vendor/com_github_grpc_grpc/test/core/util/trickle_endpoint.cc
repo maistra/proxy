@@ -56,7 +56,8 @@ static void maybe_call_write_cb_locked(trickle_endpoint* te) {
   if (te->write_cb != nullptr &&
       (te->error != GRPC_ERROR_NONE ||
        te->write_buffer.length <= WRITE_BUFFER_SIZE)) {
-    GRPC_CLOSURE_SCHED(te->write_cb, GRPC_ERROR_REF(te->error));
+    grpc_core::ExecCtx::Run(DEBUG_LOCATION, te->write_cb,
+                            GRPC_ERROR_REF(te->error));
     te->write_cb = nullptr;
   }
 }
@@ -121,9 +122,14 @@ static grpc_resource_user* te_get_resource_user(grpc_endpoint* ep) {
   return grpc_endpoint_get_resource_user(te->wrapped);
 }
 
-static char* te_get_peer(grpc_endpoint* ep) {
+static absl::string_view te_get_peer(grpc_endpoint* ep) {
   trickle_endpoint* te = reinterpret_cast<trickle_endpoint*>(ep);
   return grpc_endpoint_get_peer(te->wrapped);
+}
+
+static absl::string_view te_get_local_address(grpc_endpoint* ep) {
+  trickle_endpoint* te = reinterpret_cast<trickle_endpoint*>(ep);
+  return grpc_endpoint_get_local_address(te->wrapped);
 }
 
 static int te_get_fd(grpc_endpoint* ep) {
@@ -150,6 +156,7 @@ static const grpc_endpoint_vtable vtable = {te_read,
                                             te_destroy,
                                             te_get_resource_user,
                                             te_get_peer,
+                                            te_get_local_address,
                                             te_get_fd,
                                             te_can_track_err};
 

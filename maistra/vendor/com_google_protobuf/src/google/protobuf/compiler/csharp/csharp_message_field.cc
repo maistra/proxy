@@ -53,7 +53,7 @@ MessageFieldGenerator::MessageFieldGenerator(const FieldDescriptor* descriptor,
                                              int presenceIndex,
                                              const Options *options)
     : FieldGeneratorBase(descriptor, presenceIndex, options) {
-  if (!IsProto2(descriptor_->file())) {
+  if (!SupportsPresenceApi(descriptor_)) {
     variables_["has_property_check"] = name() + "_ != null";
     variables_["has_not_property_check"] = name() + "_ == null";
   }
@@ -77,7 +77,7 @@ void MessageFieldGenerator::GenerateMembers(io::Printer* printer) {
     "    $name$_ = value;\n"
     "  }\n"
     "}\n");
-  if (IsProto2(descriptor_->file())) {
+  if (SupportsPresenceApi(descriptor_)) {
     printer->Print(
       variables_,
       "/// <summary>Gets whether the $descriptor_name$ field is set</summary>\n");
@@ -174,6 +174,16 @@ void MessageFieldGenerator::WriteToString(io::Printer* printer) {
     variables_,
     "PrintField(\"$field_name$\", has$property_name$, $name$_, writer);\n");
 }
+void MessageFieldGenerator::GenerateExtensionCode(io::Printer* printer) {
+  WritePropertyDocComment(printer, descriptor_);
+  AddDeprecatedFlag(printer);
+  printer->Print(
+    variables_,
+    "$access_level$ static readonly pb::Extension<$extended_type$, $type_name$> $property_name$ =\n"
+    "  new pb::Extension<$extended_type$, $type_name$>($number$, ");
+  GenerateCodecCode(printer);
+  printer->Print(");\n");
+}
 void MessageFieldGenerator::GenerateCloningCode(io::Printer* printer) {
   printer->Print(variables_,
     "$name$_ = other.$has_property_check$ ? other.$name$_.Clone() : null;\n");
@@ -218,7 +228,7 @@ void MessageOneofFieldGenerator::GenerateMembers(io::Printer* printer) {
     "    $oneof_name$Case_ = value == null ? $oneof_property_name$OneofCase.None : $oneof_property_name$OneofCase.$property_name$;\n"
     "  }\n"
     "}\n");
-  if (IsProto2(descriptor_->file())) {
+  if (SupportsPresenceApi(descriptor_)) {
     printer->Print(
       variables_,
       "/// <summary>Gets whether the \"$descriptor_name$\" field is set</summary>\n");

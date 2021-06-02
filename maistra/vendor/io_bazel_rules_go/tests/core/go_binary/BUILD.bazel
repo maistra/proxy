@@ -1,4 +1,5 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
+load("@io_bazel_rules_go//go/tools/bazel_testing:def.bzl", "go_bazel_test")
 load(":many_deps.bzl", "many_deps")
 
 test_suite(name = "go_binary")
@@ -15,6 +16,11 @@ go_test(
     data = [":custom_bin"],
 )
 
+go_bazel_test(
+    name = "package_conflict_test",
+    srcs = ["package_conflict_test.go"],
+)
+
 go_binary(
     name = "custom_bin",
     srcs = ["custom_bin.go"],
@@ -27,6 +33,7 @@ go_binary(
         "broken_cgo.go",
         "hello.go",
     ],
+    goarch = "amd64",
     goos = "plan9",
 )
 
@@ -123,9 +130,9 @@ go_test(
 go_binary(
     name = "static_bin",
     srcs = ["static_bin.go"],
-    deps = ["@org_golang_x_sys//unix:go_default_library"],
     static = "on",
     tags = ["manual"],
+    deps = ["@org_golang_x_sys//unix:go_default_library"],
 )
 
 go_binary(
@@ -142,4 +149,29 @@ go_binary(
     pure = "on",
     static = "on",
     tags = ["manual"],
+)
+
+go_binary(
+    name = "tags_bin",
+    srcs = [
+        "tags_main_bad.go",
+        "tags_main_good.go",
+    ],
+    gotags = ["good"],
+    deps = [":tags_lib"],
+)
+
+go_library(
+    name = "tags_lib",
+    srcs = [
+        "tags_lib_bad.go",
+        "tags_lib_good.go",
+    ],
+    importpath = "tags_lib",
+    tags = ["manual"],
+)
+
+go_binary(
+    name = "prefix",
+    embed = ["//tests/core/go_binary/prefix"],
 )

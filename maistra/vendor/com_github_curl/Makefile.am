@@ -5,11 +5,11 @@
 #                            | (__| |_| |  _ <| |___
 #                             \___|\___/|_| \_\_____|
 #
-# Copyright (C) 1998 - 2018, Daniel Stenberg, <daniel@haxx.se>, et al.
+# Copyright (C) 1998 - 2020, Daniel Stenberg, <daniel@haxx.se>, et al.
 #
 # This software is licensed as described in the file COPYING, which
 # you should have received as part of this distribution. The terms
-# are also available at https://curl.haxx.se/docs/copyright.html.
+# are also available at https://curl.se/docs/copyright.html.
 #
 # You may opt to use, copy, modify, merge, publish, distribute and/or sell
 # copies of the Software, and permit persons to whom the Software is
@@ -24,14 +24,30 @@ AUTOMAKE_OPTIONS = foreign
 
 ACLOCAL_AMFLAGS = -I m4
 
-CMAKE_DIST = CMakeLists.txt CMake/CMakeConfigurableFile.in      \
- CMake/CurlTests.c CMake/FindGSS.cmake CMake/OtherTests.cmake   \
- CMake/Platforms/WindowsCache.cmake CMake/Utilities.cmake       \
- CMake/Macros.cmake              \
- CMake/CurlSymbolHiding.cmake CMake/FindCARES.cmake             \
- CMake/FindLibSSH2.cmake CMake/FindNGHTTP2.cmake                \
- CMake/FindMbedTLS.cmake CMake/FindBearSSL.cmake                \
- CMake/cmake_uninstall.cmake.in CMake/curl-config.cmake.in
+CMAKE_DIST =                                    \
+ CMake/cmake_uninstall.cmake.in                 \
+ CMake/CMakeConfigurableFile.in                 \
+ CMake/curl-config.cmake.in                     \
+ CMake/CurlSymbolHiding.cmake                   \
+ CMake/CurlTests.c                              \
+ CMake/FindBearSSL.cmake                        \
+ CMake/FindBrotli.cmake                         \
+ CMake/FindCARES.cmake                          \
+ CMake/FindGSS.cmake                            \
+ CMake/FindLibSSH2.cmake                        \
+ CMake/FindMbedTLS.cmake                        \
+ CMake/FindNGHTTP2.cmake                        \
+ CMake/FindNGHTTP3.cmake                        \
+ CMake/FindNGTCP2.cmake                         \
+ CMake/FindNSS.cmake                            \
+ CMake/FindQUICHE.cmake                         \
+ CMake/FindWolfSSL.cmake                        \
+ CMake/FindZstd.cmake                           \
+ CMake/Macros.cmake                             \
+ CMake/OtherTests.cmake                         \
+ CMake/Platforms/WindowsCache.cmake             \
+ CMake/Utilities.cmake                          \
+ CMakeLists.txt
 
 VC6_LIBTMPL = projects/Windows/VC6/lib/libcurl.tmpl
 VC6_LIBDSP = projects/Windows/VC6/lib/libcurl.dsp.dist
@@ -151,14 +167,14 @@ VC_DIST = projects/README                           \
  projects/wolfssl_options.h                         \
  projects/wolfssl_override.props
 
-WINBUILD_DIST = winbuild/BUILD.WINDOWS.txt winbuild/gen_resp_file.bat \
+WINBUILD_DIST = winbuild/README.md winbuild/gen_resp_file.bat \
  winbuild/MakefileBuild.vc winbuild/Makefile.vc
 
 PLAN9_DIST = plan9/include/mkfile \
  plan9/include/mkfile             \
  plan9/mkfile.proto               \
  plan9/mkfile                     \
- plan9/BUILD.PLAN9.txt            \
+ plan9/README                     \
  plan9/lib/mkfile.inc             \
  plan9/lib/mkfile                 \
  plan9/src/mkfile.inc             \
@@ -289,15 +305,15 @@ cygwinbin:
 
 # We extend the standard install with a custom hook:
 install-data-hook:
-	cd include && $(MAKE) install
-	cd docs && $(MAKE) install
-	cd docs/libcurl && $(MAKE) install
+	(cd include && $(MAKE) install)
+	(cd docs && $(MAKE) install)
+	(cd docs/libcurl && $(MAKE) install)
 
 # We extend the standard uninstall with a custom hook:
 uninstall-hook:
-	cd include && $(MAKE) uninstall
-	cd docs && $(MAKE) uninstall
-	cd docs/libcurl && $(MAKE) uninstall
+	(cd include && $(MAKE) uninstall)
+	(cd docs && $(MAKE) uninstall)
+	(cd docs/libcurl && $(MAKE) uninstall)
 
 ca-bundle: lib/mk-ca-bundle.pl
 	@echo "generating a fresh ca-bundle.crt"
@@ -308,11 +324,12 @@ ca-firefox: lib/firefox-db2pem.sh
 	./lib/firefox-db2pem.sh lib/ca-bundle.crt
 
 checksrc:
-	cd lib && $(MAKE) checksrc
-	cd src && $(MAKE) checksrc
-	cd tests && $(MAKE) checksrc
-	cd include/curl && $(MAKE) checksrc
-	cd docs/examples && $(MAKE) checksrc
+	(cd lib && $(MAKE) checksrc)
+	(cd src && $(MAKE) checksrc)
+	(cd tests && $(MAKE) checksrc)
+	(cd include/curl && $(MAKE) checksrc)
+	(cd docs/examples && $(MAKE) checksrc)
+	(cd packages && $(MAKE) checksrc)
 
 .PHONY: vc-ide
 

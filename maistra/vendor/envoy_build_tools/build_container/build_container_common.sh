@@ -10,7 +10,6 @@ function download_and_check () {
 }
 
 function install_gn(){
-
   # Install gn tools which will be used for building wee8
   if [[ "$(uname -m)" == "x86_64" ]]; then
     wget -O gntool.zip https://chrome-infra-packages.appspot.com/dl/gn/gn/linux-amd64/+/latest
@@ -20,8 +19,8 @@ function install_gn(){
     rm -rf gntool*
   elif [[ "$(uname -m)" == "aarch64" ]]; then
     # install gn tools
-    download_and_check /usr/local/bin/gn https://github.com/Jingzhao123/google-gn/releases/download/gn-arm64/gn \
-      2114aaa98ed90e0a3ced6b49dca1e994c823ded2baf9adfd9b5abed9dca38dff
+    download_and_check /usr/local/bin/gn https://github.com/envoyproxy/envoy-build-tools/releases/download/build-tools/gn-arm64 \
+      37f2960d488251760c56683dcf2cc4dfb2c2c13af476f86475eee206fafe21e2
     chmod +x /usr/local/bin/gn
   fi
 }
@@ -40,20 +39,23 @@ if [[ "$(uname -m)" == "x86_64" ]]; then
   chmod +x /usr/local/bin/buildozer
 
   # bazelisk
-  VERSION=1.3.0
+  VERSION=1.7.4
   download_and_check /usr/local/bin/bazel https://github.com/bazelbuild/bazelisk/releases/download/v${VERSION}/bazelisk-linux-amd64 \
-    98af93c6781156ff3dd36fa06ba6b6c0a529595abb02c569c99763203f3964cc
+    ab258203db518a54cbd5afa80864d5a3bb366058b95e7a7df4134b0b7765a378
   chmod +x /usr/local/bin/bazel
 fi
 
 if [[ "$(uname -m)" == "aarch64" ]]; then
-  download_and_check /usr/local/bin/bazel https://github.com/Tick-Tocker/bazelisk-arm64/releases/download/arm64/bazelisk-linux-arm64 \
-    bcbb11c014d78d4cb8c8d335daf41eefe274a64db9df778025ec12ad0aae3d80
+  # bazelisk
+  VERSION=1.7.4
+  download_and_check /usr/local/bin/bazel https://github.com/bazelbuild/bazelisk/releases/download/v${VERSION}/bazelisk-linux-arm64 \
+    aea0ff1036bd4c3703c5c10d07a059d885f2f6ad2f36c2175fc45a1f774ee341
   chmod +x /usr/local/bin/bazel
 fi
 
 LLVM_RELEASE="clang+llvm-${LLVM_VERSION}-${LLVM_DISTRO}"
-download_and_check "${LLVM_RELEASE}.tar.xz" "https://releases.llvm.org/${LLVM_VERSION}/${LLVM_RELEASE}.tar.xz" "${LLVM_SHA256SUM}"
+LLVM_DOWNLOAD_PREFIX=${LLVM_DOWNLOAD_PREFIX:-https://github.com/llvm/llvm-project/releases/download/llvmorg-}
+download_and_check "${LLVM_RELEASE}.tar.xz" "${LLVM_DOWNLOAD_PREFIX}${LLVM_VERSION}/${LLVM_RELEASE}.tar.xz" "${LLVM_SHA256SUM}"
 tar Jxf "${LLVM_RELEASE}.tar.xz"
 mv "./${LLVM_RELEASE}" /opt/llvm
 chown -R root:root /opt/llvm
@@ -64,7 +66,20 @@ ldconfig
 # Install gn tools.
 install_gn
 
-# MSAN
+# Install lcov
+LCOV_VERSION=1.14
+download_and_check lcov-${LCOV_VERSION}.tar.gz https://github.com/linux-test-project/lcov/releases/download/v${LCOV_VERSION}/lcov-${LCOV_VERSION}.tar.gz \
+  14995699187440e0ae4da57fe3a64adc0a3c5cf14feab971f8db38fb7d8f071a
+tar zxf lcov-${LCOV_VERSION}.tar.gz
+make -C lcov-${LCOV_VERSION} install
+rm -rf "lcov-${LCOV_VERSION}" "./lcov-${LCOV_VERSION}.tar.gz"
+
+
+# Install sanitizer instrumented libc++, skipping for architectures other than x86_64 for now.
+if [[ "$(uname -m)" != "x86_64" ]]; then
+  exit 0
+fi
+
 export PATH="/opt/llvm/bin:${PATH}"
 
 WORKDIR=$(mktemp -d)
@@ -73,24 +88,31 @@ function cleanup {
 }
 
 trap cleanup EXIT
-
-cd "${WORKDIR}"
-
+pushd "${WORKDIR}"
 curl -sSfL "https://github.com/llvm/llvm-project/archive/llvmorg-${LLVM_VERSION}.tar.gz" | tar zx
 
-mkdir msan
-pushd msan
+function install_libcxx() {
+  local LLVM_USE_SANITIZER=$1
+  local LIBCXX_PATH=$2
 
-cmake -GNinja -DLLVM_ENABLE_PROJECTS="libcxxabi;libcxx" -DLLVM_USE_LINKER=lld -DLLVM_USE_SANITIZER=Memory -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_INSTALL_PREFIX="/opt/libcxx_msan" "../llvm-project-llvmorg-${LLVM_VERSION}/llvm"
-ninja install-cxx install-cxxabi
+  mkdir "${LIBCXX_PATH}"
+  pushd "${LIBCXX_PATH}"
 
-if [[ ! -z "$(diff -r /opt/libcxx_msan/include/c++ /opt/llvm/include/c++)" ]]; then
-  echo "Different libc++ is installed";
-  exit 1
-fi
+  cmake -GNinja -DLLVM_ENABLE_PROJECTS="libcxxabi;libcxx" -DLLVM_USE_LINKER=lld -DLLVM_USE_SANITIZER=${LLVM_USE_SANITIZER} -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_INSTALL_PREFIX="/opt/libcxx_${LIBCXX_PATH}" "../llvm-project-llvmorg-${LLVM_VERSION}/llvm"
+  ninja install-cxx install-cxxabi
 
-rm -rf /opt/libcxx_msan/include
+  if [[ ! -z "$(diff -r /opt/libcxx_${LIBCXX_PATH}/include/c++ /opt/llvm/include/c++)" ]]; then
+    echo "Different libc++ is installed";
+    exit 1
+  fi
+
+  rm -rf "/opt/libcxx_${LIBCXX_PATH}/include"
+
+  popd
+}
+
+install_libcxx MemoryWithOrigins msan
+install_libcxx Thread tsan
 
 popd
-

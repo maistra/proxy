@@ -4,6 +4,7 @@
 #include <memory>
 
 #include "gmock/gmock.h"
+#include "absl/status/statusor.h"
 #include "eval/public/activation.h"
 #include "eval/public/cel_expression.h"
 
@@ -14,26 +15,26 @@ namespace runtime {
 
 class MockCelExpression : public CelExpression {
  public:
-  MOCK_CONST_METHOD1(InitializeState,
-                     std::unique_ptr<CelEvaluationState>(google::protobuf::Arena* arena));
+  MOCK_METHOD(std::unique_ptr<CelEvaluationState>, InitializeState,
+              (google::protobuf::Arena * arena), (const, override));
 
-  MOCK_CONST_METHOD2(
-      Evaluate, ::cel_base::StatusOr<CelValue>(const BaseActivation& activation,
-                                           google::protobuf::Arena* arena));
+  MOCK_METHOD(absl::StatusOr<CelValue>, Evaluate,
+              (const BaseActivation& activation, google::protobuf::Arena* arena),
+              (const, override));
 
-  MOCK_CONST_METHOD2(
-      Evaluate, ::cel_base::StatusOr<CelValue>(const BaseActivation& activation,
-                                           CelEvaluationState* state));
+  MOCK_METHOD(absl::StatusOr<CelValue>, Evaluate,
+              (const BaseActivation& activation, CelEvaluationState* state),
+              (const, override));
 
-  MOCK_CONST_METHOD3(
-      Trace, ::cel_base::StatusOr<CelValue>(const BaseActivation& activation,
-                                        google::protobuf::Arena* arena,
-                                        CelEvaluationListener callback));
+  MOCK_METHOD(absl::StatusOr<CelValue>, Trace,
+              (const BaseActivation& activation, google::protobuf::Arena* arena,
+               CelEvaluationListener callback),
+              (const, override));
 
-  MOCK_CONST_METHOD3(
-      Trace, ::cel_base::StatusOr<CelValue>(const BaseActivation& activation,
-                                        CelEvaluationState* state,
-                                        CelEvaluationListener callback));
+  MOCK_METHOD(absl::StatusOr<CelValue>, Trace,
+              (const BaseActivation& activation, CelEvaluationState* state,
+               CelEvaluationListener callback),
+              (const, override));
 };
 
 }  // namespace runtime

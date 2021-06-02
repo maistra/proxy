@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "what_lib",
     srcs = ["main.go"],
     importpath = "golang.org/x/tools/cmd/guru/testdata/src/what",
     visibility = ["//visibility:private"],
@@ -9,6 +9,6 @@ go_library(
 
 go_binary(
     name = "what",
-    embed = [":go_default_library"],
+    embed = [":what_lib"],
     visibility = ["//visibility:public"],
 )

@@ -25,7 +25,6 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"text/template"
@@ -50,23 +49,33 @@ type Example struct {
 
 // Cases holds template data.
 type Cases struct {
-	RunDir     string
 	Imports    []*Import
 	Tests      []TestCase
 	Benchmarks []TestCase
 	Examples   []Example
 	TestMain   string
 	Coverage   bool
+	Pkgname    string
 }
 
 const testMainTpl = `
 package main
+// This package must be initialized before packages being tested.
+// NOTE: this relies on the order of package initialization, which is the spec
+// is somewhat unclear about-- it only clearly guarantees that imported packages
+// are initialized before their importers, though in practice (and implied) it
+// also respects declaration order, which we're relying on here.
+import (
+	_ "github.com/bazelbuild/rules_go/go/tools/testinit"
+)
 import (
 	"flag"
 	"log"
 	"os"
-	"path/filepath"
-	"runtime"
+	"os/exec"
+{{if .TestMain}}
+	"reflect"
+{{end}}
 	"strconv"
 	"testing"
 	"testing/internal/testdeps"
@@ -117,20 +126,15 @@ func testsInShard() []testing.InternalTest {
 }
 
 func main() {
-	// Check if we're being run by Bazel and change directories if so.
-	// TEST_SRCDIR and TEST_WORKSPACE are set by the Bazel test runner, so that makes a decent proxy.
-	testSrcdir := os.Getenv("TEST_SRCDIR")
-	testWorkspace := os.Getenv("TEST_WORKSPACE")
-	if testSrcdir != "" && testWorkspace != "" {
-		abs := filepath.Join(testSrcdir, testWorkspace, {{printf "%q" .RunDir}})
-		err := os.Chdir(abs)
-		// Ignore the Chdir err when on Windows, since it might have have runfiles symlinks.
-		// https://github.com/bazelbuild/rules_go/pull/1721#issuecomment-422145904
-		if err != nil && runtime.GOOS != "windows" {
-			log.Fatalf("could not change to test directory: %v", err)
-		}
-		if err == nil {
-			os.Setenv("PWD", abs)
+	if shouldWrap() {
+		err := wrap("{{.Pkgname}}")
+		if xerr, ok := err.(*exec.ExitError); ok {
+			os.Exit(xerr.ExitCode())
+		} else if err != nil {
+			log.Print(err)
+			os.Exit(testWrapperAbnormalExit)
+		} else {
+			os.Exit(0)
 		}
 	}
 
@@ -155,13 +159,15 @@ func main() {
 	os.Exit(m.Run())
 	{{else}}
 	{{.TestMain}}(m)
+	{{/* See golang.org/issue/34129 and golang.org/cl/219639 */}}
+	os.Exit(int(reflect.ValueOf(m).Elem().FieldByName("exitCode").Int()))
 	{{end}}
 }
 `
 
 func genTestMain(args []string) error {
 	// Prepare our flags
-	args, err := readParamsFiles(args)
+	args, err := expandParamsFiles(args)
 	if err != nil {
 		return err
 	}
@@ -169,9 +175,9 @@ func genTestMain(args []string) error {
 	sources := multiFlag{}
 	flags := flag.NewFlagSet("GoTestGenTest", flag.ExitOnError)
 	goenv := envFlags(flags)
-	runDir := flags.String("rundir", ".", "Path to directory where tests should run.")
 	out := flags.String("output", "", "output file to write. Defaults to stdout.")
 	coverage := flags.Bool("coverage", false, "whether coverage is supported")
+	pkgname := flags.String("pkgname", "", "package name of test")
 	flags.Var(&imports, "import", "Packages to import")
 	flags.Var(&sources, "src", "Sources to process for tests")
 	if err := flags.Parse(args); err != nil {
@@ -220,8 +226,8 @@ func genTestMain(args []string) error {
 	}
 
 	cases := Cases{
-		RunDir:   strings.Replace(filepath.FromSlash(*runDir), `\`, `\\`, -1),
 		Coverage: *coverage,
+		Pkgname:  *pkgname,
 	}
 
 	testFileSet := token.NewFileSet()
@@ -313,9 +319,13 @@ func genTestMain(args []string) error {
 			}
 		}
 	}
-	// Add only the imports we found tests for
-	for pkg := range pkgs {
-		cases.Imports = append(cases.Imports, importMap[pkg])
+
+	for name := range importMap {
+		// Set the names for all unused imports to "_"
+		if !pkgs[name] {
+			importMap[name].Name = "_"
+		}
+		cases.Imports = append(cases.Imports, importMap[name])
 	}
 	sort.Slice(cases.Imports, func(i, j int) bool {
 		return cases.Imports[i].Name < cases.Imports[j].Name

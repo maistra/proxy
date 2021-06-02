@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "compilebench_lib",
     srcs = ["main.go"],
     importpath = "golang.org/x/tools/cmd/compilebench",
     visibility = ["//visibility:private"],
@@ -9,6 +9,6 @@ go_library(
 
 go_binary(
     name = "compilebench",
-    embed = [":go_default_library"],
+    embed = [":compilebench_lib"],
     visibility = ["//visibility:public"],
 )

@@ -19,13 +19,25 @@ import "github.com/bazelbuild/bazel-gazelle/rule"
 
 var protoKinds = map[string]rule.KindInfo{
 	"proto_library": {
+		MatchAttrs:    []string{"srcs"},
 		NonEmptyAttrs: map[string]bool{"srcs": true},
 		MergeableAttrs: map[string]bool{
-			"srcs": true,
+			"srcs":                true,
+			"import_prefix":       true,
+			"strip_import_prefix": true,
 		},
 		ResolveAttrs: map[string]bool{"deps": true},
 	},
 }
 
+var protoLoads = []rule.LoadInfo{
+	{
+		Name: "@rules_proto//proto:defs.bzl",
+		Symbols: []string{
+			"proto_library",
+		},
+	},
+}
+
 func (_ *protoLang) Kinds() map[string]rule.KindInfo { return protoKinds }
-func (_ *protoLang) Loads() []rule.LoadInfo          { return nil }
+func (_ *protoLang) Loads() []rule.LoadInfo          { return protoLoads }

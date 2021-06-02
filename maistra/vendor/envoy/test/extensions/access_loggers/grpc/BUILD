@@ -1,5 +1,3 @@
-licenses(["notice"])  # Apache 2
-
 load(
     "//bazel:envoy_build_system.bzl",
     "envoy_package",
@@ -9,6 +7,8 @@ load(
     "envoy_extension_cc_test",
 )
 
+licenses(["notice"])  # Apache 2
+
 envoy_package()
 
 envoy_extension_cc_test(
@@ -16,12 +16,11 @@ envoy_extension_cc_test(
     srcs = ["grpc_access_log_impl_test.cc"],
     extension_name = "envoy.access_loggers.http_grpc",
     deps = [
+        "//source/common/buffer:zero_copy_input_stream_lib",
         "//source/extensions/access_loggers/grpc:http_grpc_access_log_lib",
-        "//test/mocks/access_log:access_log_mocks",
         "//test/mocks/grpc:grpc_mocks",
         "//test/mocks/local_info:local_info_mocks",
-        "//test/mocks/ssl:ssl_mocks",
-        "//test/mocks/stream_info:stream_info_mocks",
+        "//test/mocks/stats:stats_mocks",
         "//test/mocks/thread_local:thread_local_mocks",
         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
         "@envoy_api//envoy/data/accesslog/v3:pkg_cc_proto",
@@ -67,7 +66,7 @@ envoy_extension_cc_test(
     extension_name = "envoy.access_loggers.http_grpc",
     deps = [
         "//source/extensions/access_loggers/grpc:http_config",
-        "//test/mocks/server:server_mocks",
+        "//test/mocks/server:factory_context_mocks",
         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
         "@envoy_api//envoy/extensions/access_loggers/grpc/v3:pkg_cc_proto",
     ],

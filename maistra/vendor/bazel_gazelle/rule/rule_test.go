@@ -18,6 +18,7 @@ package rule
 import (
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
@@ -344,5 +345,91 @@ func TestShouldKeepExpr(t *testing.T) {
 				t.Errorf("got %v; want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestInternalVisibility(t *testing.T) {
+	var tests = []struct {
+		rel      string
+		expected string
+	}{
+		{rel: "internal", expected: "//:__subpackages__"},
+		{rel: "a/b/internal", expected: "//a/b:__subpackages__"},
+		{rel: "a/b/internal/c", expected: "//a/b:__subpackages__"},
+		{rel: "a/b/internal/c/d", expected: "//a/b:__subpackages__"},
+		{rel: "a/b/internal/c/internal", expected: "//a/b/internal/c:__subpackages__"},
+		{rel: "a/b/internal/c/internal/d", expected: "//a/b/internal/c:__subpackages__"},
+	}
+
+	for _, tt := range tests {
+		if actual := CheckInternalVisibility(tt.rel, "default"); actual != tt.expected {
+			t.Errorf("got %v; want %v", actual, tt.expected)
+		}
+	}
+}
+
+func TestSortRulesByName(t *testing.T) {
+	f, err := LoadMacroData(
+		filepath.Join("third_party", "repos.bzl"),
+		"", "repos",
+		[]byte(`load("@bazel_gazelle//:deps.bzl", "go_repository")
+def repos():
+    go_repository(
+        name = "com_github_andybalholm_cascadia",
+    )
+    go_repository(
+        name = "com_github_bazelbuild_buildtools",
+    )
+    go_repository(
+        name = "com_github_bazelbuild_rules_go",
+    )
+    go_repository(
+        name = "com_github_bazelbuild_bazel_gazelle",
+    )
+`))
+	if err != nil {
+		t.Error(err)
+	}
+	sort.Stable(byName{
+		rules: f.Rules,
+		exprs: f.function.stmt.Body,
+	})
+	repos := []string{
+		"com_github_andybalholm_cascadia",
+		"com_github_bazelbuild_bazel_gazelle",
+		"com_github_bazelbuild_buildtools",
+		"com_github_bazelbuild_rules_go",
+	}
+	for i, r := range repos {
+		rule := f.Rules[i]
+		if rule.Name() != r {
+			t.Errorf("expect rule %s at %d, got %s", r, i, rule.Name())
+		}
+		if rule.Index() != i {
+			t.Errorf("expect rule %s with index %d, got %d", r, i, rule.Index())
+		}
+		if f.function.stmt.Body[i] != rule.expr {
+			t.Errorf("underlying syntax tree of rule %s not sorted", r)
+		}
+	}
+}
+
+func TestCheckFile(t *testing.T) {
+	f := File{Rules: []*Rule{
+		NewRule("go_repository", "com_google_cloud_go_pubsub"),
+		NewRule("go_repository", "com_google_cloud_go_pubsub"),
+	}}
+	err := checkFile(&f)
+	if err == nil {
+		t.Errorf("muliple rules with the same name should not be tolerated")
+	}
+
+	f = File{Rules: []*Rule {
+		NewRule("go_rules_dependencies", ""),
+		NewRule("go_register_toolchains", ""),
+	}}
+	err = checkFile(&f)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
 	}
 }

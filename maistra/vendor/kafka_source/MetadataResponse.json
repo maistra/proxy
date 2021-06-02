@@ -81,10 +81,10 @@
         { "name": "OfflineReplicas", "type": "[]int32", "versions": "5+", "ignorable": true,
           "about": "The set of offline replicas of this partition." }
       ]},
-      { "name": "TopicAuthorizedOperations", "type": "int32", "versions": "8+", "default": "-2147483648",
+      { "name": "TopicAuthorizedOperations", "type": "int32", "versions": "8+", "default": "INT32_MIN",
         "about": "32-bit bitfield to represent authorized operations for this topic." }
     ]},
-    { "name": "ClusterAuthorizedOperations", "type": "int32", "versions": "8+", "default": "-2147483648",
+    { "name": "ClusterAuthorizedOperations", "type": "int32", "versions": "8+", "default": "INT32_MIN",
       "about": "32-bit bitfield to represent authorized operations for this cluster." }
   ]
 }

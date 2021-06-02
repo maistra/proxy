@@ -1,0 +1,27 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
+
+go_library(
+    name = "genapijson_lib",
+    srcs = ["generate.go"],
+    importpath = "golang.org/x/tools/internal/lsp/source/genapijson",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//go/ast/astutil",
+        "//go/packages",
+        "//internal/lsp/mod",
+        "//internal/lsp/source",
+    ],
+)
+
+go_binary(
+    name = "genapijson",
+    embed = [":genapijson_lib"],
+    visibility = ["//:__subpackages__"],
+)
+
+go_test(
+    name = "genapijson_test",
+    srcs = ["generate_test.go"],
+    embed = [":genapijson_lib"],
+    deps = ["//internal/testenv"],
+)

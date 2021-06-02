@@ -25,6 +25,8 @@
 
 #include <grpc/support/alloc.h>
 
+#include "absl/container/inlined_vector.h"
+
 #include "src/core/ext/filters/client_channel/lb_policy_registry.h"
 #include "src/core/ext/filters/client_channel/server_address.h"
 // TODO(roth): Should not need the include of subchannel.h here, since
@@ -33,7 +35,6 @@
 #include "src/core/ext/filters/client_channel/subchannel_interface.h"
 #include "src/core/lib/channel/channel_args.h"
 #include "src/core/lib/debug/trace.h"
-#include "src/core/lib/gprpp/inlined_vector.h"
 #include "src/core/lib/gprpp/orphanable.h"
 #include "src/core/lib/gprpp/ref_counted.h"
 #include "src/core/lib/gprpp/ref_counted_ptr.h"
@@ -62,7 +63,7 @@ class MySubchannelList
 };
 
 */
-// All methods will be called from within the client_channel combiner.
+// All methods will be called from within the client_channel work serializer.
 
 namespace grpc_core {
 
@@ -141,7 +142,9 @@ class SubchannelData {
         : subchannel_data_(subchannel_data),
           subchannel_list_(std::move(subchannel_list)) {}
 
-    ~Watcher() { subchannel_list_.reset(DEBUG_LOCATION, "Watcher dtor"); }
+    ~Watcher() override {
+      subchannel_list_.reset(DEBUG_LOCATION, "Watcher dtor");
+    }
 
     void OnConnectivityStateChange(grpc_connectivity_state new_state) override;
 
@@ -172,7 +175,7 @@ class SubchannelData {
 template <typename SubchannelListType, typename SubchannelDataType>
 class SubchannelList : public InternallyRefCounted<SubchannelListType> {
  public:
-  typedef InlinedVector<SubchannelDataType, 10> SubchannelVector;
+  typedef absl::InlinedVector<SubchannelDataType, 10> SubchannelVector;
 
   // The number of subchannels in the list.
   size_t num_subchannels() const { return subchannels_.size(); }
@@ -199,17 +202,13 @@ class SubchannelList : public InternallyRefCounted<SubchannelListType> {
 
  protected:
   SubchannelList(LoadBalancingPolicy* policy, TraceFlag* tracer,
-                 const ServerAddressList& addresses,
+                 ServerAddressList addresses,
                  LoadBalancingPolicy::ChannelControlHelper* helper,
                  const grpc_channel_args& args);
 
   virtual ~SubchannelList();
 
  private:
-  // So New() can call our private ctor.
-  template <typename T, typename... Args>
-  friend T* New(Args&&... args);
-
   // For accessing Ref() and Unref().
   friend class SubchannelData<SubchannelListType, SubchannelDataType>;
 
@@ -267,7 +266,8 @@ void SubchannelData<SubchannelListType, SubchannelDataType>::Watcher::
 template <typename SubchannelListType, typename SubchannelDataType>
 SubchannelData<SubchannelListType, SubchannelDataType>::SubchannelData(
     SubchannelList<SubchannelListType, SubchannelDataType>* subchannel_list,
-    const ServerAddress& address, RefCountedPtr<SubchannelInterface> subchannel)
+    const ServerAddress& /*address*/,
+    RefCountedPtr<SubchannelInterface> subchannel)
     : subchannel_list_(subchannel_list),
       subchannel_(std::move(subchannel)),
       // We assume that the current state is IDLE.  If not, we'll get a
@@ -286,10 +286,10 @@ void SubchannelData<SubchannelListType, SubchannelDataType>::
     if (GRPC_TRACE_FLAG_ENABLED(*subchannel_list_->tracer())) {
       gpr_log(GPR_INFO,
               "[%s %p] subchannel list %p index %" PRIuPTR " of %" PRIuPTR
-              " (subchannel %p): unreffing subchannel",
+              " (subchannel %p): unreffing subchannel (%s)",
               subchannel_list_->tracer()->name(), subchannel_list_->policy(),
               subchannel_list_, Index(), subchannel_list_->num_subchannels(),
-              subchannel_.get());
+              subchannel_.get(), reason);
     }
     subchannel_.reset();
   }
@@ -316,10 +316,10 @@ void SubchannelData<SubchannelListType,
   }
   GPR_ASSERT(pending_watcher_ == nullptr);
   pending_watcher_ =
-      New<Watcher>(this, subchannel_list()->Ref(DEBUG_LOCATION, "Watcher"));
+      new Watcher(this, subchannel_list()->Ref(DEBUG_LOCATION, "Watcher"));
   subchannel_->WatchConnectivityState(
       connectivity_state_,
-      UniquePtr<SubchannelInterface::ConnectivityStateWatcherInterface>(
+      std::unique_ptr<SubchannelInterface::ConnectivityStateWatcherInterface>(
           pending_watcher_));
 }
 
@@ -352,11 +352,11 @@ void SubchannelData<SubchannelListType, SubchannelDataType>::ShutdownLocked() {
 
 template <typename SubchannelListType, typename SubchannelDataType>
 SubchannelList<SubchannelListType, SubchannelDataType>::SubchannelList(
-    LoadBalancingPolicy* policy, TraceFlag* tracer,
-    const ServerAddressList& addresses,
+    LoadBalancingPolicy* policy, TraceFlag* tracer, ServerAddressList addresses,
     LoadBalancingPolicy::ChannelControlHelper* helper,
     const grpc_channel_args& args)
-    : InternallyRefCounted<SubchannelListType>(tracer),
+    : InternallyRefCounted<SubchannelListType>(
+          GRPC_TRACE_FLAG_ENABLED(*tracer) ? "SubchannelList" : nullptr),
       policy_(policy),
       tracer_(tracer) {
   if (GRPC_TRACE_FLAG_ENABLED(*tracer_)) {
@@ -365,59 +365,28 @@ SubchannelList<SubchannelListType, SubchannelDataType>::SubchannelList(
             tracer_->name(), policy, this, addresses.size());
   }
   subchannels_.reserve(addresses.size());
-  // We need to remove the LB addresses in order to be able to compare the
-  // subchannel keys of subchannels from a different batch of addresses.
-  // We remove the service config, since it will be passed into the
-  // subchannel via call context.
-  static const char* keys_to_remove[] = {GRPC_ARG_SUBCHANNEL_ADDRESS,
-                                         GRPC_ARG_SERVICE_CONFIG};
   // Create a subchannel for each address.
-  for (size_t i = 0; i < addresses.size(); i++) {
-    // TODO(roth): we should ideally hide this from the LB policy code. In
-    // principle, if we're dealing with this special case in the client_channel
-    // code for selecting grpclb, then we should also strip out these addresses
-    // there if we're not using grpclb.
-    if (addresses[i].IsBalancer()) {
-      continue;
-    }
-    InlinedVector<grpc_arg, 3> args_to_add;
-    const size_t subchannel_address_arg_index = args_to_add.size();
-    args_to_add.emplace_back(
-        Subchannel::CreateSubchannelAddressArg(&addresses[i].address()));
-    if (addresses[i].args() != nullptr) {
-      for (size_t j = 0; j < addresses[i].args()->num_args; ++j) {
-        args_to_add.emplace_back(addresses[i].args()->args[j]);
-      }
-    }
-    grpc_channel_args* new_args = grpc_channel_args_copy_and_add_and_remove(
-        &args, keys_to_remove, GPR_ARRAY_SIZE(keys_to_remove),
-        args_to_add.data(), args_to_add.size());
-    gpr_free(args_to_add[subchannel_address_arg_index].value.string);
+  for (ServerAddress address : addresses) {
     RefCountedPtr<SubchannelInterface> subchannel =
-        helper->CreateSubchannel(*new_args);
-    grpc_channel_args_destroy(new_args);
+        helper->CreateSubchannel(address, args);
     if (subchannel == nullptr) {
       // Subchannel could not be created.
       if (GRPC_TRACE_FLAG_ENABLED(*tracer_)) {
-        char* address_uri = grpc_sockaddr_to_uri(&addresses[i].address());
         gpr_log(GPR_INFO,
-                "[%s %p] could not create subchannel for address uri %s, "
+                "[%s %p] could not create subchannel for address %s, "
                 "ignoring",
-                tracer_->name(), policy_, address_uri);
-        gpr_free(address_uri);
+                tracer_->name(), policy_, address.ToString().c_str());
       }
       continue;
     }
     if (GRPC_TRACE_FLAG_ENABLED(*tracer_)) {
-      char* address_uri = grpc_sockaddr_to_uri(&addresses[i].address());
       gpr_log(GPR_INFO,
               "[%s %p] subchannel list %p index %" PRIuPTR
-              ": Created subchannel %p for address uri %s",
+              ": Created subchannel %p for address %s",
               tracer_->name(), policy_, this, subchannels_.size(),
-              subchannel.get(), address_uri);
-      gpr_free(address_uri);
+              subchannel.get(), address.ToString().c_str());
     }
-    subchannels_.emplace_back(this, addresses[i], std::move(subchannel));
+    subchannels_.emplace_back(this, std::move(address), std::move(subchannel));
   }
 }
 

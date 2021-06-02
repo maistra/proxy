@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
-    name = "go_default_library",
+    name = "interp",
     srcs = [
         "external.go",
         "interp.go",
@@ -13,18 +13,24 @@ go_library(
     importpath = "golang.org/x/tools/go/ssa/interp",
     visibility = ["//visibility:public"],
     deps = [
-        "//go/ssa:go_default_library",
-        "//go/types/typeutil:go_default_library",
+        "//go/ssa",
+        "//go/types/typeutil",
     ],
 )
 
+alias(
+    name = "go_default_library",
+    actual = ":interp",
+    visibility = ["//visibility:public"],
+)
+
 go_test(
-    name = "go_default_test",
+    name = "interp_test",
     srcs = ["interp_test.go"],
-    embed = [":go_default_library"],
     deps = [
-        "//go/loader:go_default_library",
-        "//go/ssa:go_default_library",
-        "//go/ssa/ssautil:go_default_library",
+        ":interp",
+        "//go/loader",
+        "//go/ssa",
+        "//go/ssa/ssautil",
     ],
 )

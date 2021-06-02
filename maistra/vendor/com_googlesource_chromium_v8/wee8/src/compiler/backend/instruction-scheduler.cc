@@ -108,7 +108,7 @@ void InstructionScheduler::EndBlock(RpoNumber rpo) {
 }
 
 void InstructionScheduler::AddTerminator(Instruction* instr) {
-  ScheduleGraphNode* new_node = new (zone()) ScheduleGraphNode(zone(), instr);
+  ScheduleGraphNode* new_node = zone()->New<ScheduleGraphNode>(zone(), instr);
   // Make sure that basic block terminators are not moved by adding them
   // as successor of every instruction.
   for (ScheduleGraphNode* node : graph_) {
@@ -128,7 +128,7 @@ void InstructionScheduler::AddInstruction(Instruction* instr) {
     return;
   }
 
-  ScheduleGraphNode* new_node = new (zone()) ScheduleGraphNode(zone(), instr);
+  ScheduleGraphNode* new_node = zone()->New<ScheduleGraphNode>(zone(), instr);
 
   // We should not have branches in the middle of a block.
   DCHECK_NE(instr->flags_mode(), kFlags_branch);
@@ -263,7 +263,6 @@ int InstructionScheduler::GetInstructionFlags(const Instruction* instr) const {
     case kArchDeoptimize:
     case kArchJmp:
     case kArchBinarySearchSwitch:
-    case kArchLookupSwitch:
     case kArchRet:
     case kArchTableSwitch:
     case kArchThrowTerminator:

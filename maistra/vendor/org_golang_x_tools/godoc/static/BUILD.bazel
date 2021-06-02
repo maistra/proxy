@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
-    name = "go_default_library",
+    name = "static",
     srcs = [
         "doc.go",
         "gen.go",
@@ -11,8 +11,14 @@ go_library(
     visibility = ["//visibility:public"],
 )
 
+alias(
+    name = "go_default_library",
+    actual = ":static",
+    visibility = ["//visibility:public"],
+)
+
 go_test(
-    name = "go_default_test",
+    name = "static_test",
     srcs = ["gen_test.go"],
-    embed = [":go_default_library"],
+    embed = [":static"],
 )

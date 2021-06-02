@@ -1,1 +1,1 @@
-filegroup(name = "all", srcs = glob(["**"]), visibility = ["//visibility:public"])
+filegroup(name = "all", srcs = glob(["**"], exclude=[]), visibility = ["//visibility:public"])

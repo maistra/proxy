@@ -9,11 +9,16 @@ import datetime
 import hashlib
 import os
 import shutil
+# Do not use subprocess2 as we won't be able to test encoding failures
 import subprocess
 import sys
 import tempfile
 import unittest
 
+import gclient_utils
+
+
+DEFAULT_BRANCH = 'master'
 
 if sys.version_info.major == 3:
   # pylint: disable=redefined-builtin
@@ -249,7 +254,7 @@ class GitRepo(object):
       ...
     }
 
-  The SPECIAL_KEYs are the following attribues of the GitRepo class:
+  The SPECIAL_KEYs are the following attributes of the GitRepo class:
     * AUTHOR_NAME
     * AUTHOR_EMAIL
     * AUTHOR_DATE - must be a datetime.datetime instance
@@ -260,7 +265,7 @@ class GitRepo(object):
   For file content, if 'data' is None, then this commit will `git rm` that file.
   """
   BASE_TEMP_DIR = tempfile.mkdtemp(suffix='base', prefix='git_repo')
-  atexit.register(shutil.rmtree, BASE_TEMP_DIR)
+  atexit.register(gclient_utils.rmtree, BASE_TEMP_DIR)
 
   # Singleton objects to specify specific data in a commit dictionary.
   AUTHOR_NAME = object()
@@ -294,9 +299,12 @@ class GitRepo(object):
 
     self.to_schema_refs = ['--branches']
 
+    # TODO(crbug.com/114712) use git.init -b and remove 'checkout' once git is
+    # upgraded to 2.28 on all builders.
     self.git('init')
     self.git('config', 'user.name', 'testcase')
     self.git('config', 'user.email', 'testcase@example.com')
+    self.git('checkout', '-b', DEFAULT_BRANCH)
     for commit in schema.walk():
       self._add_schema_commit(commit, schema.data_for(commit.name))
       self.last_commit = self[commit.name]
@@ -382,8 +390,13 @@ class GitRepo(object):
     assert self.repo_path is not None
     try:
       with open(os.devnull, 'wb') as devnull:
+        shell = sys.platform == 'win32'
         output = subprocess.check_output(
-          ('git',) + args, cwd=self.repo_path, stderr=devnull, **kwargs)
+            ('git', ) + args,
+            shell=shell,
+            cwd=self.repo_path,
+            stderr=devnull,
+            **kwargs)
         output = output.decode('utf-8')
       return self.COMMAND_OUTPUT(0, output)
     except subprocess.CalledProcessError as e:
@@ -402,7 +415,7 @@ class GitRepo(object):
 
     Causes this GitRepo to be unusable.
     """
-    shutil.rmtree(self.repo_path)
+    gclient_utils.rmtree(self.repo_path)
     self.repo_path = None
 
   def run(self, fn, *args, **kwargs):

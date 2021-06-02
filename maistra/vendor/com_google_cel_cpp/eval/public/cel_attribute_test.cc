@@ -5,6 +5,7 @@
 #include "gtest/gtest.h"
 #include "absl/strings/string_view.h"
 #include "eval/public/cel_value.h"
+#include "eval/public/structs/cel_proto_wrapper.h"
 
 namespace google {
 namespace api {
@@ -15,6 +16,8 @@ using ::google::protobuf::Duration;
 using ::google::protobuf::Timestamp;
 
 using testing::Eq;
+using testing::IsEmpty;
+using testing::SizeIs;
 
 namespace {
 
@@ -137,12 +140,14 @@ void TestAllCelValueMismatches(const CelAttributeQualifierPattern& qualifier) {
   Duration msg_duration;
   msg_duration.set_seconds(0);
   msg_duration.set_nanos(0);
-  EXPECT_FALSE(qualifier.IsMatch(CelValue::CreateDuration(&msg_duration)));
+  EXPECT_FALSE(
+      qualifier.IsMatch(CelProtoWrapper::CreateDuration(&msg_duration)));
 
   Timestamp msg_timestamp;
   msg_timestamp.set_seconds(0);
   msg_timestamp.set_nanos(0);
-  EXPECT_FALSE(qualifier.IsMatch(CelValue::CreateTimestamp(&msg_timestamp)));
+  EXPECT_FALSE(
+      qualifier.IsMatch(CelProtoWrapper::CreateTimestamp(&msg_timestamp)));
 
   DummyList dummy_list;
   EXPECT_FALSE(qualifier.IsMatch(CelValue::CreateList(&dummy_list)));
@@ -272,6 +277,41 @@ TEST(CelAttributeQualifierPatternTest, TestQualifierWildcardMatch) {
       CelAttributeQualifier::Create(CelValue::CreateString(&kTest1))));
   EXPECT_TRUE(qualifier.IsMatch(
       CelAttributeQualifier::Create(CelValue::CreateString(&kTest2))));
+}
+
+TEST(CreateCelAttributePattern, Basic) {
+  const std::string kTest = "def";
+  CelAttributePattern pattern = CreateCelAttributePattern(
+      "abc", {kTest, static_cast<uint64_t>(1), static_cast<int64_t>(-1), false,
+              CelAttributeQualifierPattern::CreateWildcard()});
+
+  EXPECT_THAT(pattern.variable(), Eq("abc"));
+  ASSERT_THAT(pattern.qualifier_path(), SizeIs(5));
+  EXPECT_TRUE(
+      pattern.qualifier_path()[0].IsMatch(CelValue::CreateStringView(kTest)));
+  EXPECT_TRUE(pattern.qualifier_path()[1].IsMatch(CelValue::CreateUint64(1)));
+  EXPECT_TRUE(pattern.qualifier_path()[2].IsMatch(CelValue::CreateInt64(-1)));
+  EXPECT_TRUE(pattern.qualifier_path()[3].IsMatch(CelValue::CreateBool(false)));
+  EXPECT_TRUE(pattern.qualifier_path()[4].IsWildcard());
+}
+
+TEST(CreateCelAttributePattern, EmptyPath) {
+  CelAttributePattern pattern = CreateCelAttributePattern("abc");
+
+  EXPECT_THAT(pattern.variable(), Eq("abc"));
+  EXPECT_THAT(pattern.qualifier_path(), IsEmpty());
+}
+
+TEST(CreateCelAttributePattern, Wildcards) {
+  const std::string kTest = "*";
+  CelAttributePattern pattern = CreateCelAttributePattern(
+      "abc", {kTest, "false", CelAttributeQualifierPattern::CreateWildcard()});
+
+  EXPECT_THAT(pattern.variable(), Eq("abc"));
+  ASSERT_THAT(pattern.qualifier_path(), SizeIs(3));
+  EXPECT_TRUE(pattern.qualifier_path()[0].IsWildcard());
+  EXPECT_FALSE(pattern.qualifier_path()[1].IsWildcard());
+  EXPECT_TRUE(pattern.qualifier_path()[2].IsWildcard());
 }
 
 }  // namespace

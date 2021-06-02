@@ -13,8 +13,9 @@
 # limitations under the License.
 
 load(
-    "@io_bazel_rules_go//go:def.bzl",
+    "//go:def.bzl",
     "GoLibrary",
+    "GoSource",
     "go_context",
 )
 load(
@@ -23,19 +24,12 @@ load(
     "proto_path",
 )
 load(
-    "@io_bazel_rules_go//go/private:rules/rule.bzl",
-    "go_rule",
-)
-load(
     "@io_bazel_rules_go//go/private:providers.bzl",
     "INFERRED_PATH",
 )
 load(
-    "@io_bazel_rules_go_compat//:compat.bzl",
-    "PROTO_PROVIDER_NAME",
-    "get_proto",
-    "has_proto",
-    "proto_check_deps_sources",
+    "@rules_proto//proto:defs.bzl",
+    "ProtoInfo",
 )
 
 GoProtoImports = provider()
@@ -43,17 +37,17 @@ GoProtoImports = provider()
 def get_imports(attr):
     proto_deps = []
 
-    if hasattr(attr, "proto") and attr.proto and has_proto(attr.proto):
+    if hasattr(attr, "proto") and attr.proto and ProtoInfo in attr.proto:
         proto_deps = [attr.proto]
     elif hasattr(attr, "protos"):
-        proto_deps = [d for d in attr.protos if has_proto(d)]
+        proto_deps = [d for d in attr.protos if ProtoInfo in d]
     else:
         proto_deps = []
 
     direct = dict()
     for dep in proto_deps:
-        for src in proto_check_deps_sources(dep).to_list():
-            direct["{}={}".format(proto_path(src, get_proto(dep)), attr.importpath)] = True
+        for src in dep[ProtoInfo].check_deps_sources.to_list():
+            direct["{}={}".format(proto_path(src, dep[ProtoInfo]), attr.importpath)] = True
 
     deps = getattr(attr, "deps", []) + getattr(attr, "embed", [])
     transitive = [
@@ -77,10 +71,12 @@ _go_proto_aspect = aspect(
 
 def _proto_library_to_source(go, attr, source, merge):
     if attr.compiler:
-        merge(source, attr.compiler)
-        return
-    for compiler in attr.compilers:
-        merge(source, compiler)
+        compilers = [attr.compiler]
+    else:
+        compilers = attr.compilers
+    for compiler in compilers:
+        if GoSource in compiler:
+            merge(source, compiler[GoSource])
 
 def _go_proto_library_impl(ctx):
     go = go_context(ctx)
@@ -112,7 +108,7 @@ def _go_proto_library_impl(ctx):
         go_srcs.extend(compiler.compile(
             go,
             compiler = compiler,
-            protos = [get_proto(d) for d in proto_deps],
+            protos = [d[ProtoInfo] for d in proto_deps],
             imports = get_imports(ctx.attr),
             importpath = go.importpath,
         ))
@@ -138,12 +134,12 @@ def _go_proto_library_impl(ctx):
         ])
     return providers + [OutputGroupInfo(**output_groups)]
 
-go_proto_library = go_rule(
-    _go_proto_library_impl,
+go_proto_library = rule(
+    implementation = _go_proto_library_impl,
     attrs = {
-        "proto": attr.label(providers = [PROTO_PROVIDER_NAME]),
+        "proto": attr.label(providers = [ProtoInfo]),
         "protos": attr.label_list(
-            providers = [PROTO_PROVIDER_NAME],
+            providers = [ProtoInfo],
             default = [],
         ),
         "deps": attr.label_list(
@@ -152,6 +148,7 @@ go_proto_library = go_rule(
         ),
         "importpath": attr.string(),
         "importmap": attr.string(),
+        "importpath_aliases": attr.string_list(),  # experimental, undocumented
         "embed": attr.label_list(providers = [GoLibrary]),
         "gc_goopts": attr.string_list(),
         "compiler": attr.label(providers = [GoProtoCompiler]),
@@ -159,12 +156,14 @@ go_proto_library = go_rule(
             providers = [GoProtoCompiler],
             default = ["@io_bazel_rules_go//proto:go_proto"],
         ),
+        "_go_context_data": attr.label(
+            default = "//:go_context_data",
+        ),
     },
+    toolchains = ["@io_bazel_rules_go//go:toolchain"],
 )
-"""
-go_proto_library is a rule that takes a proto_library (in the proto
-attribute) and produces a go library for it.
-"""
+# go_proto_library is a rule that takes a proto_library (in the proto
+# attribute) and produces a go library for it.
 
 def go_grpc_library(**kwargs):
     # TODO: Deprecate once gazelle generates just go_proto_library

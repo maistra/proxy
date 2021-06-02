@@ -79,8 +79,7 @@ TEST_F(BytecodeArrayBuilderTest, AllBytecodesGenerated) {
       .StoreAccumulatorInRegister(wide);
 
   // Emit Ldar and Star taking care to foil the register optimizer.
-  builder.StackCheck(0)
-      .LoadAccumulatorWithRegister(other)
+  builder.LoadAccumulatorWithRegister(other)
       .BinaryOperation(Token::ADD, reg, 1)
       .StoreAccumulatorInRegister(reg)
       .LoadNull();
@@ -138,6 +137,7 @@ TEST_F(BytecodeArrayBuilderTest, AllBytecodesGenerated) {
   // Emit load / store property operations.
   builder.LoadNamedProperty(reg, name, load_slot.ToInt())
       .LoadNamedPropertyNoFeedback(reg, name)
+      .LoadNamedPropertyFromSuper(reg, name, load_slot.ToInt())
       .LoadKeyedProperty(reg, keyed_load_slot.ToInt())
       .StoreNamedProperty(reg, name, sloppy_store_slot.ToInt(),
                           LanguageMode::kSloppy)
@@ -277,6 +277,9 @@ TEST_F(BytecodeArrayBuilderTest, AllBytecodesGenerated) {
   // Emit GetSuperConstructor.
   builder.GetSuperConstructor(reg);
 
+  // Constructor check for GetSuperConstructor.
+  builder.ThrowIfNotSuperConstructor(reg);
+
   // Hole checks.
   builder.ThrowReferenceErrorIfHole(name)
       .ThrowSuperAlreadyCalledIfNotHole()
@@ -312,7 +315,7 @@ TEST_F(BytecodeArrayBuilderTest, AllBytecodesGenerated) {
         .Bind(&after_jump10)
         .JumpIfFalse(ToBooleanMode::kAlreadyBoolean, &after_jump11)
         .Bind(&after_jump11)
-        .JumpLoop(&loop_header, 0)
+        .JumpLoop(&loop_header, 0, 0)
         .Bind(&after_loop);
   }
 
@@ -342,9 +345,6 @@ TEST_F(BytecodeArrayBuilderTest, AllBytecodesGenerated) {
 
   // Emit set pending message bytecode.
   builder.SetPendingMessage();
-
-  // Emit stack check bytecode.
-  builder.StackCheck(0);
 
   // Emit throw and re-throw in it's own basic block so that the rest of the
   // code isn't omitted due to being dead.
@@ -447,7 +447,7 @@ TEST_F(BytecodeArrayBuilderTest, AllBytecodesGenerated) {
 
   // Generate BytecodeArray.
   scope.SetScriptScopeInfo(factory->NewScopeInfo(1));
-  ast_factory.Internalize(isolate()->factory());
+  ast_factory.Internalize(isolate());
   Handle<BytecodeArray> the_array = builder.ToBytecodeArray(isolate());
   CHECK_EQ(the_array->frame_size(),
            builder.total_register_count() * kSystemPointerSize);
@@ -535,7 +535,7 @@ TEST_F(BytecodeArrayBuilderTest, Parameters) {
 
   Register receiver(builder.Receiver());
   Register param8(builder.Parameter(8));
-  CHECK_EQ(param8.index() - receiver.index(), 9);
+  CHECK_EQ(receiver.index() - param8.index(), 9);
 }
 
 TEST_F(BytecodeArrayBuilderTest, Constants) {
@@ -560,7 +560,7 @@ TEST_F(BytecodeArrayBuilderTest, Constants) {
       .LoadLiteral(nan)
       .Return();
 
-  ast_factory.Internalize(isolate()->factory());
+  ast_factory.Internalize(isolate());
   Handle<BytecodeArray> array = builder.ToBytecodeArray(isolate());
   // Should only have one entry for each identical constant.
   EXPECT_EQ(4, array->constant_pool().length());
@@ -706,12 +706,14 @@ TEST_F(BytecodeArrayBuilderTest, BackwardJumps) {
   BytecodeLoopHeader loop_header;
   builder.JumpIfNull(&after_loop)
       .Bind(&loop_header)
-      .JumpLoop(&loop_header, 0)
+      .JumpLoop(&loop_header, 0, 0)
       .Bind(&after_loop);
   for (int i = 0; i < 42; i++) {
     BytecodeLabel after_loop;
     // Conditional jump to force the code after the JumpLoop to be live.
-    builder.JumpIfNull(&after_loop).JumpLoop(&loop_header, 0).Bind(&after_loop);
+    builder.JumpIfNull(&after_loop)
+        .JumpLoop(&loop_header, 0, 0)
+        .Bind(&after_loop);
   }
 
   // Add padding to force wide backwards jumps.
@@ -719,7 +721,7 @@ TEST_F(BytecodeArrayBuilderTest, BackwardJumps) {
     builder.Debugger();
   }
 
-  builder.JumpLoop(&loop_header, 0);
+  builder.JumpLoop(&loop_header, 0, 0);
   builder.Bind(&end);
   builder.Return();
 

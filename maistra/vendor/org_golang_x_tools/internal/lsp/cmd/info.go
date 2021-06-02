@@ -15,15 +15,13 @@ import (
 
 	"golang.org/x/tools/internal/lsp/browser"
 	"golang.org/x/tools/internal/lsp/debug"
+	"golang.org/x/tools/internal/lsp/source"
 )
 
 // version implements the version command.
 type version struct {
 	app *Application
 }
-
-// bug implements the bug command.
-type bug struct{}
 
 func (v *version) Name() string      { return "version" }
 func (v *version) Usage() string     { return "" }
@@ -33,12 +31,14 @@ func (v *version) DetailedHelp(f *flag.FlagSet) {
 	f.PrintDefaults()
 }
 
-// Run collects some basic information and then prepares an issue ready to
-// be reported.
+// Run prints version information to stdout.
 func (v *version) Run(ctx context.Context, args ...string) error {
-	debug.PrintVersionInfo(os.Stdout, v.app.Verbose, debug.PlainText)
+	debug.PrintVersionInfo(ctx, os.Stdout, v.app.verbose(), debug.PlainText)
 	return nil
 }
+
+// bug implements the bug command.
+type bug struct{}
 
 func (b *bug) Name() string      { return "bug" }
 func (b *bug) Usage() string     { return "" }
@@ -48,8 +48,8 @@ func (b *bug) DetailedHelp(f *flag.FlagSet) {
 	f.PrintDefaults()
 }
 
-const goplsBugPrefix = "gopls: "
-const goplsBugHeader = `Please answer these questions before submitting your issue. Thanks!
+const goplsBugPrefix = "x/tools/gopls: <DESCRIBE THE PROBLEM>"
+const goplsBugHeader = `ATTENTION: Please answer these questions BEFORE submitting your issue. Thanks!
 
 #### What did you do?
 If possible, provide a recipe for reproducing the error.
@@ -70,7 +70,7 @@ A failing unit test is the best.
 func (b *bug) Run(ctx context.Context, args ...string) error {
 	buf := &bytes.Buffer{}
 	fmt.Fprint(buf, goplsBugHeader)
-	debug.PrintVersionInfo(buf, true, debug.Markdown)
+	debug.PrintVersionInfo(ctx, buf, true, debug.Markdown)
 	body := buf.String()
 	title := strings.Join(args, " ")
 	if !strings.HasPrefix(title, goplsBugPrefix) {
@@ -80,5 +80,20 @@ func (b *bug) Run(ctx context.Context, args ...string) error {
 		fmt.Print("Please file a new issue at golang.org/issue/new using this template:\n\n")
 		fmt.Print(body)
 	}
+	return nil
+}
+
+type apiJSON struct{}
+
+func (sj *apiJSON) Name() string      { return "api-json" }
+func (sj *apiJSON) Usage() string     { return "" }
+func (sj *apiJSON) ShortHelp() string { return "print json describing gopls API" }
+func (sj *apiJSON) DetailedHelp(f *flag.FlagSet) {
+	fmt.Fprint(f.Output(), ``)
+	f.PrintDefaults()
+}
+
+func (sj *apiJSON) Run(ctx context.Context, args ...string) error {
+	fmt.Fprintf(os.Stdout, source.GeneratedAPIJSON)
 	return nil
 }

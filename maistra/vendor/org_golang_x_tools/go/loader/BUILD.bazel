@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
-    name = "go_default_library",
+    name = "loader",
     srcs = [
         "doc.go",
         "loader.go",
@@ -10,22 +10,27 @@ go_library(
     importpath = "golang.org/x/tools/go/loader",
     visibility = ["//visibility:public"],
     deps = [
-        "//go/ast/astutil:go_default_library",
-        "//go/buildutil:go_default_library",
-        "//go/internal/cgo:go_default_library",
+        "//go/ast/astutil",
+        "//go/buildutil",
+        "//go/internal/cgo",
     ],
 )
 
+alias(
+    name = "go_default_library",
+    actual = ":loader",
+    visibility = ["//visibility:public"],
+)
+
 go_test(
-    name = "go_default_test",
+    name = "loader_test",
     srcs = [
-        "example_test.go",
         "loader_test.go",
         "stdlib_test.go",
     ],
-    embed = [":go_default_library"],
     deps = [
-        "//go/buildutil:go_default_library",
-        "//internal/testenv:go_default_library",
+        ":loader",
+        "//go/buildutil",
+        "//internal/testenv",
     ],
 )

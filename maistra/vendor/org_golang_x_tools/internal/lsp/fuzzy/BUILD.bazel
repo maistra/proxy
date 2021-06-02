@@ -1,7 +1,7 @@
-load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test", "go_tool_library")
 
 go_library(
-    name = "go_default_library",
+    name = "fuzzy",
     srcs = [
         "input.go",
         "matcher.go",
@@ -10,11 +10,27 @@ go_library(
     visibility = ["//:__subpackages__"],
 )
 
+go_tool_library(
+    name = "go_tool_library",
+    srcs = [
+        "input.go",
+        "matcher.go",
+    ],
+    importpath = "golang.org/x/tools/internal/lsp/fuzzy",
+    visibility = ["//:__subpackages__"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":fuzzy",
+    visibility = ["//:__subpackages__"],
+)
+
 go_test(
-    name = "go_default_test",
+    name = "fuzzy_test",
     srcs = [
         "input_test.go",
         "matcher_test.go",
     ],
-    embed = [":go_default_library"],
+    deps = [":fuzzy"],
 )

@@ -64,6 +64,8 @@ ViewDataImpl::ViewDataImpl(absl::Time start_time,
     : aggregation_(descriptor.aggregation()),
       aggregation_window_(descriptor.aggregation_window_),
       type_(TypeForDescriptor(descriptor)),
+      start_times_(),
+      expiry_duration_(descriptor.expiry_duration_),
       start_time_(start_time) {
   switch (type_) {
     case Type::kDouble: {
@@ -91,9 +93,18 @@ ViewDataImpl::ViewDataImpl(const ViewDataImpl& other, absl::Time now)
       type_(other.aggregation().type() == Aggregation::Type::kDistribution
                 ? Type::kDistribution
                 : Type::kDouble),
+      start_times_(),
       start_time_(std::max(other.start_time(),
                            now - other.aggregation_window().duration())) {
+  // Intentionally reset the source with a new start time.
+  for (const auto& it : other.start_times_) {
+    auto new_start_time =
+        std::max(it.second, now - other.aggregation_window().duration());
+    start_times_[it.first] = new_start_time;
+  }
+
   ABSL_ASSERT(aggregation_window_.type() == AggregationWindow::Type::kInterval);
+
   switch (aggregation_.type()) {
     case Aggregation::Type::kSum:
     case Aggregation::Type::kCount: {
@@ -156,6 +167,7 @@ ViewDataImpl::ViewDataImpl(const ViewDataImpl& other)
     : aggregation_(other.aggregation_),
       aggregation_window_(other.aggregation_window_),
       type_(other.type()),
+      start_times_(other.start_times_),
       start_time_(other.start_time_) {
   switch (type_) {
     case Type::kDouble: {
@@ -182,6 +194,10 @@ ViewDataImpl::ViewDataImpl(const ViewDataImpl& other)
 
 void ViewDataImpl::Merge(const std::vector<std::string>& tag_values,
                          const MeasureData& data, absl::Time now) {
+  // A value is set here. Set a start time if it is unset.
+  SetStartTimeIfUnset(tag_values, now);
+  SetUpdateTime(tag_values, now);
+  PurgeExpired(now);
   switch (type_) {
     case Type::kDouble: {
       if (aggregation_.type() == Aggregation::Type::kSum) {
@@ -256,6 +272,7 @@ ViewDataImpl::ViewDataImpl(ViewDataImpl* source, absl::Time now)
     : aggregation_(source->aggregation_),
       aggregation_window_(source->aggregation_window_),
       type_(source->type_),
+      start_times_(source->start_times_),
       start_time_(source->start_time_) {
   switch (type_) {
     case Type::kDouble: {
@@ -280,7 +297,67 @@ ViewDataImpl::ViewDataImpl(ViewDataImpl* source, absl::Time now)
       break;
     }
   }
+  // Intentionally reset the source with new start times.
   source->start_time_ = now;
+
+  for (const auto& it : source->start_times_) {
+    source->start_times_[it.first] = now;
+  }
+}
+
+void ViewDataImpl::SetUpdateTime(const std::vector<std::string>& tag_values,
+                                 absl::Time now) {
+  if (expiry_duration_ == absl::ZeroDuration()) {
+    // No need to track last update time if expiry duration is not set.
+    return;
+  }
+
+  auto update_time_map_iter = update_time_entries_.find(tag_values);
+  if (update_time_map_iter == update_time_entries_.end()) {
+    // The timeseries is not tracked, add it to the update time list and map.
+    update_times_.emplace_front(now, tag_values);
+    update_time_entries_[tag_values] = update_times_.begin();
+  } else {
+    // The timeseries is tracked, update its updated time and move it to the
+    // front of the list.
+    auto update_time_list_iter = update_time_map_iter->second;
+    update_time_list_iter->first = now;
+    update_times_.splice(update_times_.begin(), update_times_,
+                         update_time_list_iter);
+  }
+}
+
+void ViewDataImpl::PurgeExpired(absl::Time now) {
+  if (expiry_duration_ == absl::ZeroDuration() || update_times_.empty()) {
+    // No need to remove expired entries since either expiry is not set or there
+    // is no data entry yet.
+    return;
+  }
+  // Remove data that has not been updated for expiry.
+  while (now - update_times_.back().first > expiry_duration_) {
+    const auto& tags = update_times_.back().second;
+    update_time_entries_.erase(tags);
+    start_times_.erase(tags);
+    switch (type_) {
+      case Type::kDouble: {
+        double_data_.erase(tags);
+        break;
+      }
+      case Type::kInt64: {
+        int_data_.erase(tags);
+        break;
+      }
+      case Type::kDistribution: {
+        distribution_data_.erase(tags);
+        break;
+      }
+      case Type::kStatsObject: {
+        interval_data_.erase(tags);
+        break;
+      }
+    }
+    update_times_.pop_back();
+  }
 }
 
 }  // namespace stats

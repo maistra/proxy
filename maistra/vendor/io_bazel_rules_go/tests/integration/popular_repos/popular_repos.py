@@ -24,9 +24,9 @@ POPULAR_REPOS = [
         strip_prefix = "crypto-de0752318171da717af4ce24d0a2e8626afaeb11",
         type = "zip",
         excludes = [
-            "ssh/agent:go_default_test",
-            "ssh:go_default_test",
-            "ssh/test:go_default_test",
+            "ssh/agent:agent_test",
+            "ssh:ssh_test",
+            "ssh/test:test_test",
         ],
     ),
 
@@ -35,16 +35,15 @@ POPULAR_REPOS = [
         importpath = "golang.org/x/net",
         commit = "57efc9c3d9f91fb3277f8da1cff370539c4d3dc5",
         excludes = [
-            "bpf:go_default_test", # Needs testdata directory
-            "html/charset:go_default_test", # Needs testdata directory
-            "http2:go_default_test", # Needs testdata directory
-            "icmp:go_default_test", # icmp requires adjusting kernel options.
-            "ipv4:go_default_test", # 1877 (but new in go1.13): conflicting package heights
-            "nettest:go_default_test", #
-            "lif:go_default_test",
+            "bpf:bpf_test", # Needs testdata directory
+            "html/charset:charset_test", # Needs testdata directory
+            "http2:http2_test", # Needs testdata directory
+            "icmp:icmp_test", # icmp requires adjusting kernel options.
+            "nettest:nettest_test", #
+            "lif:lif_test",
         ],
         darwin_tests = [
-            "route:go_default_test", # Not supported on linux
+            "route:route_test", # Not supported on linux
         ]
     ),
 
@@ -52,9 +51,6 @@ POPULAR_REPOS = [
         name = "org_golang_x_sys",
         importpath = "golang.org/x/sys",
         commit = "acbc56fc7007d2a01796d5bde54f39e3b3e95945",
-        excludes = [
-            "unix:go_default_test", # TODO(#413): External test depends on symbols defined in internal test.
-        ],
     ),
 
     dict(
@@ -62,102 +58,135 @@ POPULAR_REPOS = [
         importpath = "golang.org/x/text",
         commit = "a9a820217f98f7c8a207ec1e45a874e1fe12c478",
         excludes = [
-            "encoding/japanese:go_default_test", # Needs testdata directory
-            "encoding/korean:go_default_test", # Needs testdata directory
-            "encoding/charmap:go_default_test", # Needs testdata directory
-            "encoding/simplifiedchinese:go_default_test", # Needs testdata directory
-            "encoding/traditionalchinese:go_default_test", # Needs testdata directory
-            "encoding/unicode/utf32:go_default_test", # Needs testdata directory
-            "encoding/unicode:go_default_test", # Needs testdata directory
+            "encoding/japanese:japanese_test", # Needs testdata directory
+            "encoding/korean:korean_test", # Needs testdata directory
+            "encoding/charmap:charmap_test", # Needs testdata directory
+            "encoding/simplifiedchinese:simplifiedchinese_test", # Needs testdata directory
+            "encoding/traditionalchinese:traditionalchinese_test", # Needs testdata directory
+            "encoding/unicode/utf32:utf32_test", # Needs testdata directory
+            "encoding/unicode:unicode_test", # Needs testdata directory
         ],
     ),
 
     dict(
         name = "org_golang_x_tools",
         importpath = "golang.org/x/tools",
-        commit = "92b943e6bff73e0dfe9e975d94043d8f31067b06",
+        commit = "11eff242d136374289f76e9313c76e9312391172",
         excludes = [
-            "cmd/bundle:go_default_test", # Needs testdata directory
-            "cmd/callgraph/testdata/src/pkg:go_default_test", # is testdata
-            "cmd/callgraph:go_default_test", # Needs testdata directory
-            "cmd/cover:go_default_test", # Needs testdata directory
-            "cmd/fiximports:go_default_test", # requires working GOROOT, not present in CI.
-            "cmd/godoc:go_default_test", # TODO(#417)
-            "cmd/gorename:go_default_test", # TODO(#417)
-            "cmd/guru/testdata/src/referrers:go_default_test", # Not a real test
-            "cmd/guru:go_default_test", # Needs testdata directory
-            "cmd/stringer:go_default_test", # Needs testdata directory
-            "container/intsets:go_default_test", # TODO(#413): External test depends on symbols defined in internal test.
-            "go/analysis/analysistest:go_default_test", # requires build cache
-            "go/analysis/internal/checker:go_default_test", # loads test package with go/packages, which probably needs go list
-            "go/analysis/internal/facts:go_default_test", # loads test package with go/packages, which probably needs go list
-            "go/analysis/multichecker:go_default_test", # requires go vet
-            "go/analysis/passes/asmdecl:go_default_test", # Needs testdata directory
-            "go/analysis/passes/assign:go_default_test", # Needs testdata directory
-            "go/analysis/passes/atomic:go_default_test", # Needs testdata directory
-            "go/analysis/passes/atomicalign:go_default_test", # requires go list
-            "go/analysis/passes/bools:go_default_test", # Needs testdata directory
-            "go/analysis/passes/buildssa:go_default_test", # Needs testdata directory
-            "go/analysis/passes/buildtag:go_default_test", # Needs testdata directory
-            "go/analysis/passes/cgocall:go_default_test", # Needs testdata directory
-            "go/analysis/passes/composite:go_default_test", # Needs testdata directory
-            "go/analysis/passes/copylock:go_default_test", # Needs testdata directory
-            "go/analysis/passes/ctrlflow:go_default_test", # Needs testdata directory
-            "go/analysis/passes/deepequalerrors:go_default_test", # requires go list
-            "go/analysis/passes/errorsas:go_default_test", # requires go list and testdata
-            "go/analysis/passes/findcall:go_default_test", # requires build cache
-            "go/analysis/passes/httpresponse:go_default_test", # Needs testdata directory
-            "go/analysis/passes/loopclosure:go_default_test", # Needs testdata directory
-            "go/analysis/passes/lostcancel:go_default_test", # Needs testdata directory
-            "go/analysis/passes/nilfunc:go_default_test", # Needs testdata directory
-            "go/analysis/passes/nilness:go_default_test", # Needs testdata directory
-            "go/analysis/passes/pkgfact:go_default_test", # requires go list
-            "go/analysis/passes/printf:go_default_test", # Needs testdata directory
-            "go/analysis/passes/shadow:go_default_test", # Needs testdata directory
-            "go/analysis/passes/shift:go_default_test", # Needs testdata directory
-            "go/analysis/passes/sortslice:go_default_test", # Needs 'go list'
-            "go/analysis/passes/stdmethods:go_default_test", # Needs testdata directory
-            "go/analysis/passes/structtag:go_default_test", # Needs testdata directory
-            "go/analysis/passes/tests/testdata/src/a:go_default_test", # Not a real test
-            "go/analysis/passes/tests/testdata/src/b_x_test:go_default_test", # Not a real test
-            "go/analysis/passes/tests/testdata/src/divergent:go_default_test", # Not a real test
-            "go/analysis/passes/tests:go_default_test", # Needs testdata directory
-            "go/analysis/passes/unmarshal:go_default_test", # Needs go list
-            "go/analysis/passes/unreachable:go_default_test", # Needs testdata directory
-            "go/analysis/passes/unsafeptr:go_default_test", # Needs testdata directory
-            "go/analysis/passes/unusedresult:go_default_test", # Needs testdata directory
-            "go/analysis/unitchecker:go_default_test", # requires go vet
-            "go/ast/inspector:go_default_test", # requires GOROOT and GOPATH
-            "go/buildutil:go_default_test", # Needs testdata directory
-            "go/callgraph/cha:go_default_test", # Needs testdata directory
-            "go/callgraph/rta:go_default_test", # Needs testdata directory
-            "go/expect:go_default_test", # Needs testdata directory
-            "go/gccgoexportdata:go_default_test", # Needs testdata directory
-            "go/gcexportdata:go_default_test", # Needs testdata directory
-            "go/internal/gccgoimporter:go_default_test", # Needs testdata directory
-            "go/internal/gcimporter:go_default_test", # Needs testdata directory
-            "go/loader:go_default_test", # Needs testdata directory
-            "go/packages/packagestest:go_default_test", # requires build cache
-            "go/packages:go_default_test", # Hah!
-            "go/pointer:go_default_test", # Needs testdata directory
-            "go/ssa/interp:go_default_test", # Needs testdata directory
-            "go/ssa/ssautil:go_default_test", # Needs testdata directory
-            "go/ssa:go_default_test", # Needs testdata directory
-            "go/types/typeutil:go_default_test", # requires GOROOT
-            "godoc/static:go_default_test", # requires data files
-            "godoc/vfs/zipfs:go_default_test", # requires GOROOT
-            "godoc:go_default_test", # requires GOROOT and GOPATH
-            "internal/apidiff:go_default_test", # Needs testdata directory
-            "internal/imports:go_default_test", # Needs testdata directory
-            "internal/lsp/cmd:go_default_test", # panics?
-            "internal/lsp/source:go_default_test", # Needs testdata directory
-            "internal/lsp/testdata/analyzer:go_default_test", # not a real test
-            "internal/lsp/testdata/rename/testy:go_default_test", # not a real test
-            "internal/lsp/testdata/testy:go_default_test", # Is testdata directory
-            "internal/lsp:go_default_test", # Needs testdata directory
-            "refactor/eg:go_default_test", # Needs testdata directory
-            "refactor/importgraph:go_default_test", # TODO(#417)
-            "refactor/rename:go_default_test", # TODO(#417)
+            "blog:blog_test", # Needs goldmark
+            "cmd/bundle:bundle_test", # Needs testdata directory
+            "cmd/callgraph/testdata/src/pkg:pkg_test", # is testdata
+            "cmd/callgraph:callgraph_test", # Needs testdata directory
+            "cmd/cover:cover_test", # Needs testdata directory
+            "cmd/fiximports:fiximports_test", # requires working GOROOT, not present in CI.
+            "cmd/godoc:godoc_test", # TODO(#417)
+            "cmd/gorename:gorename_test", # TODO(#417)
+            "cmd/guru/testdata/src/referrers:referrers_test", # Not a real test
+            "cmd/guru:guru_test", # Needs testdata directory
+            "cmd/stringer:stringer_test", # Needs testdata directory
+            "container/intsets:intsets_test", # TODO(#413): External test depends on symbols defined in internal test.
+            "go/analysis/analysistest:analysistest_test", # requires build cache
+            "go/analysis/internal/checker:checker_test", # loads test package with go/packages, which probably needs go list
+            "go/analysis/internal/facts:facts_test", # loads test package with go/packages, which probably needs go list
+            "go/analysis/multichecker:multichecker_test", # requires go vet
+            "go/analysis/passes/asmdecl:asmdecl_test", # Needs testdata directory
+            "go/analysis/passes/assign:assign_test", # Needs testdata directory
+            "go/analysis/passes/atomic:atomic_test", # Needs testdata directory
+            "go/analysis/passes/atomicalign:atomicalign_test", # requires go list
+            "go/analysis/passes/bools:bools_test", # Needs testdata directory
+            "go/analysis/passes/buildssa:buildssa_test", # Needs testdata directory
+            "go/analysis/passes/buildtag:buildtag_test", # Needs testdata directory
+            "go/analysis/passes/cgocall:cgocall_test", # Needs testdata directory
+            "go/analysis/passes/composite:composite_test", # Needs testdata directory
+            "go/analysis/passes/copylock:copylock_test", # Needs testdata directory
+            "go/analysis/passes/ctrlflow:ctrlflow_test", # Needs testdata directory
+            "go/analysis/passes/deepequalerrors:deepequalerrors_test", # requires go list
+            "go/analysis/passes/errorsas:errorsas_test", # requires go list and testdata
+            "go/analysis/passes/findcall:findcall_test", # requires build cache
+            "go/analysis/passes/httpresponse:httpresponse_test", # Needs testdata directory
+            "go/analysis/passes/ifaceassert:ifaceassert_test", # Needs GOROOT
+            "go/analysis/passes/loopclosure:loopclosure_test", # Needs testdata directory
+            "go/analysis/passes/lostcancel:lostcancel_test", # Needs testdata directory
+            "go/analysis/passes/nilfunc:nilfunc_test", # Needs testdata directory
+            "go/analysis/passes/nilness:nilness_test", # Needs testdata directory
+            "go/analysis/passes/pkgfact:pkgfact_test", # requires go list
+            "go/analysis/passes/printf:printf_test", # Needs testdata directory
+            "go/analysis/passes/shadow:shadow_test", # Needs testdata directory
+            "go/analysis/passes/shift:shift_test", # Needs testdata directory
+            "go/analysis/passes/sortslice:sortslice_test", # Needs 'go list'
+            "go/analysis/passes/stdmethods:stdmethods_test", # Needs testdata directory
+            "go/analysis/passes/stringintconv:stringintconv_test", # Needs 'go list'
+            "go/analysis/passes/structtag:structtag_test", # Needs testdata directory
+            "go/analysis/passes/testinggoroutine:testinggoroutine_test", # Need 'go env'
+            "go/analysis/passes/tests/testdata/src/a:a_test", # Not a real test
+            "go/analysis/passes/tests/testdata/src/b_x_test:b_x_test_test", # Not a real test
+            "go/analysis/passes/tests/testdata/src/divergent:divergent_test", # Not a real test
+            "go/analysis/passes/tests:tests_test", # Needs testdata directory
+            "go/analysis/passes/unmarshal:unmarshal_test", # Needs go list
+            "go/analysis/passes/unreachable:unreachable_test", # Needs testdata directory
+            "go/analysis/passes/unsafeptr:unsafeptr_test", # Needs testdata directory
+            "go/analysis/passes/unusedresult:unusedresult_test", # Needs testdata directory
+            "go/analysis/unitchecker:unitchecker_test", # requires go vet
+            "go/ast/inspector:inspector_test", # requires GOROOT and GOPATH
+            "go/buildutil:buildutil_test", # Needs testdata directory
+            "go/callgraph/cha:cha_test", # Needs testdata directory
+            "go/callgraph/rta:rta_test", # Needs testdata directory
+            "go/expect:expect_test", # Needs testdata directory
+            "go/gccgoexportdata:gccgoexportdata_test", # Needs testdata directory
+            "go/gcexportdata:gcexportdata_test", # Needs testdata directory
+            "go/internal/gccgoimporter:gccgoimporter_test", # Needs testdata directory
+            "go/internal/gcimporter:gcimporter_test", # Needs testdata directory
+            "go/loader:loader_test", # Needs testdata directory
+            "go/packages/packagestest/testdata/groups/two/primarymod/expect:expect_test", # Is testdata
+            "go/packages/packagestest/testdata:testdata_test", # Is testdata
+            "go/packages/packagestest:packagestest_test", # requires build cache
+            "go/packages:packages_test", # Hah!
+            "go/pointer:pointer_test", # Needs testdata directory
+            "go/ssa/interp:interp_test", # Needs testdata directory
+            "go/ssa/ssautil:ssautil_test", # Needs testdata directory
+            "go/ssa:ssa_test", # Needs testdata directory
+            "go/types/typeutil:typeutil_test", # requires GOROOT
+            "godoc/static:static_test", # requires data files
+            "godoc/vfs/zipfs:zipfs_test", # requires GOROOT
+            "godoc:godoc_test", # requires GOROOT and GOPATH
+            "internal/apidiff:apidiff_test", # Needs testdata directory
+            "internal/gocommand:gocommand_test", # Needs go tool
+            "internal/imports:imports_test", # Needs testdata directory
+            "internal/lsp/analysis/fillreturns:fillreturns_test", # Needs go tool
+            "internal/lsp/analysis/fillstruct:fillstruct_test", # Needs go tool
+            "internal/lsp/analysis/nonewvars:nonewvars_test", # Needs GOROOT
+            "internal/lsp/analysis/noresultvalues:noresultvalues_test", # Needs GOROOT
+            "internal/lsp/analysis/simplifycompositelit:simplifycompositelit_test", # Needs go tool
+            "internal/lsp/analysis/simplifyrange:simplifyrange_test", # Needs GOROOT
+            "internal/lsp/analysis/simplifyslice:simplifyslice_test", # Needs GOROOT
+            "internal/lsp/analysis/undeclaredname:undeclaredname_test", # Needs GOROOT
+            "internal/lsp/analysis/unusedparams:unusedparams_test", # Needs go tool
+            "internal/lsp/cache:cache_test", # has additional deps
+            "internal/lsp/cmd:cmd_test", # panics?
+            "internal/lsp/diff/difftest:difftest_test", # has additional deps
+            "internal/lsp/diff/myers:myers_test", # has additional deps
+            "internal/lsp/diff:diff_test", # has additional deps
+            "internal/lsp/fake:fake_test", # has additional deps
+            "internal/lsp/fuzzy:fuzzy_test", # has additional deps
+            "internal/lsp/lsprpc:lsprpc_test", # has additional deps
+            "internal/lsp/mod:mod_test", # has additional deps
+            "internal/lsp/regtest:regtest_test", # has additional deps
+            "internal/lsp/snippet:snippet_test", # has additional deps
+            "internal/lsp/source:source_test", # Needs testdata directory
+            "internal/lsp/testdata/lsp/primarymod/analyzer:analyzer_test", # not a real test
+            "internal/lsp/testdata/lsp/primarymod/codelens:codelens_test", # Is testdata
+            "internal/lsp/testdata/lsp/primarymod/godef/a:a_test", # not a real test
+            "internal/lsp/testdata/lsp/primarymod/implementation/other:other_test", # not a real test
+            "internal/lsp/testdata/lsp/primarymod/references:references_test", # not a real test
+            "internal/lsp/testdata/lsp/primarymod/rename/testy:testy_test", # not a real test
+            "internal/lsp/testdata/lsp/primarymod/signature:signature_test", # Is testdata
+            "internal/lsp/testdata/lsp/primarymod/testy:testy_test", # not a real test
+            "internal/lsp/testdata/lsp/primarymod/unimported:unimported_test", # not a real test
+            "internal/lsp:lsp_test", # Needs testdata directory
+            "present:present_test", # Needs goldmark
+            "refactor/eg:eg_test", # Needs testdata directory
+            "refactor/importgraph:importgraph_test", # TODO(#417)
+            "refactor/rename:rename_test", # TODO(#417)
         ],
     ),
 
@@ -171,6 +200,16 @@ POPULAR_REPOS = [
         name = "org_golang_x_sync",
         importpath = "golang.org/x/sync",
         commit = "112230192c580c3556b8cee6403af37a4fc5f28c",
+    ),
+
+    dict(
+        name = "org_golang_x_mod",
+        importpath = "golang.org/x/mod",
+        commit = "c0d644d00ab849f4506f17a98a5740bf0feff020",
+        excludes = [
+            "sumdb/tlog:tlog_test", # Needs network, not available on RBE
+            "zip:zip_test", # Needs vcs tools, not available on RBE
+        ],            
     ),
   ]
 

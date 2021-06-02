@@ -29,83 +29,32 @@ namespace v8 {
 namespace internal {
 
 namespace {
-const char* kStandard = "standard";
-const char* kOr = "or";
-const char* kUnit = "unit";
-const char* kStandardShort = "standard-short";
-const char* kOrShort = "or-short";
-const char* kUnitShort = "unit-short";
-const char* kStandardNarrow = "standard-narrow";
-const char* kOrNarrow = "or-narrow";
-const char* kUnitNarrow = "unit-narrow";
 
-const char* GetIcuStyleString(JSListFormat::Style style,
-                              JSListFormat::Type type) {
+UListFormatterWidth GetIcuWidth(JSListFormat::Style style) {
+  switch (style) {
+    case JSListFormat::Style::LONG:
+      return ULISTFMT_WIDTH_WIDE;
+    case JSListFormat::Style::SHORT:
+      return ULISTFMT_WIDTH_SHORT;
+    case JSListFormat::Style::NARROW:
+      return ULISTFMT_WIDTH_NARROW;
+  }
+  UNREACHABLE();
+}
+
+UListFormatterType GetIcuType(JSListFormat::Type type) {
   switch (type) {
     case JSListFormat::Type::CONJUNCTION:
-      switch (style) {
-        case JSListFormat::Style::LONG:
-          return kStandard;
-        case JSListFormat::Style::SHORT:
-          return kStandardShort;
-        case JSListFormat::Style::NARROW:
-          return kStandardNarrow;
-      }
+      return ULISTFMT_TYPE_AND;
     case JSListFormat::Type::DISJUNCTION:
-      switch (style) {
-        case JSListFormat::Style::LONG:
-          return kOr;
-        case JSListFormat::Style::SHORT:
-          return kOrShort;
-        case JSListFormat::Style::NARROW:
-          return kOrNarrow;
-      }
+      return ULISTFMT_TYPE_OR;
     case JSListFormat::Type::UNIT:
-      switch (style) {
-        case JSListFormat::Style::LONG:
-          return kUnit;
-        case JSListFormat::Style::SHORT:
-          return kUnitShort;
-        case JSListFormat::Style::NARROW:
-          return kUnitNarrow;
-      }
+      return ULISTFMT_TYPE_UNITS;
   }
   UNREACHABLE();
 }
 
 }  // namespace
-
-JSListFormat::Style get_style(const char* str) {
-  switch (str[0]) {
-    case 'n':
-      if (strcmp(&str[1], "arrow") == 0) return JSListFormat::Style::NARROW;
-      break;
-    case 'l':
-      if (strcmp(&str[1], "ong") == 0) return JSListFormat::Style::LONG;
-      break;
-    case 's':
-      if (strcmp(&str[1], "hort") == 0) return JSListFormat::Style::SHORT;
-      break;
-  }
-  UNREACHABLE();
-}
-
-JSListFormat::Type get_type(const char* str) {
-  switch (str[0]) {
-    case 'c':
-      if (strcmp(&str[1], "onjunction") == 0)
-        return JSListFormat::Type::CONJUNCTION;
-      break;
-    case 'd':
-      if (strcmp(&str[1], "isjunction") == 0)
-        return JSListFormat::Type::DISJUNCTION;
-      break;
-    case 'u':
-      if (strcmp(&str[1], "nit") == 0) return JSListFormat::Type::UNIT;
-      break;
-  }
-  UNREACHABLE();
-}
 
 MaybeHandle<JSListFormat> JSListFormat::New(Isolate* isolate, Handle<Map> map,
                                             Handle<Object> locales,
@@ -144,9 +93,14 @@ MaybeHandle<JSListFormat> JSListFormat::New(Isolate* isolate, Handle<Map> map,
 
   // 10. Let r be ResolveLocale(%ListFormat%.[[AvailableLocales]],
   // requestedLocales, opt, undefined, localeData).
-  Intl::ResolvedLocale r =
+  Maybe<Intl::ResolvedLocale> maybe_resolve_locale =
       Intl::ResolveLocale(isolate, JSListFormat::GetAvailableLocales(),
                           requested_locales, matcher, {});
+  if (maybe_resolve_locale.IsNothing()) {
+    THROW_NEW_ERROR(isolate, NewRangeError(MessageTemplate::kIcuError),
+                    JSListFormat);
+  }
+  Intl::ResolvedLocale r = maybe_resolve_locale.FromJust();
   Handle<String> locale_str =
       isolate->factory()->NewStringFromAsciiChecked(r.locale.c_str());
 
@@ -170,12 +124,12 @@ MaybeHandle<JSListFormat> JSListFormat::New(Isolate* isolate, Handle<Map> map,
   icu::Locale icu_locale = r.icu_locale;
   UErrorCode status = U_ZERO_ERROR;
   icu::ListFormatter* formatter = icu::ListFormatter::createInstance(
-      icu_locale, GetIcuStyleString(style_enum, type_enum), status);
-  if (U_FAILURE(status)) {
+      icu_locale, GetIcuType(type_enum), GetIcuWidth(style_enum), status);
+  if (U_FAILURE(status) || formatter == nullptr) {
     delete formatter;
-    FATAL("Failed to create ICU list formatter, are ICU data files missing?");
+    THROW_NEW_ERROR(isolate, NewRangeError(MessageTemplate::kIcuError),
+                    JSListFormat);
   }
-  CHECK_NOT_NULL(formatter);
 
   Handle<Managed<icu::ListFormatter>> managed_formatter =
       Managed<icu::ListFormatter>::FromRawPtr(isolate, 0, formatter);
@@ -281,7 +235,7 @@ MaybeHandle<T> FormatListCommon(
   std::vector<icu::UnicodeString> array = maybe_array.FromJust();
 
   icu::ListFormatter* formatter = format->icu_formatter().raw();
-  CHECK_NOT_NULL(formatter);
+  DCHECK_NOT_NULL(formatter);
 
   UErrorCode status = U_ZERO_ERROR;
   icu::FormattedList formatted = formatter->formatStringsToValue(
@@ -358,8 +312,7 @@ struct CheckListPattern {
 }  // namespace
 
 const std::set<std::string>& JSListFormat::GetAvailableLocales() {
-  static base::LazyInstance<
-      Intl::AvailableLocales<icu::Locale, CheckListPattern>>::type
+  static base::LazyInstance<Intl::AvailableLocales<CheckListPattern>>::type
       available_locales = LAZY_INSTANCE_INITIALIZER;
   return available_locales.Pointer()->Get();
 }

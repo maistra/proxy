@@ -1,8 +1,14 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "browser",
     srcs = ["browser.go"],
     importpath = "golang.org/x/tools/internal/lsp/browser",
+    visibility = ["//:__subpackages__"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":browser",
     visibility = ["//:__subpackages__"],
 )

@@ -3,13 +3,48 @@
 #include "openssl/err.h"
 #include "common/common/assert.h"
 #include "common/network/address_impl.h"
+#include "common/protobuf/utility.h"
 
 #include "absl/strings/str_join.h"
+#include "openssl/x509v3.h"
 
 namespace Envoy {
 namespace Extensions {
 namespace TransportSockets {
 namespace Tls {
+
+Envoy::Ssl::CertificateDetailsPtr Utility::certificateDetails(X509* cert, const std::string& path,
+                                                              TimeSource& time_source) {
+  Envoy::Ssl::CertificateDetailsPtr certificate_details =
+      std::make_unique<envoy::admin::v3::CertificateDetails>();
+  certificate_details->set_path(path);
+  certificate_details->set_serial_number(Utility::getSerialNumberFromCertificate(*cert));
+  certificate_details->set_days_until_expiration(
+      Utility::getDaysUntilExpiration(cert, time_source));
+
+  ProtobufWkt::Timestamp* valid_from = certificate_details->mutable_valid_from();
+  TimestampUtil::systemClockToTimestamp(Utility::getValidFrom(*cert), *valid_from);
+  ProtobufWkt::Timestamp* expiration_time = certificate_details->mutable_expiration_time();
+  TimestampUtil::systemClockToTimestamp(Utility::getExpirationTime(*cert), *expiration_time);
+
+  for (auto& dns_san : Utility::getSubjectAltNames(*cert, GEN_DNS)) {
+    envoy::admin::v3::SubjectAlternateName& subject_alt_name =
+        *certificate_details->add_subject_alt_names();
+    subject_alt_name.set_dns(dns_san);
+  }
+  for (auto& uri_san : Utility::getSubjectAltNames(*cert, GEN_URI)) {
+    envoy::admin::v3::SubjectAlternateName& subject_alt_name =
+        *certificate_details->add_subject_alt_names();
+    subject_alt_name.set_uri(uri_san);
+  }
+  for (auto& ip_san : Utility::getSubjectAltNames(*cert, GEN_IPADD)) {
+    envoy::admin::v3::SubjectAlternateName& subject_alt_name =
+        *certificate_details->add_subject_alt_names();
+    subject_alt_name.set_ip_address(ip_san);
+  }
+  return certificate_details;
+}
+
 namespace {
 
 enum class CertName { Issuer, Subject };
@@ -21,7 +56,7 @@ enum class CertName { Issuer, Subject };
  * @return std::string returns the desired name formatted as an RFC 2253 name.
  */
 std::string getRFC2253NameFromCertificate(X509& cert, CertName desired_name) {
-  bssl::UniquePtr<BIO> buf(BIO_new(BIO_s_mem()));
+ bssl::UniquePtr<BIO> buf(BIO_new(BIO_s_mem()));
   RELEASE_ASSERT(buf != nullptr, "");
 
   X509_NAME* name = nullptr;
@@ -33,7 +68,6 @@ std::string getRFC2253NameFromCertificate(X509& cert, CertName desired_name) {
     name = X509_get_subject_name(&cert);
     break;
   }
-
   // flags=XN_FLAG_RFC2253 is the documented parameter for single-line output in RFC 2253 format.
   // Example from the RFC:
   //   * Single value per Relative Distinguished Name (RDN): CN=Steve Kille,O=Isode Limited,C=GB
@@ -68,7 +102,17 @@ inline bssl::UniquePtr<ASN1_TIME> currentASN1_Time(TimeSource& time_source) {
 }
 
 std::string Utility::getSerialNumberFromCertificate(X509& cert) {
-  return Envoy::Extensions::TransportSockets::Tls::getSerialNumberFromCertificate(&cert);
+  ASN1_INTEGER* serial_number = X509_get_serialNumber(&cert);
+  BIGNUM* num_bn(BN_new());
+  ASN1_INTEGER_to_BN(serial_number, num_bn);
+  char* char_serial_number = BN_bn2hex(num_bn);
+  BN_free(num_bn);
+  if (char_serial_number != nullptr) {
+    std::string serial_number(char_serial_number);
+    OPENSSL_free(char_serial_number);
+    return absl::AsciiStrToLower(serial_number);
+  }
+  return "";
 }
 
 std::vector<std::string> Utility::getSubjectAltNames(X509& cert, int type) {
@@ -99,6 +143,11 @@ std::string Utility::generalNameAsString(const GENERAL_NAME* general_name) {
     san.assign(reinterpret_cast<const char*>(ASN1_STRING_data(str)), ASN1_STRING_length(str));
     break;
   }
+  case GEN_EMAIL: {
+    ASN1_STRING* str = general_name->d.rfc822Name;
+    san.assign(reinterpret_cast<const char*>(ASN1_STRING_data(str)), ASN1_STRING_length(str));
+    break;
+  }
   case GEN_IPADD: {
     if (general_name->d.ip->length == 4) {
       sockaddr_in sin;
@@ -126,21 +175,7 @@ std::string Utility::getIssuerFromCertificate(X509& cert) {
 }
 
 std::string Utility::getSubjectFromCertificate(X509& cert) {
-  bssl::UniquePtr<BIO> buf(BIO_new(BIO_s_mem()));
-  RELEASE_ASSERT(buf != nullptr, "");
-
-  // flags=XN_FLAG_RFC2253 is the documented parameter for single-line output in RFC 2253 format.
-  // Example from the RFC:
-  //   * Single value per Relative Distinguished Name (RDN): CN=Steve Kille,O=Isode Limited,C=GB
-  //   * Multivalue output in first RDN: OU=Sales+CN=J. Smith,O=Widget Inc.,C=US
-  //   * Quoted comma in Organization: CN=L. Eagle,O=Sue\, Grabbit and Runn,C=GB
-  X509_NAME_print_ex(buf.get(), X509_get_subject_name(&cert), 0 /* indent */, XN_FLAG_RFC2253);
-
-  const uint8_t* data;
-  size_t data_len;
-  int rc = BIO_mem_contents(buf.get(), &data, &data_len);
-  ASSERT(rc == 1);
-  return std::string(reinterpret_cast<const char*>(data), data_len);
+  return getRFC2253NameFromCertificate(cert, CertName::Subject);
 }
 
 int32_t Utility::getDaysUntilExpiration(const X509* cert, TimeSource& time_source) {
@@ -155,38 +190,34 @@ int32_t Utility::getDaysUntilExpiration(const X509* cert, TimeSource& time_sourc
   return 0;
 }
 
-absl::optional<std::string> Utility::getX509ExtensionValue(const X509& cert,
-                                                           absl::string_view extension_name) {
-  const X509_EXTENSIONS* extensions(X509_get0_extensions(&cert));
-
-  if (extensions == nullptr) {
-    return absl::nullopt;
+absl::string_view Utility::getCertificateExtensionValue(const X509& cert,
+                                                        absl::string_view extension_name) {
+  bssl::UniquePtr<ASN1_OBJECT> oid(
+      OBJ_txt2obj(std::string(extension_name).c_str(), 1 /* don't search names */));
+  if (oid == nullptr) {
+    return {};
   }
 
-  const size_t extension_count = sk_X509_EXTENSION_num(extensions);
-
-  for (size_t i = 0; i < extension_count; ++i) {
-    X509_EXTENSION* extension = sk_X509_EXTENSION_value(extensions, i);
-
-    ASN1_OBJECT* extension_object = X509_EXTENSION_get_object(extension);
-    const size_t size = OBJ_obj2txt(nullptr, 0, extension_object, 0);
-    std::vector<char> buffer;
-    // +1 to allow for NULL byte.
-    buffer.resize(size + 1);
-    OBJ_obj2txt(buffer.data(), buffer.size(), extension_object, 0);
-
-    if (absl::string_view(buffer.data(), size) == extension_name) {
-      ASN1_OCTET_STRING* octet_string = X509_EXTENSION_get_data(extension);
-      const unsigned char* octet_string_data = octet_string->data;
-      long xlen;
-      int tag, xclass;
-      ASN1_get_object(&octet_string_data, &xlen, &tag, &xclass, octet_string->length);
-
-      return std::string(reinterpret_cast<const char*>(octet_string_data), xlen);
-    }
+  int pos = X509_get_ext_by_OBJ(&cert, oid.get(), -1);
+  if (pos < 0) {
+    return {};
   }
 
-  return absl::nullopt;
+  X509_EXTENSION* extension = X509_get_ext(&cert, pos);
+  if (extension == nullptr) {
+    return {};
+  }
+
+  const ASN1_OCTET_STRING* octet_string = X509_EXTENSION_get_data(extension);
+  RELEASE_ASSERT(octet_string != nullptr, "");
+
+  // Return the entire DER-encoded value for this extension. Correct decoding depends on
+  // knowledge of the expected structure of the extension's value.
+  const unsigned char* octet_string_data = ASN1_STRING_get0_data(octet_string);
+  const int octet_string_length = ASN1_STRING_length(octet_string);
+
+  return {reinterpret_cast<const char*>(octet_string_data),
+          static_cast<absl::string_view::size_type>(octet_string_length)};
 }
 
 SystemTime Utility::getValidFrom(const X509& cert) {

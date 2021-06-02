@@ -1,0 +1,13 @@
+workspace(name = "io_bazel_rules_rust_docs")
+
+load(":docs_repositories.bzl", "repositories")
+
+repositories()
+
+load(":docs_deps.bzl", "deps")
+
+deps()
+
+load(":docs_transitive_deps.bzl", "transitive_deps")
+
+transitive_deps()

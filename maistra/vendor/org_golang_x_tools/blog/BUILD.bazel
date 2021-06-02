@@ -1,18 +1,24 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
-    name = "go_default_library",
+    name = "blog",
     srcs = ["blog.go"],
     importpath = "golang.org/x/tools/blog",
     visibility = ["//visibility:public"],
     deps = [
-        "//blog/atom:go_default_library",
-        "//present:go_default_library",
+        "//blog/atom",
+        "//present",
     ],
 )
 
+alias(
+    name = "go_default_library",
+    actual = ":blog",
+    visibility = ["//visibility:public"],
+)
+
 go_test(
-    name = "go_default_test",
+    name = "blog_test",
     srcs = ["blog_test.go"],
-    embed = [":go_default_library"],
+    embed = [":blog"],
 )

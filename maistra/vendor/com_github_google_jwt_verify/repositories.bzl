@@ -1,34 +1,19 @@
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
-
 def bsslwrapper_repositories(bind = True):
     http_archive(
         name = "bssl_wrapper",
-        strip_prefix = "bssl_wrapper-5d15a0815181453dedb9385728223a666f085407",
-        url = "https://github.com/maistra/bssl_wrapper/archive/5d15a0815181453dedb9385728223a666f085407.tar.gz",
-        sha256 = "3fb49d53711bb6442e8a250dceedefd509aabd65076d588b8928a1aca9def849",
+        strip_prefix = "bssl_wrapper-48bb791c5e06c9b5774ac7c71c04f7b8b94f0d6b",
+        url = "https://github.com/maistra/bssl_wrapper/archive/48bb791c5e06c9b5774ac7c71c04f7b8b94f0d6b.tar.gz",
+        sha256 = "7d1ac1c4e5d8aa6b966ff800c471684f961f323449fab3023b03fc4820d05380",
     )
 
     if bind:
         native.bind(
             name = "bssl_wrapper_lib",
-            actual = "@bssl_wrapper//:bssl_wrapper_lib",
+            actual = "@bssl_wrapper//:bssl_wrapper",
         )
         
-def opensslcbs_repositories(bind = True):
-    http_archive(
-        name = "openssl_cbs",
-        strip_prefix = "openssl-cbs-00e3ea2f6eb97dae4c21803d036a8f0eed40886d",
-        url = "https://github.com/maistra/openssl-cbs/archive/00e3ea2f6eb97dae4c21803d036a8f0eed40886d.tar.gz",
-        sha256 = "8d7b6401d9b3f8efa37dd805ea9e150b1fe055c8e7bb722778f5b8d133fe86ec",
-    )
-
-    if bind:
-        native.bind(
-            name = "openssl_cbs_lib",
-            actual = "@openssl_cbs//:openssl_cbs_lib",
-        )
-
 
 GOOGLETEST_COMMIT = "43863938377a9ea1399c0596269e0890b5c5515a"
 GOOGLETEST_SHA256 = "7c8ece456ad588c30160429498e108e2df6f42a30888b3ec0abf5d9792d9d3a0"
@@ -77,6 +62,10 @@ def abseil_repositories(bind = True):
         native.bind(
             name = "abseil_time",
             actual = "@com_google_absl//absl/time:time",
+        )
+        native.bind(
+            name = "abseil_flat_hash_set",
+            actual = "@com_google_absl//absl/container:flat_hash_set",
         )
     _cctz_repositories(bind)
 

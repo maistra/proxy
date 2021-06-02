@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "testdata_lib",
     srcs = [
         "finalizer.go",
         "issue9002.go",
@@ -13,6 +13,6 @@ go_library(
 
 go_binary(
     name = "testdata",
-    embed = [":go_default_library"],
+    embed = [":testdata_lib"],
     visibility = ["//visibility:public"],
 )

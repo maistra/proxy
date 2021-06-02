@@ -1,14 +1,14 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test", "go_tool_library")
 
 go_library(
-    name = "go_default_library",
+    name = "shadow",
     srcs = ["shadow.go"],
     importpath = "golang.org/x/tools/go/analysis/passes/shadow",
     visibility = ["//visibility:public"],
     deps = [
-        "//go/analysis:go_default_library",
-        "//go/analysis/passes/inspect:go_default_library",
-        "//go/ast/inspector:go_default_library",
+        "//go/analysis",
+        "//go/analysis/passes/inspect",
+        "//go/ast/inspector",
     ],
 )
 
@@ -24,9 +24,17 @@ go_tool_library(
     ],
 )
 
+alias(
+    name = "go_default_library",
+    actual = ":shadow",
+    visibility = ["//visibility:public"],
+)
+
 go_test(
-    name = "go_default_test",
+    name = "shadow_test",
     srcs = ["shadow_test.go"],
-    embed = [":go_default_library"],
-    deps = ["//go/analysis/analysistest:go_default_library"],
+    deps = [
+        ":shadow",
+        "//go/analysis/analysistest",
+    ],
 )

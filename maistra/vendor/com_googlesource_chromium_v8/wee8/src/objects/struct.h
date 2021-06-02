@@ -7,13 +7,14 @@
 
 #include "src/objects/heap-object.h"
 #include "src/objects/objects.h"
-#include "torque-generated/class-definitions-tq.h"
 
 // Has to be the last include (doesn't have include guards):
 #include "src/objects/object-macros.h"
 
 namespace v8 {
 namespace internal {
+
+#include "torque-generated/src/objects/struct-tq.inc"
 
 // An abstract superclass, a marker class really, for simple structure classes.
 // It doesn't carry any functionality but allows struct classes to be
@@ -68,9 +69,6 @@ class AccessorPair : public TorqueGeneratedAccessorPair<AccessorPair, Struct> {
 class ClassPositions
     : public TorqueGeneratedClassPositions<ClassPositions, Struct> {
  public:
-  DECL_INT_ACCESSORS(start)
-  DECL_INT_ACCESSORS(end)
-
   // Dispatched behavior.
   DECL_PRINTER(ClassPositions)
   void BriefPrintDetails(std::ostream& os);

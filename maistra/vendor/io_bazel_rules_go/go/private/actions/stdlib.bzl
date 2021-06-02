@@ -13,20 +13,21 @@
 # limitations under the License.
 
 load(
-    "@io_bazel_rules_go//go/private:providers.bzl",
+    "//go/private:providers.bzl",
     "GoStdLib",
 )
 load(
-    "@io_bazel_rules_go//go/private:mode.bzl",
+    "//go/private:mode.bzl",
     "LINKMODE_NORMAL",
     "extldflags_from_cc_toolchain",
     "link_mode_args",
-    "mode_string",
 )
 
 def emit_stdlib(go):
-    """emit_stdlib builds the standard library for the target configuration
-    or uses the precompiled standard library if it is suitable.
+    """Returns a standard library for the target configuration.
+
+    If the precompiled standard library is suitable, it will be returned.
+    Otherwise, the standard library will be compiled for the target.
 
     Returns:
         A list of providers containing GoLibrary and GoSource. GoSource.stdlib
@@ -57,9 +58,9 @@ def _sdk_stdlib(go):
     )
 
 def _build_stdlib(go):
-    pkg = go.declare_directory(go, "pkg")
-    src = go.declare_directory(go, "src")
-    root_file = go.declare_file(go, "ROOT")
+    pkg = go.declare_directory(go, path = "pkg")
+    src = go.declare_directory(go, path = "src")
+    root_file = go.declare_file(go, path = "ROOT")
     args = go.builder_args(go, "stdlib")
     args.add("-out", root_file.dirname)
     if go.mode.race:
@@ -70,11 +71,18 @@ def _build_stdlib(go):
     if go.mode.pure:
         env.update({"CGO_ENABLED": "0"})
     else:
+        # NOTE(#2545): avoid unnecessary dynamic link
+        # go std library doesn't use C++, so should not have -lstdc++
+        ldflags = [
+            option
+            for option in extldflags_from_cc_toolchain(go)
+            if option not in ("-lstdc++", "-lc++")
+        ]
         env.update({
             "CGO_ENABLED": "1",
             "CC": go.cgo_tools.c_compiler_path,
             "CGO_CFLAGS": " ".join(go.cgo_tools.c_compile_options),
-            "CGO_LDFLAGS": " ".join(extldflags_from_cc_toolchain(go)),
+            "CGO_LDFLAGS": " ".join(ldflags),
         })
     inputs = (go.sdk.srcs +
               go.sdk.headers +

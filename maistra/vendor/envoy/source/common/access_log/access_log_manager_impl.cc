@@ -12,39 +12,28 @@ namespace Envoy {
 namespace AccessLog {
 
 AccessLogManagerImpl::~AccessLogManagerImpl() {
-  for (auto& access_log : access_logs_) {
-    ENVOY_LOG(debug, "destroying access logger {}", access_log.first);
-    access_log.second.reset();
+  for (auto& [log_key, log_file_ptr] : access_logs_) {
+    ENVOY_LOG(debug, "destroying access logger {}", log_key);
+    log_file_ptr.reset();
   }
   ENVOY_LOG(debug, "destroyed access loggers");
 }
 
 void AccessLogManagerImpl::reopen() {
-  for (auto& access_log : access_logs_) {
-    access_log.second->reopen();
+  for (auto& iter : access_logs_) {
+    iter.second->reopen();
   }
 }
 
-AccessLogFileSharedPtr AccessLogManagerImpl::createAccessLog(const std::string& file_name_arg) {
-  const std::string* file_name = &file_name_arg;
-#ifdef WIN32
-  // Preserve the expected behavior of specifying path: /dev/null on Windows
-  static const std::string windows_dev_null("NUL");
-  if (file_name_arg.compare("/dev/null") == 0) {
-    file_name = static_cast<const std::string*>(&windows_dev_null);
-  }
-#endif
-
-  std::unordered_map<std::string, AccessLogFileSharedPtr>::const_iterator access_log =
-      access_logs_.find(*file_name);
-  if (access_log != access_logs_.end()) {
-    return access_log->second;
+AccessLogFileSharedPtr AccessLogManagerImpl::createAccessLog(const std::string& file_name) {
+  if (access_logs_.count(file_name)) {
+    return access_logs_[file_name];
   }
 
-  access_logs_[*file_name] = std::make_shared<AccessLogFileImpl>(
-      api_.fileSystem().createFile(*file_name), dispatcher_, lock_, file_stats_,
+  access_logs_[file_name] = std::make_shared<AccessLogFileImpl>(
+      api_.fileSystem().createFile(file_name), dispatcher_, lock_, file_stats_,
       file_flush_interval_msec_, api_.threadFactory());
-  return access_logs_[*file_name];
+  return access_logs_[file_name];
 }
 
 AccessLogFileImpl::AccessLogFileImpl(Filesystem::FilePtr&& file, Event::Dispatcher& dispatcher,
@@ -58,6 +47,7 @@ AccessLogFileImpl::AccessLogFileImpl(Filesystem::FilePtr&& file, Event::Dispatch
         flush_timer_->enableTimer(flush_interval_msec_);
       })),
       thread_factory_(thread_factory), flush_interval_msec_(flush_interval_msec), stats_(stats) {
+  flush_timer_->enableTimer(flush_interval_msec_);
   open();
 }
 
@@ -214,8 +204,8 @@ void AccessLogFileImpl::write(absl::string_view data) {
 }
 
 void AccessLogFileImpl::createFlushStructures() {
-  flush_thread_ = thread_factory_.createThread([this]() -> void { flushThreadFunc(); });
-  flush_timer_->enableTimer(flush_interval_msec_);
+  flush_thread_ = thread_factory_.createThread([this]() -> void { flushThreadFunc(); },
+                                               Thread::Options{"AccessLogFlush"});
 }
 
 } // namespace AccessLog

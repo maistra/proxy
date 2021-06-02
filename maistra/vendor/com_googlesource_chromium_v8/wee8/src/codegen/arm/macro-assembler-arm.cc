@@ -17,7 +17,7 @@
 #include "src/codegen/register-configuration.h"
 #include "src/debug/debug.h"
 #include "src/execution/frames-inl.h"
-#include "src/heap/heap-inl.h"  // For MemoryChunk.
+#include "src/heap/memory-chunk.h"
 #include "src/init/bootstrapper.h"
 #include "src/logging/counters.h"
 #include "src/numbers/double.h"
@@ -57,7 +57,7 @@ int TurboAssembler::RequiredStackSizeForCallerSaved(SaveFPRegsMode fp_mode,
   bytes += NumRegs(list) * kPointerSize;
 
   if (fp_mode == kSaveFPRegs) {
-    bytes += DwVfpRegister::NumRegisters() * DwVfpRegister::kSizeInBytes;
+    bytes += DwVfpRegister::kNumRegisters * DwVfpRegister::kSizeInBytes;
   }
 
   return bytes;
@@ -84,7 +84,7 @@ int TurboAssembler::PushCallerSaved(SaveFPRegsMode fp_mode, Register exclusion1,
 
   if (fp_mode == kSaveFPRegs) {
     SaveFPRegs(sp, lr);
-    bytes += DwVfpRegister::NumRegisters() * DwVfpRegister::kSizeInBytes;
+    bytes += DwVfpRegister::kNumRegisters * DwVfpRegister::kSizeInBytes;
   }
 
   return bytes;
@@ -95,7 +95,7 @@ int TurboAssembler::PopCallerSaved(SaveFPRegsMode fp_mode, Register exclusion1,
   int bytes = 0;
   if (fp_mode == kSaveFPRegs) {
     RestoreFPRegs(sp, lr);
-    bytes += DwVfpRegister::NumRegisters() * DwVfpRegister::kSizeInBytes;
+    bytes += DwVfpRegister::kNumRegisters * DwVfpRegister::kSizeInBytes;
   }
 
   RegList exclusions = 0;
@@ -163,12 +163,10 @@ void TurboAssembler::Jump(Handle<Code> code, RelocInfo::Mode rmode,
                  Builtins::IsIsolateIndependentBuiltin(*code));
 
   int builtin_index = Builtins::kNoBuiltinId;
-  bool target_is_isolate_independent_builtin =
-      isolate()->builtins()->IsBuiltinHandle(code, &builtin_index) &&
-      Builtins::IsIsolateIndependent(builtin_index);
+  bool target_is_builtin =
+      isolate()->builtins()->IsBuiltinHandle(code, &builtin_index);
 
-  if (options().use_pc_relative_calls_and_jumps &&
-      target_is_isolate_independent_builtin) {
+  if (options().use_pc_relative_calls_and_jumps && target_is_builtin) {
     int32_t code_target_index = AddCodeTarget(code);
     b(code_target_index * kInstrSize, cond, RelocInfo::RELATIVE_CODE_TARGET);
     return;
@@ -178,13 +176,12 @@ void TurboAssembler::Jump(Handle<Code> code, RelocInfo::Mode rmode,
     // size s.t. pc-relative calls may be used.
     UseScratchRegisterScope temps(this);
     Register scratch = temps.Acquire();
-    int offset = code->builtin_index() * kSystemPointerSize +
-                 IsolateData::builtin_entry_table_offset();
+    int offset = IsolateData::builtin_entry_slot_offset(
+        static_cast<Builtins::Name>(code->builtin_index()));
     ldr(scratch, MemOperand(kRootRegister, offset));
     Jump(scratch, cond);
     return;
-  } else if (options().inline_offheap_trampolines &&
-             target_is_isolate_independent_builtin) {
+  } else if (options().inline_offheap_trampolines && target_is_builtin) {
     // Inline the trampoline.
     RecordCommentForOffHeapTrampoline(builtin_index);
     EmbeddedData d = EmbeddedData::FromBlob();
@@ -258,12 +255,10 @@ void TurboAssembler::Call(Handle<Code> code, RelocInfo::Mode rmode,
                  Builtins::IsIsolateIndependentBuiltin(*code));
 
   int builtin_index = Builtins::kNoBuiltinId;
-  bool target_is_isolate_independent_builtin =
-      isolate()->builtins()->IsBuiltinHandle(code, &builtin_index) &&
-      Builtins::IsIsolateIndependent(builtin_index);
+  bool target_is_builtin =
+      isolate()->builtins()->IsBuiltinHandle(code, &builtin_index);
 
-  if (target_is_isolate_independent_builtin &&
-      options().use_pc_relative_calls_and_jumps) {
+  if (target_is_builtin && options().use_pc_relative_calls_and_jumps) {
     int32_t code_target_index = AddCodeTarget(code);
     bl(code_target_index * kInstrSize, cond, RelocInfo::RELATIVE_CODE_TARGET);
     return;
@@ -271,13 +266,12 @@ void TurboAssembler::Call(Handle<Code> code, RelocInfo::Mode rmode,
     // This branch is taken only for specific cctests, where we force isolate
     // creation at runtime. At this point, Code space isn't restricted to a
     // size s.t. pc-relative calls may be used.
-    int offset = code->builtin_index() * kSystemPointerSize +
-                 IsolateData::builtin_entry_table_offset();
+    int offset = IsolateData::builtin_entry_slot_offset(
+        static_cast<Builtins::Name>(code->builtin_index()));
     ldr(ip, MemOperand(kRootRegister, offset));
     Call(ip, cond);
     return;
-  } else if (target_is_isolate_independent_builtin &&
-             options().inline_offheap_trampolines) {
+  } else if (target_is_builtin && options().inline_offheap_trampolines) {
     // Inline the trampoline.
     CallBuiltin(builtin_index);
     return;
@@ -425,6 +419,35 @@ void TurboAssembler::Push(Smi smi) {
   Register scratch = temps.Acquire();
   mov(scratch, Operand(smi));
   push(scratch);
+}
+
+void TurboAssembler::PushArray(Register array, Register size, Register scratch,
+                               PushArrayOrder order) {
+  UseScratchRegisterScope temps(this);
+  Register counter = scratch;
+  Register tmp = temps.Acquire();
+  DCHECK(!AreAliased(array, size, counter, tmp));
+  Label loop, entry;
+  if (order == PushArrayOrder::kReverse) {
+    mov(counter, Operand(0));
+    b(&entry);
+    bind(&loop);
+    ldr(tmp, MemOperand(array, counter, LSL, kSystemPointerSizeLog2));
+    push(tmp);
+    add(counter, counter, Operand(1));
+    bind(&entry);
+    cmp(counter, size);
+    b(lt, &loop);
+  } else {
+    mov(counter, size);
+    b(&entry);
+    bind(&loop);
+    ldr(tmp, MemOperand(array, counter, LSL, kSystemPointerSizeLog2));
+    push(tmp);
+    bind(&entry);
+    sub(counter, counter, Operand(1), SetCC);
+    b(ge, &loop);
+  }
 }
 
 void TurboAssembler::Move(Register dst, Smi smi) { mov(dst, Operand(smi)); }
@@ -850,13 +873,7 @@ void TurboAssembler::PushStandardFrame(Register function_reg) {
   int offset = -StandardFrameConstants::kContextOffset;
   offset += function_reg.is_valid() ? kPointerSize : 0;
   add(fp, sp, Operand(offset));
-}
-
-int MacroAssembler::SafepointRegisterStackIndex(int reg_code) {
-  // The registers are pushed starting with the highest encoding,
-  // which means that lowest encodings are closest to the stack pointer.
-  DCHECK(reg_code >= 0 && reg_code < kNumSafepointRegisters);
-  return reg_code;
+  Push(kJavaScriptCallArgCountRegister);
 }
 
 void TurboAssembler::VFPCanonicalizeNaN(const DwVfpRegister dst,
@@ -1530,22 +1547,102 @@ void TurboAssembler::PrepareForTailCall(Register callee_args_count,
   mov(sp, dst_reg);
 }
 
+void MacroAssembler::LoadStackLimit(Register destination, StackLimitKind kind) {
+  DCHECK(root_array_available());
+  Isolate* isolate = this->isolate();
+  ExternalReference limit =
+      kind == StackLimitKind::kRealStackLimit
+          ? ExternalReference::address_of_real_jslimit(isolate)
+          : ExternalReference::address_of_jslimit(isolate);
+  DCHECK(TurboAssembler::IsAddressableThroughRootRegister(isolate, limit));
+
+  intptr_t offset =
+      TurboAssembler::RootRegisterOffsetForExternalReference(isolate, limit);
+  CHECK(is_int32(offset));
+  ldr(destination, MemOperand(kRootRegister, offset));
+}
+
+void MacroAssembler::StackOverflowCheck(Register num_args, Register scratch,
+                                        Label* stack_overflow) {
+  // Check the stack for overflow. We are not trying to catch
+  // interruptions (e.g. debug break and preemption) here, so the "real stack
+  // limit" is checked.
+  LoadStackLimit(scratch, StackLimitKind::kRealStackLimit);
+  // Make scratch the space we have left. The stack might already be overflowed
+  // here which will cause scratch to become negative.
+  sub(scratch, sp, scratch);
+  // Check if the arguments will overflow the stack.
+  cmp(scratch, Operand(num_args, LSL, kPointerSizeLog2));
+  b(le, stack_overflow);  // Signed comparison.
+}
+
 void MacroAssembler::InvokePrologue(Register expected_parameter_count,
                                     Register actual_parameter_count,
                                     Label* done, InvokeFlag flag) {
   Label regular_invoke;
-
-  // Check whether the expected and actual arguments count match. If not,
-  // setup registers according to contract with ArgumentsAdaptorTrampoline:
   //  r0: actual arguments count
   //  r1: function (passed through to callee)
   //  r2: expected arguments count
-
-  // The code below is made a lot easier because the calling code already sets
-  // up actual and expected registers according to the contract.
   DCHECK_EQ(actual_parameter_count, r0);
   DCHECK_EQ(expected_parameter_count, r2);
 
+#ifdef V8_NO_ARGUMENTS_ADAPTOR
+  // If the expected parameter count is equal to the adaptor sentinel, no need
+  // to push undefined value as arguments.
+  cmp(expected_parameter_count, Operand(kDontAdaptArgumentsSentinel));
+  b(eq, &regular_invoke);
+
+  // If overapplication or if the actual argument count is equal to the
+  // formal parameter count, no need to push extra undefined values.
+  sub(expected_parameter_count, expected_parameter_count,
+      actual_parameter_count, SetCC);
+  b(le, &regular_invoke);
+
+  Label stack_overflow;
+  Register scratch = r4;
+  StackOverflowCheck(expected_parameter_count, scratch, &stack_overflow);
+
+  // Underapplication. Move the arguments already in the stack, including the
+  // receiver and the return address.
+  {
+    Label copy, check;
+    Register num = r5, src = r6, dest = r9;  // r7 and r8 are context and root.
+    mov(src, sp);
+    // Update stack pointer.
+    lsl(scratch, expected_parameter_count, Operand(kSystemPointerSizeLog2));
+    AllocateStackSpace(scratch);
+    mov(dest, sp);
+    mov(num, actual_parameter_count);
+    b(&check);
+    bind(&copy);
+    ldr(scratch, MemOperand(src, kSystemPointerSize, PostIndex));
+    str(scratch, MemOperand(dest, kSystemPointerSize, PostIndex));
+    sub(num, num, Operand(1), SetCC);
+    bind(&check);
+    b(ge, &copy);
+  }
+
+  // Fill remaining expected arguments with undefined values.
+  LoadRoot(scratch, RootIndex::kUndefinedValue);
+  {
+    Label loop;
+    bind(&loop);
+    str(scratch, MemOperand(r9, kSystemPointerSize, PostIndex));
+    sub(expected_parameter_count, expected_parameter_count, Operand(1), SetCC);
+    b(gt, &loop);
+  }
+  b(&regular_invoke);
+
+  bind(&stack_overflow);
+  {
+    FrameScope frame(this,
+                     has_frame() ? StackFrame::NONE : StackFrame::INTERNAL);
+    CallRuntime(Runtime::kThrowStackOverflow);
+    bkpt(0);
+  }
+#else
+  // Check whether the expected and actual arguments count match. If not,
+  // setup registers according to contract with ArgumentsAdaptorTrampoline.
   cmp(expected_parameter_count, actual_parameter_count);
   b(eq, &regular_invoke);
 
@@ -1556,14 +1653,15 @@ void MacroAssembler::InvokePrologue(Register expected_parameter_count,
   } else {
     Jump(adaptor, RelocInfo::CODE_TARGET);
   }
-    bind(&regular_invoke);
+#endif
+  bind(&regular_invoke);
 }
 
 void MacroAssembler::CallDebugOnFunctionCall(Register fun, Register new_target,
                                              Register expected_parameter_count,
                                              Register actual_parameter_count) {
   // Load receiver to pass it later to DebugOnFunctionCall hook.
-  ldr(r4, MemOperand(sp, actual_parameter_count, LSL, kPointerSizeLog2));
+  ldr(r4, ReceiverOperand(actual_parameter_count));
   FrameScope frame(this, has_frame() ? StackFrame::NONE : StackFrame::INTERNAL);
 
   SmiTag(expected_parameter_count);
@@ -2117,6 +2215,23 @@ void TurboAssembler::RestoreFPRegs(Register location, Register scratch) {
   add(location, location, Operand(16 * kDoubleSize), LeaveCC, eq);
 }
 
+void TurboAssembler::SaveFPRegsToHeap(Register location, Register scratch) {
+  CpuFeatureScope scope(this, VFP32DREGS, CpuFeatureScope::kDontCheckSupported);
+  CheckFor32DRegs(scratch);
+  vstm(ia_w, location, d0, d15);
+  vstm(ia_w, location, d16, d31, ne);
+  add(location, location, Operand(16 * kDoubleSize), LeaveCC, eq);
+}
+
+void TurboAssembler::RestoreFPRegsFromHeap(Register location,
+                                           Register scratch) {
+  CpuFeatureScope scope(this, VFP32DREGS, CpuFeatureScope::kDontCheckSupported);
+  CheckFor32DRegs(scratch);
+  vldm(ia_w, location, d0, d15);
+  vldm(ia_w, location, d16, d31, ne);
+  add(location, location, Operand(16 * kDoubleSize), LeaveCC, eq);
+}
+
 template <typename T>
 void TurboAssembler::FloatMaxHelper(T result, T left, T right,
                                     Label* out_of_line) {
@@ -2257,16 +2372,18 @@ void TurboAssembler::FloatMinOutOfLine(DwVfpRegister result, DwVfpRegister left,
 }
 
 static const int kRegisterPassedArguments = 4;
+// The hardfloat calling convention passes double arguments in registers d0-d7.
+static const int kDoubleRegisterPassedArguments = 8;
 
 int TurboAssembler::CalculateStackPassedWords(int num_reg_arguments,
                                               int num_double_arguments) {
   int stack_passed_words = 0;
   if (use_eabi_hardfloat()) {
-    // In the hard floating point calling convention, we can use
-    // all double registers to pass doubles.
-    if (num_double_arguments > DoubleRegister::NumRegisters()) {
+    // In the hard floating point calling convention, we can use the first 8
+    // registers to pass doubles.
+    if (num_double_arguments > kDoubleRegisterPassedArguments) {
       stack_passed_words +=
-          2 * (num_double_arguments - DoubleRegister::NumRegisters());
+          2 * (num_double_arguments - kDoubleRegisterPassedArguments);
     }
   } else {
     // In the soft floating point calling convention, every double
@@ -2373,15 +2490,25 @@ void TurboAssembler::CallCFunctionHelper(Register function,
 
   // Save the frame pointer and PC so that the stack layout remains iterable,
   // even without an ExitFrame which normally exists between JS and C frames.
-  if (isolate() != nullptr) {
-    Register scratch = r4;
-    Push(scratch);
+  Register addr_scratch = r4;
+  // See x64 code for reasoning about how to address the isolate data fields.
+  if (root_array_available()) {
+    str(pc,
+        MemOperand(kRootRegister, IsolateData::fast_c_call_caller_pc_offset()));
+    str(fp,
+        MemOperand(kRootRegister, IsolateData::fast_c_call_caller_fp_offset()));
+  } else {
+    DCHECK_NOT_NULL(isolate());
+    Push(addr_scratch);
 
-    Move(scratch, ExternalReference::fast_c_call_caller_pc_address(isolate()));
-    str(pc, MemOperand(scratch));
-    Move(scratch, ExternalReference::fast_c_call_caller_fp_address(isolate()));
-    str(fp, MemOperand(scratch));
-    Pop(scratch);
+    Move(addr_scratch,
+         ExternalReference::fast_c_call_caller_pc_address(isolate()));
+    str(pc, MemOperand(addr_scratch));
+    Move(addr_scratch,
+         ExternalReference::fast_c_call_caller_fp_address(isolate()));
+    str(fp, MemOperand(addr_scratch));
+
+    Pop(addr_scratch);
   }
 
   // Just call directly. The function called cannot cause a GC, or
@@ -2389,18 +2516,24 @@ void TurboAssembler::CallCFunctionHelper(Register function,
   // stays correct.
   Call(function);
 
-  if (isolate() != nullptr) {
-    // We don't unset the PC; the FP is the source of truth.
-    Register scratch1 = r4;
-    Register scratch2 = r5;
-    Push(scratch1);
-    Push(scratch2);
-    Move(scratch1, ExternalReference::fast_c_call_caller_fp_address(isolate()));
-    mov(scratch2, Operand::Zero());
-    str(scratch2, MemOperand(scratch1));
-    Pop(scratch2);
-    Pop(scratch1);
+  // We don't unset the PC; the FP is the source of truth.
+  Register zero_scratch = r5;
+  Push(zero_scratch);
+  mov(zero_scratch, Operand::Zero());
+
+  if (root_array_available()) {
+    str(zero_scratch,
+        MemOperand(kRootRegister, IsolateData::fast_c_call_caller_fp_offset()));
+  } else {
+    DCHECK_NOT_NULL(isolate());
+    Push(addr_scratch);
+    Move(addr_scratch,
+         ExternalReference::fast_c_call_caller_fp_address(isolate()));
+    str(zero_scratch, MemOperand(addr_scratch));
+    Pop(addr_scratch);
   }
+
+  Pop(zero_scratch);
 
   int stack_passed_arguments =
       CalculateStackPassedWords(num_reg_arguments, num_double_arguments);
@@ -2417,7 +2550,7 @@ void TurboAssembler::CheckPageFlag(Register object, int mask, Condition cc,
   Register scratch = temps.Acquire();
   DCHECK(cc == eq || cc == ne);
   Bfc(scratch, object, 0, kPageSizeBits);
-  ldr(scratch, MemOperand(scratch, MemoryChunk::kFlagsOffset));
+  ldr(scratch, MemOperand(scratch, BasicMemoryChunk::kFlagsOffset));
   tst(scratch, Operand(mask));
   b(cc, condition_met);
 }
@@ -2452,27 +2585,22 @@ void TurboAssembler::ResetSpeculationPoisonRegister() {
   mov(kSpeculationPoisonRegister, Operand(-1));
 }
 
-void TurboAssembler::CallForDeoptimization(Address target, int deopt_id) {
-  NoRootArrayScope no_root_array(this);
-
-  // Save the deopt id in r10 (we don't need the roots array from now on).
-  DCHECK_LE(deopt_id, 0xFFFF);
-  if (CpuFeatures::IsSupported(ARMv7)) {
-    // On ARMv7, we can use movw (with a maximum immediate of 0xFFFF)
-    movw(r10, deopt_id);
-  } else {
-    // On ARMv6, we might need two instructions.
-    mov(r10, Operand(deopt_id & 0xFF));  // Set the low byte.
-    if (deopt_id >= 0xFF) {
-      orr(r10, r10, Operand(deopt_id & 0xFF00));  // Set the high byte.
-    }
-  }
-
-  Call(target, RelocInfo::RUNTIME_ENTRY);
-  CheckConstPool(false, false);
+void TurboAssembler::CallForDeoptimization(Builtins::Name target, int,
+                                           Label* exit, DeoptimizeKind kind,
+                                           Label*) {
+  BlockConstPoolScope block_const_pool(this);
+  ldr(ip, MemOperand(kRootRegister,
+                     IsolateData::builtin_entry_slot_offset(target)));
+  Call(ip);
+  DCHECK_EQ(SizeOfCodeGeneratedSince(exit),
+            (kind == DeoptimizeKind::kLazy)
+                ? Deoptimizer::kLazyDeoptExitSize
+                : Deoptimizer::kNonLazyDeoptExitSize);
+  USE(exit, kind);
 }
 
 void TurboAssembler::Trap() { stop(); }
+void TurboAssembler::DebugBreak() { stop(); }
 
 }  // namespace internal
 }  // namespace v8

@@ -77,7 +77,8 @@ class V8Debugger : public v8::debug::DebugDelegate,
   bool canBreakProgram();
   void breakProgram(int targetContextGroupId);
   void interruptAndBreak(int targetContextGroupId);
-  void continueProgram(int targetContextGroupId);
+  void continueProgram(int targetContextGroupId,
+                       bool terminateOnResume = false);
   void breakProgramOnAssert(int targetContextGroupId);
 
   void setPauseOnNextCall(bool, int targetContextGroupId);
@@ -208,6 +209,9 @@ class V8Debugger : public v8::debug::DebugDelegate,
   bool IsFunctionBlackboxed(v8::Local<v8::debug::Script> script,
                             const v8::debug::Location& start,
                             const v8::debug::Location& end) override;
+
+  bool ShouldBeSkipped(v8::Local<v8::debug::Script> script, int line,
+                       int column) override;
 
   int currentContextGroupId();
   bool asyncStepOutOfFunction(int targetContextGroupId, bool onlyAtReturn);

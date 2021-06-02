@@ -37,9 +37,8 @@ class Interpreter {
  public:
   explicit Interpreter(Isolate* isolate);
   virtual ~Interpreter() = default;
-
-  // Returns the interrupt budget which should be used for the profiler counter.
-  V8_EXPORT_PRIVATE static int InterruptBudget();
+  Interpreter(const Interpreter&) = delete;
+  Interpreter& operator=(const Interpreter&) = delete;
 
   // Creates a compilation job which will generate bytecode for |literal|.
   // Additionally, if |eager_inner_literals| is not null, adds any eagerly
@@ -108,8 +107,6 @@ class Interpreter {
   Address dispatch_table_[kDispatchTableSize];
   std::unique_ptr<uintptr_t[]> bytecode_dispatch_counters_table_;
   Address interpreter_entry_trampoline_instruction_start_;
-
-  DISALLOW_COPY_AND_ASSIGN(Interpreter);
 };
 
 }  // namespace interpreter

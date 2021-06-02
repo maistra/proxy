@@ -12,11 +12,9 @@ import tempfile
 import unittest
 
 from pylib.base import base_test_result
-from pylib.constants import host_paths
 from pylib.instrumentation import instrumentation_test_instance
 
-with host_paths.SysPath(host_paths.PYMOCK_PATH):
-  import mock  # pylint: disable=import-error
+import mock  # pylint: disable=import-error
 
 _INSTRUMENTATION_TEST_INSTANCE_PATH = (
     'pylib.instrumentation.instrumentation_test_instance.%s')
@@ -30,13 +28,16 @@ class InstrumentationTestInstanceTest(unittest.TestCase):
   @staticmethod
   def createTestInstance():
     c = _INSTRUMENTATION_TEST_INSTANCE_PATH % 'InstrumentationTestInstance'
+    # yapf: disable
     with mock.patch('%s._initializeApkAttributes' % c), (
          mock.patch('%s._initializeDataDependencyAttributes' % c)), (
-         mock.patch('%s._initializeTestFilterAttributes' % c)), (
+         mock.patch('%s._initializeTestFilterAttributes' %c)), (
          mock.patch('%s._initializeFlagAttributes' % c)), (
          mock.patch('%s._initializeDriverAttributes' % c)), (
          mock.patch('%s._initializeTestControlAttributes' % c)), (
-         mock.patch('%s._initializeTestCoverageAttributes' % c)):
+         mock.patch('%s._initializeTestCoverageAttributes' % c)), (
+         mock.patch('%s._initializeSkiaGoldAttributes' % c)):
+      # yapf: enable
       return instrumentation_test_instance.InstrumentationTestInstance(
           mock.MagicMock(), mock.MagicMock(), lambda s: None)
 
@@ -494,15 +495,17 @@ class InstrumentationTestInstanceTest(unittest.TestCase):
     ]
 
     expected_tests = [
-      {
-        'annotations': {
-          'Feature': {'value': ['Foo']},
-          'MediumTest': None,
+        {
+            'annotations': {
+                'Feature': {
+                    'value': ['Foo']
+                },
+                'MediumTest': None,
+            },
+            'class': 'org.chromium.test.SampleTest',
+            'is_junit4': True,
+            'method': 'testMethod2',
         },
-        'class': 'org.chromium.test.SampleTest',
-        'is_junit4': False,
-        'method': 'testMethod2',
-      },
     ]
 
     o._excluded_annotations = [('SmallTest', None)]
@@ -553,16 +556,18 @@ class InstrumentationTestInstanceTest(unittest.TestCase):
     ]
 
     expected_tests = [
-      {
-        'annotations': {
-          'Feature': {'value': ['Foo']},
-          'SmallTest': None,
-          'TestValue': '1',
+        {
+            'annotations': {
+                'Feature': {
+                    'value': ['Foo']
+                },
+                'SmallTest': None,
+                'TestValue': '1',
+            },
+            'class': 'org.chromium.test.SampleTest',
+            'is_junit4': True,
+            'method': 'testMethod1',
         },
-        'class': 'org.chromium.test.SampleTest',
-        'is_junit4': False,
-        'method': 'testMethod1',
-      },
     ]
 
     o._annotations = [('TestValue', '1')]
@@ -721,24 +726,28 @@ class InstrumentationTestInstanceTest(unittest.TestCase):
     ]
 
     expected_tests = [
-      {
-        'annotations': {
-          'Feature': {'value': ['Baz']},
-          'MediumTest': None,
+        {
+            'annotations': {
+                'Feature': {
+                    'value': ['Baz']
+                },
+                'MediumTest': None,
+            },
+            'class': 'org.chromium.test.SampleTest',
+            'is_junit4': True,
+            'method': 'testMethod2',
         },
-        'class': 'org.chromium.test.SampleTest',
-        'is_junit4': False,
-        'method': 'testMethod2',
-      },
-      {
-        'annotations': {
-          'Feature': {'value': ['Bar']},
-          'SmallTest': None,
+        {
+            'annotations': {
+                'Feature': {
+                    'value': ['Bar']
+                },
+                'SmallTest': None,
+            },
+            'class': 'org.chromium.test.SampleTest2',
+            'is_junit4': True,
+            'method': 'testMethod1',
         },
-        'class': 'org.chromium.test.SampleTest2',
-        'is_junit4': False,
-        'method': 'testMethod1',
-      },
     ]
 
     o._annotations = [('Feature', 'Bar'), ('Feature', 'Baz')]
@@ -750,7 +759,7 @@ class InstrumentationTestInstanceTest(unittest.TestCase):
 
   def testGenerateTestResults_noStatus(self):
     results = instrumentation_test_instance.GenerateTestResults(
-        None, None, [], 0, 1000, None, None)
+        None, None, [], 1000, None, None)
     self.assertEqual([], results)
 
   def testGenerateTestResults_testPassed(self):
@@ -765,7 +774,7 @@ class InstrumentationTestInstanceTest(unittest.TestCase):
       }),
     ]
     results = instrumentation_test_instance.GenerateTestResults(
-        None, None, statuses, 0, 1000, None, None)
+        None, None, statuses, 1000, None, None)
     self.assertEqual(1, len(results))
     self.assertEqual(base_test_result.ResultType.PASS, results[0].GetType())
 
@@ -786,7 +795,7 @@ class InstrumentationTestInstanceTest(unittest.TestCase):
       }),
     ]
     results = instrumentation_test_instance.GenerateTestResults(
-        None, None, statuses, 0, 1000, None, None)
+        None, None, statuses, 1000, None, None)
     self.assertEqual(1, len(results))
     self.assertEqual(base_test_result.ResultType.SKIP, results[0].GetType())
 
@@ -805,7 +814,7 @@ class InstrumentationTestInstanceTest(unittest.TestCase):
       }),
     ]
     results = instrumentation_test_instance.GenerateTestResults(
-        None, None, statuses, 0, 1000, None, None)
+        None, None, statuses, 1000, None, None)
     self.assertEqual(1, len(results))
     self.assertEqual(base_test_result.ResultType.PASS, results[0].GetType())
 
@@ -821,7 +830,7 @@ class InstrumentationTestInstanceTest(unittest.TestCase):
       }),
     ]
     results = instrumentation_test_instance.GenerateTestResults(
-        None, None, statuses, 0, 1000, None, None)
+        None, None, statuses, 1000, None, None)
     self.assertEqual(1, len(results))
     self.assertEqual(base_test_result.ResultType.FAIL, results[0].GetType())
 
@@ -839,7 +848,7 @@ class InstrumentationTestInstanceTest(unittest.TestCase):
       }),
     ]
     results = instrumentation_test_instance.GenerateTestResults(
-        None, None, statuses, 0, 1000, None, None)
+        None, None, statuses, 1000, None, None)
     self.assertEqual(1, len(results))
     self.assertEqual(base_test_result.ResultType.FAIL, results[0].GetType())
     self.assertEqual(stacktrace, results[0].GetLog())
@@ -856,7 +865,7 @@ class InstrumentationTestInstanceTest(unittest.TestCase):
       }),
     ]
     results = instrumentation_test_instance.GenerateTestResults(
-        None, None, statuses, 0, 1000, None, None)
+        None, None, statuses, 1000, None, None)
     self.assertEqual(1, len(results))
     self.assertEqual(base_test_result.ResultType.SKIP, results[0].GetType())
 

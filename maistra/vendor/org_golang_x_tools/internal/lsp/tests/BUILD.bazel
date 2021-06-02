@@ -1,21 +1,31 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "tests",
     srcs = [
-        "completion.go",
-        "diagnostics.go",
+        "normalizer.go",
         "tests.go",
+        "util.go",
     ],
     importpath = "golang.org/x/tools/internal/lsp/tests",
     visibility = ["//:__subpackages__"],
     deps = [
-        "//go/expect:go_default_library",
-        "//go/packages:go_default_library",
-        "//go/packages/packagestest:go_default_library",
-        "//internal/lsp/protocol:go_default_library",
-        "//internal/lsp/source:go_default_library",
-        "//internal/span:go_default_library",
-        "//internal/txtar:go_default_library",
+        "//go/expect",
+        "//go/packages",
+        "//go/packages/packagestest",
+        "//internal/lsp/diff",
+        "//internal/lsp/diff/myers",
+        "//internal/lsp/protocol",
+        "//internal/lsp/source",
+        "//internal/lsp/source/completion",
+        "//internal/span",
+        "//internal/testenv",
+        "//txtar",
     ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":tests",
+    visibility = ["//:__subpackages__"],
 )

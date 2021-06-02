@@ -192,14 +192,6 @@ ExtensionSet::ExtensionSet(Arena* arena)
                ? NULL
                : Arena::CreateArray<KeyValue>(arena_, flat_capacity_)} {}
 
-ExtensionSet::ExtensionSet()
-    : arena_(NULL),
-      flat_capacity_(0),
-      flat_size_(0),
-      map_{flat_capacity_ == 0
-               ? NULL
-               : Arena::CreateArray<KeyValue>(arena_, flat_capacity_)} {}
-
 ExtensionSet::~ExtensionSet() {
   // Deletes all allocated extensions.
   if (arena_ == NULL) {
@@ -1063,7 +1055,7 @@ void ExtensionSet::InternalExtensionMergeFrom(
 }
 
 void ExtensionSet::Swap(ExtensionSet* x) {
-  if (GetArenaNoVirtual() == x->GetArenaNoVirtual()) {
+  if (GetArena() == x->GetArena()) {
     using std::swap;
     swap(flat_capacity_, x->flat_capacity_);
     swap(flat_size_, x->flat_size_);
@@ -1091,7 +1083,7 @@ void ExtensionSet::SwapExtension(ExtensionSet* other, int number) {
   }
 
   if (this_ext != NULL && other_ext != NULL) {
-    if (GetArenaNoVirtual() == other->GetArenaNoVirtual()) {
+    if (GetArena() == other->GetArena()) {
       using std::swap;
       swap(*this_ext, *other_ext);
     } else {
@@ -1112,7 +1104,7 @@ void ExtensionSet::SwapExtension(ExtensionSet* other, int number) {
   }
 
   if (this_ext == NULL) {
-    if (GetArenaNoVirtual() == other->GetArenaNoVirtual()) {
+    if (GetArena() == other->GetArena()) {
       *Insert(number).first = *other_ext;
     } else {
       InternalExtensionMergeFrom(number, *other_ext);
@@ -1122,7 +1114,7 @@ void ExtensionSet::SwapExtension(ExtensionSet* other, int number) {
   }
 
   if (other_ext == NULL) {
-    if (GetArenaNoVirtual() == other->GetArenaNoVirtual()) {
+    if (GetArena() == other->GetArena()) {
       *other->Insert(number).first = *this_ext;
     } else {
       other->InternalExtensionMergeFrom(number, *this_ext);
@@ -1196,27 +1188,28 @@ bool ExtensionSet::ParseField(uint32 tag, io::CodedInputStream* input,
   }
 }
 
-const char* ExtensionSet::ParseField(
-    uint64 tag, const char* ptr, const MessageLite* containing_type,
-    internal::InternalMetadataWithArenaLite* metadata,
-    internal::ParseContext* ctx) {
+const char* ExtensionSet::ParseField(uint64 tag, const char* ptr,
+                                     const MessageLite* containing_type,
+                                     internal::InternalMetadata* metadata,
+                                     internal::ParseContext* ctx) {
   GeneratedExtensionFinder finder(containing_type);
   int number = tag >> 3;
   bool was_packed_on_wire;
   ExtensionInfo extension;
   if (!FindExtensionInfoFromFieldNumber(tag & 7, number, &finder, &extension,
                                         &was_packed_on_wire)) {
-    return UnknownFieldParse(tag, metadata->mutable_unknown_fields(), ptr, ctx);
+    return UnknownFieldParse(
+        tag, metadata->mutable_unknown_fields<std::string>(), ptr, ctx);
   }
-  return ParseFieldWithExtensionInfo(number, was_packed_on_wire, extension,
-                                     metadata, ptr, ctx);
+  return ParseFieldWithExtensionInfo<std::string>(
+      number, was_packed_on_wire, extension, metadata, ptr, ctx);
 }
 
 const char* ExtensionSet::ParseMessageSetItem(
     const char* ptr, const MessageLite* containing_type,
-    internal::InternalMetadataWithArenaLite* metadata,
-    internal::ParseContext* ctx) {
-  return ParseMessageSetItemTmpl(ptr, containing_type, metadata, ctx);
+    internal::InternalMetadata* metadata, internal::ParseContext* ctx) {
+  return ParseMessageSetItemTmpl<MessageLite, std::string>(ptr, containing_type,
+                                                           metadata, ctx);
 }
 
 bool ExtensionSet::ParseFieldWithExtensionInfo(int number,
@@ -1462,9 +1455,9 @@ bool ExtensionSet::ParseMessageSet(io::CodedInputStream* input,
   return ParseMessageSetLite(input, &finder, &skipper);
 }
 
-uint8* ExtensionSet::InternalSerializeWithCachedSizesToArray(
-    int start_field_number, int end_field_number, uint8* target,
-    io::EpsCopyOutputStream* stream) const {
+uint8* ExtensionSet::_InternalSerialize(int start_field_number,
+                                        int end_field_number, uint8* target,
+                                        io::EpsCopyOutputStream* stream) const {
   if (PROTOBUF_PREDICT_FALSE(is_large())) {
     const auto& end = map_.large->end();
     for (auto it = map_.large->lower_bound(start_field_number);
@@ -1676,7 +1669,7 @@ size_t ExtensionSet::Extension::ByteSize(int number) const {
 #undef HANDLE_TYPE
       case WireFormatLite::TYPE_MESSAGE: {
         if (is_lazy) {
-          size_t size = lazymessage_value->ByteSize();
+          size_t size = lazymessage_value->ByteSizeLong();
           result += io::CodedOutputStream::VarintSize32(size) + size;
         } else {
           result += WireFormatLite::MessageSize(*message_value);
@@ -1869,28 +1862,32 @@ void ExtensionSet::GrowCapacity(size_t minimum_new_capacity) {
     return;
   }
 
-  const auto old_flat_capacity = flat_capacity_;
-
+  auto new_flat_capacity = flat_capacity_;
   do {
-    flat_capacity_ = flat_capacity_ == 0 ? 1 : flat_capacity_ * 4;
-  } while (flat_capacity_ < minimum_new_capacity);
+    new_flat_capacity = new_flat_capacity == 0 ? 1 : new_flat_capacity * 4;
+  } while (new_flat_capacity < minimum_new_capacity);
 
   const KeyValue* begin = flat_begin();
   const KeyValue* end = flat_end();
-  if (flat_capacity_ > kMaximumFlatCapacity) {
-    // Switch to LargeMap
-    map_.large = Arena::Create<LargeMap>(arena_);
-    LargeMap::iterator hint = map_.large->begin();
+  AllocatedData new_map;
+  if (new_flat_capacity > kMaximumFlatCapacity) {
+    new_map.large = Arena::Create<LargeMap>(arena_);
+    LargeMap::iterator hint = new_map.large->begin();
     for (const KeyValue* it = begin; it != end; ++it) {
-      hint = map_.large->insert(hint, {it->first, it->second});
+      hint = new_map.large->insert(hint, {it->first, it->second});
     }
-    flat_size_ = 0;
   } else {
-    map_.flat = Arena::CreateArray<KeyValue>(arena_, flat_capacity_);
-    std::copy(begin, end, map_.flat);
+    new_map.flat = Arena::CreateArray<KeyValue>(arena_, new_flat_capacity);
+    std::copy(begin, end, new_map.flat);
   }
+
   if (arena_ == nullptr) {
-    DeleteFlatMap(begin, old_flat_capacity);
+    DeleteFlatMap(begin, flat_capacity_);
+  }
+  flat_capacity_ = new_flat_capacity;
+  map_ = new_map;
+  if (is_large()) {
+    flat_size_ = 0;
   }
 }
 
@@ -1931,7 +1928,7 @@ uint8* ExtensionSet::Extension::InternalSerializeFieldWithCachedSizesToArray(
     if (is_packed) {
       if (cached_size == 0) return target;
 
-      stream->EnsureSpace(&target);
+      target = stream->EnsureSpace(target);
       target = WireFormatLite::WriteTagToArray(
           number, WireFormatLite::WIRETYPE_LENGTH_DELIMITED, target);
       target = WireFormatLite::WriteInt32NoTagToArray(cached_size, target);
@@ -1940,7 +1937,7 @@ uint8* ExtensionSet::Extension::InternalSerializeFieldWithCachedSizesToArray(
 #define HANDLE_TYPE(UPPERCASE, CAMELCASE, LOWERCASE)                 \
   case WireFormatLite::TYPE_##UPPERCASE:                             \
     for (int i = 0; i < repeated_##LOWERCASE##_value->size(); i++) { \
-      stream->EnsureSpace(&target);                                  \
+      target = stream->EnsureSpace(target);                          \
       target = WireFormatLite::Write##CAMELCASE##NoTagToArray(       \
           repeated_##LOWERCASE##_value->Get(i), target);             \
     }                                                                \
@@ -1974,7 +1971,7 @@ uint8* ExtensionSet::Extension::InternalSerializeFieldWithCachedSizesToArray(
 #define HANDLE_TYPE(UPPERCASE, CAMELCASE, LOWERCASE)                 \
   case WireFormatLite::TYPE_##UPPERCASE:                             \
     for (int i = 0; i < repeated_##LOWERCASE##_value->size(); i++) { \
-      stream->EnsureSpace(&target);                                  \
+      target = stream->EnsureSpace(target);                          \
       target = WireFormatLite::Write##CAMELCASE##ToArray(            \
           number, repeated_##LOWERCASE##_value->Get(i), target);     \
     }                                                                \
@@ -1998,7 +1995,7 @@ uint8* ExtensionSet::Extension::InternalSerializeFieldWithCachedSizesToArray(
 #define HANDLE_TYPE(UPPERCASE, CAMELCASE, LOWERCASE)                 \
   case WireFormatLite::TYPE_##UPPERCASE:                             \
     for (int i = 0; i < repeated_##LOWERCASE##_value->size(); i++) { \
-      stream->EnsureSpace(&target);                                  \
+      target = stream->EnsureSpace(target);                          \
       target = stream->WriteString(                                  \
           number, repeated_##LOWERCASE##_value->Get(i), target);     \
     }                                                                \
@@ -2009,8 +2006,8 @@ uint8* ExtensionSet::Extension::InternalSerializeFieldWithCachedSizesToArray(
 #define HANDLE_TYPE(UPPERCASE, CAMELCASE, LOWERCASE)                     \
   case WireFormatLite::TYPE_##UPPERCASE:                                 \
     for (int i = 0; i < repeated_##LOWERCASE##_value->size(); i++) {     \
-      stream->EnsureSpace(&target);                                      \
-      target = WireFormatLite::InternalWrite##CAMELCASE##ToArray(        \
+      target = stream->EnsureSpace(target);                              \
+      target = WireFormatLite::InternalWrite##CAMELCASE(                 \
           number, repeated_##LOWERCASE##_value->Get(i), target, stream); \
     }                                                                    \
     break
@@ -2024,7 +2021,7 @@ uint8* ExtensionSet::Extension::InternalSerializeFieldWithCachedSizesToArray(
     switch (real_type(type)) {
 #define HANDLE_TYPE(UPPERCASE, CAMELCASE, VALUE)                               \
   case WireFormatLite::TYPE_##UPPERCASE:                                       \
-    stream->EnsureSpace(&target);                                              \
+    target = stream->EnsureSpace(target);                                      \
     target = WireFormatLite::Write##CAMELCASE##ToArray(number, VALUE, target); \
     break
 
@@ -2045,25 +2042,25 @@ uint8* ExtensionSet::Extension::InternalSerializeFieldWithCachedSizesToArray(
 #undef HANDLE_TYPE
 #define HANDLE_TYPE(UPPERCASE, CAMELCASE, VALUE)         \
   case WireFormatLite::TYPE_##UPPERCASE:                 \
-    stream->EnsureSpace(&target);                        \
+    target = stream->EnsureSpace(target);                \
     target = stream->WriteString(number, VALUE, target); \
     break
       HANDLE_TYPE(STRING, String, *string_value);
       HANDLE_TYPE(BYTES, Bytes, *string_value);
 #undef HANDLE_TYPE
       case WireFormatLite::TYPE_GROUP:
-        stream->EnsureSpace(&target);
-        target = WireFormatLite::InternalWriteGroupToArray(
-            number, *message_value, target, stream);
+        target = stream->EnsureSpace(target);
+        target = WireFormatLite::InternalWriteGroup(number, *message_value,
+                                                    target, stream);
         break;
       case WireFormatLite::TYPE_MESSAGE:
         if (is_lazy) {
           target =
               lazymessage_value->WriteMessageToArray(number, target, stream);
         } else {
-          stream->EnsureSpace(&target);
-          target = WireFormatLite::InternalWriteMessageToArray(
-              number, *message_value, target, stream);
+          target = stream->EnsureSpace(target);
+          target = WireFormatLite::InternalWriteMessage(number, *message_value,
+                                                        target, stream);
         }
         break;
     }
@@ -2082,7 +2079,7 @@ ExtensionSet::Extension::InternalSerializeMessageSetItemWithCachedSizesToArray(
 
   if (is_cleared) return target;
 
-  stream->EnsureSpace(&target);
+  target = stream->EnsureSpace(target);
   // Start group.
   target = io::CodedOutputStream::WriteTagToArray(
       WireFormatLite::kMessageSetItemStartTag, target);
@@ -2094,12 +2091,12 @@ ExtensionSet::Extension::InternalSerializeMessageSetItemWithCachedSizesToArray(
     target = lazymessage_value->WriteMessageToArray(
         WireFormatLite::kMessageSetMessageNumber, target, stream);
   } else {
-    target = WireFormatLite::InternalWriteMessageToArray(
+    target = WireFormatLite::InternalWriteMessage(
         WireFormatLite::kMessageSetMessageNumber, *message_value, target,
         stream);
   }
   // End group.
-  stream->EnsureSpace(&target);
+  target = stream->EnsureSpace(target);
   target = io::CodedOutputStream::WriteTagToArray(
       WireFormatLite::kMessageSetItemEndTag, target);
   return target;

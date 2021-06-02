@@ -156,7 +156,9 @@ static void setofs(uint32_t *instruction, int32_t ofs) {
   UPB_ASSERT(getofs(*instruction) == ofs);  /* Would fail in cases of overflow. */
 }
 
-static uint32_t pcofs(compiler *c) { return c->pc - c->group->bytecode; }
+static uint32_t pcofs(compiler *c) {
+  return (uint32_t)(c->pc - c->group->bytecode);
+}
 
 /* Defines a local label at the current PC location.  All previous forward
  * references are updated to point to this location.  The location is noted
@@ -170,7 +172,7 @@ static void label(compiler *c, unsigned int label) {
   codep = (val == EMPTYLABEL) ? NULL : c->group->bytecode + val;
   while (codep) {
     int ofs = getofs(*codep);
-    setofs(codep, c->pc - codep - instruction_len(*codep));
+    setofs(codep, (int32_t)(c->pc - codep - instruction_len(*codep)));
     codep = ofs ? codep + ofs : NULL;
   }
   c->fwd_labels[label] = EMPTYLABEL;
@@ -192,7 +194,7 @@ static int32_t labelref(compiler *c, int label) {
     return 0;
   } else if (label < 0) {
     /* Backward local label.  Relative to the next instruction. */
-    uint32_t from = (c->pc + 1) - c->group->bytecode;
+    uint32_t from = (uint32_t)((c->pc + 1) - c->group->bytecode);
     return c->back_labels[-label] - from;
   } else {
     /* Forward local label: prepend to (possibly-empty) linked list. */
@@ -226,7 +228,7 @@ static void putop(compiler *c, int op, ...) {
     case OP_SETDISPATCH: {
       uintptr_t ptr = (uintptr_t)va_arg(ap, void*);
       put32(c, OP_SETDISPATCH);
-      put32(c, ptr);
+      put32(c, (uint32_t)ptr);
       if (sizeof(uintptr_t) > sizeof(uint32_t))
         put32(c, (uint64_t)ptr >> 32);
       break;
@@ -285,7 +287,7 @@ static void putop(compiler *c, int op, ...) {
     case OP_TAG2: {
       int label = va_arg(ap, int);
       uint64_t tag = va_arg(ap, uint64_t);
-      uint32_t instruction = op | (tag << 16);
+      uint32_t instruction = (uint32_t)(op | (tag << 16));
       UPB_ASSERT(tag <= 0xffff);
       setofs(&instruction, labelref(c, label));
       put32(c, instruction);
@@ -297,7 +299,7 @@ static void putop(compiler *c, int op, ...) {
       uint32_t instruction = op | (upb_value_size(tag) << 16);
       setofs(&instruction, labelref(c, label));
       put32(c, instruction);
-      put32(c, tag);
+      put32(c, (uint32_t)tag);
       put32(c, tag >> 32);
       break;
     }
@@ -699,7 +701,7 @@ static void compile_method(compiler *c, upb_pbdecodermethod *method) {
   const upb_handlers *h;
   const upb_msgdef *md;
   uint32_t* start_pc;
-  upb_msg_field_iter i;
+  int i, n;
   upb_value val;
 
   UPB_ASSERT(method);
@@ -716,10 +718,9 @@ static void compile_method(compiler *c, upb_pbdecodermethod *method) {
   putsel(c, OP_STARTMSG, UPB_STARTMSG_SELECTOR, h);
  label(c, LABEL_FIELD);
   start_pc = c->pc;
-  for(upb_msg_field_begin(&i, md);
-      !upb_msg_field_done(&i);
-      upb_msg_field_next(&i)) {
-    const upb_fielddef *f = upb_msg_iter_field(&i);
+  n = upb_msgdef_fieldcount(md);
+  for(i = 0; i < n; i++) {
+    const upb_fielddef *f = upb_msgdef_field(md, i);
     upb_fieldtype_t type = upb_fielddef_type(f);
 
     if (type == UPB_TYPE_MESSAGE && !(haslazyhandlers(h, f) && c->lazy)) {
@@ -763,7 +764,7 @@ static void compile_method(compiler *c, upb_pbdecodermethod *method) {
  * Generates a new method for every destination handlers reachable from "h". */
 static void find_methods(compiler *c, const upb_handlers *h) {
   upb_value v;
-  upb_msg_field_iter i;
+  int i, n;
   const upb_msgdef *md;
   upb_pbdecodermethod *method;
 
@@ -775,10 +776,9 @@ static void find_methods(compiler *c, const upb_handlers *h) {
 
   /* Find submethods. */
   md = upb_handlers_msgdef(h);
-  for(upb_msg_field_begin(&i, md);
-      !upb_msg_field_done(&i);
-      upb_msg_field_next(&i)) {
-    const upb_fielddef *f = upb_msg_iter_field(&i);
+  n = upb_msgdef_fieldcount(md);
+  for (i = 0; i < n; i++) {
+    const upb_fielddef *f = upb_msgdef_field(md, i);
     const upb_handlers *sub_h;
     if (upb_fielddef_type(f) == UPB_TYPE_MESSAGE &&
         (sub_h = upb_handlers_getsubhandlers(h, f)) != NULL) {
@@ -910,10 +910,10 @@ const upb_pbdecodermethod *upb_pbcodecache_get(upb_pbcodecache *c,
   } else {
     g = mgroup_new(h, c->lazy);
     ok = upb_inttable_insertptr(&c->groups, md, upb_value_constptr(g));
-    UPB_ASSERT(ok);
+    UPB_ASSUME(ok);
   }
 
   ok = upb_inttable_lookupptr(&g->methods, h, &v);
-  UPB_ASSERT(ok);
+  UPB_ASSUME(ok);
   return upb_value_getptr(v);
 }

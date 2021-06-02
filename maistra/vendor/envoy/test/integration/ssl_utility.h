@@ -36,26 +36,43 @@ struct ClientSslTransportOptions {
     return *this;
   }
 
+  ClientSslTransportOptions& setSni(absl::string_view sni) {
+    sni_ = std::string(sni);
+    return *this;
+  }
+
   ClientSslTransportOptions& setTlsVersion(
       envoy::extensions::transport_sockets::tls::v3::TlsParameters::TlsProtocol tls_version) {
     tls_version_ = tls_version;
     return *this;
   }
 
+  ClientSslTransportOptions& setUseExpiredSpiffeCer(bool use_expired) {
+    use_expired_spiffe_cert_ = use_expired;
+    return *this;
+  }
+
   bool alpn_{};
-  bool san_{};
-  bool client_ecdsa_cert_{};
+  bool client_ecdsa_cert_{false};
   std::vector<std::string> cipher_suites_{};
+  bool san_{};
   std::string sigalgs_;
+  std::string sni_;
   envoy::extensions::transport_sockets::tls::v3::TlsParameters::TlsProtocol tls_version_{
       envoy::extensions::transport_sockets::tls::v3::TlsParameters::TLS_AUTO};
+  bool use_expired_spiffe_cert_{};
 };
 
 Network::TransportSocketFactoryPtr
 createClientSslTransportSocketFactory(const ClientSslTransportOptions& options,
                                       ContextManager& context_manager, Api::Api& api);
+
 Network::TransportSocketFactoryPtr createUpstreamSslContext(ContextManager& context_manager,
                                                             Api::Api& api);
+
+Network::TransportSocketFactoryPtr
+createFakeUpstreamSslContext(const std::string& upstream_cert_name, ContextManager& context_manager,
+                             Server::Configuration::TransportSocketFactoryContext& factory_context);
 
 Network::Address::InstanceConstSharedPtr getSslAddress(const Network::Address::IpVersion& version,
                                                        int port);

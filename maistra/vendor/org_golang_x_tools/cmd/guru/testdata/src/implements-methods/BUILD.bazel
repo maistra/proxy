@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "implements-methods_lib",
     srcs = ["main.go"],
     importpath = "golang.org/x/tools/cmd/guru/testdata/src/implements-methods",
     visibility = ["//visibility:private"],
@@ -9,6 +9,6 @@ go_library(
 
 go_binary(
     name = "implements-methods",
-    embed = [":go_default_library"],
+    embed = [":implements-methods_lib"],
     visibility = ["//visibility:public"],
 )

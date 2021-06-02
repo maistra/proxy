@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test", "go_tool_library")
 
 go_library(
-    name = "go_default_library",
+    name = "typeutil",
     srcs = [
         "callee.go",
         "imports.go",
@@ -11,7 +11,7 @@ go_library(
     ],
     importpath = "golang.org/x/tools/go/types/typeutil",
     visibility = ["//visibility:public"],
-    deps = ["//go/ast/astutil:go_default_library"],
+    deps = ["//go/ast/astutil"],
 )
 
 go_tool_library(
@@ -28,8 +28,14 @@ go_tool_library(
     deps = ["//go/ast/astutil:go_tool_library"],
 )
 
+alias(
+    name = "go_default_library",
+    actual = ":typeutil",
+    visibility = ["//visibility:public"],
+)
+
 go_test(
-    name = "go_default_test",
+    name = "typeutil_test",
     srcs = [
         "callee_test.go",
         "example_test.go",
@@ -37,5 +43,5 @@ go_test(
         "map_test.go",
         "ui_test.go",
     ],
-    embed = [":go_default_library"],
+    deps = [":typeutil"],
 )

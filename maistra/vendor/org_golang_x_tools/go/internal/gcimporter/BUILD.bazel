@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test", "go_tool_library")
 
 go_library(
-    name = "go_default_library",
+    name = "gcimporter",
     srcs = [
         "bexport.go",
         "bimport.go",
@@ -32,8 +32,14 @@ go_tool_library(
     visibility = ["//go:__subpackages__"],
 )
 
+alias(
+    name = "go_default_library",
+    actual = ":gcimporter",
+    visibility = ["//go:__subpackages__"],
+)
+
 go_test(
-    name = "go_default_test",
+    name = "gcimporter_test",
     srcs = [
         "bexport_test.go",
         "gcimporter11_test.go",
@@ -41,10 +47,10 @@ go_test(
         "iexport_test.go",
         "israce_test.go",
     ],
-    embed = [":go_default_library"],
+    embed = [":gcimporter"],
     deps = [
-        "//go/buildutil:go_default_library",
-        "//go/loader:go_default_library",
-        "//internal/testenv:go_default_library",
+        "//go/buildutil",
+        "//go/loader",
+        "//internal/testenv",
     ],
 )

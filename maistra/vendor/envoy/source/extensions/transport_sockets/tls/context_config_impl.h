@@ -55,6 +55,8 @@ public:
   }
 
   void setSecretUpdateCallback(std::function<void()> callback) override;
+  Ssl::HandshakerFactoryCb createHandshaker() const override;
+  Ssl::HandshakerCapabilities capabilities() const override { return capabilities_; }
 
   Ssl::CertificateValidationContextConfigPtr getCombinedValidationContextConfig(
       const envoy::extensions::transport_sockets::tls::v3::CertificateValidationContext&
@@ -94,10 +96,16 @@ private:
   Envoy::Common::CallbackHandle* cvc_validation_callback_handle_{};
   const unsigned min_protocol_version_;
   const unsigned max_protocol_version_;
+
+  Ssl::HandshakerFactoryCb handshaker_factory_cb_;
+  Ssl::HandshakerCapabilities capabilities_;
 };
 
 class ClientContextConfigImpl : public ContextConfigImpl, public Envoy::Ssl::ClientContextConfig {
 public:
+  static const std::string DEFAULT_CIPHER_SUITES;
+  static const std::string DEFAULT_CURVES;
+
   ClientContextConfigImpl(
       const envoy::extensions::transport_sockets::tls::v3::UpstreamTlsContext& config,
       absl::string_view sigalgs,
@@ -106,9 +114,6 @@ public:
       const envoy::extensions::transport_sockets::tls::v3::UpstreamTlsContext& config,
       Server::Configuration::TransportSocketFactoryContext& secret_provider_context)
       : ClientContextConfigImpl(config, "", secret_provider_context) {}
-  ClientContextConfigImpl(
-      const Json::Object& config,
-      Server::Configuration::TransportSocketFactoryContext& secret_provider_context);
 
   // Ssl::ClientContextConfig
   const std::string& serverNameIndication() const override { return server_name_indication_; }
@@ -119,8 +124,12 @@ public:
 private:
   static const unsigned DEFAULT_MIN_VERSION;
   static const unsigned DEFAULT_MAX_VERSION;
-  static const std::string DEFAULT_CIPHER_SUITES;
-  static const std::string DEFAULT_CURVES;
+  // FIPS Configuration
+  static const std::string DEFAULT_FIPS_CIPHER_SUITES;
+  static const std::string DEFAULT_FIPS_CURVES;
+  // Non FIPS Configuration
+  static const std::string DEFAULT_NON_FIPS_CIPHER_SUITES;
+  static const std::string DEFAULT_NON_FIPS_CURVES;
 
   const std::string server_name_indication_;
   const bool allow_renegotiation_;
@@ -133,13 +142,11 @@ public:
   ServerContextConfigImpl(
       const envoy::extensions::transport_sockets::tls::v3::DownstreamTlsContext& config,
       Server::Configuration::TransportSocketFactoryContext& secret_provider_context);
-  ServerContextConfigImpl(
-      const Json::Object& config,
-      Server::Configuration::TransportSocketFactoryContext& secret_provider_context);
   ~ServerContextConfigImpl() override;
 
   // Ssl::ServerContextConfig
   bool requireClientCertificate() const override { return require_client_certificate_; }
+  OcspStaplePolicy ocspStaplePolicy() const override { return ocsp_staple_policy_; }
   const std::vector<SessionTicketKey>& sessionTicketKeys() const override {
     return session_ticket_keys_;
   }
@@ -159,11 +166,17 @@ public:
 
 private:
   static const unsigned DEFAULT_MIN_VERSION;
-  static const unsigned DEFAULT_MAX_VERSION;
-  static const std::string DEFAULT_CIPHER_SUITES;
-  static const std::string DEFAULT_CURVES;
+  // FIPS Configuration
+  static const unsigned DEFAULT_FIPS_MAX_VERSION;
+  static const std::string DEFAULT_FIPS_CIPHER_SUITES;
+  static const std::string DEFAULT_FIPS_CURVES;
+  // Non FIPS Configuration
+  static const unsigned DEFAULT_NON_FIPS_MAX_VERSION;
+  static const std::string DEFAULT_NON_FIPS_CIPHER_SUITES;
+  static const std::string DEFAULT_NON_FIPS_CURVES;
 
   const bool require_client_certificate_;
+  const OcspStaplePolicy ocsp_staple_policy_;
   std::vector<SessionTicketKey> session_ticket_keys_;
   const Secret::TlsSessionTicketKeysConfigProviderSharedPtr session_ticket_keys_provider_;
   Envoy::Common::CallbackHandle* stk_update_callback_handle_{};
@@ -172,6 +185,9 @@ private:
   std::vector<ServerContextConfig::SessionTicketKey> getSessionTicketKeys(
       const envoy::extensions::transport_sockets::tls::v3::TlsSessionTicketKeys& keys);
   ServerContextConfig::SessionTicketKey getSessionTicketKey(const std::string& key_data);
+  static OcspStaplePolicy ocspStaplePolicyFromProto(
+      const envoy::extensions::transport_sockets::tls::v3::DownstreamTlsContext::OcspStaplePolicy&
+          policy);
 
   absl::optional<std::chrono::seconds> session_timeout_;
   const bool disable_stateless_session_resumption_;

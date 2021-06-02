@@ -1,0 +1,2 @@
+# DO NOT EDIT: automatically generated WORKSPACE file for whl_library rule
+workspace(name = "kafka_pip3_pypi__Jinja2_2_11_3")

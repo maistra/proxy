@@ -1,11 +1,17 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "good",
     srcs = [
         "good0.go",
         "good1.go",
     ],
     importpath = "golang.org/x/tools/internal/lsp/testdata/good",
+    visibility = ["//:__subpackages__"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":good",
     visibility = ["//:__subpackages__"],
 )

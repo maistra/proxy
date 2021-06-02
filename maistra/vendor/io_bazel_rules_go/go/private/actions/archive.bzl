@@ -13,49 +13,53 @@
 # limitations under the License.
 
 load(
-    "@io_bazel_rules_go//go/private:common.bzl",
+    "//go/private:common.bzl",
     "as_tuple",
     "split_srcs",
 )
 load(
-    "@io_bazel_rules_go//go/private:mode.bzl",
+    "//go/private:mode.bzl",
     "LINKMODE_C_ARCHIVE",
     "LINKMODE_C_SHARED",
     "mode_string",
 )
 load(
-    "@io_bazel_rules_go//go/private:providers.bzl",
+    "//go/private:providers.bzl",
     "GoArchive",
     "GoArchiveData",
     "effective_importpath_pkgpath",
     "get_archive",
 )
 load(
-    "@io_bazel_rules_go//go/private:rules/cgo.bzl",
+    "//go/private/rules:cgo.bzl",
     "cgo_configure",
 )
 load(
-    "@io_bazel_rules_go//go/private:actions/compilepkg.bzl",
+    "//go/private/actions:compilepkg.bzl",
     "emit_compilepkg",
 )
 
-def emit_archive(go, source = None):
+def emit_archive(go, source = None, _recompile_suffix = ""):
     """See go/toolchains.rst#archive for full documentation."""
 
     if source == None:
         fail("source is a required parameter")
 
     split = split_srcs(source.srcs)
-    lib_name = source.library.importmap + ".a"
-    out_lib = go.declare_file(go, path = lib_name)
-    if go.nogo:
-        # TODO(#1847): write nogo data into a new section in the .a file instead
-        # of writing a separate file.
-        out_export = go.declare_file(go, path = lib_name[:-len(".a")] + ".x")
-    else:
-        out_export = None
-    searchpath = out_lib.path[:-len(lib_name)]
     testfilter = getattr(source.library, "testfilter", None)
+    pre_ext = ""
+    if go.mode.link == LINKMODE_C_ARCHIVE:
+        pre_ext = "_"  # avoid collision with go_binary output file with .a extension
+    elif testfilter == "exclude":
+        pre_ext = ".internal"
+    elif testfilter == "only":
+        pre_ext = ".external"
+    if _recompile_suffix:
+        pre_ext += _recompile_suffix
+    out_lib = go.declare_file(go, name = source.library.name, ext = pre_ext + ".a")
+
+    # store __.PKGDEF and nogo facts in .x
+    out_export = go.declare_file(go, name = source.library.name, ext = pre_ext + ".x")
     out_cgo_export_h = None  # set if cgo used in c-shared or c-archive mode
 
     direct = [get_archive(dep) for dep in source.deps]
@@ -126,18 +130,44 @@ def emit_archive(go, source = None):
         )
 
     data = GoArchiveData(
+        # TODO(#2578): reconsider the provider API. There's a lot of redundant
+        # information here. Some fields are tuples instead of lists or dicts
+        # since GoArchiveData is stored in a depset, and no value in a depset
+        # may be mutable. For now, new copied fields are private (named with
+        # a leading underscore) since they may change in the future.
+
+        # GoLibrary fields
         name = source.library.name,
         label = source.library.label,
         importpath = source.library.importpath,
         importmap = source.library.importmap,
         importpath_aliases = source.library.importpath_aliases,
         pathtype = source.library.pathtype,
-        file = out_lib,
-        export_file = out_export,
+
+        # GoSource fields
         srcs = as_tuple(source.srcs),
         orig_srcs = as_tuple(source.orig_srcs),
+        _orig_src_map = tuple([source.orig_src_map.get(src, src) for src in source.srcs]),
+        _cover = as_tuple(source.cover),
+        _x_defs = tuple(source.x_defs.items()),
+        _gc_goopts = as_tuple(source.gc_goopts),
+        _cgo = source.cgo,
+        _cdeps = as_tuple(source.cdeps),
+        _cppopts = as_tuple(source.cppopts),
+        _copts = as_tuple(source.copts),
+        _cxxopts = as_tuple(source.cxxopts),
+        _clinkopts = as_tuple(source.clinkopts),
+        _cgo_exports = as_tuple(source.cgo_exports),
+
+        # Information on dependencies
+        _dep_labels = tuple([d.data.label for d in direct]),
+        _dep_importmaps = tuple([d.data.importmap for d in direct]),
+
+        # Information needed by dependents
+        file = out_lib,
+        export_file = out_export,
         data_files = as_tuple(data_files),
-        searchpath = searchpath,
+        _cgo_deps = as_tuple(cgo_deps),
     )
     x_defs = dict(source.x_defs)
     for a in direct:
@@ -150,7 +180,6 @@ def emit_archive(go, source = None):
         source = source,
         data = data,
         direct = direct,
-        searchpaths = depset(direct = [searchpath], transitive = [a.searchpaths for a in direct]),
         libs = depset(direct = [out_lib], transitive = [a.libs for a in direct]),
         transitive = depset([data], transitive = [a.transitive for a in direct]),
         x_defs = x_defs,

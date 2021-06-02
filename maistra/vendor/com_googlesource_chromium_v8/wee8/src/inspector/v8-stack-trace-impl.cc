@@ -9,6 +9,11 @@
 #include "../../third_party/inspector_protocol/crdtp/json.h"
 #include "src/inspector/v8-debugger.h"
 #include "src/inspector/v8-inspector-impl.h"
+#include "src/tracing/trace-event.h"
+
+using v8_crdtp::SpanFrom;
+using v8_crdtp::json::ConvertCBORToJSON;
+using v8_crdtp::json::ConvertJSONToCBOR;
 
 namespace v8_inspector {
 
@@ -30,6 +35,10 @@ std::vector<std::shared_ptr<StackFrame>> toFramesVector(
     int maxStackSize) {
   DCHECK(debugger->isolate()->InContext());
   int frameCount = std::min(v8StackTrace->GetFrameCount(), maxStackSize);
+
+  TRACE_EVENT1(TRACE_DISABLED_BY_DEFAULT("v8.stack_trace"),
+               "SymbolizeStackTrace", "frameCount", frameCount);
+
   std::vector<std::shared_ptr<StackFrame>> frames(frameCount);
   for (int i = 0; i < frameCount; ++i) {
     frames[i] =
@@ -111,7 +120,7 @@ std::unique_ptr<protocol::Runtime::StackTrace> buildInspectorObjectCommon(
   return stackTrace;
 }
 
-}  //  namespace
+}  // namespace
 
 V8StackTraceId::V8StackTraceId() : id(0), debugger_id(V8DebuggerId().pair()) {}
 
@@ -124,10 +133,19 @@ V8StackTraceId::V8StackTraceId(uintptr_t id,
                                bool should_pause)
     : id(id), debugger_id(debugger_id), should_pause(should_pause) {}
 
-V8StackTraceId::V8StackTraceId(const StringView& json)
+V8StackTraceId::V8StackTraceId(StringView json)
     : id(0), debugger_id(V8DebuggerId().pair()) {
-  auto dict =
-      protocol::DictionaryValue::cast(protocol::StringUtil::parseJSON(json));
+  if (json.length() == 0) return;
+  std::vector<uint8_t> cbor;
+  if (json.is8Bit()) {
+    ConvertJSONToCBOR(
+        v8_crdtp::span<uint8_t>(json.characters8(), json.length()), &cbor);
+  } else {
+    ConvertJSONToCBOR(
+        v8_crdtp::span<uint16_t>(json.characters16(), json.length()), &cbor);
+  }
+  auto dict = protocol::DictionaryValue::cast(
+      protocol::Value::parseBinary(cbor.data(), cbor.size()));
   if (!dict) return;
   String16 s;
   if (!dict->getString(kId, &s)) return;
@@ -151,8 +169,8 @@ std::unique_ptr<StringBuffer> V8StackTraceId::ToString() {
   dict->setString(kDebuggerId, V8DebuggerId(debugger_id).toString());
   dict->setBoolean(kShouldPause, should_pause);
   std::vector<uint8_t> json;
-  std::vector<uint8_t> cbor = std::move(*dict).TakeSerialized();
-  v8_crdtp::json::ConvertCBORToJSON(v8_crdtp::SpanFrom(cbor), &json);
+  v8_crdtp::json::ConvertCBORToJSON(v8_crdtp::SpanFrom(dict->Serialize()),
+                                    &json);
   return StringBufferFrom(std::move(json));
 }
 
@@ -240,6 +258,10 @@ std::unique_ptr<V8StackTraceImpl> V8StackTraceImpl::create(
 std::unique_ptr<V8StackTraceImpl> V8StackTraceImpl::capture(
     V8Debugger* debugger, int contextGroupId, int maxStackSize) {
   DCHECK(debugger);
+
+  TRACE_EVENT1(TRACE_DISABLED_BY_DEFAULT("v8.stack_trace"),
+               "V8StackTraceImpl::capture", "maxFrameCount", maxStackSize);
+
   v8::Isolate* isolate = debugger->isolate();
   v8::HandleScope handleScope(isolate);
   v8::Local<v8::StackTrace> v8StackTrace;
@@ -390,6 +412,9 @@ std::shared_ptr<AsyncStackTrace> AsyncStackTrace::capture(
     V8Debugger* debugger, int contextGroupId, const String16& description,
     int maxStackSize) {
   DCHECK(debugger);
+
+  TRACE_EVENT1(TRACE_DISABLED_BY_DEFAULT("v8.stack_trace"),
+               "AsyncStackTrace::capture", "maxFrameCount", maxStackSize);
 
   v8::Isolate* isolate = debugger->isolate();
   v8::HandleScope handleScope(isolate);

@@ -17,13 +17,13 @@
  *
  */
 
-class ChanellCredentialsTest extends PHPUnit_Framework_TestCase
+class ChanellCredentialsTest extends \PHPUnit\Framework\TestCase
 {
-    public function setUp()
+    public function setUp(): void
     {
     }
 
-    public function tearDown()
+    public function tearDown(): void
     {
     }
 
@@ -44,6 +44,16 @@ class ChanellCredentialsTest extends PHPUnit_Framework_TestCase
     {
         $channel_credentials = Grpc\ChannelCredentials::createInsecure();
         $this->assertNull($channel_credentials);
+    }
+
+    public function testDefaultRootsPem()
+    {
+        Grpc\ChannelCredentials::setDefaultRootsPem("Pem-Content-Not-Verified");
+        $this->assertTrue(Grpc\ChannelCredentials::isDefaultRootsPemSet());
+        Grpc\ChannelCredentials::invalidateDefaultRootsPem();
+        $this->assertFalse(Grpc\ChannelCredentials::isDefaultRootsPemSet());
+        Grpc\ChannelCredentials::setDefaultRootsPem("Content-Not-Verified");
+        $this->assertTrue(Grpc\ChannelCredentials::isDefaultRootsPemSet());
     }
 
     /**

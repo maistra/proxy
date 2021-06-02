@@ -1,2 +1,0 @@
-# DO NOT EDIT: automatically generated WORKSPACE file for bazel_version_repository rule
-workspace(name = "upb_bazel_version")

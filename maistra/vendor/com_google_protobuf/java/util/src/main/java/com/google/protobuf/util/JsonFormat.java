@@ -233,7 +233,7 @@ public class JsonFormat {
           registry,
           oldRegistry,
           alwaysOutputDefaultValueFields,
-          Collections.<FieldDescriptor>emptySet(),
+          includingDefaultValueFields,
           preservingProtoFieldNames,
           omittingInsignificantWhitespace,
           true,
@@ -328,14 +328,13 @@ public class JsonFormat {
     /**
      * Create a new {@link Printer} that will sort the map keys in the JSON output.
      *
-     * Use of this modifier is discouraged, the generated JSON messages are equivalent
-     * with and without this option set, but there are some corner caseuse cases that
-     * demand a stable output, while order of map keys is otherwise arbitrary.
+     * <p>Use of this modifier is discouraged, the generated JSON messages are equivalent with and
+     * without this option set, but there are some corner use cases that demand a stable output,
+     * while order of map keys is otherwise arbitrary.
      *
-     * The generated order is not well-defined and should not be depended on, but
-     * it's stable.
+     * <p>The generated order is not well-defined and should not be depended on, but it's stable.
      *
-     * This new Printer clones all other configurations from the current {@link Printer}.
+     * <p>This new Printer clones all other configurations from the current {@link Printer}.
      */
     public Printer sortingMapKeys() {
       return new Printer(
@@ -526,7 +525,6 @@ public class JsonFormat {
       return types.get(name);
     }
 
-    /* @Nullable */
     Descriptor getDescriptorForTypeUrl(String typeUrl) throws InvalidProtocolBufferException {
       return find(getTypeName(typeUrl));
     }
@@ -1945,6 +1943,14 @@ public class JsonFormat {
           return field.getEnumType().findValueByNumber(0);
         }
         return null;
+      } else if (json instanceof JsonObject) {
+        if (field.getType() != FieldDescriptor.Type.MESSAGE
+            && field.getType() != FieldDescriptor.Type.GROUP) {
+          // If the field type is primitive, but the json type is JsonObject rather than
+          // JsonElement, throw a type mismatch error.
+          throw new InvalidProtocolBufferException(
+              String.format("Invalid value: %s for expected type: %s", json, field.getType()));
+        }
       }
       switch (field.getType()) {
         case INT32:

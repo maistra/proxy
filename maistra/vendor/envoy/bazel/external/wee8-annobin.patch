@@ -1,0 +1,16 @@
+# https://issues.redhat.com/browse/MAISTRA-2048
+# https://issues.redhat.com/browse/MAISTRA-600
+--- wee8/BUILD.gn
++++ wee8/BUILD.gn
+@@ -507,7 +507,10 @@ config("toolchain") {
+   visibility = [ ":*" ]  # Only targets in this file can depend on this.
+ 
+   defines = []
+-  cflags = []
++  cflags = ["-fplugin=annobin", "-fstack-clash-protection", "-fstack-protector-all", "-fstack-protector-strong", "-D_FORTIFY_SOURCE=2", "-O2", "-fPIE", "-fexceptions", "-D_GLIBCXX_ASSERTIONS", "-D_GLIBCXX_USE_CXX11_ABI", "-Wall"]
++  if (v8_current_cpu == "x64") {
++    cflags += ["-fcf-protection=full"]
++  }
+   ldflags = []
+ 
+   if (v8_current_cpu == "arm") {

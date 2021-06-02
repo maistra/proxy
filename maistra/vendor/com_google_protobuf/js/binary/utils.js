@@ -32,6 +32,7 @@
  * @fileoverview This file contains helper code used by jspb.BinaryReader
  * and BinaryWriter.
  *
+ * @suppress {missingRequire} TODO(b/152540451): this shouldn't be needed
  * @author aappleby@google.com (Austin Appleby)
  */
 
@@ -117,7 +118,7 @@ jspb.utils.splitInt64 = function(value) {
 
 
 /**
- * Convers a signed Javascript integer into zigzag format, splits it into two
+ * Converts a signed Javascript integer into zigzag format, splits it into two
  * 32-bit halves, and stores it in the temp values above.
  * @param {number} value The number to split.
  */
@@ -255,8 +256,25 @@ jspb.utils.splitFloat64 = function(value) {
     return;
   }
 
-  var exp = Math.floor(Math.log(value) / Math.LN2);
-  if (exp == 1024) exp = 1023;
+  // Compute the least significant exponent needed to represent the magnitude of
+  // the value by repeadly dividing/multiplying by 2 until the magnitude
+  // crosses 2. While tempting to use log math to find the exponent, at the
+  // boundaries of precision, the result can be off by one.
+  var maxDoubleExponent = 1023;
+  var minDoubleExponent = -1022;
+  var x = value;
+  var exp = 0;
+  if (x >= 2) {
+    while (x >= 2 && exp < maxDoubleExponent) {
+      exp++;
+      x = x / 2;
+    }
+  } else {
+    while (x < 1 && exp > minDoubleExponent) {
+      x = x * 2;
+      exp--;
+    }
+  }
   var mant = value * Math.pow(2, -exp);
 
   var mantHigh = (mant * jspb.BinaryConstants.TWO_TO_20) & 0xFFFFF;
@@ -984,7 +1002,7 @@ jspb.utils.debugBytesToTextFormat = function(byteSource) {
  * @return {string} Stringified scalar for text format.
  */
 jspb.utils.debugScalarToTextFormat = function(scalar) {
-  if (goog.isString(scalar)) {
+  if (typeof scalar === 'string') {
     return goog.string.quote(scalar);
   } else {
     return scalar.toString();

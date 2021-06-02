@@ -15,6 +15,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"flag"
 	"fmt"
@@ -130,7 +131,9 @@ func (e *env) goCmd(cmd string, args ...string) []string {
 // environment from this process.
 func (e *env) runCommand(args []string) error {
 	cmd := exec.Command(args[0], args[1:]...)
-	cmd.Stdout = os.Stdout
+	// Redirecting stdout to stderr. This mirrors behavior in the go command:
+	// https://go.googlesource.com/go/+/refs/tags/go1.15.2/src/cmd/go/internal/work/exec.go#1958
+	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
 	return runAndLogCommand(cmd, e.verbose)
 }
@@ -157,19 +160,20 @@ func absEnv(envNameList []string, argList []string) error {
 
 func runAndLogCommand(cmd *exec.Cmd, verbose bool) error {
 	if verbose {
-		formatCommand(os.Stderr, cmd)
+		fmt.Fprintln(os.Stderr, formatCommand(cmd))
 	}
+	cleanup := passLongArgsInResponseFiles(cmd)
+	defer cleanup()
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("error running subcommand: %v", err)
+		return fmt.Errorf("error running subcommand %s: %v", cmd.Path, err)
 	}
 	return nil
 }
 
-// readParamsFile looks for arguments in args of the form
+// expandParamsFiles looks for arguments in args of the form
 // "-param=filename". When it finds these arguments it reads the file "filename"
-// and replaces the argument with its content (each argument must be on a
-// separate line; blank lines are ignored).
-func readParamsFiles(args []string) ([]string, error) {
+// and replaces the argument with its content.
+func expandParamsFiles(args []string) ([]string, error) {
 	var paramsIndices []int
 	for i, arg := range args {
 		if strings.HasPrefix(arg, "-param=") {
@@ -186,19 +190,84 @@ func readParamsFiles(args []string) ([]string, error) {
 		last = pi + 1
 
 		fileName := args[pi][len("-param="):]
-		content, err := ioutil.ReadFile(fileName)
+		fileArgs, err := readParamsFile(fileName)
 		if err != nil {
 			return nil, err
-		}
-		fileArgs := strings.Split(string(content), "\n")
-		if len(fileArgs) >= 0 && fileArgs[len(fileArgs)-1] == "" {
-			// Ignore final empty line.
-			fileArgs = fileArgs[:len(fileArgs)-1]
 		}
 		expandedArgs = append(expandedArgs, fileArgs...)
 	}
 	expandedArgs = append(expandedArgs, args[last:]...)
 	return expandedArgs, nil
+}
+
+// readParamsFiles parses a Bazel params file in "shell" format. The file
+// should contain one argument per line. Arguments may be quoted with single
+// quotes. All characters within quoted strings are interpreted literally
+// including newlines and excepting single quotes. Characters outside quoted
+// strings may be escaped with a backslash.
+func readParamsFile(name string) ([]string, error) {
+	data, err := ioutil.ReadFile(name)
+	if err != nil {
+		return nil, err
+	}
+
+	var args []string
+	var arg []byte
+	quote := false
+	escape := false
+	for p := 0; p < len(data); p++ {
+		b := data[p]
+		switch {
+		case escape:
+			arg = append(arg, b)
+			escape = false
+
+		case b == '\'':
+			quote = !quote
+
+		case !quote && b == '\\':
+			escape = true
+
+		case !quote && b == '\n':
+			args = append(args, string(arg))
+			arg = arg[:0]
+
+		default:
+			arg = append(arg, b)
+		}
+	}
+	if quote {
+		return nil, fmt.Errorf("unterminated quote")
+	}
+	if escape {
+		return nil, fmt.Errorf("unterminated escape")
+	}
+	if len(arg) > 0 {
+		args = append(args, string(arg))
+	}
+	return args, nil
+}
+
+// writeParamsFile formats a list of arguments in Bazel's "shell" format and writes
+// it to a file.
+func writeParamsFile(path string, args []string) error {
+	buf := new(bytes.Buffer)
+	for _, arg := range args {
+		if !strings.ContainsAny(arg, "'\n\\") {
+			fmt.Fprintln(buf, arg)
+			continue
+		}
+		buf.WriteByte('\'')
+		for _, r := range arg {
+			if r == '\'' {
+				buf.WriteString(`'\''`)
+			} else {
+				buf.WriteRune(r)
+			}
+		}
+		buf.WriteString("'\n")
+	}
+	return ioutil.WriteFile(path, buf.Bytes(), 0666)
 }
 
 // splitArgs splits a list of command line arguments into two parts: arguments
@@ -263,9 +332,9 @@ func absArgs(args []string, flags []string) {
 	}
 }
 
-// formatCommand writes cmd to w in a format where it can be pasted into a
-// shell. Spaces in environment variables and arguments are escaped as needed.
-func formatCommand(w io.Writer, cmd *exec.Cmd) {
+// formatCommand formats cmd as a string that can be pasted into a shell.
+// Spaces in environment variables and arguments are escaped as needed.
+func formatCommand(cmd *exec.Cmd) string {
 	quoteIfNeeded := func(s string) string {
 		if strings.IndexByte(s, ' ') < 0 {
 			return s
@@ -283,19 +352,80 @@ func formatCommand(w io.Writer, cmd *exec.Cmd) {
 		}
 		return fmt.Sprintf("%s=%s", key, strconv.Quote(value))
 	}
-
+	var w bytes.Buffer
 	environ := cmd.Env
 	if environ == nil {
 		environ = os.Environ()
 	}
 	for _, e := range environ {
-		fmt.Fprintf(w, "%s \\\n", quoteEnvIfNeeded(e))
+		fmt.Fprintf(&w, "%s \\\n", quoteEnvIfNeeded(e))
 	}
 
 	sep := ""
 	for _, arg := range cmd.Args {
-		fmt.Fprintf(w, "%s%s", sep, quoteIfNeeded(arg))
+		fmt.Fprintf(&w, "%s%s", sep, quoteIfNeeded(arg))
 		sep = " "
 	}
-	fmt.Fprint(w, "\n")
+	return w.String()
+}
+
+// passLongArgsInResponseFiles modifies cmd such that, for
+// certain programs, long arguments are passed in "response files", a
+// file on disk with the arguments, with one arg per line. An actual
+// argument starting with '@' means that the rest of the argument is
+// a filename of arguments to expand.
+//
+// See https://github.com/golang/go/issues/18468 (Windows) and
+// https://github.com/golang/go/issues/37768 (Darwin).
+func passLongArgsInResponseFiles(cmd *exec.Cmd) (cleanup func()) {
+	cleanup = func() {} // no cleanup by default
+	var argLen int
+	for _, arg := range cmd.Args {
+		argLen += len(arg)
+	}
+	// If we're not approaching 32KB of args, just pass args normally.
+	// (use 30KB instead to be conservative; not sure how accounting is done)
+	if !useResponseFile(cmd.Path, argLen) {
+		return
+	}
+	tf, err := ioutil.TempFile("", "args")
+	if err != nil {
+		log.Fatalf("error writing long arguments to response file: %v", err)
+	}
+	cleanup = func() { os.Remove(tf.Name()) }
+	var buf bytes.Buffer
+	for _, arg := range cmd.Args[1:] {
+		fmt.Fprintf(&buf, "%s\n", arg)
+	}
+	if _, err := tf.Write(buf.Bytes()); err != nil {
+		tf.Close()
+		cleanup()
+		log.Fatalf("error writing long arguments to response file: %v", err)
+	}
+	if err := tf.Close(); err != nil {
+		cleanup()
+		log.Fatalf("error writing long arguments to response file: %v", err)
+	}
+	cmd.Args = []string{cmd.Args[0], "@" + tf.Name()}
+	return cleanup
+}
+
+func useResponseFile(path string, argLen int) bool {
+	// Unless the program uses objabi.Flagparse, which understands
+	// response files, don't use response files.
+	// TODO: do we need more commands? asm? cgo? For now, no.
+	prog := strings.TrimSuffix(filepath.Base(path), ".exe")
+	switch prog {
+	case "compile", "link":
+	default:
+		return false
+	}
+	// Windows has a limit of 32 KB arguments. To be conservative and not
+	// worry about whether that includes spaces or not, just use 30 KB.
+	// Darwin's limit is less clear. The OS claims 256KB, but we've seen
+	// failures with arglen as small as 50KB.
+	if argLen > (30 << 10) {
+		return true
+	}
+	return false
 }

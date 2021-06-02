@@ -143,3 +143,55 @@ go_bazel_test(
     name = "test_filter_test",
     srcs = ["test_filter_test.go"],
 )
+
+go_bazel_test(
+    name = "xmlreport_test",
+    srcs = ["xmlreport_test.go"],
+)
+
+go_test(
+    name = "testmain_import_test",
+    srcs = [
+        "testmain_import_indirect_test.go",
+        "testmain_import_main_test.go",
+    ],
+    importpath = "example.com/imports/test_main",
+)
+
+go_test(
+    name = "tags_test",
+    srcs = [
+        "tags_bad_test.go",
+        "tags_good_test.go",
+    ],
+    gotags = ["good"],
+)
+
+go_test(
+    name = "indirect_import_test",
+    srcs = [
+        "indirect_import_i_test.go",
+        "indirect_import_x_test.go",
+    ],
+    embed = [":indirect_import_lib"],
+    deps = [":indirect_import_dep"],
+)
+
+go_library(
+    name = "indirect_import_lib",
+    srcs = ["indirect_import_lib.go"],
+    importpath = "github.com/bazelbuild/rules_go/tests/core/go_test/indirect_import",
+)
+
+go_library(
+    name = "indirect_import_dep",
+    srcs = ["indirect_import_dep.go"],
+    importpath = "github.com/bazelbuild/rules_go/tests/core/go_test/indirect_import_dep",
+    deps = [":indirect_import_lib"],
+)
+
+go_bazel_test(
+    name = "testmain_without_exit_test",
+    srcs = ["testmain_without_exit_test.go"],
+)
+

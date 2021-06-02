@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
-    name = "go_default_library",
+    name = "godoc",
     srcs = [
         "corpus.go",
         "dirtrees.go",
@@ -25,16 +25,22 @@ go_library(
     importpath = "golang.org/x/tools/godoc",
     visibility = ["//visibility:public"],
     deps = [
-        "//godoc/analysis:go_default_library",
-        "//godoc/golangorgenv:go_default_library",
-        "//godoc/util:go_default_library",
-        "//godoc/vfs:go_default_library",
-        "//godoc/vfs/httpfs:go_default_library",
+        "//godoc/analysis",
+        "//godoc/golangorgenv",
+        "//godoc/util",
+        "//godoc/vfs",
+        "//godoc/vfs/httpfs",
     ],
 )
 
+alias(
+    name = "go_default_library",
+    actual = ":godoc",
+    visibility = ["//visibility:public"],
+)
+
 go_test(
-    name = "go_default_test",
+    name = "godoc_test",
     srcs = [
         "dirtrees_test.go",
         "godoc17_test.go",
@@ -44,10 +50,10 @@ go_test(
         "spec_test.go",
         "versions_test.go",
     ],
-    embed = [":go_default_library"],
+    embed = [":godoc"],
     deps = [
-        "//godoc/vfs:go_default_library",
-        "//godoc/vfs/gatefs:go_default_library",
-        "//godoc/vfs/mapfs:go_default_library",
+        "//godoc/vfs",
+        "//godoc/vfs/gatefs",
+        "//godoc/vfs/mapfs",
     ],
 )

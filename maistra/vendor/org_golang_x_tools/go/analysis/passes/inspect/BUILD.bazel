@@ -1,13 +1,13 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_tool_library")
 
 go_library(
-    name = "go_default_library",
+    name = "inspect",
     srcs = ["inspect.go"],
     importpath = "golang.org/x/tools/go/analysis/passes/inspect",
     visibility = ["//visibility:public"],
     deps = [
-        "//go/analysis:go_default_library",
-        "//go/ast/inspector:go_default_library",
+        "//go/analysis",
+        "//go/ast/inspector",
     ],
 )
 
@@ -20,4 +20,10 @@ go_tool_library(
         "//go/analysis:go_tool_library",
         "//go/ast/inspector:go_tool_library",
     ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":inspect",
+    visibility = ["//visibility:public"],
 )

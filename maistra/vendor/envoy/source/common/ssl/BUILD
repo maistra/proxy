@@ -1,10 +1,10 @@
-licenses(["notice"])  # Apache 2
-
 load(
     "//bazel:envoy_build_system.bzl",
     "envoy_cc_library",
     "envoy_package",
 )
+
+licenses(["notice"])  # Apache 2
 
 envoy_package()
 
@@ -26,6 +26,7 @@ envoy_cc_library(
     name = "certificate_validation_context_config_impl_lib",
     srcs = ["certificate_validation_context_config_impl.cc"],
     hdrs = ["certificate_validation_context_config_impl.h"],
+    external_deps = ["abseil_optional"],
     deps = [
         "//include/envoy/api:api_interface",
         "//include/envoy/ssl:certificate_validation_context_config_interface",

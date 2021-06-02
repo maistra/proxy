@@ -49,7 +49,8 @@ extern struct testcase_t rpc_testcases[];
 extern struct testcase_t edgetriggered_testcases[];
 extern struct testcase_t minheap_testcases[];
 extern struct testcase_t iocp_testcases[];
-extern struct testcase_t ssl_testcases[];
+extern struct testcase_t openssl_testcases[];
+extern struct testcase_t mbedtls_testcases[];
 extern struct testcase_t listener_testcases[];
 extern struct testcase_t listener_iocp_testcases[];
 extern struct testcase_t thread_testcases[];
@@ -96,6 +97,8 @@ extern int libevent_tests_running_in_debug_mode;
 #define TT_NO_LOGS		(TT_FIRST_USER_FLAG<<5)
 #define TT_ENABLE_IOCP_FLAG	(TT_FIRST_USER_FLAG<<6)
 #define TT_ENABLE_IOCP		(TT_ENABLE_IOCP_FLAG|TT_NEED_THREADS)
+#define TT_ENABLE_DEBUG_MODE	(TT_ENABLE_IOCP_FLAG<<7)
+#define TT_ENABLE_PRIORITY_INHERITANCE	(TT_ENABLE_IOCP_FLAG<<8)
 
 /* All the flags that a legacy test needs. */
 #define TT_ISOLATED TT_FORK|TT_NEED_SOCKETPAIR|TT_NEED_BASE

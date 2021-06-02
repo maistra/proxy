@@ -1,5 +1,7 @@
 load("@io_bazel_rules_go//proto:compiler.bzl", "go_proto_compiler")
 load("@io_bazel_rules_go//proto:def.bzl", "go_proto_library")
+load("@rules_cc//cc:defs.bzl", "cc_library")
+load("@rules_python//python:defs.bzl", "py_library")
 load(":protobuf.bzl", "cc_proto_gen_validate", "java_proto_gen_validate", "python_proto_gen_validate")
 
 def pgv_go_proto_library(name, proto = None, deps = [], **kwargs):
@@ -20,24 +22,6 @@ def pgv_go_proto_library(name, proto = None, deps = [], **kwargs):
         **kwargs
     )
 
-def pgv_gogo_proto_library(name, proto = None, deps = [], **kwargs):
-    go_proto_compiler(
-        name = "pgv_plugin_gogo",
-        suffix = ".pb.validate.go",
-        valid_archive = False,
-        plugin = "//:protoc-gen-validate",
-        options = ["lang=gogo"],
-    )
-
-    go_proto_library(
-        name = name,
-        proto = proto,
-        deps = ["//validate:go_default_library"] + deps,
-        compilers = ["@io_bazel_rules_go//proto:gogo_proto", "pgv_plugin_gogo"],
-        visibility = ["//visibility:public"],
-        **kwargs
-    )
-
 def pgv_cc_proto_library(
         name,
         deps = [],
@@ -52,16 +36,20 @@ def pgv_cc_proto_library(
       **kargs: other keyword arguments that are passed to cc_library.
     """
 
+    native.cc_proto_library(
+        name = name + "_cc_proto",
+        deps = deps,
+    )
     cc_proto_gen_validate(
         name = name + "_validate",
         deps = deps,
     )
-
-    native.cc_library(
+    cc_library(
         name = name,
         hdrs = [":" + name + "_validate"],
         srcs = [":" + name + "_validate"],
         deps = cc_deps + [
+            ":" + name + "_cc_proto",
             "@com_envoyproxy_protoc_gen_validate//validate:cc_validate",
             "@com_envoyproxy_protoc_gen_validate//validate:validate_cc",
             "@com_google_protobuf//:protobuf",
@@ -92,8 +80,7 @@ def pgv_python_proto_library(
         name = name + "_validate",
         deps = deps,
     )
-
-    native.py_library(
+    py_library(
         name = name,
         srcs = [name + "_validate"],
         deps = python_deps + [

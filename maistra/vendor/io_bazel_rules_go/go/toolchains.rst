@@ -1,24 +1,25 @@
 Go toolchains
 =============
 
+.. _Args: https://docs.bazel.build/versions/master/skylark/lib/Args.html
+.. _Bazel toolchains: https://docs.bazel.build/versions/master/toolchains.html
+.. _Go website: https://golang.org/
+.. _GoArchive: providers.rst#goarchive
+.. _GoLibrary: providers.rst#golibrary
+.. _GoSDK: providers.rst#gosdk
+.. _GoSource: providers.rst#gosource
+.. _binary distribution: https://golang.org/dl/
+.. _compilation modes: modes.rst#compilation-modes
+.. _control the version: `Forcing the Go version`_
 .. _core: core.bzl
 .. _forked version of Go: `Registering a custom SDK`_
-.. _control the version: `Forcing the Go version`_
-.. _installed SDK: `Using the installed Go sdk`_
+.. _go assembly: https://golang.org/doc/asm
 .. _go sdk rules: `The SDK`_
-.. _Go website: https://golang.org/
-.. _binary distribution: https://golang.org/dl/
+.. _go/platform/list.bzl: platform/list.bzl
+.. _installed SDK: `Using the installed Go sdk`_
+.. _nogo: nogo.rst#nogo
 .. _register: Registration_
 .. _register_toolchains: https://docs.bazel.build/versions/master/skylark/lib/globals.html#register_toolchains
-.. _compilation modes: modes.rst#compilation-modes
-.. _go assembly: https://golang.org/doc/asm
-.. _GoLibrary: providers.rst#golibrary
-.. _GoSource: providers.rst#gosource
-.. _GoArchive: providers.rst#goarchive
-.. _GoSDK: providers.rst#gosdk
-.. _go/platform/list.bzl: platform/list.bzl
-.. _Args: https://docs.bazel.build/versions/master/skylark/lib/Args.html
-.. _nogo: nogo.rst#nogo
 
 .. role:: param(kbd)
 .. role:: type(emphasis)
@@ -32,50 +33,48 @@ customize the behavior of the core_ Go rules.
 
 -----
 
-Design
-------
+Overview
+--------
 
-The Go toolchain consists of three main layers, `the SDK`_ and `the toolchain`_
+The Go toolchain consists of three main layers: `the SDK`_, `the toolchain`_,
 and `the context`_.
 
 The SDK
 ~~~~~~~
 
-At the bottom is the Go SDK. This is the same thing you would get if you go to
-the main `Go website`_ and download a `binary distribution`_.
+The Go SDK (more commonly known as the Go distribution) is a directory tree
+containing sources for the Go toolchain and standard library and pre-compiled
+binaries for the same. You can download this from by visiting the `Go website`_
+and downloading a `binary distribution`_.
 
-In the past, this has always been a repository rule bound to ``@go_sdk``, but
-we are moving away from this as part of an effort to enable the use of multiple
-SDKs in remote execution. It's best to access this through the toolchain.
+There are several Bazel rules for obtaining and configuring a Go SDK:
 
-The `go_download_sdk`_, `go_host_sdk`_, `go_local_sdk`_, and `go_wrap_sdk`_
-rules are responsible for downloading / locating and configuring an SDK by
-adding just enough of a build file to expose the contents to Bazel.
+* `go_download_sdk`_: downloads a toolchain for a specific version of Go for a
+  specific operating system and architecture.
+* `go_host_sdk`_: uses the toolchain installed on the system where Bazel is
+  run. The toolchain's location is specified with the ``GOROOT`` or by running
+  ``go env GOROOT``.
+* `go_local_sdk`_: like `go_host_sdk`_, but uses the toolchain in a specific
+  directory on the host system.
+* `go_wrap_sdk`_: configures a toolchain downloaded with another Bazel
+  repository rule.
+
+By default, if none of the above rules are used, the `go_register_toolchains`_
+function creates a repository named ``@go_sdk`` using `go_download_sdk`_, using
+a recent version of Go for the host operating system and architecture.
 
 SDKs are specific to a host platform (e.g., ``linux_amd64``) and a version of
 Go. They may target all platforms that Go supports. The Go SDK is naturally
 cross compiling.
 
-SDKs are declared to Bazel with the `go_sdk`_ rule, which gathers information
-about the SDK into the `GoSDK`_ provider, which may be consumed by other
-rules through `the context`_.
-
-If you haven't declared an SDK before calling ``go_register_toolchains()``,
-a `go_download_sdk`_ rule will be declared automatically. This is good enough
-in more situations, but if you need a `forked version of Go`_,
-want to `control the version`_, or use the `installed SDK`_, declare
-a Go SDK repository before calling ``go_register_toolchains``.
-
 The toolchain
 ~~~~~~~~~~~~~
 
-This a wrapper over the SDK that provides extra information about the
-target platform.
-
-Toolchains are declared with the `go_toolchain`_ rule inside an SDK repository.
-They are registered within the macro that declares the SDK repository. Bazel
-will select a toolchain based on the target platform (specified with
-``--platforms`` on the command line).
+The workspace rules above declare `Bazel toolchains`_ with `go_toolchain`_
+implementations for each target platform that Go supports. Wrappers around
+the rules register these toolchains automatically. Bazel will select a
+registered toolchain automatically based on the execution and target platforms,
+specified with ``--host_platform`` and ``--platforms``, respectively.
 
 The toolchain itself should be considered opaque. You should only access
 its contents through `the context`_.
@@ -96,32 +95,18 @@ Normal usage
 ~~~~~~~~~~~~
 
 This is an example of normal usage for the other examples to be compared
-against.  This will download and use the latest Go SDK that was available when
-the version of rules_go you're using was released.
+against. This will download and use a specific version of Go for the host
+platform.
 
 .. code:: bzl
+
     # WORKSPACE
 
     load("@io_bazel_rules_go//go:deps.bzl", "go_rules_dependencies", "go_register_toolchains")
 
     go_rules_dependencies()
-    go_register_toolchains()
 
-
-Forcing the Go version
-~~~~~~~~~~~~~~~~~~~~~~
-
-You can select the version of the Go SDK to use by specifying it when you call
-`go_register_toolchains`_ but you must use a value that matches a known
-toolchain.
-
-.. code:: bzl
-    # WORKSPACE
-
-    load("@io_bazel_rules_go//go:deps.bzl", "go_rules_dependencies", "go_register_toolchains")
-
-    go_rules_dependencies()
-    go_register_toolchains(go_version="1.10.3")
+    go_register_toolchains(version = "1.15.5")
 
 
 Using the installed Go SDK
@@ -132,22 +117,25 @@ This may result in faster builds, since there's no need to download an SDK,
 but builds won't be reproducible across systems with different SDKs installed.
 
 .. code:: bzl
+
     # WORKSPACE
 
     load("@io_bazel_rules_go//go:deps.bzl", "go_rules_dependencies", "go_register_toolchains")
 
     go_rules_dependencies()
-    go_register_toolchains(go_version="host")
+
+    go_register_toolchains(version = "host")
 
 
 Registering a custom SDK
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 If you download the SDK through another repository rule, you can configure
-it with ``go_wrap_sdk``. It must still be named ``go_sdk``, but this is a 
+it with ``go_wrap_sdk``. It must still be named ``go_sdk``, but this is a
 temporary limitation that will be removed in the future.
 
 .. code:: bzl
+
     # WORKSPACE
 
     load("@io_bazel_rules_go//go:deps.bzl", "go_rules_dependencies", "go_register_toolchains", "go_wrap_sdk")
@@ -163,57 +151,68 @@ temporary limitation that will be removed in the future.
     )
 
     go_rules_dependencies()
+
     go_register_toolchains()
 
 
 Writing new Go rules
 ~~~~~~~~~~~~~~~~~~~~
 
-If you are writing a new rule that wants to use the Go toolchain, you need to do
-a couple of things.  First, you have to declare that you want to consume the
-toolchain on the rule declaration.  The easiest way to do this is to use the
-`go_rule`_ wrapper, which adds in the toolchain and some hidden attributes that
-it consumes.
+If you are writing a new Bazel rule that uses the Go toolchain, you need to
+do several things to ensure you have full access to the toolchain and common
+dependencies.
+
+* Declare a dependency on a toolchain of type
+  ``@io_bazel_rules_go//go:toolchain``. Bazel will select an appropriate,
+  registered toolchain automatically.
+* Declare an implicit attribute named ``_go_context_data`` that defaults to
+  ``@io_bazel_rules_go//:go_context_data``. This target gathers configuration
+  information and several common dependencies.
+* Use the ``go_context`` function to gain access to `the context`_. This is
+  your main interface to the Go toolchain.
 
 .. code:: bzl
 
-  load("@io_bazel_rules_go//go:def.bzl", "go_context", "go_rule")
+    load("@io_bazel_rules_go//go:def.bzl", "go_context")
 
-  my_rule = go_rule(
-      _my_rule_impl,
-      attrs = {
-          ...
-      },
-  )
+    def _my_rule_impl(ctx):
+        go = go_context(ctx)
+        ...
 
-And then in the rule body, call `go_context`_ to get the context object.
-This will give you access to the toolchain and the SDK.
+    my_rule = rule(
+        implementation = _my_rule_impl,
+        attrs = {
+            ...
+            "_go_context_data": attr.label(
+                default = "@io_bazel_rules_go//:go_context_data",
+            ),
+        },
+        toolchains = ["@io_bazel_rules_go//go:toolchain"],
+    )
 
-.. code:: bzl
 
-  def _my_rule_impl(ctx):
-      go = go_context(ctx)
-
-
-API
----
+Rules and functions
+-------------------
 
 go_register_toolchains
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Installs the Go toolchains. If :param:`go_version` is specified, it sets the
-SDK version to use (for example, :value:`"1.10.3"`). By default, the latest
-SDK will be used.
+Installs the Go toolchains. If :param:`version` is specified, it sets the
+SDK version to use (for example, :value:`"1.15.5"`).
 
 +--------------------------------+-----------------------------+-----------------------------------+
 | **Name**                       | **Type**                    | **Default value**                 |
 +--------------------------------+-----------------------------+-----------------------------------+
-| :param:`go_version`            | :type:`string`              | latest release                    |
+| :param:`version`               | :type:`string`              | |mandatory|                       |
 +--------------------------------+-----------------------------+-----------------------------------+
-| This specifies the version of the Go SDK to download. This is only used if                       |
-| no SDK has been declared with the name :value:`go_sdk` before the call to                        |
-| ``go_register_toolchains``. The default version is the latest version of Go                      |
-| that was released at the time the rules_go release you're using was tagged.                      |
+| Specifies the version of Go to download if one has not been declared.                            |
+|                                                                                                  |
+| If a toolchain was already declared with `go_download_sdk`_ or a similar rule,                   |
+| this parameter may not be set.                                                                   |
+|                                                                                                  |
+| Normally this is set to a Go version like :value:`"1.15.5"`. It may also be                      |
+| set to :value:`"host"`, which will cause rules_go to use the Go toolchain                        |
+| installed on the host system (found using ``GOROOT`` or ``PATH``).                               |
 +--------------------------------+-----------------------------+-----------------------------------+
 | :param:`nogo`                  | :type:`label`               | :value:`None`                     |
 +--------------------------------+-----------------------------+-----------------------------------+
@@ -232,8 +231,8 @@ This downloads a Go SDK for use in toolchains.
 +--------------------------------+-----------------------------+---------------------------------------------+
 | :param:`name`                  | :type:`string`              | |mandatory|                                 |
 +--------------------------------+-----------------------------+---------------------------------------------+
-| A unique name for this SDK. This should almost always be :value:`go_sdk` if you want the SDK               |
-| to be used by toolchains.                                                                                  |
+| A unique name for this SDK. This should almost always be :value:`go_sdk` if                                |
+| you want the SDK to be used by toolchains.                                                                 |
 +--------------------------------+-----------------------------+---------------------------------------------+
 | :param:`goos`                  | :type:`string`              | :value:`None`                               |
 +--------------------------------+-----------------------------+---------------------------------------------+
@@ -252,11 +251,12 @@ This downloads a Go SDK for use in toolchains.
 | :param:`version`               | :type:`string`              | :value:`latest Go version`                  |
 +--------------------------------+-----------------------------+---------------------------------------------+
 | The version of Go to download, for example ``1.12.5``. If unspecified,                                     |
-| ``go_download_sdk`` will download the latest version of Go that rules_go                                   |
-| supports. Go versions that rules_go doesn't support may not be specified,                                  |
-| since the download SHA-256 sums are not known.                                                             |
+| ``go_download_sdk`` will list available versions of Go from golang.org, then                               |
+| pick the highest version. If ``version`` is specified but ``sdks`` is                                      |
+| unspecified, ``go_download_sdk`` will list available versions on golang.org                                |
+| to determine the correct file name and SHA-256 sum.                                                        |
 +--------------------------------+-----------------------------+---------------------------------------------+
-| :param:`urls`                  | :type:`string_list`         | :value:`[https://dl.google.com/go/{}`       |
+| :param:`urls`                  | :type:`string_list`         | :value:`[https://dl.google.com/go/{}]`      |
 +--------------------------------+-----------------------------+---------------------------------------------+
 | A list of mirror urls to the binary distribution of a Go SDK. These must contain the `{}`                  |
 | used to substitute the sdk filename being fetched (using `.format`.                                        |
@@ -381,64 +381,6 @@ rule.
 
     go_register_toolchains()
 
-go_sdk
-~~~~~~
-
-``go_sdk`` collects information about a Go SDK. The SDK must have a normal
-GOROOT directory structure.
-
-Normally, ``go_sdk`` rules are declared in repositories configured with
-`go_download_sdk`_, `go_host_sdk`_, `go_local_sdk`_, or `go_wrap_sdk`_. You
-usually won't need to declare this rule explicitly.
-
-+--------------------------------+-----------------------------+-----------------------------------+
-| **Name**                       | **Type**                    | **Default value**                 |
-+--------------------------------+-----------------------------+-----------------------------------+
-| :param:`name`                  | :type:`string`              | |mandatory|                       |
-+--------------------------------+-----------------------------+-----------------------------------+
-| A unique name for the SDK rule. Typically ``go_sdk``.                                            |
-+--------------------------------+-----------------------------+-----------------------------------+
-| :param:`goos`                  | :type:`string`              | |mandatory|                       |
-+--------------------------------+-----------------------------+-----------------------------------+
-| The host operating system the SDK was built for. See `go/platform/list.bzl`_                     |
-| for valid values.                                                                                |
-+--------------------------------+-----------------------------+-----------------------------------+
-| :param:`goarch`                | :type:`string`              | |mandatory|                       |
-+--------------------------------+-----------------------------+-----------------------------------+
-| The host architecture the SDK was built for. See `go/platform/list.bzl`_                         |
-| for valid values.                                                                                |
-+--------------------------------+-----------------------------+-----------------------------------+
-| :param:`root_file`             | :type:`label`               | |mandatory|                       |
-+--------------------------------+-----------------------------+-----------------------------------+
-| A file in the SDK root directory. Used to determine GOROOT.                                      |
-+--------------------------------+-----------------------------+-----------------------------------+
-| :param:`package_list`          | :type:`label`               | :value:`None`                     |
-+--------------------------------+-----------------------------+-----------------------------------+
-| A text file containing a list of packages in the standard library that may                       |
-| be imported. If unspecified, this will be generated from ``srcs``.                               |
-+--------------------------------+-----------------------------+-----------------------------------+
-| :param:`libs`                  | :type:`label_list`          | :value:`[]`                       |
-+--------------------------------+-----------------------------+-----------------------------------+
-| Pre-compiled .a files for the standard library, built for the execution                          |
-| platform.                                                                                        |
-+--------------------------------+-----------------------------+-----------------------------------+
-| :param:`headers`               | :type:`label_list`          | :value:`[]`                       |
-+--------------------------------+-----------------------------+-----------------------------------+
-| .h files from pkg/include that may be included in assembly sources.                              |
-+--------------------------------+-----------------------------+-----------------------------------+
-| :param:`srcs`                  | :type:`label_list`          | :value:`[]`                       |
-+--------------------------------+-----------------------------+-----------------------------------+
-| Source files for packages in the standard library.                                               |
-+--------------------------------+-----------------------------+-----------------------------------+
-| :param:`tools`                 | :type:`label_list`          | :value:`[]`                       |
-+--------------------------------+-----------------------------+-----------------------------------+
-| Executable files from pkg/tool, built for the execution platform.                                |
-+--------------------------------+-----------------------------+-----------------------------------+
-| :param:`go`                    | :type:`label`               | |mandatory|                       |
-+--------------------------------+-----------------------------+-----------------------------------+
-| The go binary.                                                                                   |
-+--------------------------------+-----------------------------+-----------------------------------+
-
 go_toolchain
 ~~~~~~~~~~~~
 
@@ -513,7 +455,7 @@ The context object
 ~~~~~~~~~~~~~~~~~~
 
 ``GoContext`` is never returned by a rule, instead you build one using
-``go_context(ctx)`` in the top of any custom skylark rule that wants to interact
+``go_context(ctx)`` in the top of any custom starlark rule that wants to interact
 with the go rules.  It provides all the information needed to create go actions,
 and create or interact with the other go providers.
 
@@ -923,8 +865,18 @@ build mode.
 +--------------------------------+-----------------------------+-----------------------------------+
 | :param:`attr`                  | :type:`ctx.attr`            | |mandatory|                       |
 +--------------------------------+-----------------------------+-----------------------------------+
-| The attributes of the rule being processed. In a normal rule implementation this would be        |
-| ctx.attr.                                                                                        |
+| The attributes of the target being analyzed. For most rules, this should be                      |
+| ``ctx.attr``. Rules can also pass in a ``struct`` with the same fields.                          |
+|                                                                                                  |
+| ``library_to_source`` looks for fields corresponding to the attributes of                        |
+| ``go_library`` and ``go_binary``. This includes ``srcs``, ``deps``, ``embed``,                   |
+| and so on. All fields are optional (and may not be defined in the struct                         |
+| argument at all), but if they are present, they must have the same types and                     |
+| allowed values as in ``go_library`` and ``go_binary``. For example, ``srcs``                     |
+| must be a list of ``Targets``; ``gc_goopts`` must be a list of strings.                          |
+|                                                                                                  |
+| As an exception, ``deps``, if present, must be a list containing either                          |
+| ``Targets`` or ``GoArchives``.                                                                   |
 +--------------------------------+-----------------------------+-----------------------------------+
 | :param:`library`               | :type:`GoLibrary`           | |mandatory|                       |
 +--------------------------------+-----------------------------+-----------------------------------+
@@ -967,44 +919,4 @@ resolver when it is invoked.
 +--------------------------------+-----------------------------+-----------------------------------+
 | This controls whether the GoLibrary_ is supposed to be importable. This is generally only false  |
 | for the "main" libraries that are built just before linking.                                     |
-+--------------------------------+-----------------------------+-----------------------------------+
-
-go_rule
-~~~~~~~
-
-``go_rule`` is a wrapper for the ``rule`` function. It's used to declare rules
-that have access to the Go toolchain and SDK.
-
-**Example:**
-
-.. code:: bzl
-
-  def _my_rule_impl(ctx):
-      go = go_context(ctx)
-      ...
-
-  my_rule = go_rule(
-      _my_rule_impl,
-      attrs = {
-          ...
-      },
-  )
-
-+--------------------------------+-----------------------------+-----------------------------------+
-| **Name**                       | **Type**                    | **Default value**                 |
-+--------------------------------+-----------------------------+-----------------------------------+
-| :param:`implementation`        | :type:`function`            | |mandatory|                       |
-+--------------------------------+-----------------------------+-----------------------------------+
-| The implementation function for the rule.                                                        |
-+--------------------------------+-----------------------------+-----------------------------------+
-| :param:`attrs`                 | :type:`dict`                | :value:`{}`                       |
-+--------------------------------+-----------------------------+-----------------------------------+
-| Attributes the rule accepts. Additional implicit attributes may be added                         |
-| to this list.                                                                                    |
-+--------------------------------+-----------------------------+-----------------------------------+
-| :param:`toolchains`            | :type:`list`                | See below                         |
-+--------------------------------+-----------------------------+-----------------------------------+
-| List of toolchains types that Bazel should select when invoking this rule.                       |
-| ``"@io_bazel_rules_go//go:toolchain"`` is automatically added to this list,                      |
-| so that does not need to be specified explicitly.                                                |
 +--------------------------------+-----------------------------+-----------------------------------+

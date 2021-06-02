@@ -38,57 +38,74 @@ using Comprehension = google::api::expr::v1alpha1::Expr::Comprehension;
 class MockAstVisitor : public AstVisitor {
  public:
   // Expr handler.
-  MOCK_METHOD2(PreVisitExpr,
-               void(const Expr* expr, const SourcePosition* position));
+  MOCK_METHOD(void, PreVisitExpr,
+              (const Expr* expr, const SourcePosition* position), (override));
 
   // Expr handler.
-  MOCK_METHOD2(PostVisitExpr,
-               void(const Expr* expr, const SourcePosition* position));
+  MOCK_METHOD(void, PostVisitExpr,
+              (const Expr* expr, const SourcePosition* position), (override));
 
-  MOCK_METHOD3(PostVisitConst,
-               void(const Constant* const_expr, const Expr* expr,
-                    const SourcePosition* position));
+  MOCK_METHOD(void, PostVisitConst,
+              (const Constant* const_expr, const Expr* expr,
+               const SourcePosition* position),
+              (override));
 
   // Ident node handler.
-  MOCK_METHOD3(PostVisitIdent, void(const Ident* ident_expr, const Expr* expr,
-                                    const SourcePosition* position));
+  MOCK_METHOD(void, PostVisitIdent,
+              (const Ident* ident_expr, const Expr* expr,
+               const SourcePosition* position),
+              (override));
 
   // Select node handler group
-  MOCK_METHOD3(PreVisitSelect, void(const Select* select_expr, const Expr* expr,
-                                    const SourcePosition* position));
+  MOCK_METHOD(void, PreVisitSelect,
+              (const Select* select_expr, const Expr* expr,
+               const SourcePosition* position),
+              (override));
 
-  MOCK_METHOD3(PostVisitSelect,
-               void(const Select* select_expr, const Expr* expr,
-                    const SourcePosition* position));
+  MOCK_METHOD(void, PostVisitSelect,
+              (const Select* select_expr, const Expr* expr,
+               const SourcePosition* position),
+              (override));
 
   // Call node handler group
-  MOCK_METHOD3(PreVisitCall, void(const Call* call_expr, const Expr* expr,
-                                  const SourcePosition* position));
-  MOCK_METHOD3(PostVisitCall, void(const Call* call_expr, const Expr* expr,
-                                   const SourcePosition* position));
+  MOCK_METHOD(void, PreVisitCall,
+              (const Call* call_expr, const Expr* expr,
+               const SourcePosition* position),
+              (override));
+  MOCK_METHOD(void, PostVisitCall,
+              (const Call* call_expr, const Expr* expr,
+               const SourcePosition* position),
+              (override));
 
   // Comprehension node handler group
-  MOCK_METHOD3(PreVisitComprehension,
-               void(const Comprehension* comprehension_expr, const Expr* expr,
-                    const SourcePosition* position));
-  MOCK_METHOD3(PostVisitComprehension,
-               void(const Comprehension* comprehension_expr, const Expr* expr,
-                    const SourcePosition* position));
+  MOCK_METHOD(void, PreVisitComprehension,
+              (const Comprehension* comprehension_expr, const Expr* expr,
+               const SourcePosition* position),
+              (override));
+  MOCK_METHOD(void, PostVisitComprehension,
+              (const Comprehension* comprehension_expr, const Expr* expr,
+               const SourcePosition* position),
+              (override));
 
   // We provide finer granularity for Call and Comprehension node callbacks
   // to allow special handling for short-circuiting.
-  MOCK_METHOD3(PostVisitArg, void(int arg_num, const Expr* expr,
-                                  const SourcePosition* position));
+  MOCK_METHOD(void, PostVisitTarget,
+              (const Expr* expr, const SourcePosition* position), (override));
+  MOCK_METHOD(void, PostVisitArg,
+              (int arg_num, const Expr* expr, const SourcePosition* position),
+              (override));
 
   // CreateList node handler group
-  MOCK_METHOD3(PostVisitCreateList,
-               void(const CreateList* list_expr, const Expr* expr,
-                    const SourcePosition* position));
+  MOCK_METHOD(void, PostVisitCreateList,
+              (const CreateList* list_expr, const Expr* expr,
+               const SourcePosition* position),
+              (override));
 
   // CreateStruct node handler group
-  MOCK_METHOD3(PostVisitCreateStruct,
-               void(const CreateStruct* struct_expr, const Expr* expr,
-                    const SourcePosition* position));
+  MOCK_METHOD(void, PostVisitCreateStruct,
+              (const CreateStruct* struct_expr, const Expr* expr,
+               const SourcePosition* position),
+              (override));
 };
 
 TEST(AstCrawlerTest, CheckCrawlConstant) {
@@ -148,8 +165,8 @@ TEST(AstCrawlerTest, CheckCrawlSelect) {
   AstTraverse(&expr, &source_info, &handler);
 }
 
-// Test handling of Call node
-TEST(AstCrawlerTest, CheckCrawlCall) {
+// Test handling of Call node without receiver
+TEST(AstCrawlerTest, CheckCrawlCallNoReceiver) {
   SourceInfo source_info;
   MockAstVisitor handler;
 
@@ -164,6 +181,36 @@ TEST(AstCrawlerTest, CheckCrawlCall) {
 
   // Lowest level entry will be called first
   EXPECT_CALL(handler, PreVisitCall(call_expr, &expr, _)).Times(1);
+  EXPECT_CALL(handler, PostVisitTarget(_, _)).Times(0);
+  EXPECT_CALL(handler, PostVisitConst(const_expr, arg0, _)).Times(1);
+  EXPECT_CALL(handler, PostVisitArg(0, &expr, _)).Times(1);
+  EXPECT_CALL(handler, PostVisitIdent(ident_expr, arg1, _)).Times(1);
+  EXPECT_CALL(handler, PostVisitArg(1, &expr, _)).Times(1);
+  EXPECT_CALL(handler, PostVisitCall(call_expr, &expr, _)).Times(1);
+
+  AstTraverse(&expr, &source_info, &handler);
+}
+
+// Test handling of Call node with receiver
+TEST(AstCrawlerTest, CheckCrawlCallReceiver) {
+  SourceInfo source_info;
+  MockAstVisitor handler;
+
+  Expr expr;
+  auto call_expr = expr.mutable_call_expr();
+  auto target = call_expr->mutable_target();
+  auto target_ident = target->mutable_ident_expr();
+  auto arg0 = call_expr->add_args();
+  auto const_expr = arg0->mutable_const_expr();
+  auto arg1 = call_expr->add_args();
+  auto ident_expr = arg1->mutable_ident_expr();
+
+  testing::InSequence seq;
+
+  // Lowest level entry will be called first
+  EXPECT_CALL(handler, PreVisitCall(call_expr, &expr, _)).Times(1);
+  EXPECT_CALL(handler, PostVisitIdent(target_ident, target, _)).Times(1);
+  EXPECT_CALL(handler, PostVisitTarget(&expr, _)).Times(1);
   EXPECT_CALL(handler, PostVisitConst(const_expr, arg0, _)).Times(1);
   EXPECT_CALL(handler, PostVisitArg(0, &expr, _)).Times(1);
   EXPECT_CALL(handler, PostVisitIdent(ident_expr, arg1, _)).Times(1);

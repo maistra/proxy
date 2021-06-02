@@ -27,7 +27,6 @@ public:
   CryptoObjectPtr importPublicKey(const std::vector<uint8_t>& key) override;
 
 private:
-//  EVP_PKEY* EVP_parse_public_key(CBS* cbs);
   const EVP_MD* getHashFunction(absl::string_view name);
 };
 

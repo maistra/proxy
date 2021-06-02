@@ -12,24 +12,38 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@io_bazel_rules_go//go:def.bzl", "go_context", "go_rule")
-load("@io_bazel_rules_go//go/private:providers.bzl", "GoSource")
+load("//go:def.bzl", "go_context")
+load("//go/private:providers.bzl", "GoStdLib")
+
+def _pure_transition_impl(settings, attr):
+    return {"//go/config:pure": True}
+
+pure_transition = transition(
+    implementation = _pure_transition_impl,
+    inputs = ["//go/config:pure"],
+    outputs = ["//go/config:pure"],
+)
 
 def _stdlib_files_impl(ctx):
-    go = go_context(ctx)
-    libs = go.stdlib.libs
-    runfiles = ctx.runfiles(files = libs + go.sdk.tools)
+    # When a transition is used, ctx.attr._stdlib is a list of Target instead
+    # of a Target. Possibly a bug?
+    libs = ctx.attr._stdlib[0][GoStdLib].libs
+    runfiles = ctx.runfiles(files = libs)
     return [DefaultInfo(
         files = depset(libs),
         runfiles = runfiles,
     )]
 
-stdlib_files = go_rule(
-    _stdlib_files_impl,
+stdlib_files = rule(
+    implementation = _stdlib_files_impl,
     attrs = {
-        "pure": attr.string(default = "on"),  # force recompilation
-        "static": attr.string(default = "off"),
-        "msan": attr.string(default = "off"),
-        "race": attr.string(default = "off"),
+        "_stdlib": attr.label(
+            default = "@io_bazel_rules_go//:stdlib",
+            providers = [GoStdLib],
+            cfg = pure_transition,  # force recompilation
+        ),
+        "_whitelist_function_transition": attr.label(
+            default = "@bazel_tools//tools/whitelists/function_transition_whitelist",
+        ),
     },
 )

@@ -1,7 +1,9 @@
 #ifndef THIRD_PARTY_CEL_CPP_EVAL_COMPILER_FLAT_EXPR_BUILDER_H_
 #define THIRD_PARTY_CEL_CPP_EVAL_COMPILER_FLAT_EXPR_BUILDER_H_
 
+#include "google/api/expr/v1alpha1/checked.pb.h"
 #include "google/api/expr/v1alpha1/syntax.pb.h"
+#include "absl/status/statusor.h"
 #include "eval/public/cel_expression.h"
 
 namespace google {
@@ -16,6 +18,7 @@ class FlatExprBuilder : public CelExpressionBuilder {
   FlatExprBuilder()
       : enable_unknowns_(false),
         enable_unknown_function_results_(false),
+        enable_missing_attribute_errors_(false),
         shortcircuiting_(true),
         constant_folding_(false),
         constant_arena_(nullptr),
@@ -25,6 +28,12 @@ class FlatExprBuilder : public CelExpressionBuilder {
 
   // set_enable_unknowns controls support for unknowns in expressions created.
   void set_enable_unknowns(bool enabled) { enable_unknowns_ = enabled; }
+
+  // set_enable_missing_attribute_errors support for error injection in
+  // expressions created.
+  void set_enable_missing_attribute_errors(bool enabled) {
+    enable_missing_attribute_errors_ = enabled;
+  }
 
   // set_enable_unknown_function_results controls support for unknown function
   // results.
@@ -56,18 +65,32 @@ class FlatExprBuilder : public CelExpressionBuilder {
     fail_on_warnings_ = should_fail;
   }
 
-  cel_base::StatusOr<std::unique_ptr<CelExpression>> CreateExpression(
+  absl::StatusOr<std::unique_ptr<CelExpression>> CreateExpression(
       const google::api::expr::v1alpha1::Expr* expr,
       const google::api::expr::v1alpha1::SourceInfo* source_info) const override;
 
-  cel_base::StatusOr<std::unique_ptr<CelExpression>> CreateExpression(
+  absl::StatusOr<std::unique_ptr<CelExpression>> CreateExpression(
       const google::api::expr::v1alpha1::Expr* expr,
       const google::api::expr::v1alpha1::SourceInfo* source_info,
       std::vector<absl::Status>* warnings) const override;
 
+  absl::StatusOr<std::unique_ptr<CelExpression>> CreateExpression(
+      const google::api::expr::v1alpha1::CheckedExpr* checked_expr) const override;
+
+  absl::StatusOr<std::unique_ptr<CelExpression>> CreateExpression(
+      const google::api::expr::v1alpha1::CheckedExpr* checked_expr,
+      std::vector<absl::Status>* warnings) const override;
+
+  absl::StatusOr<std::unique_ptr<CelExpression>> CreateExpressionImpl(
+      const google::api::expr::v1alpha1::Expr* expr,
+      const google::api::expr::v1alpha1::SourceInfo* source_info,
+      const google::protobuf::Map<int64_t, google::api::expr::v1alpha1::Reference>* reference_map,
+      std::vector<absl::Status>* warnings) const;
+
  private:
   bool enable_unknowns_;
   bool enable_unknown_function_results_;
+  bool enable_missing_attribute_errors_;
   bool shortcircuiting_;
 
   bool constant_folding_;

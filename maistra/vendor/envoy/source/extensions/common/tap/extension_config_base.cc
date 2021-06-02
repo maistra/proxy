@@ -13,11 +13,8 @@ ExtensionConfigBase::ExtensionConfigBase(
     TapConfigFactoryPtr&& config_factory, Server::Admin& admin,
     Singleton::Manager& singleton_manager, ThreadLocal::SlotAllocator& tls,
     Event::Dispatcher& main_thread_dispatcher)
-    : proto_config_(proto_config), config_factory_(std::move(config_factory)),
-      tls_slot_(tls.allocateSlot()) {
-  tls_slot_->set([](Event::Dispatcher&) -> ThreadLocal::ThreadLocalObjectSharedPtr {
-    return std::make_shared<TlsFilterConfig>();
-  });
+    : proto_config_(proto_config), config_factory_(std::move(config_factory)), tls_slot_(tls) {
+  tls_slot_.set([](Event::Dispatcher&) { return std::make_shared<TlsFilterConfig>(); });
 
   switch (proto_config_.config_type_case()) {
   case envoy::extensions::common::tap::v3::CommonExtensionConfig::ConfigTypeCase::kAdminConfig: {
@@ -28,12 +25,17 @@ ExtensionConfigBase::ExtensionConfigBase(
     break;
   }
   case envoy::extensions::common::tap::v3::CommonExtensionConfig::ConfigTypeCase::kStaticConfig: {
-    newTapConfig(envoy::config::tap::v3::TapConfig(proto_config_.static_config()), nullptr);
+    // Right now only one sink is supported.
+    ASSERT(proto_config_.static_config().output_config().sinks().size() == 1);
+    if (proto_config_.static_config().output_config().sinks()[0].output_sink_type_case() ==
+        envoy::config::tap::v3::OutputSink::OutputSinkTypeCase::kStreamingAdmin) {
+      // Require that users do not specify a streaming admin with static configuration.
+      throw EnvoyException(
+          fmt::format("Error: Specifying admin streaming output without configuring admin."));
+    }
+    installNewTap(proto_config_.static_config(), nullptr);
     ENVOY_LOG(debug, "initializing tap extension with static config");
     break;
-  }
-  case envoy::extensions::common::tap::v3::CommonExtensionConfig::ConfigTypeCase::kTapdsConfig: {
-    NOT_IMPLEMENTED_GCOVR_EXCL_LINE;
   }
   default: {
     NOT_REACHED_GCOVR_EXCL_LINE;
@@ -55,15 +57,22 @@ const absl::string_view ExtensionConfigBase::adminId() {
 }
 
 void ExtensionConfigBase::clearTapConfig() {
-  tls_slot_->runOnAllThreads([this] { tls_slot_->getTyped<TlsFilterConfig>().config_ = nullptr; });
+  tls_slot_.runOnAllThreads(
+      [](OptRef<TlsFilterConfig> tls_filter_config) { tls_filter_config->config_ = nullptr; });
 }
 
-void ExtensionConfigBase::newTapConfig(envoy::config::tap::v3::TapConfig&& proto_config,
-                                       Sink* admin_streamer) {
+void ExtensionConfigBase::installNewTap(const envoy::config::tap::v3::TapConfig& proto_config,
+                                        Sink* admin_streamer) {
   TapConfigSharedPtr new_config =
-      config_factory_->createConfigFromProto(std::move(proto_config), admin_streamer);
-  tls_slot_->runOnAllThreads(
-      [this, new_config] { tls_slot_->getTyped<TlsFilterConfig>().config_ = new_config; });
+      config_factory_->createConfigFromProto(proto_config, admin_streamer);
+  tls_slot_.runOnAllThreads([new_config](OptRef<TlsFilterConfig> tls_filter_config) {
+    tls_filter_config->config_ = new_config;
+  });
+}
+
+void ExtensionConfigBase::newTapConfig(const envoy::config::tap::v3::TapConfig& proto_config,
+                                       Sink* admin_streamer) {
+  installNewTap(proto_config, admin_streamer);
 }
 
 } // namespace Tap

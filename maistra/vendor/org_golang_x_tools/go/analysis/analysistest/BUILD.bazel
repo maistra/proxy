@@ -1,24 +1,34 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
-    name = "go_default_library",
+    name = "analysistest",
     srcs = ["analysistest.go"],
     importpath = "golang.org/x/tools/go/analysis/analysistest",
     visibility = ["//visibility:public"],
     deps = [
-        "//go/analysis:go_default_library",
-        "//go/analysis/internal/checker:go_default_library",
-        "//go/packages:go_default_library",
-        "//internal/testenv:go_default_library",
+        "//go/analysis",
+        "//go/analysis/internal/checker",
+        "//go/packages",
+        "//internal/lsp/diff",
+        "//internal/lsp/diff/myers",
+        "//internal/span",
+        "//internal/testenv",
+        "//txtar",
     ],
 )
 
+alias(
+    name = "go_default_library",
+    actual = ":analysistest",
+    visibility = ["//visibility:public"],
+)
+
 go_test(
-    name = "go_default_test",
+    name = "analysistest_test",
     srcs = ["analysistest_test.go"],
-    embed = [":go_default_library"],
     deps = [
-        "//go/analysis/passes/findcall:go_default_library",
-        "//internal/testenv:go_default_library",
+        ":analysistest",
+        "//go/analysis/passes/findcall",
+        "//internal/testenv",
     ],
 )

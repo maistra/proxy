@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
-    name = "go_default_library",
+    name = "apidiff",
     srcs = [
         "apidiff.go",
         "compatibility.go",
@@ -13,12 +13,18 @@ go_library(
     visibility = ["//:__subpackages__"],
 )
 
+alias(
+    name = "go_default_library",
+    actual = ":apidiff",
+    visibility = ["//:__subpackages__"],
+)
+
 go_test(
-    name = "go_default_test",
+    name = "apidiff_test",
     srcs = ["apidiff_test.go"],
-    embed = [":go_default_library"],
+    embed = [":apidiff"],
     deps = [
-        "//go/packages:go_default_library",
-        "//internal/testenv:go_default_library",
+        "//go/packages",
+        "//internal/testenv",
     ],
 )

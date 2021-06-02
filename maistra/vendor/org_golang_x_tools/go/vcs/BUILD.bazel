@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
-    name = "go_default_library",
+    name = "vcs",
     srcs = [
         "discovery.go",
         "env.go",
@@ -12,8 +12,14 @@ go_library(
     visibility = ["//visibility:public"],
 )
 
+alias(
+    name = "go_default_library",
+    actual = ":vcs",
+    visibility = ["//visibility:public"],
+)
+
 go_test(
-    name = "go_default_test",
+    name = "vcs_test",
     srcs = ["vcs_test.go"],
-    embed = [":go_default_library"],
+    embed = [":vcs"],
 )

@@ -3,6 +3,7 @@
 # found in the LICENSE file.
 
 import("//build/config/c++/c++.gni")
+import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/linux/pkg_config.gni")
 import("//build/config/ui.gni")
 
@@ -27,58 +28,15 @@ config("runtime_library") {
     defines = [ "OS_CHROMEOS" ]
   }
 
-  if ((!is_chromeos || default_toolchain != "//build/toolchain/cros:target") &&
+  if ((!(is_chromeos || chromeos_is_browser_only) ||
+       default_toolchain != "//build/toolchain/cros:target") &&
       (!use_custom_libcxx || current_cpu == "mipsel")) {
     libs = [ "atomic" ]
   }
 }
 
-config("x11") {
-  libs = [
-    "X11",
-    "X11-xcb",
-    "xcb",
-    "Xcomposite",
-    "Xcursor",
-    "Xdamage",
-    "Xext",
-    "Xfixes",
-    "Xi",
-    "Xrender",
-    "Xtst",
-  ]
-}
-
-config("xcomposite") {
-  libs = [ "Xcomposite" ]
-}
-
-config("xext") {
-  libs = [ "Xext" ]
-}
-
-config("xrandr") {
-  libs = [ "Xrandr" ]
-}
-
-config("xscrnsaver") {
-  libs = [ "Xss" ]
-}
-
-config("xfixes") {
-  libs = [ "Xfixes" ]
-}
-
 config("libcap") {
   libs = [ "cap" ]
-}
-
-config("xi") {
-  libs = [ "Xi" ]
-}
-
-config("xtst") {
-  libs = [ "Xtst" ]
 }
 
 config("libresolv") {

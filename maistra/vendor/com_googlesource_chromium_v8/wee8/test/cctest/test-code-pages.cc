@@ -8,6 +8,7 @@
 #include "src/execution/isolate.h"
 #include "src/handles/handles-inl.h"
 #include "src/heap/factory.h"
+#include "src/heap/memory-allocator.h"
 #include "src/heap/spaces.h"
 #include "src/libsampler/sampler.h"
 #include "test/cctest/cctest.h"
@@ -21,10 +22,8 @@ namespace test_code_pages {
 // 2 - Have code pages. ARM32 only
 // 3 - Nothing - This feature does not work on other platforms.
 #if defined(V8_TARGET_ARCH_ARM)
-static const bool kHaveCodeRange = false;
 static const bool kHaveCodePages = true;
 #else
-static const bool kHaveCodeRange = kRequiresCodeRange;
 static const bool kHaveCodePages = false;
 #endif  // defined(V8_TARGET_ARCH_ARM)
 
@@ -86,11 +85,10 @@ bool PagesContainsAddress(std::vector<MemoryRange>* pages,
 }  // namespace
 
 TEST(CodeRangeCorrectContents) {
-  if (!kHaveCodeRange) return;
-
   LocalContext env;
   v8::Isolate* isolate = env->GetIsolate();
   Isolate* i_isolate = reinterpret_cast<Isolate*>(isolate);
+  if (!i_isolate->RequiresCodeRange()) return;
 
   std::vector<MemoryRange>* pages = i_isolate->GetCodePages();
 
@@ -100,9 +98,9 @@ TEST(CodeRangeCorrectContents) {
   // We should only have the code range and the embedded code range.
   CHECK_EQ(2, pages->size());
   CHECK(PagesHasExactPage(pages, code_range.begin(), code_range.size()));
-  CHECK(PagesHasExactPage(pages,
-                          reinterpret_cast<Address>(i_isolate->embedded_blob()),
-                          i_isolate->embedded_blob_size()));
+  CHECK(PagesHasExactPage(
+      pages, reinterpret_cast<Address>(i_isolate->embedded_blob_code()),
+      i_isolate->embedded_blob_code_size()));
 }
 
 TEST(CodePagesCorrectContents) {
@@ -122,18 +120,18 @@ TEST(CodePagesCorrectContents) {
 
   // We should have the embedded code range even when there is no regular code
   // range.
-  CHECK(PagesHasExactPage(pages,
-                          reinterpret_cast<Address>(i_isolate->embedded_blob()),
-                          i_isolate->embedded_blob_size()));
+  CHECK(PagesHasExactPage(
+      pages, reinterpret_cast<Address>(i_isolate->embedded_blob_code()),
+      i_isolate->embedded_blob_code_size()));
 }
 
 TEST(OptimizedCodeWithCodeRange) {
-  if (!kHaveCodeRange) return;
-
   FLAG_allow_natives_syntax = true;
   LocalContext env;
   v8::Isolate* isolate = env->GetIsolate();
   Isolate* i_isolate = reinterpret_cast<Isolate*>(isolate);
+  if (!i_isolate->RequiresCodeRange()) return;
+
   HandleScope scope(i_isolate);
 
   std::string foo_str = getFooCode(1);
@@ -255,7 +253,6 @@ TEST(OptimizedCodeWithCodePages) {
 }
 
 TEST(LargeCodeObject) {
-  if (!kHaveCodeRange && !kHaveCodePages) return;
   // We don't want incremental marking to start which could cause the code to
   // not be collected on the CollectGarbage() call.
   ManualGCScope manual_gc_scope;
@@ -263,10 +260,11 @@ TEST(LargeCodeObject) {
   LocalContext env;
   v8::Isolate* isolate = env->GetIsolate();
   Isolate* i_isolate = reinterpret_cast<Isolate*>(isolate);
+  if (!i_isolate->RequiresCodeRange() && !kHaveCodePages) return;
 
   // Create a big function that ends up in CODE_LO_SPACE.
   const int instruction_size = Page::kPageSize + 1;
-  STATIC_ASSERT(instruction_size > kMaxRegularHeapObjectSize);
+  CHECK_GT(instruction_size, MemoryChunkLayout::MaxRegularCodeObjectSize());
   std::unique_ptr<byte[]> instructions(new byte[instruction_size]);
 
   CodeDesc desc;
@@ -284,13 +282,13 @@ TEST(LargeCodeObject) {
   {
     HandleScope scope(i_isolate);
     Handle<Code> foo_code =
-        Factory::CodeBuilder(i_isolate, desc, Code::WASM_FUNCTION).Build();
+        Factory::CodeBuilder(i_isolate, desc, CodeKind::WASM_FUNCTION).Build();
 
     CHECK(i_isolate->heap()->InSpace(*foo_code, CODE_LO_SPACE));
 
     std::vector<MemoryRange>* pages = i_isolate->GetCodePages();
 
-    if (kHaveCodeRange) {
+    if (i_isolate->RequiresCodeRange()) {
       CHECK(PagesContainsAddress(pages, foo_code->address()));
     } else {
       CHECK(PagesHasExactPage(pages, foo_code->address()));
@@ -371,7 +369,6 @@ class SamplingThread : public base::Thread {
 };
 
 TEST(LargeCodeObjectWithSignalHandler) {
-  if (!kHaveCodeRange && !kHaveCodePages) return;
   // We don't want incremental marking to start which could cause the code to
   // not be collected on the CollectGarbage() call.
   ManualGCScope manual_gc_scope;
@@ -379,10 +376,11 @@ TEST(LargeCodeObjectWithSignalHandler) {
   LocalContext env;
   v8::Isolate* isolate = env->GetIsolate();
   Isolate* i_isolate = reinterpret_cast<Isolate*>(isolate);
+  if (!i_isolate->RequiresCodeRange() && !kHaveCodePages) return;
 
   // Create a big function that ends up in CODE_LO_SPACE.
   const int instruction_size = Page::kPageSize + 1;
-  STATIC_ASSERT(instruction_size > kMaxRegularHeapObjectSize);
+  CHECK_GT(instruction_size, MemoryChunkLayout::MaxRegularCodeObjectSize());
   std::unique_ptr<byte[]> instructions(new byte[instruction_size]);
 
   CodeDesc desc;
@@ -409,7 +407,7 @@ TEST(LargeCodeObjectWithSignalHandler) {
   {
     HandleScope scope(i_isolate);
     Handle<Code> foo_code =
-        Factory::CodeBuilder(i_isolate, desc, Code::WASM_FUNCTION).Build();
+        Factory::CodeBuilder(i_isolate, desc, CodeKind::WASM_FUNCTION).Build();
 
     CHECK(i_isolate->heap()->InSpace(*foo_code, CODE_LO_SPACE));
 
@@ -421,7 +419,7 @@ TEST(LargeCodeObjectWithSignalHandler) {
     // Check that the page was added.
     std::vector<MemoryRange> pages =
         SamplingThread::DoSynchronousSample(isolate);
-    if (kHaveCodeRange) {
+    if (i_isolate->RequiresCodeRange()) {
       CHECK(PagesContainsAddress(&pages, foo_code->address()));
     } else {
       CHECK(PagesHasExactPage(&pages, foo_code->address()));
@@ -447,7 +445,6 @@ TEST(LargeCodeObjectWithSignalHandler) {
 }
 
 TEST(Sorted) {
-  if (!kHaveCodeRange && !kHaveCodePages) return;
   // We don't want incremental marking to start which could cause the code to
   // not be collected on the CollectGarbage() call.
   ManualGCScope manual_gc_scope;
@@ -455,10 +452,11 @@ TEST(Sorted) {
   LocalContext env;
   v8::Isolate* isolate = env->GetIsolate();
   Isolate* i_isolate = reinterpret_cast<Isolate*>(isolate);
+  if (!i_isolate->RequiresCodeRange() && !kHaveCodePages) return;
 
   // Create a big function that ends up in CODE_LO_SPACE.
   const int instruction_size = Page::kPageSize + 1;
-  STATIC_ASSERT(instruction_size > kMaxRegularHeapObjectSize);
+  CHECK_GT(instruction_size, MemoryChunkLayout::MaxRegularCodeObjectSize());
   std::unique_ptr<byte[]> instructions(new byte[instruction_size]);
 
   CodeDesc desc;
@@ -484,7 +482,8 @@ TEST(Sorted) {
     Handle<Code> code1, code3;
     Address code2_address;
 
-    code1 = Factory::CodeBuilder(i_isolate, desc, Code::WASM_FUNCTION).Build();
+    code1 =
+        Factory::CodeBuilder(i_isolate, desc, CodeKind::WASM_FUNCTION).Build();
     CHECK(i_isolate->heap()->InSpace(*code1, CODE_LO_SPACE));
 
     {
@@ -493,10 +492,11 @@ TEST(Sorted) {
       // Create three large code objects, we'll delete the middle one and check
       // everything is still sorted.
       Handle<Code> code2 =
-          Factory::CodeBuilder(i_isolate, desc, Code::WASM_FUNCTION).Build();
+          Factory::CodeBuilder(i_isolate, desc, CodeKind::WASM_FUNCTION)
+              .Build();
       CHECK(i_isolate->heap()->InSpace(*code2, CODE_LO_SPACE));
-      code3 =
-          Factory::CodeBuilder(i_isolate, desc, Code::WASM_FUNCTION).Build();
+      code3 = Factory::CodeBuilder(i_isolate, desc, CodeKind::WASM_FUNCTION)
+                  .Build();
       CHECK(i_isolate->heap()->InSpace(*code3, CODE_LO_SPACE));
 
       code2_address = code2->address();
@@ -507,7 +507,7 @@ TEST(Sorted) {
       // Check that the pages were added.
       std::vector<MemoryRange> pages =
           SamplingThread::DoSynchronousSample(isolate);
-      if (kHaveCodeRange) {
+      if (i_isolate->RequiresCodeRange()) {
         CHECK_EQ(pages.size(), initial_num_pages);
       } else {
         CHECK_EQ(pages.size(), initial_num_pages + 3);
@@ -528,7 +528,7 @@ TEST(Sorted) {
 
     std::vector<MemoryRange> pages =
         SamplingThread::DoSynchronousSample(isolate);
-    if (kHaveCodeRange) {
+    if (i_isolate->RequiresCodeRange()) {
       CHECK_EQ(pages.size(), initial_num_pages);
     } else {
       CHECK_EQ(pages.size(), initial_num_pages + 2);

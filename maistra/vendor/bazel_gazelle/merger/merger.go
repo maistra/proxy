@@ -38,6 +38,7 @@ package merger
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/bazelbuild/bazel-gazelle/rule"
@@ -58,6 +59,16 @@ const (
 	// related to dependencies are merged (i.e., rule.KindInfo.ResolveAttrs).
 	PostResolve
 )
+
+// UnstableInsertIndexKey is the name of an internal attribute that may be set
+// on newly generated rules. When MergeFile is given a generated rule that
+// doesn't match any existing rule, MergeFile will insert the rule at the index
+// indicated by this key instead of at the end of the file.
+//
+// This definition is unstable and may be removed in the future.
+//
+// TODO(jayconrod): make this stable *or* find a better way to express it.
+const UnstableInsertIndexKey = "_gazelle_insert_index"
 
 // MergeFile combines information from newly generated rules with matching
 // rules in an existing build file. MergeFile can also delete rules which
@@ -152,7 +163,11 @@ func MergeFile(oldFile *rule.File, emptyRules, genRules []*rule.Rule, phase Phas
 			continue
 		}
 		if matchRules[i] == nil {
-			genRule.Insert(oldFile)
+			if index, ok := genRule.PrivateAttr(UnstableInsertIndexKey).(int); ok {
+				genRule.InsertAt(oldFile, index)
+			} else {
+				genRule.Insert(oldFile)
+			}
 		} else {
 			rule.MergeRules(genRule, matchRules[i], getMergeAttrs(genRule), oldFile.Path)
 		}
@@ -222,19 +237,15 @@ func Match(rules []*rule.Rule, x *rule.Rule, info rule.KindInfo) (*rule.Rule, er
 
 	for _, key := range info.MatchAttrs {
 		var attrMatches []*rule.Rule
-		xvalue := x.AttrString(key)
-		if xvalue == "" {
-			continue
-		}
 		for _, y := range kindMatches {
-			if xvalue == y.AttrString(key) {
+			if attrMatch(x, y, key) {
 				attrMatches = append(attrMatches, y)
 			}
 		}
 		if len(attrMatches) == 1 {
 			return attrMatches[0], nil
 		} else if len(attrMatches) > 1 {
-			return nil, fmt.Errorf("could not merge %s(%s): multiple rules have the same attribute %s = %q", xkind, xname, key, xvalue)
+			return nil, fmt.Errorf("could not merge %s(%s): multiple rules have the same attribute %s", xkind, xname, key)
 		}
 	}
 
@@ -247,4 +258,24 @@ func Match(rules []*rule.Rule, x *rule.Rule, info rule.KindInfo) (*rule.Rule, er
 	}
 
 	return nil, nil
+}
+
+func attrMatch(x, y *rule.Rule, key string) bool {
+	xValue := x.AttrString(key)
+	if xValue != "" && xValue == y.AttrString(key) {
+		return true
+	}
+	xValues := x.AttrStrings(key)
+	yValues := y.AttrStrings(key)
+	if xValues == nil || yValues == nil || len(xValues) != len(yValues) {
+		return false
+	}
+	sort.Strings(xValues)
+	sort.Strings(yValues)
+	for i, v := range xValues {
+		if v != yValues[i] {
+			return false
+		}
+	}
+	return true
 }

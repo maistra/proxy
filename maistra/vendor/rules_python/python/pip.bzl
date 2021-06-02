@@ -22,10 +22,11 @@ def _pip_import_impl(repository_ctx):
     # requirements.bzl without it.
     repository_ctx.file("BUILD", "")
 
-    # To see the output, pass: quiet=False
-    result = repository_ctx.execute([
-        "python",
+    args = [
+        repository_ctx.attr.python_interpreter,
         repository_ctx.path(repository_ctx.attr._script),
+        "--python_interpreter",
+        repository_ctx.attr.python_interpreter,
         "--name",
         repository_ctx.attr.name,
         "--input",
@@ -34,16 +35,36 @@ def _pip_import_impl(repository_ctx):
         repository_ctx.path("requirements.bzl"),
         "--directory",
         repository_ctx.path(""),
-    ])
+    ]
+    if repository_ctx.attr.extra_pip_args:
+        args += [
+            "--extra_pip_args",
+            "\"" + " ".join(repository_ctx.attr.extra_pip_args) + "\"",
+        ]
+
+    # To see the output, pass: quiet=False
+    result = repository_ctx.execute(args, timeout=repository_ctx.attr.timeout)
 
     if result.return_code:
         fail("pip_import failed: %s (%s)" % (result.stdout, result.stderr))
 
 pip_import = repository_rule(
     attrs = {
+        "extra_pip_args": attr.string_list(
+            doc = "Extra arguments to pass on to pip. Must not contain spaces.",
+        ),
+        "python_interpreter": attr.string(default = "python", doc = """
+The command to run the Python interpreter used to invoke pip and unpack the
+wheels.
+"""),
         "requirements": attr.label(
             mandatory = True,
             allow_single_file = True,
+            doc = "The label of the requirements.txt file.",
+        ),
+        "timeout": attr.int(
+            default = 600,
+            doc = "Timeout (in seconds) for repository fetch."
         ),
         "_script": attr.label(
             executable = True,
@@ -52,24 +73,24 @@ pip_import = repository_rule(
         ),
     },
     implementation = _pip_import_impl,
-)
+    doc = """A rule for importing `requirements.txt` dependencies into Bazel.
 
-"""A rule for importing <code>requirements.txt</code> dependencies into Bazel.
+This rule imports a `requirements.txt` file and generates a new
+`requirements.bzl` file.  This is used via the `WORKSPACE` pattern:
 
-This rule imports a <code>requirements.txt</code> file and generates a new
-<code>requirements.bzl</code> file.  This is used via the <code>WORKSPACE</code>
-pattern:
-<pre><code>pip_import(
+```python
+pip_import(
     name = "foo",
     requirements = ":requirements.txt",
 )
 load("@foo//:requirements.bzl", "pip_install")
 pip_install()
-</code></pre>
+```
 
-You can then reference imported dependencies from your <code>BUILD</code>
-file with:
-<pre><code>load("@foo//:requirements.bzl", "requirement")
+You can then reference imported dependencies from your `BUILD` file with:
+
+```python
+load("@foo//:requirements.bzl", "requirement")
 py_library(
     name = "bar",
     ...
@@ -79,10 +100,11 @@ py_library(
        requirement("mock"),
     ],
 )
-</code></pre>
+```
 
 Or alternatively:
-<pre><code>load("@foo//:requirements.bzl", "all_requirements")
+```python
+load("@foo//:requirements.bzl", "all_requirements")
 py_binary(
     name = "baz",
     ...
@@ -90,14 +112,24 @@ py_binary(
        ":foo",
     ] + all_requirements,
 )
-</code></pre>
+```
+""",
+)
 
-Args:
-  requirements: The label of a requirements.txt file.
-"""
+# We don't provide a `pip2_import` that would use the `python2` system command
+# because this command does not exist on all platforms. On most (but not all)
+# systems, `python` means Python 2 anyway. See also #258.
+
+def pip3_import(**kwargs):
+    """A wrapper around pip_import that uses the `python3` system command.
+
+    Use this for requirements of PY3 programs.
+    """
+    pip_import(python_interpreter = "python3", **kwargs)
 
 def pip_repositories():
     """Pull in dependencies needed to use the packaging rules."""
+
     # At the moment this is a placeholder, in that it does not actually pull in
     # any dependencies. However, it does do some validation checking.
     #

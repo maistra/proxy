@@ -13,17 +13,12 @@
 # limitations under the License.
 
 load(
-    "@bazel_skylib//lib:shell.bzl",
-    "shell",
-)
-load(
-    "@io_bazel_rules_go//go/private:common.bzl",
-    "as_iterable",
+    "//go/private:common.bzl",
     "as_set",
     "has_shared_lib_extension",
 )
 load(
-    "@io_bazel_rules_go//go/private:mode.bzl",
+    "//go/private:mode.bzl",
     "LINKMODE_NORMAL",
     "LINKMODE_PLUGIN",
     "extld_from_cc_toolchain",
@@ -79,8 +74,23 @@ def emit_link(
         tool_args.add("-race")
     if go.mode.msan:
         tool_args.add("-msan")
-    if (go.mode.static and not go.mode.pure) or go.mode.link != LINKMODE_NORMAL:
+    if ((go.mode.static and not go.mode.pure) or
+        go.mode.link != LINKMODE_NORMAL or
+        go.mode.goos == "windows" and (go.mode.race or go.mode.msan)):
+        # Force external linking for the following conditions:
+        # * Mode is static but not pure: -static must be passed to the C
+        #   linker if the binary contains cgo code. See #2168, #2216.
+        # * Non-normal build mode: may not be strictly necessary, especially
+        #   for modes like "pie".
+        # * Race or msan build for Windows: Go linker has pairwise
+        #   incompatibilities with mingw, and we get link errors in race mode.
+        #   Using the C linker avoids that. Race and msan always require a
+        #   a C toolchain. See #2614.
         tool_args.add("-linkmode", "external")
+    if go.mode.pure:
+        # Force internal linking in pure mode. We don't have a C toolchain,
+        # so external linking is not possible.
+        tool_args.add("-linkmode", "internal")
     if go.mode.static:
         extldflags.append("-static")
     if go.mode.link != LINKMODE_NORMAL:
@@ -146,6 +156,13 @@ def emit_link(
         tool_args.add("-w")
     tool_args.add_joined("-extldflags", extldflags, join_with = " ")
 
+    conflict_err = _check_conflicts(arcs)
+    if conflict_err:
+        # Report package conflict errors in execution instead of analysis.
+        # We could call fail() with this message, but Bazel prints a stack
+        # that doesn't give useful information.
+        builder_args.add("-conflict_err", conflict_err)
+
     inputs_direct = stamp_inputs + [go.sdk.package_list]
     if go.coverage_enabled and go.coverdata:
         inputs_direct.append(go.coverdata.data.file)
@@ -192,3 +209,41 @@ def _extract_extldflags(gc_linkopts, extldflags):
         else:
             filtered_gc_linkopts.append(opt)
     return filtered_gc_linkopts, extldflags
+
+def _check_conflicts(arcs):
+    importmap_to_label = {}
+    for arc in arcs:
+        if arc.importmap in importmap_to_label:
+            return """package conflict error: {}: multiple copies of package passed to linker:
+	{}
+	{}
+Set "importmap" to different paths or use 'bazel cquery' to ensure only one
+package with this path is linked.""".format(
+                arc.importmap,
+                importmap_to_label[arc.importmap],
+                arc.label,
+            )
+        importmap_to_label[arc.importmap] = arc.label
+    for arc in arcs:
+        for dep_importmap, dep_label in zip(arc._dep_importmaps, arc._dep_labels):
+            if dep_importmap not in importmap_to_label:
+                return "package conflict error: {}: package needed by {} was not passed to linker".format(
+                    dep_importmap,
+                    arc.label,
+                )
+            if importmap_to_label[dep_importmap] != dep_label:
+                err = """package conflict error: {}: package imports {}
+	  was compiled with: {}
+	but was linked with: {}""".format(
+                    arc.importmap,
+                    dep_importmap,
+                    dep_label,
+                    importmap_to_label[dep_importmap],
+                )
+                if importmap_to_label[dep_importmap].name.endswith("_test"):
+                    err += """
+This sometimes happens when an external test (package ending with _test)
+imports a package that imports the library being tested. This is not supported."""
+                err += "\nSee https://github.com/bazelbuild/rules_go/issues/1877."
+                return err
+    return None

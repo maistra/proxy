@@ -1,0 +1,32 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "runenames",
+    srcs = [
+        "bits.go",
+        "runenames.go",
+        "tables.go",
+    ],
+    importpath = "golang.org/x/text/unicode/runenames",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":runenames",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "runenames_test",
+    srcs = [
+        "example_test.go",
+        "runenames_test.go",
+    ],
+    embed = [":runenames"],
+    deps = [
+        "//internal/gen",
+        "//internal/testtext",
+        "//internal/ucd",
+    ],
+)

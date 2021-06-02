@@ -11,14 +11,13 @@ from recipe_engine import recipe_api
 class TryserverApi(recipe_api.RecipeApi):
   def __init__(self, *args, **kwargs):
     super(TryserverApi, self).__init__(*args, **kwargs)
-    self._failure_reasons = []
-
     self._gerrit_change = None  # self.m.buildbucket.common_pb2.GerritChange
     self._gerrit_change_repo_url = None
 
     self._gerrit_info_initialized = False
     self._gerrit_change_target_ref = None
     self._gerrit_change_fetch_ref = None
+    self._gerrit_change_owner = None
 
   def initialize(self):
     changes = self.m.buildbucket.build.input.gerrit_changes
@@ -47,6 +46,15 @@ class TryserverApi(recipe_api.RecipeApi):
     """
     return self._gerrit_change_repo_url
 
+  @property
+  def gerrit_change_owner(self):
+    """Returns owner of the current Gerrit CL.
+
+    Populated iff gerrit_change is populated.
+    Is a dictionary with keys like "name".
+    """
+    return self._gerrit_change_owner
+
   def _ensure_gerrit_change_info(self):
     """Initializes extra info about gerrit_change, fetched from Gerrit server.
 
@@ -71,13 +79,16 @@ class TryserverApi(recipe_api.RecipeApi):
               cl.change % 100, cl.change, cl.patchset),
         },
       },
+      'owner': {
+          'name': 'John Doe',
+      },
     }]
     res = self.m.gerrit.get_changes(
         host='https://' + cl.host,
         query_params=[('change', cl.change)],
         # This list must remain static/hardcoded.
         # If you need extra info, either change it here (hardcoded) or
-        # fetch separetely.
+        # fetch separately.
         o_params=['ALL_REVISIONS', 'DOWNLOAD_COMMANDS'],
         limit=1,
         name='fetch current CL info',
@@ -93,6 +104,7 @@ class TryserverApi(recipe_api.RecipeApi):
       if int(rev['_number']) == self.gerrit_change.patchset:
         self._gerrit_change_fetch_ref = rev['ref']
         break
+    self._gerrit_change_owner = res['owner']
     self._gerrit_info_initialized = True
 
   @property
@@ -137,8 +149,8 @@ class TryserverApi(recipe_api.RecipeApi):
   def get_files_affected_by_patch(self, patch_root, **kwargs):
     """Returns list of paths to files affected by the patch.
 
-    Argument:
-      patch_root: path relative to api.path['root'], usually obtained from
+    Args:
+      * patch_root: path relative to api.path['root'], usually obtained from
         api.gclient.get_gerrit_patch_root().
 
     Returned paths will be relative to to patch_root.
@@ -183,16 +195,6 @@ class TryserverApi(recipe_api.RecipeApi):
     step_result.presentation.step_text = failure_type
     step_result.presentation.status = 'FAILURE'
 
-  def set_do_not_retry_build(self):
-    """A flag to indicate the build should not be retried by the CQ.
-
-    This mechanism is used to reduce CQ duration when retrying will likely
-    return an identical result.
-    """
-    # TODO(iannucci): add API to set properties regardless of the current step.
-    step_result = self.m.step('TRYJOB DO NOT RETRY', cmd=None)
-    step_result.presentation.properties['do_not_retry'] = True
-
   def set_patch_failure_tryjob_result(self):
     """Mark the tryjob result as failure to apply the patch."""
     self._set_failure_type('PATCH_FAILURE')
@@ -233,44 +235,6 @@ class TryserverApi(recipe_api.RecipeApi):
     lack of capacity.
     """
     self._set_failure_type('TEST_EXPIRED')
-
-  def add_failure_reason(self, reason):
-    """
-    Records a more detailed reason why build is failing.
-
-    The reason can be any JSON-serializable object.
-    """
-    assert self.m.json.is_serializable(reason)
-    self._failure_reasons.append(reason)
-
-  @contextlib.contextmanager
-  def set_failure_hash(self):
-    """
-    Context manager that sets a failure_hash build property on StepFailure.
-
-    This can be used to easily compare whether two builds have failed
-    for the same reason. For example, if a patch is bad (breaks something),
-    we'd expect it to always break in the same way. Different failures
-    for the same patch are usually a sign of flakiness.
-    """
-    try:
-      yield
-    except self.m.step.StepFailure as e:
-      self.add_failure_reason(e.reason)
-
-      # TODO(iannucci): add API to set properties regardless of the current
-      # step.
-      try:
-        step_result = self.m.step.active_result
-      except ValueError:
-        step_result = None
-      if step_result:
-        failure_hash = hashlib.sha1()
-        failure_hash.update(self.m.json.dumps(self._failure_reasons))
-        step_result.presentation.properties['failure_hash'] = (
-            failure_hash.hexdigest())
-
-      raise e
 
   def get_footers(self, patch_text=None):
     """Retrieves footers from the patch description.

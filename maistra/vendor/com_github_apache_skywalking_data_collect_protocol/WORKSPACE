@@ -1,0 +1,1 @@
+workspace(name = "com_github_apache_skywalking_data_collect_protocol")

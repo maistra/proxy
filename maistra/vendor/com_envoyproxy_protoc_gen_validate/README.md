@@ -81,7 +81,6 @@ make build
 
 - **`lang`**: specify the target language to generate. Currently, the only supported options are:
   - `go`
-  - `gogo` for [gogo proto](https://github.com/gogo/protobuf) (experimental)
   - `cc` for c++ (partially implemented)
   - `java`
   - `python`
@@ -103,30 +102,6 @@ protoc \
 ```
 
 All messages generated include the new `Validate() error` method. PGV requires no additional runtime dependencies from the existing generated code.
-
-**Note**: by default **example.pb.validate.go** is nested in a directory structure that matches your `option go_package` name. You can change this using the protoc parameter `paths=source_relative:.`. Then `--validate_out` will output the file where it is expected. See Google's protobuf documenation or [packages and input paths](https://github.com/golang/protobuf#packages-and-input-paths) or [parameters](https://github.com/golang/protobuf#parameters) for more information.
-
-#### Gogo
-
-There is an experimental support for [gogo
-protobuf](https://github.com/gogo/protobuf) plugin for `go`. Use the following
-command to generate `gogo`-compatible validation code:
-
-```sh
-protoc \
-  -I . \
-  -I ${GOPATH}/src \
-  -I ${GOPATH}/src/github.com/envoyproxy/protoc-gen-validate \
-  --gogofast_out=":../generated"\
-  --validate_out="lang=gogo:../generated" \ example.proto
-```
-
-Gogo support has the following limitations:
-- only `gogofast` plugin is supported and tested, meaning that the fields
-  should be properly annotated with `gogoproto` annotations;
-- `gogoproto.nullable` is supported on fields;
-- `gogoproto.stdduration` is supported on fields;
-- `gogoproto.stdtime` is supported on fields;
 
 **Note**: by default **example.pb.validate.go** is nested in a directory structure that matches your `option go_package` name. You can change this using the protoc parameter `paths=source_relative:.`. Then `--validate_out` will output the file where it is expected. See Google's protobuf documenation or [packages and input paths](https://github.com/golang/protobuf#packages-and-input-paths) or [parameters](https://github.com/golang/protobuf#parameters) for more information.
 
@@ -160,6 +135,7 @@ following to your pom.xml or build.gradle.
             <configuration>
                 <protocArtifact>com.google.protobuf:protoc:${protoc.version}:exe:${os.detected.classifier}</protocArtifact>
             </configuration>
+            <executions>
                 <execution>
                     <id>protoc-java-pgv</id>
                     <goals>
@@ -734,7 +710,7 @@ message X { google.protobuf.Int32Value age = 1 [(validate.rules).int32.gt = -1, 
 
   ```protobuf
   // x must equal 2009/11/10T23:00:00.500Z exactly
-  google.protobuf.Timestamp x = 1 [(validate.rules).timestamp = {
+  google.protobuf.Timestamp x = 1 [(validate.rules).timestamp.const = {
       seconds: 63393490800,
       nanos:   500000000
     }];
@@ -792,6 +768,20 @@ message X { google.protobuf.Int32Value age = 1 [(validate.rules).int32.gt = -1, 
   ```protobuf
   message Person {
     option (validate.disabled) = true;
+
+    // x will not be required to be greater than 123
+    uint64 x = 1 [(validate.rules).uint64.gt = 123];
+
+    // y's fields will not be validated
+    Person y = 2;
+  }
+  ```
+
+- **ignored**: Don't generate a validate method or any related validation code for this message.
+
+  ```protobuf
+  message Person {
+    option (validate.ignored) = true;
 
     // x will not be required to be greater than 123
     uint64 x = 1 [(validate.rules).uint64.gt = 123];

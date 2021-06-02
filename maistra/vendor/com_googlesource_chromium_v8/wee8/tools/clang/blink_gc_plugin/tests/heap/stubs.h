@@ -22,14 +22,21 @@ template<typename T> class RefCounted { };
 template<typename T> class RawPtr {
 public:
     operator T*() const { return 0; }
-    T* operator->() { return 0; }
+    T* operator->() const { return 0; }
 };
 
-template<typename T> class RefPtr {
+template<typename T> class scoped_refptr {
 public:
-    ~RefPtr() { }
+    ~scoped_refptr() { }
     operator T*() const { return 0; }
-    T* operator->() { return 0; }
+    T* operator->() const { return 0; }
+};
+
+template<typename T> class WeakPtr {
+public:
+    ~WeakPtr() { }
+    operator T*() const { return 0; }
+    T* operator->() const { return 0; }
 };
 
 class DefaultAllocator {
@@ -95,7 +102,6 @@ class ListHashSet {
 };
 
 template <typename ValueArg,
-          typename HashArg = void,
           typename TraitsArg = void,
           typename Allocator = DefaultAllocator>
 class LinkedHashSet {
@@ -146,7 +152,7 @@ template<typename T> class unique_ptr {
 public:
     ~unique_ptr() { }
     operator T*() const { return 0; }
-    T* operator->() { return 0; }
+    T* operator->() const { return 0; }
 };
 
 template <typename T, typename... Args>
@@ -167,6 +173,13 @@ template <typename T>
 class Optional {};
 
 }  // namespace base
+
+namespace absl {
+
+template <class... Ts>
+class variant {};
+
+}  // namespace absl
 
 namespace blink {
 
@@ -192,18 +205,6 @@ using namespace WTF;
 #define GC_PLUGIN_IGNORE(bug)                           \
     __attribute__((annotate("blink_gc_plugin_ignore")))
 
-#define USING_GARBAGE_COLLECTED_MIXIN(type)                             \
- public:                                                                \
-  virtual void AdjustAndMark(Visitor*) const override {}                \
-  virtual bool IsHeapObjectAlive(Visitor*) const override { return 0; } \
-  void* mixin_constructor_marker_
-
-#define USING_GARBAGE_COLLECTED_MIXIN_NEW(type)                         \
- public:                                                                \
-  virtual void AdjustAndMark(Visitor*) const override {}                \
-  virtual bool IsHeapObjectAlive(Visitor*) const override { return 0; } \
-  typedef int HasUsingGarbageCollectedMixinMacro
-
 template<typename T> class GarbageCollected { };
 
 template <typename T>
@@ -212,42 +213,42 @@ class RefCountedGarbageCollected : public GarbageCollected<T> {};
 template<typename T> class Member {
 public:
     operator T*() const { return 0; }
-    T* operator->() { return 0; }
+    T* operator->() const { return 0; }
     bool operator!() const { return false; }
 };
 
 template<typename T> class WeakMember {
 public:
     operator T*() const { return 0; }
-    T* operator->() { return 0; }
+    T* operator->() const { return 0; }
     bool operator!() const { return false; }
 };
 
 template<typename T> class Persistent {
 public:
     operator T*() const { return 0; }
-    T* operator->() { return 0; }
+    T* operator->() const { return 0; }
     bool operator!() const { return false; }
 };
 
 template<typename T> class WeakPersistent {
 public:
     operator T*() const { return 0; }
-    T* operator->() { return 0; }
+    T* operator->() const { return 0; }
     bool operator!() const { return false; }
 };
 
 template<typename T> class CrossThreadPersistent {
 public:
     operator T*() const { return 0; }
-    T* operator->() { return 0; }
+    T* operator->() const { return 0; }
     bool operator!() const { return false; }
 };
 
 template<typename T> class CrossThreadWeakPersistent {
 public:
     operator T*() const { return 0; }
-    T* operator->() { return 0; }
+    T* operator->() const { return 0; }
     bool operator!() const { return false; }
 };
 
@@ -255,7 +256,7 @@ template <typename T>
 class TraceWrapperV8Reference {
  public:
   operator T*() const { return 0; }
-  T* operator->() { return 0; }
+  T* operator->() const { return 0; }
   bool operator!() const { return false; }
 };
 
@@ -277,7 +278,7 @@ template<typename T>
 class HeapListHashSet : public ListHashSet<T, void, void, HeapAllocator> { };
 
 template<typename T>
-class HeapLinkedHashSet : public LinkedHashSet<T, void, void, HeapAllocator> {
+class HeapLinkedHashSet : public LinkedHashSet<T, void, HeapAllocator> {
 };
 
 template<typename T>
@@ -300,12 +301,12 @@ class GarbageCollectedMixin {
 public:
     virtual void AdjustAndMark(Visitor*) const = 0;
     virtual bool IsHeapObjectAlive(Visitor*) const = 0;
-    virtual void Trace(Visitor*) { }
+    virtual void Trace(Visitor*) const {}
 };
 
 template<typename T>
 struct TraceIfNeeded {
-    static void Trace(Visitor*, T*);
+  static void Trace(Visitor*, const T&);
 };
 
 }

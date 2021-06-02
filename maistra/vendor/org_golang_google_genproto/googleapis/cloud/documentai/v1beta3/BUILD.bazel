@@ -1,0 +1,36 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "v1beta3",
+    srcs = [
+        "document.pb.go",
+        "document_processor_service.pb.go",
+        "geometry.pb.go",
+    ],
+    importpath = "google.golang.org/genproto/googleapis/cloud/documentai/v1beta3",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//googleapis/api/annotations",
+        "//googleapis/longrunning",
+        "//googleapis/rpc/status",
+        "//googleapis/type/color",
+        "//googleapis/type/date",
+        "//googleapis/type/datetime",
+        "//googleapis/type/money",
+        "//googleapis/type/postaladdress",
+        "@com_github_golang_protobuf//proto:go_default_library",
+        "@org_golang_google_grpc//:go_default_library",
+        "@org_golang_google_grpc//codes:go_default_library",
+        "@org_golang_google_grpc//status:go_default_library",
+        "@org_golang_google_protobuf//reflect/protoreflect:go_default_library",
+        "@org_golang_google_protobuf//runtime/protoimpl:go_default_library",
+        "@org_golang_google_protobuf//types/known/fieldmaskpb:go_default_library",
+        "@org_golang_google_protobuf//types/known/timestamppb:go_default_library",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":v1beta3",
+    visibility = ["//visibility:public"],
+)

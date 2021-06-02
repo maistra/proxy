@@ -9,13 +9,20 @@ import doctest
 import itertools
 import os
 import plistlib
+import re
 import subprocess
 import sys
 
-# src/build/xcode_links
-XCODE_LINK_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(
-        os.path.realpath(__file__)))), "xcode_links")
+if sys.version_info.major < 3:
+  basestring_compat = basestring
+else:
+  basestring_compat = str
+
+# src directory
+ROOT_SRC_DIR = os.path.dirname(
+    os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
+
 
 # This script prints information about the build system, the operating
 # system and the iOS or Mac SDK (depending on the platform "iphonesimulator",
@@ -59,7 +66,8 @@ def FillXcodeVersion(settings, developer_dir):
     settings['xcode_build'] = version_plist['ProductBuildVersion']
     return
 
-  lines = subprocess.check_output(['xcodebuild', '-version']).splitlines()
+  lines = subprocess.check_output(['xcodebuild',
+                                   '-version']).decode('UTF-8').splitlines()
   settings['xcode_version'] = FormatVersion(lines[0].split()[-1])
   settings['xcode_version_int'] = int(settings['xcode_version'], 10)
   settings['xcode_build'] = lines[-1].split()[-1]
@@ -67,55 +75,81 @@ def FillXcodeVersion(settings, developer_dir):
 
 def FillMachineOSBuild(settings):
   """Fills OS build number into |settings|."""
-  settings['machine_os_build'] = subprocess.check_output(
-      ['sw_vers', '-buildVersion']).strip()
+  machine_os_build = subprocess.check_output(['sw_vers', '-buildVersion'
+                                              ]).decode('UTF-8').strip()
+  settings['machine_os_build'] = machine_os_build
+
+  # The reported build number is made up from the kernel major version number,
+  # a minor version represented as a letter, a build number, and an optional
+  # packaging version.
+  #
+  # For example, the macOS 10.15.3 GM build is 19D76.
+  # - 19 is the Darwin kernel that ships with 10.15.
+  # - D is minor version 4. 10.15.0 builds had minor version 1.
+  # - 76 is the build number. 75 other builds were stamped before GM came out.
+  #
+  # The macOS 10.15.4 beta 5 build is 19E258a. The trailing "a" means the same
+  # build output was packaged twice.
+  build_match = re.match(r'^(\d+)([A-Z])(\d+)([a-z]?)$', machine_os_build)
+  assert build_match, "Unexpected macOS build format: %r" % machine_os_build
+  settings['machine_os_build_major'] = int(build_match.group(1), 10)
 
 
 def FillSDKPathAndVersion(settings, platform, xcode_version):
   """Fills the SDK path and version for |platform| into |settings|."""
-  settings['sdk_path'] = subprocess.check_output([
-      'xcrun', '-sdk', platform, '--show-sdk-path']).strip()
-  settings['sdk_version'] = subprocess.check_output([
-      'xcrun', '-sdk', platform, '--show-sdk-version']).strip()
-  settings['sdk_platform_path'] = subprocess.check_output([
-      'xcrun', '-sdk', platform, '--show-sdk-platform-path']).strip()
-  # TODO: unconditionally use --show-sdk-build-version once Xcode 7.2 or
-  # higher is required to build Chrome for iOS or OS X.
-  if xcode_version >= '0720':
-    settings['sdk_build'] = subprocess.check_output([
-        'xcrun', '-sdk', platform, '--show-sdk-build-version']).strip()
-  else:
-    settings['sdk_build'] = settings['sdk_version']
+  settings['sdk_path'] = subprocess.check_output(
+      ['xcrun', '-sdk', platform, '--show-sdk-path']).decode('UTF-8').strip()
+  settings['sdk_version'] = subprocess.check_output(
+      ['xcrun', '-sdk', platform,
+       '--show-sdk-version']).decode('UTF-8').strip()
+  settings['sdk_platform_path'] = subprocess.check_output(
+      ['xcrun', '-sdk', platform,
+       '--show-sdk-platform-path']).decode('UTF-8').strip()
+  settings['sdk_build'] = subprocess.check_output(
+      ['xcrun', '-sdk', platform,
+       '--show-sdk-build-version']).decode('UTF-8').strip()
+  settings['toolchains_path'] = os.path.join(
+      subprocess.check_output(['xcode-select',
+                               '-print-path']).decode('UTF-8').strip(),
+      'Toolchains/XcodeDefault.xctoolchain')
 
 
-def CreateXcodeSymlinkUnderChromiumSource(src):
-  """Create symlink to Xcode directory under Chromium source."""
+def CreateXcodeSymlinkAt(src, dst):
+  """Create symlink to Xcode directory at target location."""
 
-  if not os.path.isdir(XCODE_LINK_DIR):
-    os.makedirs(XCODE_LINK_DIR)
+  if not os.path.isdir(dst):
+    os.makedirs(dst)
 
-  dst = os.path.join(XCODE_LINK_DIR, os.path.basename(src))
-  # Update the symlink if exist.
+  dst = os.path.join(dst, os.path.basename(src))
+  updated_value = '//' + os.path.relpath(dst, ROOT_SRC_DIR)
+
+  # Update the symlink only if it is different from the current destination.
   if os.path.islink(dst):
+    current_src = os.readlink(dst)
+    if current_src == src:
+      return updated_value
     os.unlink(dst)
+    sys.stderr.write('existing symlink %s points %s; want %s. Removed.' %
+                     (dst, current_src, src))
   os.symlink(src, dst)
-  return dst
+  return updated_value
 
 
 if __name__ == '__main__':
   doctest.testmod()
 
   parser = argparse.ArgumentParser()
-  parser.add_argument("--developer_dir", required=False)
+  parser.add_argument("--developer_dir", dest="developer_dir", required=False)
   parser.add_argument("--get_sdk_info",
                     action="store_true", dest="get_sdk_info", default=False,
                     help="Returns SDK info in addition to xcode/machine info.")
-  parser.add_argument("--create_symlink_under_src",
-                      action="store_true", dest="create_symlink_under_src",
-                      default=False,
-                      help="Create symlink of SDK under Chromium source "
-                      "and returns the symlinked paths as SDK info instead "
-                      "of the original location.")
+  parser.add_argument(
+      "--create_symlink_at",
+      action="store",
+      dest="create_symlink_at",
+      help="Create symlink of SDK at given location and "
+      "returns the symlinked paths as SDK info instead "
+      "of the original location.")
   args, unknownargs = parser.parse_known_args()
   if args.developer_dir:
     os.environ['DEVELOPER_DIR'] = args.developer_dir
@@ -134,8 +168,8 @@ if __name__ == '__main__':
 
   for key in sorted(settings):
     value = settings[key]
-    if args.create_symlink_under_src and '_path' in key:
-      value = CreateXcodeSymlinkUnderChromiumSource(value)
-    if isinstance(value, str):
+    if args.create_symlink_at and '_path' in key:
+      value = CreateXcodeSymlinkAt(value, args.create_symlink_at)
+    if isinstance(value, basestring_compat):
       value = '"%s"' % value
     print('%s=%s' % (key, value))

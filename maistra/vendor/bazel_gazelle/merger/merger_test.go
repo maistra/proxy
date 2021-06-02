@@ -936,14 +936,6 @@ func TestMatch(t *testing.T) {
 			old:       `cc_library(name = "lib")`,
 			wantError: true,
 		}, {
-			desc: "multiple_name_match",
-			gen:  `go_library(name = "lib")`,
-			old: `
-go_library(name = "lib")
-go_library(name = "lib")
-`,
-			wantError: true,
-		}, {
 			desc:      "attr_match",
 			gen:       `go_library(name = "x", importpath = "foo")`,
 			old:       `go_library(name = "y", importpath = "foo")`,
@@ -969,6 +961,15 @@ go_binary(name = "y")
 go_binary(name = "z")
 `,
 			wantError: true,
+		}, {
+			desc:      "srcs match",
+			gen:       `proto_library(name = "proto1", srcs = ["foo.proto", "bar.proto"])`,
+			old:       `proto_library(name = "proto2", srcs = ["bar.proto", "foo.proto"])`,
+			wantIndex: 0,
+		}, {
+			desc: "importpath match",
+			gen:  `go_proto_library(name = "go_proto1", importpath="example.com/foo")`,
+			old:  `go_proto_library(name = "go_proto2", importpath="example.com/foo")`,
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {

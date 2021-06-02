@@ -109,6 +109,7 @@
 #ifndef GOOGLE_PROTOBUF_IO_CODED_STREAM_H__
 #define GOOGLE_PROTOBUF_IO_CODED_STREAM_H__
 
+
 #include <assert.h>
 
 #include <atomic>
@@ -684,10 +685,11 @@ class PROTOBUF_EXPORT EpsCopyOutputStream {
   // After this it's guaranteed you can safely write kSlopBytes to ptr. This
   // will never fail! The underlying stream can produce an error. Use HadError
   // to check for errors.
-  void EnsureSpace(uint8** ptr) {
-    if (PROTOBUF_PREDICT_FALSE(*ptr >= end_)) {
-      *ptr = EnsureSpaceFallback(*ptr);
+  PROTOBUF_MUST_USE_RESULT uint8* EnsureSpace(uint8* ptr) {
+    if (PROTOBUF_PREDICT_FALSE(ptr >= end_)) {
+      return EnsureSpaceFallback(ptr);
     }
+    return ptr;
   }
 
   uint8* WriteRaw(const void* data, int size, uint8* ptr) {
@@ -782,7 +784,7 @@ class PROTOBUF_EXPORT EpsCopyOutputStream {
   template <typename T>
   PROTOBUF_ALWAYS_INLINE uint8* WriteFixedPacked(int num, const T& r,
                                                  uint8* ptr) {
-    EnsureSpace(&ptr);
+    ptr = EnsureSpace(ptr);
     constexpr auto element_size = sizeof(typename T::value_type);
     auto size = r.size() * element_size;
     ptr = WriteLengthDelim(num, size, ptr);
@@ -815,7 +817,7 @@ class PROTOBUF_EXPORT EpsCopyOutputStream {
     return is_serialization_deterministic_;
   }
 
-  // The number of bytes writen to the stream at position ptr, relative to the
+  // The number of bytes written to the stream at position ptr, relative to the
   // stream's overall position.
   int64 ByteCount(uint8* ptr) const;
 
@@ -874,12 +876,12 @@ class PROTOBUF_EXPORT EpsCopyOutputStream {
   template <typename T, typename E>
   PROTOBUF_ALWAYS_INLINE uint8* WriteVarintPacked(int num, const T& r, int size,
                                                   uint8* ptr, const E& encode) {
-    EnsureSpace(&ptr);
+    ptr = EnsureSpace(ptr);
     ptr = WriteLengthDelim(num, size, ptr);
     auto it = r.data();
     auto end = it + r.size();
     do {
-      EnsureSpace(&ptr);
+      ptr = EnsureSpace(ptr);
       ptr = UnsafeVarint(encode(*it++), ptr);
     } while (it < end);
     return ptr;
@@ -958,7 +960,7 @@ class PROTOBUF_EXPORT EpsCopyOutputStream {
   // buffers to ensure there is no error as of yet.
   uint8* FlushAndResetBuffer(uint8*);
 
-  // The following functions mimick the old CodedOutputStream behavior as close
+  // The following functions mimic the old CodedOutputStream behavior as close
   // as possible. They flush the current state to the stream, behave as
   // the old CodedOutputStream and then return to normal operation.
   bool Skip(int count, uint8** pp);
@@ -1124,14 +1126,14 @@ class PROTOBUF_EXPORT CodedOutputStream {
 
   // Write a 32-bit little-endian integer.
   void WriteLittleEndian32(uint32 value) {
-    impl_.EnsureSpace(&cur_);
+    cur_ = impl_.EnsureSpace(cur_);
     SetCur(WriteLittleEndian32ToArray(value, Cur()));
   }
   // Like WriteLittleEndian32()  but writing directly to the target array.
   static uint8* WriteLittleEndian32ToArray(uint32 value, uint8* target);
   // Write a 64-bit little-endian integer.
   void WriteLittleEndian64(uint64 value) {
-    impl_.EnsureSpace(&cur_);
+    cur_ = impl_.EnsureSpace(cur_);
     SetCur(WriteLittleEndian64ToArray(value, Cur()));
   }
   // Like WriteLittleEndian64()  but writing directly to the target array.
@@ -1157,7 +1159,7 @@ class PROTOBUF_EXPORT CodedOutputStream {
   // This is identical to WriteVarint32(), but optimized for writing tags.
   // In particular, if the input is a compile-time constant, this method
   // compiles down to a couple instructions.
-  // Always inline because otherwise the aformentioned optimization can't work,
+  // Always inline because otherwise the aforementioned optimization can't work,
   // but GCC by default doesn't want to inline this.
   void WriteTag(uint32 value);
   // Like WriteTag()  but writing directly to the target array.
@@ -1169,7 +1171,7 @@ class PROTOBUF_EXPORT CodedOutputStream {
   // Returns the number of bytes needed to encode the given value as a varint.
   static size_t VarintSize64(uint64 value);
 
-  // If negative, 10 bytes.  Otheriwse, same as VarintSize32().
+  // If negative, 10 bytes.  Otherwise, same as VarintSize32().
   static size_t VarintSize32SignExtended(int32 value);
 
   // Compile-time equivalent of VarintSize32().
@@ -1636,12 +1638,12 @@ inline uint8* CodedOutputStream::WriteLittleEndian64ToArray(uint64 value,
 }
 
 inline void CodedOutputStream::WriteVarint32(uint32 value) {
-  impl_.EnsureSpace(&cur_);
+  cur_ = impl_.EnsureSpace(cur_);
   SetCur(WriteVarint32ToArray(value, Cur()));
 }
 
 inline void CodedOutputStream::WriteVarint64(uint64 value) {
-  impl_.EnsureSpace(&cur_);
+  cur_ = impl_.EnsureSpace(cur_);
   SetCur(WriteVarint64ToArray(value, Cur()));
 }
 

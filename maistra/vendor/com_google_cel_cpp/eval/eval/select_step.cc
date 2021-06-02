@@ -1,11 +1,13 @@
 #include "eval/eval/select_step.h"
 
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "eval/eval/evaluator_core.h"
 #include "eval/eval/expression_step_base.h"
-#include "eval/eval/field_access.h"
-#include "eval/eval/field_backed_list_impl.h"
-#include "eval/eval/field_backed_map_impl.h"
+#include "eval/public/cel_value.h"
+#include "eval/public/containers/field_access.h"
+#include "eval/public/containers/field_backed_list_impl.h"
+#include "eval/public/containers/field_backed_map_impl.h"
 
 namespace google {
 namespace api {
@@ -49,21 +51,41 @@ absl::Status SelectStep::CreateValueFromField(const google::protobuf::Message* m
   const FieldDescriptor* field_desc = desc->FindFieldByName(field_);
 
   if (field_desc == nullptr) {
-    *result = CreateNoSuchFieldError(arena);
+    *result = CreateNoSuchFieldError(arena, field_);
     return absl::OkStatus();
   }
 
   if (field_desc->is_map()) {
-    *result = CelValue::CreateMap(google::protobuf::Arena::Create<FieldBackedMapImpl>(
-        arena, msg, field_desc, arena));
+    // When the map field appears in a has(msg.map_field) expression, the map
+    // is considered 'present' when it is non-empty. Since maps are repeated
+    // fields they don't participate with standard proto presence testing since
+    // the repeated field is always at least empty.
+    if (test_field_presence_) {
+      *result =
+          CelValue::CreateBool(reflection->FieldSize(*msg, field_desc) != 0);
+      return absl::OkStatus();
+    }
+    CelMap* map = google::protobuf::Arena::Create<FieldBackedMapImpl>(arena, msg,
+                                                            field_desc, arena);
+    *result = CelValue::CreateMap(map);
     return absl::OkStatus();
   }
   if (field_desc->is_repeated()) {
-    *result = CelValue::CreateList(google::protobuf::Arena::Create<FieldBackedListImpl>(
-        arena, msg, field_desc, arena));
+    // When the list field appears in a has(msg.list_field) expression, the list
+    // is considered 'present' when it is non-empty.
+    if (test_field_presence_) {
+      *result =
+          CelValue::CreateBool(reflection->FieldSize(*msg, field_desc) != 0);
+      return absl::OkStatus();
+    }
+    CelList* list = google::protobuf::Arena::Create<FieldBackedListImpl>(
+        arena, msg, field_desc, arena);
+    *result = CelValue::CreateList(list);
     return absl::OkStatus();
   }
+
   if (test_field_presence_) {
+    // Standard proto presence test for non-repeated fields.
     *result = CelValue::CreateBool(reflection->HasField(*msg, field_desc));
     return absl::OkStatus();
   }
@@ -82,7 +104,7 @@ absl::Status SelectStep::Evaluate(ExecutionFrame* frame) const {
   CelValue result;
   AttributeTrail result_trail;
 
-  // Non-empty select path - check if value mapped to unknown.
+  // Non-empty select path - check if value mapped to unknown or error.
   bool unknown_value = false;
   // TODO(issues/41) deprecate this path after proper support of unknown is
   // implemented
@@ -95,16 +117,27 @@ absl::Status SelectStep::Evaluate(ExecutionFrame* frame) const {
     case CelValue::Type::kMessage: {
       const google::protobuf::Message* msg = arg.MessageOrDie();
 
-      if (frame->enable_unknowns()) {
+      if (frame->enable_unknowns() ||
+          frame->enable_missing_attribute_errors()) {
         result_trail = trail.Step(&field_, frame->arena());
-        if (frame->unknowns_utility().CheckForUnknown(result_trail,
-                                                      /*use_partial=*/false)) {
-          auto unknown_set = google::protobuf::Arena::Create<UnknownSet>(
-              frame->arena(), UnknownAttributeSet({result_trail.attribute()}));
-          result = CelValue::CreateUnknownSet(unknown_set);
-          frame->value_stack().PopAndPush(result, result_trail);
-          return absl::OkStatus();
-        }
+      }
+
+      if (frame->enable_missing_attribute_errors() &&
+          frame->attribute_utility().CheckForMissingAttribute(result_trail)) {
+        CelValue error_value =
+            CreateMissingAttributeError(frame->arena(), select_path_);
+        frame->value_stack().PopAndPush(error_value, result_trail);
+        return absl::OkStatus();
+      }
+
+      if (frame->enable_unknowns() &&
+          frame->attribute_utility().CheckForUnknown(result_trail,
+                                                     /*use_partial=*/false)) {
+        auto unknown_set = google::protobuf::Arena::Create<UnknownSet>(
+            frame->arena(), UnknownAttributeSet({result_trail.attribute()}));
+        result = CelValue::CreateUnknownSet(unknown_set);
+        frame->value_stack().PopAndPush(result, result_trail);
+        return absl::OkStatus();
       }
 
       if (msg == nullptr) {
@@ -156,7 +189,7 @@ absl::Status SelectStep::Evaluate(ExecutionFrame* frame) const {
 
       if (frame->enable_unknowns()) {
         result_trail = trail.Step(&field_, frame->arena());
-        if (frame->unknowns_utility().CheckForUnknown(result_trail, false)) {
+        if (frame->attribute_utility().CheckForUnknown(result_trail, false)) {
           auto unknown_set = google::protobuf::Arena::Create<UnknownSet>(
               frame->arena(), UnknownAttributeSet({result_trail.attribute()}));
           result = CelValue::CreateUnknownSet(unknown_set);
@@ -193,7 +226,7 @@ absl::Status SelectStep::Evaluate(ExecutionFrame* frame) const {
 }  // namespace
 
 // Factory method for Select - based Execution step
-cel_base::StatusOr<std::unique_ptr<ExpressionStep>> CreateSelectStep(
+absl::StatusOr<std::unique_ptr<ExpressionStep>> CreateSelectStep(
     const google::api::expr::v1alpha1::Expr::Select* select_expr, int64_t expr_id,
     absl::string_view select_path) {
   std::unique_ptr<ExpressionStep> step = absl::make_unique<SelectStep>(

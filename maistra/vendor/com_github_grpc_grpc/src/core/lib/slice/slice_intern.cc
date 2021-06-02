@@ -52,11 +52,10 @@ typedef struct slice_shard {
 
 static slice_shard g_shards[SHARD_COUNT];
 
-typedef struct {
+struct static_metadata_hash_ent {
   uint32_t hash;
   uint32_t idx;
-} static_metadata_hash_ent;
-
+};
 static static_metadata_hash_ent
     static_metadata_hash[4 * GRPC_STATIC_MDSTR_COUNT];
 static uint32_t max_static_metadata_hash_probe;
@@ -75,8 +74,8 @@ InternedSliceRefcount::~InternedSliceRefcount() {
   InternedSliceRefcount* cur;
   for (prev_next = &shard->strs[TABLE_IDX(this->hash, shard->capacity)],
       cur = *prev_next;
-       cur != this; prev_next = &cur->bucket_next, cur = cur->bucket_next)
-    ;
+       cur != this; prev_next = &cur->bucket_next, cur = cur->bucket_next) {
+  }
   *prev_next = cur->bucket_next;
   shard->count--;
 }

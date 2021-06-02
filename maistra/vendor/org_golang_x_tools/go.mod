@@ -1,9 +1,11 @@
 module golang.org/x/tools
 
-go 1.11
+go 1.12
 
 require (
-	golang.org/x/net v0.0.0-20190620200207-3b0461eec859
-	golang.org/x/sync v0.0.0-20190423024810-112230192c58
-	golang.org/x/xerrors v0.0.0-20190717185122-a985d3407aa7
+	github.com/yuin/goldmark v1.2.1
+	golang.org/x/mod v0.3.0
+	golang.org/x/net v0.0.0-20201021035429-f5854403a974
+	golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9
+	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
 )

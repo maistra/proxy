@@ -2,7 +2,7 @@
 
 #include <memory>
 
-#include "envoy/config/trace/v3/trace.pb.h"
+#include "envoy/config/trace/v3/http_tracer.pb.h"
 #include "envoy/http/codes.h"
 
 namespace Envoy {
@@ -29,6 +29,7 @@ public:
 
   virtual CodeStats& codeStats() PURE;
   virtual const UserAgentContext& userAgentContext() const PURE;
+  virtual const Stats::StatName& asyncClientStatPrefix() const PURE;
 };
 
 using ContextPtr = std::unique_ptr<Context>;

@@ -1,0 +1,9 @@
+__data_end
+__errno_location
+__indirect_function_table
+__wasm_call_ctors
+dynCall_jiji
+main
+stackAlloc
+stackRestore
+stackSave

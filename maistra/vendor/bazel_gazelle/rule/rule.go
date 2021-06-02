@@ -71,6 +71,12 @@ type File struct {
 	// Rules is a list of rules within the file (or function calls that look like
 	// rules). This should not be modified directly; use Rule methods instead.
 	Rules []*Rule
+
+	// Content is the file's underlying disk content, which is recorded when the
+	// file is initially loaded and whenever it is saved back to disk. If the file
+	// is modified outside of Rule methods, Content must be manually updated in
+	// order to keep it in sync.
+	Content []byte
 }
 
 // EmptyFile creates a File wrapped around an empty syntax tree.
@@ -138,7 +144,12 @@ func LoadData(path, pkg string, data []byte) (*File, error) {
 	if err != nil {
 		return nil, err
 	}
-	return ScanAST(pkg, ast), nil
+	f := ScanAST(pkg, ast)
+	if err := checkFile(f); err != nil {
+		return nil, err
+	}
+	f.Content = data
+	return f, nil
 }
 
 // LoadWorkspaceData is similar to LoadData but parses the data as a
@@ -148,7 +159,12 @@ func LoadWorkspaceData(path, pkg string, data []byte) (*File, error) {
 	if err != nil {
 		return nil, err
 	}
-	return ScanAST(pkg, ast), nil
+	f := ScanAST(pkg, ast)
+	if err := checkFile(f); err != nil {
+		return nil, err
+	}
+	f.Content = data
+	return f, nil
 }
 
 // LoadMacroData parses a bzl file from a byte slice and scans for the load
@@ -161,7 +177,12 @@ func LoadMacroData(path, pkg, defName string, data []byte) (*File, error) {
 	if err != nil {
 		return nil, err
 	}
-	return ScanASTBody(pkg, defName, ast), nil
+	f := ScanASTBody(pkg, defName, ast)
+	if err := checkFile(f); err != nil {
+		return nil, err
+	}
+	f.Content = data
+	return f, nil
 }
 
 // ScanAST creates a File wrapped around the given syntax tree. This tree
@@ -310,9 +331,9 @@ func (f *File) Sync() {
 	f.Rules = f.Rules[:w]
 
 	if f.function == nil {
-		deletes := append(ruleDeletes, loadDeletes...)
-		inserts := append(ruleInserts, loadInserts...)
-		stmts := append(ruleStmts, loadStmts...)
+		deletes := append(loadDeletes, ruleDeletes...)
+		inserts := append(loadInserts, ruleInserts...)
+		stmts := append(loadStmts, ruleStmts...)
 		updateStmt(&f.File.Stmt, inserts, deletes, stmts)
 	} else {
 		updateStmt(&f.File.Stmt, loadInserts, loadDeletes, loadStmts)
@@ -369,11 +390,23 @@ func (f *File) Format() []byte {
 	return bzl.Format(f.File)
 }
 
+// SortMacro sorts rules in the macro of this File. It doesn't sort the rules if
+// this File does not have a macro, e.g., WORKSPACE.
+// This method calls Sync internally.
+func (f *File) SortMacro() {
+	f.Sync()
+	if f.function != nil {
+		sort.Stable(byName{f.Rules, f.function.stmt.Body})
+	} else {
+		panic(fmt.Sprintf("%s: not loaded as macro file", f.Path))
+	}
+}
+
 // Save writes the build file to disk. This method calls Sync internally.
 func (f *File) Save(path string) error {
 	f.Sync()
-	data := bzl.Format(f.File)
-	return ioutil.WriteFile(path, data, 0666)
+	f.Content = bzl.Format(f.File)
+	return ioutil.WriteFile(path, f.Content, 0666)
 }
 
 // HasDefaultVisibility returns whether the File contains a "package" rule with
@@ -391,6 +424,8 @@ func (f *File) HasDefaultVisibility() bool {
 type stmt struct {
 	index                      int
 	deleted, inserted, updated bool
+	comments                   []string
+	commentsUpdated            bool
 	expr                       bzl.Expr
 }
 
@@ -404,6 +439,43 @@ func (s *stmt) Index() int { return s.index }
 // syntax tree when File.Sync is called.
 func (s *stmt) Delete() { s.deleted = true }
 
+// Comments returns the text of the comments that appear before the statement.
+// Each comment includes the leading "#".
+func (s *stmt) Comments() []string {
+	return s.comments
+}
+
+// AddComment adds a new comment above the statement, after other comments.
+// The new comment must start with "#".
+func (s *stmt) AddComment(token string) {
+	if !strings.HasPrefix(token, "#") {
+		panic(fmt.Sprintf("comment must start with '#': got %q", token))
+	}
+	s.comments = append(s.comments, token)
+	s.commentsUpdated = true
+}
+
+func commentsFromExpr(e bzl.Expr) []string {
+	before := e.Comment().Before
+	tokens := make([]string, len(before))
+	for i, c := range before {
+		tokens[i] = c.Token
+	}
+	return tokens
+}
+
+func (s *stmt) syncComments() {
+	if !s.commentsUpdated {
+		return
+	}
+	s.commentsUpdated = false
+	before := make([]bzl.Comment, len(s.comments))
+	for i, token := range s.comments {
+		before[i].Token = token
+	}
+	s.expr.Comment().Before = before
+}
+
 type byIndex []*stmt
 
 func (s byIndex) Len() int {
@@ -416,6 +488,28 @@ func (s byIndex) Less(i, j int) bool {
 
 func (s byIndex) Swap(i, j int) {
 	s[i], s[j] = s[j], s[i]
+}
+
+type byName struct {
+	rules []*Rule
+	exprs []bzl.Expr
+}
+
+// type checking
+var _ sort.Interface = byName{}
+
+func (s byName) Len() int {
+	return len(s.rules)
+}
+
+func (s byName) Less(i, j int) bool {
+	return s.rules[i].Name() < s.rules[j].Name()
+}
+
+func (s byName) Swap(i, j int) {
+	s.exprs[s.rules[i].index], s.exprs[s.rules[j].index] = s.exprs[s.rules[j].index], s.exprs[s.rules[i].index]
+	s.rules[i].index, s.rules[j].index = s.rules[j].index, s.rules[i].index
+	s.rules[i], s.rules[j] = s.rules[j], s.rules[i]
 }
 
 // identPair represents one symbol, with or without remapping, in a load
@@ -447,7 +541,11 @@ func NewLoad(name string) *Load {
 
 func loadFromExpr(index int, loadStmt *bzl.LoadStmt) *Load {
 	l := &Load{
-		stmt:    stmt{index: index, expr: loadStmt},
+		stmt: stmt{
+			index:    index,
+			expr:     loadStmt,
+			comments: commentsFromExpr(loadStmt),
+		},
 		name:    loadStmt.Module.Value,
 		symbols: make(map[string]identPair),
 	}
@@ -463,7 +561,9 @@ func (l *Load) Name() string {
 	return l.name
 }
 
-// Symbols returns a list of symbols this statement loads.
+// Symbols returns a sorted list of symbols this statement loads.
+// If the symbol is loaded with a name different from its definition, the
+// loaded name is returned, not the original name.
 func (l *Load) Symbols() []string {
 	syms := make([]string, 0, len(l.symbols))
 	for sym := range l.symbols {
@@ -471,6 +571,19 @@ func (l *Load) Symbols() []string {
 	}
 	sort.Strings(syms)
 	return syms
+}
+
+// SymbolPairs returns a list of symbol pairs loaded by this statement.
+// Each pair contains the symbol defined in the loaded module (From) and the
+// symbol declared in the loading module (To). The pairs are sorted by To
+// (same order as Symbols).
+func (l *Load) SymbolPairs() []struct{ From, To string } {
+	toSyms := l.Symbols()
+	pairs := make([]struct{ From, To string }, 0, len(toSyms))
+	for _, toSym := range toSyms {
+		pairs = append(pairs, struct{ From, To string }{l.symbols[toSym].from.Name, toSym})
+	}
+	return pairs
 }
 
 // Has returns true if sym is loaded by this statement.
@@ -514,6 +627,7 @@ func (l *Load) Insert(f *File, index int) {
 }
 
 func (l *Load) sync() {
+	l.syncComments()
 	if !l.updated {
 		return
 	}
@@ -558,21 +672,21 @@ type Rule struct {
 
 // NewRule creates a new, empty rule with the given kind and name.
 func NewRule(kind, name string) *Rule {
-	nameAttr := &bzl.AssignExpr{
-		LHS: &bzl.Ident{Name: "name"},
-		RHS: &bzl.StringExpr{Value: name},
-		Op:  "=",
-	}
+	call := &bzl.CallExpr{X: &bzl.Ident{Name: kind}}
 	r := &Rule{
-		stmt: stmt{
-			expr: &bzl.CallExpr{
-				X:    &bzl.Ident{Name: kind},
-				List: []bzl.Expr{nameAttr},
-			},
-		},
+		stmt:    stmt{expr: call},
 		kind:    kind,
-		attrs:   map[string]*bzl.AssignExpr{"name": nameAttr},
+		attrs:   map[string]*bzl.AssignExpr{},
 		private: map[string]interface{}{},
+	}
+	if name != "" {
+		nameAttr := &bzl.AssignExpr{
+			LHS: &bzl.Ident{Name: "name"},
+			RHS: &bzl.StringExpr{Value: name},
+			Op:  "=",
+		}
+		call.List = []bzl.Expr{nameAttr}
+		r.attrs["name"] = nameAttr
 	}
 	return r
 }
@@ -599,8 +713,9 @@ func ruleFromExpr(index int, expr bzl.Expr) *Rule {
 	}
 	return &Rule{
 		stmt: stmt{
-			index: index,
-			expr:  call,
+			index:    index,
+			expr:     call,
+			comments: commentsFromExpr(expr),
 		},
 		kind:    kind,
 		args:    args,
@@ -750,15 +865,20 @@ func (r *Rule) Args() []bzl.Expr {
 // Insert marks this statement for insertion at the end of the file. Multiple
 // statements will be inserted in the order Insert is called.
 func (r *Rule) Insert(f *File) {
-	// TODO(jayconrod): should rules always be inserted at the end? Should there
-	// be some sort order?
 	var stmt []bzl.Expr
 	if f.function == nil {
 		stmt = f.File.Stmt
 	} else {
 		stmt = f.function.stmt.Body
 	}
-	r.index = len(stmt)
+	r.InsertAt(f, len(stmt))
+}
+
+// InsertAt marks this statement for insertion before the statement at index.
+// Multiple rules inserted at the same index will be inserted in the order
+// Insert is called. Loads inserted at the same index will be inserted first.
+func (r *Rule) InsertAt(f *File, index int) {
+	r.index = index
 	r.inserted = true
 	f.Rules = append(f.Rules, r)
 }
@@ -779,6 +899,7 @@ func (r *Rule) IsEmpty(info KindInfo) bool {
 }
 
 func (r *Rule) sync() {
+	r.syncComments()
 	if !r.updated {
 		return
 	}
@@ -831,9 +952,11 @@ func ShouldKeep(e bzl.Expr) bool {
 // CheckInternalVisibility overrides the given visibility if the package is
 // internal.
 func CheckInternalVisibility(rel, visibility string) string {
-	if i := strings.LastIndex(rel, "/internal/"); i >= 0 {
+	if strings.HasSuffix(rel, "/internal") {
+		visibility = fmt.Sprintf("//%s:__subpackages__", rel[:len(rel)-len("/internal")])
+	} else if i := strings.LastIndex(rel, "/internal/"); i >= 0 {
 		visibility = fmt.Sprintf("//%s:__subpackages__", rel[:i])
-	} else if strings.HasPrefix(rel, "internal/") {
+	} else if strings.HasPrefix(rel, "internal/") || rel == "internal" {
 		visibility = "//:__subpackages__"
 	}
 	return visibility
@@ -856,4 +979,19 @@ func (s byAttrName) Less(i, j int) bool {
 
 func (s byAttrName) Swap(i, j int) {
 	s[i], s[j] = s[j], s[i]
+}
+
+func checkFile(f *File) error {
+	names := make(map[string]bool)
+	for _, r := range f.Rules {
+		name := r.Name()
+		if name == "" {
+			continue
+		}
+		if names[name] {
+			return fmt.Errorf("%s: multiple rules have the name %q", f.Path, name)
+		}
+		names[name] = true
+	}
+	return nil
 }

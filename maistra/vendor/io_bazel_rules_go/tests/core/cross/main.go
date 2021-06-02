@@ -17,8 +17,10 @@ package main
 
 import (
 	"fmt"
+
+	"github.com/bazelbuild/rules_go/tests/core/cross/platform_lib"
 )
 
 func main() {
-	fmt.Println("Goodbye")
+	fmt.Println(platform_lib.Platform)
 }

@@ -5,10 +5,14 @@
 set -e
 
 # This is the hash on https://github.com/envoyproxy/envoy-filter-example.git we pin to.
-ENVOY_FILTER_EXAMPLE_GITSHA="c6c986cca7ad676cc1c33f2df7515cbbd2e02502"
+ENVOY_FILTER_EXAMPLE_GITSHA="30e5df3b73aec14ca3b70e4537e0b42f2e9d7fd0"
 ENVOY_FILTER_EXAMPLE_SRCDIR="${BUILD_DIR}/envoy-filter-example"
 
-export ENVOY_FILTER_EXAMPLE_TESTS="//:echo2_integration_test //http-filter-example:http_filter_integration_test //:envoy_binary_test"
+# shellcheck disable=SC2034
+ENVOY_FILTER_EXAMPLE_TESTS=(
+    "//:echo2_integration_test"
+    "//http-filter-example:http_filter_integration_test"
+    "//:envoy_binary_test")
 
 if [[ ! -d "${ENVOY_FILTER_EXAMPLE_SRCDIR}/.git" ]]; then
   rm -rf "${ENVOY_FILTER_EXAMPLE_SRCDIR}"
@@ -20,7 +24,8 @@ sed -e "s|{ENVOY_SRCDIR}|${ENVOY_SRCDIR}|" "${ENVOY_SRCDIR}"/ci/WORKSPACE.filter
 
 mkdir -p "${ENVOY_FILTER_EXAMPLE_SRCDIR}"/bazel
 ln -sf "${ENVOY_SRCDIR}"/bazel/get_workspace_status "${ENVOY_FILTER_EXAMPLE_SRCDIR}"/bazel/
+cp -f --remove-destination "${ENVOY_SRCDIR}"/.bazelversion "${ENVOY_FILTER_EXAMPLE_SRCDIR}"/
 cp -f "${ENVOY_SRCDIR}"/.bazelrc "${ENVOY_FILTER_EXAMPLE_SRCDIR}"/
 cp -f "$(bazel info workspace)"/*.bazelrc "${ENVOY_FILTER_EXAMPLE_SRCDIR}"/
 
-FILTER_WORKSPACE_SET=1
+export FILTER_WORKSPACE_SET=1

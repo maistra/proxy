@@ -1,0 +1,36 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "prediction",
+    srcs = [
+        "classification.pb.go",
+        "image_object_detection.pb.go",
+        "image_segmentation.pb.go",
+        "tabular_classification.pb.go",
+        "tabular_regression.pb.go",
+        "text_extraction.pb.go",
+        "text_sentiment.pb.go",
+        "time_series_forecasting.pb.go",
+        "video_action_recognition.pb.go",
+        "video_classification.pb.go",
+        "video_object_tracking.pb.go",
+    ],
+    importpath = "google.golang.org/genproto/googleapis/cloud/aiplatform/v1beta1/schema/predict/prediction",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//googleapis/api/annotations",
+        "//googleapis/cloud/aiplatform/v1beta1/schema/predict/instance",
+        "@com_github_golang_protobuf//proto:go_default_library",
+        "@org_golang_google_protobuf//reflect/protoreflect:go_default_library",
+        "@org_golang_google_protobuf//runtime/protoimpl:go_default_library",
+        "@org_golang_google_protobuf//types/known/durationpb:go_default_library",
+        "@org_golang_google_protobuf//types/known/structpb:go_default_library",
+        "@org_golang_google_protobuf//types/known/wrapperspb:go_default_library",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":prediction",
+    visibility = ["//visibility:public"],
+)

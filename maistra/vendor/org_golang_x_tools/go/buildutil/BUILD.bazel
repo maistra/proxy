@@ -1,7 +1,7 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
-    name = "go_default_library",
+    name = "buildutil",
     srcs = [
         "allpackages.go",
         "fakecontext.go",
@@ -13,8 +13,14 @@ go_library(
     visibility = ["//visibility:public"],
 )
 
+alias(
+    name = "go_default_library",
+    actual = ":buildutil",
+    visibility = ["//visibility:public"],
+)
+
 go_test(
-    name = "go_default_test",
+    name = "buildutil_test",
     srcs = [
         "allpackages_test.go",
         "overlay_test.go",
@@ -22,6 +28,8 @@ go_test(
         "util_test.go",
         "util_windows_test.go",
     ],
-    embed = [":go_default_library"],
-    deps = ["//go/packages/packagestest:go_default_library"],
+    deps = [
+        ":buildutil",
+        "//go/packages/packagestest",
+    ],
 )

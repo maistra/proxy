@@ -4,7 +4,7 @@ Rate limit
 ==========
 
 * Global rate limiting :ref:`architecture overview <arch_overview_global_rate_limit>`
-* :ref:`v2 API reference <envoy_api_msg_config.filter.network.rate_limit.v2.RateLimit>`
+* :ref:`v3 API reference <envoy_v3_api_msg_extensions.filters.network.ratelimit.v3.RateLimit>`
 * This filter should be configured with the name *envoy.filters.network.ratelimit*.
 
 .. note::
@@ -30,7 +30,7 @@ following statistics:
   cx_closed, Counter, Total connections closed due to an over limit response from the rate limit service
   active, Gauge, Total active requests to the rate limit service
   failure_mode_allowed, Counter, "Total requests that were error(s) but were allowed through because
-  of :ref:`failure_mode_deny <envoy_api_msg_config.filter.http.rate_limit.v2.RateLimit>` set to false."
+  of :ref:`failure_mode_deny <envoy_v3_api_field_extensions.filters.network.ratelimit.v3.RateLimit.failure_mode_deny>` set to false."
 
 Runtime
 -------
@@ -43,3 +43,12 @@ ratelimit.tcp_filter_enabled
 ratelimit.tcp_filter_enforcing
   % of connections that will call the rate limit service and enforce the decision. Defaults to 100.
   This can be used to test what would happen before fully enforcing the outcome.
+
+Dynamic Metadata
+----------------
+.. _config_network_filters_ratelimit_dynamic_metadata:
+
+The ratelimit filter emits dynamic metadata as an opaque ``google.protobuf.Struct``
+*only* when the gRPC ratelimit service returns a :ref:`CheckResponse
+<envoy_v3_api_msg_service.ratelimit.v3.RateLimitResponse>` with a filled :ref:`dynamic_metadata
+<envoy_v3_api_field_service.ratelimit.v3.RateLimitResponse.dynamic_metadata>` field.

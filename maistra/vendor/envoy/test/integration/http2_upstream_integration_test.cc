@@ -88,7 +88,7 @@ void Http2UpstreamIntegrationTest::bidirectionalStreaming(uint32_t bytes) {
   ASSERT_TRUE(upstream_request_->waitForEndStream(*dispatcher_));
 
   // Finish the response.
-  upstream_request_->encodeTrailers(Http::TestHeaderMapImpl{{"trailer", "bar"}});
+  upstream_request_->encodeTrailers(Http::TestResponseTrailerMapImpl{{"trailer", "bar"}});
   response->waitForEndStream();
   EXPECT_TRUE(response->complete());
 }
@@ -180,7 +180,7 @@ void Http2UpstreamIntegrationTest::simultaneousRequest(uint32_t request1_bytes,
   EXPECT_TRUE(upstream_request2->complete());
   EXPECT_EQ(request2_bytes, upstream_request2->bodyLength());
   EXPECT_TRUE(response2->complete());
-  EXPECT_EQ("200", response2->headers().Status()->value().getStringView());
+  EXPECT_EQ("200", response2->headers().getStatusValue());
   EXPECT_EQ(response2_bytes, response2->body().size());
 
   // Respond to request 1
@@ -190,7 +190,7 @@ void Http2UpstreamIntegrationTest::simultaneousRequest(uint32_t request1_bytes,
   EXPECT_TRUE(upstream_request1->complete());
   EXPECT_EQ(request1_bytes, upstream_request1->bodyLength());
   EXPECT_TRUE(response1->complete());
-  EXPECT_EQ("200", response1->headers().Status()->value().getStringView());
+  EXPECT_EQ("200", response1->headers().getStatusValue());
   EXPECT_EQ(response1_bytes, response1->body().size());
 }
 
@@ -199,6 +199,17 @@ TEST_P(Http2UpstreamIntegrationTest, SimultaneousRequest) {
 }
 
 TEST_P(Http2UpstreamIntegrationTest, LargeSimultaneousRequestWithBufferLimits) {
+  config_helper_.setBufferLimits(1024, 1024); // Set buffer limits upstream and downstream.
+  simultaneousRequest(1024 * 20, 1024 * 14 + 2, 1024 * 10 + 5, 1024 * 16);
+}
+
+TEST_P(Http2UpstreamIntegrationTest, SimultaneousRequestAlpn) {
+  use_alpn_ = true;
+  simultaneousRequest(1024, 512, 1023, 513);
+}
+
+TEST_P(Http2UpstreamIntegrationTest, LargeSimultaneousRequestWithBufferLimitsAlpn) {
+  use_alpn_ = true;
   config_helper_.setBufferLimits(1024, 1024); // Set buffer limits upstream and downstream.
   simultaneousRequest(1024 * 20, 1024 * 14 + 2, 1024 * 10 + 5, 1024 * 16);
 }
@@ -235,13 +246,16 @@ void Http2UpstreamIntegrationTest::manySimultaneousRequests(uint32_t request_byt
     responses[i]->waitForEndStream();
     if (i % 2 != 0) {
       EXPECT_TRUE(responses[i]->complete());
-      EXPECT_EQ("200", responses[i]->headers().Status()->value().getStringView());
+      EXPECT_EQ("200", responses[i]->headers().getStatusValue());
       EXPECT_EQ(response_bytes[i], responses[i]->body().length());
     } else {
       // Upstream stream reset.
-      EXPECT_EQ("503", responses[i]->headers().Status()->value().getStringView());
+      EXPECT_EQ("503", responses[i]->headers().getStatusValue());
     }
   }
+
+  EXPECT_EQ(0, test_server_->gauge("http2.streams_active")->value());
+  EXPECT_EQ(0, test_server_->gauge("http2.pending_send_bytes")->value());
 }
 
 TEST_P(Http2UpstreamIntegrationTest, ManySimultaneousRequest) {
@@ -327,25 +341,26 @@ TEST_P(Http2UpstreamIntegrationTest, HittingEncoderFilterLimitForGrpc) {
         const std::string access_log_name =
             TestEnvironment::temporaryPath(TestUtility::uniqueFilename());
         // Configure just enough of an upstream access log to reference the upstream headers.
-        const std::string yaml_string = R"EOF(
+        const std::string yaml_string = fmt::format(R"EOF(
 name: router
 typed_config:
-  "@type": type.googleapis.com/envoy.config.filter.http.router.v2.Router
+  "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
   upstream_log:
     name: accesslog
     filter:
-      not_health_check_filter: {}
+      not_health_check_filter: {{}}
     typed_config:
-      "@type": type.googleapis.com/envoy.config.accesslog.v2.FileAccessLog
-      path: /dev/null
-  )EOF";
+      "@type": type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog
+      path: {}
+  )EOF",
+                                                    Platform::null_device_path);
         TestUtility::loadFromYaml(yaml_string, *hcm.mutable_http_filters(1));
       });
 
   // As with ProtocolIntegrationTest.HittingEncoderFilterLimit use a filter
   // which buffers response data but in this case, make sure the sendLocalReply
   // is gRPC.
-  config_helper_.addFilter("{ name: envoy.filters.http.dynamo, typed_config: { \"@type\": "
+  config_helper_.addFilter("{ name: encoder-decoder-buffer-filter, typed_config: { \"@type\": "
                            "type.googleapis.com/google.protobuf.Empty } }");
   config_helper_.setBufferLimits(1024, 1024);
   initialize();
@@ -360,7 +375,7 @@ typed_config:
                                                                  {"te", "trailers"}});
   auto downstream_request = &encoder_decoder.first;
   auto response = std::move(encoder_decoder.second);
-  Buffer::OwnedImpl data(R"({"TableName":"locations"})");
+  Buffer::OwnedImpl data("HTTP body content goes here");
   codec_client_->sendData(*downstream_request, data, true);
   waitForNextUpstreamRequest();
 
@@ -369,7 +384,6 @@ typed_config:
 
   // Now send an overly large response body. At some point, too much data will
   // be buffered, the stream will be reset, and the connection will disconnect.
-  fake_upstreams_[0]->set_allow_unexpected_disconnects(true);
   upstream_request_->encodeData(1024 * 65, false);
   ASSERT_TRUE(upstream_request_->waitForReset());
   ASSERT_TRUE(fake_upstream_connection_->close());
@@ -386,7 +400,7 @@ TEST_P(Http2UpstreamIntegrationTest, TestManyResponseHeadersRejected) {
   initialize();
   codec_client_ = makeHttpConnection(lookupPort("http"));
 
-  Http::TestHeaderMapImpl many_headers(default_response_headers_);
+  Http::TestResponseHeaderMapImpl many_headers(default_response_headers_);
   for (int i = 0; i < 100; i++) {
     many_headers.addCopy("many", std::string(1, 'a'));
   }
@@ -396,17 +410,18 @@ TEST_P(Http2UpstreamIntegrationTest, TestManyResponseHeadersRejected) {
   upstream_request_->encodeHeaders(many_headers, true);
   response->waitForEndStream();
   // Upstream stream reset triggered.
-  EXPECT_EQ("503", response->headers().Status()->value().getStringView());
+  EXPECT_EQ("503", response->headers().getStatusValue());
 }
 
 // Tests bootstrap configuration of max response headers.
 TEST_P(Http2UpstreamIntegrationTest, ManyResponseHeadersAccepted) {
   // Set max response header count to 200.
   config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
-    auto* static_resources = bootstrap.mutable_static_resources();
-    auto* cluster = static_resources->mutable_clusters(0);
-    auto* http_protocol_options = cluster->mutable_common_http_protocol_options();
+    ConfigHelper::HttpProtocolOptions protocol_options;
+    auto* http_protocol_options = protocol_options.mutable_common_http_protocol_options();
     http_protocol_options->mutable_max_headers_count()->set_value(200);
+    ConfigHelper::setProtocolOptions(*bootstrap.mutable_static_resources()->mutable_clusters(0),
+                                     protocol_options);
   });
   Http::TestResponseHeaderMapImpl response_headers(default_response_headers_);
   for (int i = 0; i < 150; i++) {
@@ -431,7 +446,7 @@ TEST_P(Http2UpstreamIntegrationTest, LargeResponseHeadersRejected) {
   initialize();
   codec_client_ = makeHttpConnection(lookupPort("http"));
 
-  Http::TestHeaderMapImpl large_headers(default_response_headers_);
+  Http::TestResponseHeaderMapImpl large_headers(default_response_headers_);
   large_headers.addCopy("large", std::string(60 * 1024, 'a'));
   auto response = codec_client_->makeHeaderOnlyRequest(default_request_headers_);
   waitForNextUpstreamRequest();
@@ -439,7 +454,7 @@ TEST_P(Http2UpstreamIntegrationTest, LargeResponseHeadersRejected) {
   upstream_request_->encodeHeaders(large_headers, true);
   response->waitForEndStream();
   // Upstream stream reset.
-  EXPECT_EQ("503", response->headers().Status()->value().getStringView());
+  EXPECT_EQ("503", response->headers().getStatusValue());
 }
 
 // Regression test to make sure that configuring upstream logs over gRPC will not crash Envoy.
@@ -455,15 +470,16 @@ TEST_P(Http2UpstreamIntegrationTest, ConfigureHttpOverGrpcLogs) {
         const std::string yaml_string = R"EOF(
 name: router
 typed_config:
-  "@type": type.googleapis.com/envoy.config.filter.http.router.v2.Router
+  "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
   upstream_log:
     name: grpc_accesslog
     filter:
       not_health_check_filter: {}
     typed_config:
-      "@type": type.googleapis.com/envoy.config.accesslog.v2.HttpGrpcAccessLogConfig
+      "@type": type.googleapis.com/envoy.extensions.access_loggers.grpc.v3.HttpGrpcAccessLogConfig
       common_config:
         log_name: foo
+        transport_api_version: V3
         grpc_service:
           envoy_grpc:
             cluster_name: cluster_0
@@ -483,7 +499,7 @@ typed_config:
   // Send the response headers.
   upstream_request_->encodeHeaders(default_response_headers_, true);
   response->waitForEndStream();
-  EXPECT_EQ("200", response->headers().Status()->value().getStringView());
+  EXPECT_EQ("200", response->headers().getStatusValue());
 }
 
 } // namespace Envoy

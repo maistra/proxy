@@ -4,14 +4,16 @@
 # make sure we're interpreted by some minimal autoconf
 AC_PREREQ([2.59])
 
-AC_INIT([gperftools],[2.7.90],[gperftools@googlegroups.com])
+AC_INIT([gperftools],[2.8],[gperftools@googlegroups.com])
 # Update this value for every release!  (A:B:C will map to foo.so.(A-C).C.B)
 # http://www.gnu.org/software/libtool/manual/html_node/Updating-version-info.html
-TCMALLOC_SO_VERSION=9:4:5
-PROFILER_SO_VERSION=4:19:4
+TCMALLOC_SO_VERSION=9:5:5
+PROFILER_SO_VERSION=5:0:5
+TCMALLOC_AND_PROFILER_SO_VERSION=10:0:6
 
 AC_SUBST(TCMALLOC_SO_VERSION)
 AC_SUBST(PROFILER_SO_VERSION)
+AC_SUBST(TCMALLOC_AND_PROFILER_SO_VERSION)
 
 # The argument here is just something that should be in the current directory
 # (for sanity checking)
@@ -242,10 +244,13 @@ else
 fi
 
 # We hardcode HAVE_MMAP to 1. There are no interesting systems anymore
-# without functional mmap. And our windows builds aren't using
-# autoconf. So we keep HAVE_MMAP define, but only to distingush
-# windows and rest.
-AC_DEFINE(HAVE_MMAP, 1, [Define to 1 if you have a working `mmap' system call.])
+# without functional mmap. And our windows (except mingw) builds
+# aren't using autoconf. So we keep HAVE_MMAP define, but only to
+# distingush windows and rest.
+case "$host" in
+   *-mingw*) ;;
+   *) AC_DEFINE(HAVE_MMAP, 1, [Define to 1 if you have a working `mmap' system call.])
+esac
 
 # If AtomicWord != Atomic32, we need to define two versions of all the
 # atomicops functions.  If they're the same, we want to define only one.

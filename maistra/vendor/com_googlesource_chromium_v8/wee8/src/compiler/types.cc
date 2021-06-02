@@ -2,9 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include <iomanip>
-
 #include "src/compiler/types.h"
+
+#include <iomanip>
 
 #include "src/handles/handles-inl.h"
 #include "src/objects/instance-type.h"
@@ -218,6 +218,7 @@ Type::bitset BitsetType::Lub(const MapRefLike& map) {
     case JS_RELATIVE_TIME_FORMAT_TYPE:
     case JS_SEGMENT_ITERATOR_TYPE:
     case JS_SEGMENTER_TYPE:
+    case JS_SEGMENTS_TYPE:
 #endif  // V8_INTL_SUPPORT
     case JS_CONTEXT_EXTENSION_OBJECT_TYPE:
     case JS_GENERATOR_OBJECT_TYPE:
@@ -239,17 +240,18 @@ Type::bitset BitsetType::Lub(const MapRefLike& map) {
     case JS_MAP_VALUE_ITERATOR_TYPE:
     case JS_STRING_ITERATOR_TYPE:
     case JS_ASYNC_FROM_SYNC_ITERATOR_TYPE:
-    case JS_FINALIZATION_GROUP_TYPE:
-    case JS_FINALIZATION_GROUP_CLEANUP_ITERATOR_TYPE:
+    case JS_FINALIZATION_REGISTRY_TYPE:
     case JS_WEAK_MAP_TYPE:
     case JS_WEAK_REF_TYPE:
     case JS_WEAK_SET_TYPE:
     case JS_PROMISE_TYPE:
+    case WASM_ARRAY_TYPE:
     case WASM_EXCEPTION_OBJECT_TYPE:
     case WASM_GLOBAL_OBJECT_TYPE:
     case WASM_INSTANCE_OBJECT_TYPE:
     case WASM_MEMORY_OBJECT_TYPE:
     case WASM_MODULE_OBJECT_TYPE:
+    case WASM_STRUCT_TYPE:
     case WASM_TABLE_OBJECT_TYPE:
     case WEAK_CELL_TYPE:
       DCHECK(!map.is_callable());
@@ -283,7 +285,6 @@ Type::bitset BitsetType::Lub(const MapRefLike& map) {
     case GLOBAL_DICTIONARY_TYPE:
     case NUMBER_DICTIONARY_TYPE:
     case SIMPLE_NUMBER_DICTIONARY_TYPE:
-    case STRING_TABLE_TYPE:
     case EPHEMERON_HASH_TABLE_TYPE:
     case WEAK_FIXED_ARRAY_TYPE:
     case WEAK_ARRAY_LIST_TYPE:
@@ -293,7 +294,6 @@ Type::bitset BitsetType::Lub(const MapRefLike& map) {
     case BYTECODE_ARRAY_TYPE:
     case OBJECT_BOILERPLATE_DESCRIPTION_TYPE:
     case ARRAY_BOILERPLATE_DESCRIPTION_TYPE:
-    case DESCRIPTOR_ARRAY_TYPE:
     case TRANSITION_ARRAY_TYPE:
     case FEEDBACK_CELL_TYPE:
     case CLOSURE_FEEDBACK_CELL_ARRAY_TYPE:
@@ -309,6 +309,7 @@ Type::bitset BitsetType::Lub(const MapRefLike& map) {
     case EVAL_CONTEXT_TYPE:
     case FUNCTION_CONTEXT_TYPE:
     case MODULE_CONTEXT_TYPE:
+    case MODULE_REQUEST_TYPE:
     case NATIVE_CONTEXT_TYPE:
     case SCRIPT_CONTEXT_TYPE:
     case WITH_CONTEXT_TYPE:
@@ -322,54 +323,13 @@ Type::bitset BitsetType::Lub(const MapRefLike& map) {
     case PREPARSE_DATA_TYPE:
     case UNCOMPILED_DATA_WITHOUT_PREPARSE_DATA_TYPE:
     case UNCOMPILED_DATA_WITH_PREPARSE_DATA_TYPE:
+    case COVERAGE_INFO_TYPE:
+    case WASM_TYPE_INFO_TYPE:
       return kOtherInternal;
 
     // Remaining instance types are unsupported for now. If any of them do
     // require bit set types, they should get kOtherInternal.
-    case FREE_SPACE_TYPE:
-    case FILLER_TYPE:
-    case ACCESS_CHECK_INFO_TYPE:
-    case ASM_WASM_DATA_TYPE:
-    case CALL_HANDLER_INFO_TYPE:
-    case INTERCEPTOR_INFO_TYPE:
-    case OBJECT_TEMPLATE_INFO_TYPE:
-    case ALLOCATION_MEMENTO_TYPE:
-    case ALIASED_ARGUMENTS_ENTRY_TYPE:
-    case PROMISE_CAPABILITY_TYPE:
-    case PROMISE_REACTION_TYPE:
-    case CLASS_POSITIONS_TYPE:
-    case DEBUG_INFO_TYPE:
-    case STACK_FRAME_INFO_TYPE:
-    case STACK_TRACE_FRAME_TYPE:
-    case SMALL_ORDERED_HASH_MAP_TYPE:
-    case SMALL_ORDERED_HASH_SET_TYPE:
-    case SMALL_ORDERED_NAME_DICTIONARY_TYPE:
-    case PROTOTYPE_INFO_TYPE:
-    case INTERPRETER_DATA_TYPE:
-    case TEMPLATE_OBJECT_DESCRIPTION_TYPE:
-    case TUPLE2_TYPE:
-    case BREAK_POINT_TYPE:
-    case BREAK_POINT_INFO_TYPE:
-    case CACHED_TEMPLATE_OBJECT_TYPE:
-    case ENUM_CACHE_TYPE:
-    case WASM_CAPI_FUNCTION_DATA_TYPE:
-    case WASM_INDIRECT_FUNCTION_TABLE_TYPE:
-    case WASM_DEBUG_INFO_TYPE:
-    case WASM_EXCEPTION_TAG_TYPE:
-    case WASM_EXPORTED_FUNCTION_DATA_TYPE:
-    case WASM_JS_FUNCTION_DATA_TYPE:
-    case LOAD_HANDLER_TYPE:
-    case STORE_HANDLER_TYPE:
-    case ASYNC_GENERATOR_REQUEST_TYPE:
-    case CODE_DATA_CONTAINER_TYPE:
-    case CALLBACK_TASK_TYPE:
-    case CALLABLE_TASK_TYPE:
-    case PROMISE_FULFILL_REACTION_JOB_TASK_TYPE:
-    case PROMISE_REJECT_REACTION_JOB_TASK_TYPE:
-    case PROMISE_RESOLVE_THENABLE_JOB_TASK_TYPE:
-#define MAKE_TORQUE_CLASS_TYPE(V) case V:
-      TORQUE_INTERNAL_INSTANCE_TYPES(MAKE_TORQUE_CLASS_TYPE)
-#undef MAKE_TORQUE_CLASS_TYPE
+    default:
       UNREACHABLE();
   }
   UNREACHABLE();
@@ -563,7 +523,7 @@ bool Type::SlowIs(Type that) const {
   }
 
   if (that.IsRange()) {
-    return (this->IsRange() && Contains(that.AsRange(), this->AsRange()));
+    return this->IsRange() && Contains(that.AsRange(), this->AsRange());
   }
   if (this->IsRange()) return false;
 
@@ -840,7 +800,7 @@ Type Type::NormalizeRangeAndBitset(Type range, bitset* bits, Zone* zone) {
   return Type::Range(range_min, range_max, zone);
 }
 
-Type Type::NewConstant(double value, Zone* zone) {
+Type Type::Constant(double value, Zone* zone) {
   if (RangeType::IsInteger(value)) {
     return Range(value, value, zone);
   } else if (IsMinusZero(value)) {
@@ -853,14 +813,13 @@ Type Type::NewConstant(double value, Zone* zone) {
   return OtherNumberConstant(value, zone);
 }
 
-Type Type::NewConstant(JSHeapBroker* broker, Handle<i::Object> value,
-                       Zone* zone) {
+Type Type::Constant(JSHeapBroker* broker, Handle<i::Object> value, Zone* zone) {
   ObjectRef ref(broker, value);
   if (ref.IsSmi()) {
-    return NewConstant(static_cast<double>(ref.AsSmi()), zone);
+    return Constant(static_cast<double>(ref.AsSmi()), zone);
   }
   if (ref.IsHeapNumber()) {
-    return NewConstant(ref.AsHeapNumber().value(), zone);
+    return Constant(ref.AsHeapNumber().value(), zone);
   }
   if (ref.IsString() && !ref.IsInternalizedString()) {
     return Type::String();
@@ -1093,15 +1052,12 @@ Type Type::OtherNumberConstant(double value, Zone* zone) {
 }
 
 // static
-Type Type::HeapConstant(JSHeapBroker* broker, Handle<i::Object> value,
-                        Zone* zone) {
-  return FromTypeBase(
-      HeapConstantType::New(HeapObjectRef(broker, value), zone));
-}
-
-// static
 Type Type::HeapConstant(const HeapObjectRef& value, Zone* zone) {
-  return HeapConstantType::New(value, zone);
+  DCHECK(!value.IsHeapNumber());
+  DCHECK_IMPLIES(value.IsString(), value.IsInternalizedString());
+  BitsetType::bitset bitset = BitsetType::Lub(value.GetHeapObjectType());
+  if (Type(bitset).IsSingleton()) return Type(bitset);
+  return HeapConstantType::New(value, bitset, zone);
 }
 
 // static
@@ -1112,11 +1068,6 @@ Type Type::Range(double min, double max, Zone* zone) {
 // static
 Type Type::Range(RangeType::Limits lims, Zone* zone) {
   return FromTypeBase(RangeType::New(lims, zone));
-}
-
-// static
-Type Type::Union(int length, Zone* zone) {
-  return FromTypeBase(UnionType::New(length, zone));
 }
 
 const HeapConstantType* Type::AsHeapConstant() const {

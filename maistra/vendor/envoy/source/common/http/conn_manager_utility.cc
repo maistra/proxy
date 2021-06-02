@@ -6,15 +6,17 @@
 
 #include "envoy/type/v3/percent.pb.h"
 
-#include "common/access_log/access_log_formatter.h"
 #include "common/common/empty_string.h"
 #include "common/common/utility.h"
+#include "common/http/conn_manager_config.h"
+#include "common/http/header_utility.h"
 #include "common/http/headers.h"
 #include "common/http/http1/codec_impl.h"
 #include "common/http/http2/codec_impl.h"
 #include "common/http/path_utility.h"
 #include "common/http/utility.h"
 #include "common/network/utility.h"
+#include "common/runtime/runtime_features.h"
 #include "common/tracing/http_tracer_impl.h"
 
 #include "absl/strings/str_cat.h"
@@ -33,7 +35,7 @@ std::string ConnectionManagerUtility::determineNextProtocol(Network::Connection&
   // us the first few bytes of the HTTP/2 prefix since in all public cases we use SSL/ALPN. For
   // internal cases this should practically never happen.
   if (data.startsWith(Http2::CLIENT_MAGIC_PREFIX)) {
-    return Http2::ALPN_STRING;
+    return Utility::AlpnNames::get().Http2;
   }
 
   return "";
@@ -41,18 +43,22 @@ std::string ConnectionManagerUtility::determineNextProtocol(Network::Connection&
 
 ServerConnectionPtr ConnectionManagerUtility::autoCreateCodec(
     Network::Connection& connection, const Buffer::Instance& data,
-    ServerConnectionCallbacks& callbacks, Stats::Scope& scope, const Http1Settings& http1_settings,
+    ServerConnectionCallbacks& callbacks, Stats::Scope& scope, Random::RandomGenerator& random,
+    Http1::CodecStats::AtomicPtr& http1_codec_stats,
+    Http2::CodecStats::AtomicPtr& http2_codec_stats, const Http1Settings& http1_settings,
     const envoy::config::core::v3::Http2ProtocolOptions& http2_options,
     uint32_t max_request_headers_kb, uint32_t max_request_headers_count,
     envoy::config::core::v3::HttpProtocolOptions::HeadersWithUnderscoresAction
         headers_with_underscores_action) {
-  if (determineNextProtocol(connection, data) == Http2::ALPN_STRING) {
+  if (determineNextProtocol(connection, data) == Utility::AlpnNames::get().Http2) {
+    Http2::CodecStats& stats = Http2::CodecStats::atomicGet(http2_codec_stats, scope);
     return std::make_unique<Http2::ServerConnectionImpl>(
-        connection, callbacks, scope, http2_options, max_request_headers_kb,
+        connection, callbacks, stats, random, http2_options, max_request_headers_kb,
         max_request_headers_count, headers_with_underscores_action);
   } else {
+    Http1::CodecStats& stats = Http1::CodecStats::atomicGet(http1_codec_stats, scope);
     return std::make_unique<Http1::ServerConnectionImpl>(
-        connection, scope, callbacks, http1_settings, max_request_headers_kb,
+        connection, stats, callbacks, http1_settings, max_request_headers_kb,
         max_request_headers_count, headers_with_underscores_action);
   }
 }
@@ -105,13 +111,13 @@ Network::Address::InstanceConstSharedPtr ConnectionManagerUtility::mutateRequest
     // are but they didn't populate XFF properly, the trusted client address is the
     // source address of the immediate downstream's connection to us.
     if (final_remote_address == nullptr) {
-      final_remote_address = connection.remoteAddress();
+      final_remote_address = connection.addressProvider().remoteAddress();
     }
     if (!config.skipXffAppend()) {
-      if (Network::Utility::isLoopbackAddress(*connection.remoteAddress())) {
+      if (Network::Utility::isLoopbackAddress(*connection.addressProvider().remoteAddress())) {
         Utility::appendXff(request_headers, config.localAddress());
       } else {
-        Utility::appendXff(request_headers, *connection.remoteAddress());
+        Utility::appendXff(request_headers, *connection.addressProvider().remoteAddress());
       }
     }
     // If the prior hop is not a trusted proxy, overwrite any x-forwarded-proto value it set as
@@ -152,7 +158,7 @@ Network::Address::InstanceConstSharedPtr ConnectionManagerUtility::mutateRequest
   // After determining internal request status, if there is no final remote address, due to no XFF,
   // busted XFF, etc., use the direct connection remote address for logging.
   if (final_remote_address == nullptr) {
-    final_remote_address = connection.remoteAddress();
+    final_remote_address = connection.addressProvider().remoteAddress();
   }
 
   // Edge request is the request from external clients to front Envoy.
@@ -362,9 +368,10 @@ void ConnectionManagerUtility::mutateXfccRequestHeader(RequestHeaderMap& request
   }
 }
 
-void ConnectionManagerUtility::mutateResponseHeaders(
-    ResponseHeaderMap& response_headers, const RequestHeaderMap* request_headers,
-    const RequestIDExtensionSharedPtr& rid_extension, const std::string& via) {
+void ConnectionManagerUtility::mutateResponseHeaders(ResponseHeaderMap& response_headers,
+                                                     const RequestHeaderMap* request_headers,
+                                                     ConnectionManagerConfig& config,
+                                                     const std::string& via) {
   if (request_headers != nullptr && Utility::isUpgrade(*request_headers) &&
       Utility::isUpgrade(response_headers)) {
     // As in mutateRequestHeaders, Upgrade responses have special handling.
@@ -373,16 +380,26 @@ void ConnectionManagerUtility::mutateResponseHeaders(
     // upgrade response it has already passed the protocol checks.
     const bool no_body =
         (!response_headers.TransferEncoding() && !response_headers.ContentLength());
-    if (no_body) {
+
+    const bool is_1xx = CodeUtility::is1xx(Utility::getResponseStatus(response_headers));
+
+    // We are explicitly forbidden from setting content-length for 1xx responses
+    // (RFC7230, Section 3.3.2). We ignore 204 because this is an upgrade.
+    if (no_body && !is_1xx) {
       response_headers.setContentLength(uint64_t(0));
     }
   } else {
     response_headers.removeConnection();
+    if (Runtime::runtimeFeatureEnabled("envoy.reloadable_features.fix_upgrade_response")) {
+      response_headers.removeUpgrade();
+    }
   }
+
   response_headers.removeTransferEncoding();
 
-  if (request_headers != nullptr && request_headers->EnvoyForceTrace()) {
-    rid_extension->setInResponse(response_headers, *request_headers);
+  if (request_headers != nullptr &&
+      (config.alwaysSetRequestIdInResponse() || request_headers->EnvoyForceTrace())) {
+    config.requestIDExtension()->setInResponse(response_headers, *request_headers);
   }
   response_headers.removeKeepAlive();
   response_headers.removeProxyConnection();
@@ -394,7 +411,9 @@ void ConnectionManagerUtility::mutateResponseHeaders(
 
 bool ConnectionManagerUtility::maybeNormalizePath(RequestHeaderMap& request_headers,
                                                   const ConnectionManagerConfig& config) {
-  ASSERT(request_headers.Path());
+  if (!request_headers.Path()) {
+    return true; // It's as valid as it is going to get.
+  }
   bool is_valid_path = true;
   if (config.shouldNormalizePath()) {
     is_valid_path = PathUtil::canonicalPath(request_headers);
@@ -404,6 +423,16 @@ bool ConnectionManagerUtility::maybeNormalizePath(RequestHeaderMap& request_head
     PathUtil::mergeSlashes(request_headers);
   }
   return is_valid_path;
+}
+
+void ConnectionManagerUtility::maybeNormalizeHost(RequestHeaderMap& request_headers,
+                                                  const ConnectionManagerConfig& config,
+                                                  uint32_t port) {
+  if (config.stripPortType() == Http::StripPortType::Any) {
+    HeaderUtility::stripPortFromHost(request_headers, absl::nullopt);
+  } else if (config.stripPortType() == Http::StripPortType::MatchingHost) {
+    HeaderUtility::stripPortFromHost(request_headers, port);
+  }
 }
 
 } // namespace Http

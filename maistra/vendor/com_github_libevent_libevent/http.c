@@ -177,7 +177,7 @@ fake_getnameinfo(const struct sockaddr *sa, size_t salen, char *host,
 
 extern int debug;
 
-static evutil_socket_t bind_socket_ai(struct evutil_addrinfo *, int reuse);
+static evutil_socket_t create_bind_socket_nonblock(struct evutil_addrinfo *, int reuse);
 static evutil_socket_t bind_socket(const char *, ev_uint16_t, int reuse);
 static void name_from_addr(struct sockaddr *, ev_socklen_t, char **, char **);
 static struct evhttp_uri *evhttp_uri_parse_authority(char *source_uri);
@@ -417,6 +417,7 @@ evhttp_response_needs_body(struct evhttp_request *req)
 	return (req->response_code != HTTP_NOCONTENT &&
 		req->response_code != HTTP_NOTMODIFIED &&
 		(req->response_code < 100 || req->response_code >= 200) &&
+		req->type != EVHTTP_REQ_CONNECT &&
 		req->type != EVHTTP_REQ_HEAD);
 }
 
@@ -541,6 +542,9 @@ evhttp_is_connection_close(int flags, struct evkeyvalq* headers)
 static int
 evhttp_is_request_connection_close(struct evhttp_request *req)
 {
+	if (req->type == EVHTTP_REQ_CONNECT)
+		return 0;
+
 	return
 		evhttp_is_connection_close(req->flags, req->input_headers) ||
 		evhttp_is_connection_close(req->flags, req->output_headers);
@@ -873,6 +877,11 @@ evhttp_connection_fail_(struct evhttp_connection *evcon,
 	/* We are trying the next request that was queued on us */
 	if (TAILQ_FIRST(&evcon->requests) != NULL)
 		evhttp_connection_connect_(evcon);
+	else
+		if ((evcon->flags & EVHTTP_CON_OUTGOING) &&
+		    (evcon->flags & EVHTTP_CON_AUTOFREE)) {
+			evhttp_connection_free(evcon);
+		}
 
 	/* The call to evhttp_connection_reset_ overwrote errno.
 	 * Let's restore the original errno, so that the user's
@@ -1327,6 +1336,7 @@ evhttp_connection_free(struct evhttp_connection *evcon)
 	if (evcon->http_server != NULL) {
 		struct evhttp *http = evcon->http_server;
 		TAILQ_REMOVE(&http->connections, evcon, next);
+		http->connection_cnt--;
 	}
 
 	if (event_initialized(&evcon->retry_ev)) {
@@ -1488,8 +1498,10 @@ static void
 evhttp_connection_cb_cleanup(struct evhttp_connection *evcon)
 {
 	struct evcon_requestq requests;
+	EVUTIL_ASSERT(evcon->flags & EVHTTP_CON_OUTGOING);
 
 	evhttp_connection_reset_(evcon);
+
 	if (evcon->retry_max < 0 || evcon->retry_cnt < evcon->retry_max) {
 		struct timeval tv_retry = evcon->initial_retry_timeout;
 		int i;
@@ -1535,6 +1547,12 @@ evhttp_connection_cb_cleanup(struct evhttp_connection *evcon)
 		request->cb(request, request->cb_arg);
 		evhttp_request_free_auto(request);
 	}
+
+	if (TAILQ_FIRST(&evcon->requests) == NULL
+	  && (evcon->flags & EVHTTP_CON_AUTOFREE)) {
+		evhttp_connection_free(evcon);
+	}
+
 }
 
 static void
@@ -1998,12 +2016,23 @@ evhttp_parse_request_line(struct evhttp_request *req, char *line, size_t len)
 
 		ext_method.method = method;
 		ext_method.type = 0;
+		ext_method.flags = 0;
 
 		if (req->evcon->ext_method_cmp &&
 		    req->evcon->ext_method_cmp(&ext_method) == 0) {
-			/* TODO: make sure the other fields in ext_method are
+			/* make sure the other fields in ext_method are
 			 * not changed by the callback.
 			 */
+			if (strcmp(ext_method.method, method) != 0) {
+				event_warn("%s: modifying the 'method' field of ext_method_cmp's "
+					"parameter is not allowed", __func__);
+				return -1;
+			}
+			if (ext_method.flags != 0) {
+				event_warn("%s: modifying the 'flags' field of ext_method_cmp's "
+					"parameter is not allowed", __func__);
+				return -1;
+			}
 			type = ext_method.type;
 		}
 	}
@@ -2969,36 +2998,72 @@ evhttp_send_done(struct evhttp_connection *evcon, void *arg)
 /*
  * Returns an error page.
  */
-
 void
 evhttp_send_error(struct evhttp_request *req, int error, const char *reason)
 {
-
-#define ERR_FORMAT "<HTML><HEAD>\n" \
-	    "<TITLE>%d %s</TITLE>\n" \
-	    "</HEAD><BODY>\n" \
-	    "<H1>%s</H1>\n" \
-	    "</BODY></HTML>\n"
+#define ERR_FORMAT "<html><head>" \
+	"<title>%d %s</title>" \
+	"</head><body>" \
+	"<h1>%d %s</h1>%s" \
+	"</body></html>"
 
 	struct evbuffer *buf = evbuffer_new();
+	struct evhttp *http = req->evcon->http_server;
+
 	if (buf == NULL) {
 		/* if we cannot allocate memory; we just drop the connection */
 		evhttp_connection_free(req->evcon);
 		return;
 	}
-	if (reason == NULL) {
-		reason = evhttp_response_phrase_internal(error);
-	}
 
 	evhttp_response_code_(req, error, reason);
 
-	evbuffer_add_printf(buf, ERR_FORMAT, error, reason, reason);
+	/* Output error using callback for connection's evhttp, if available */
+	if ((http->errorcb == NULL) ||
+	    ((*http->errorcb)(req, buf, error, reason, http->errorcbarg) < 0))
+	{
+		const char *heading = evhttp_response_phrase_internal(error);
+
+		evbuffer_drain(buf, evbuffer_get_length(buf));
+		evbuffer_add_printf(buf, ERR_FORMAT,
+		   error, heading, error, heading,
+		   (reason ? reason : ""));
+	}
 
 	evhttp_send_page_(req, buf);
 
 	evbuffer_free(buf);
 #undef ERR_FORMAT
 }
+static void
+evhttp_send_notfound(struct evhttp_request *req, const char *url)
+{
+#define REASON_FORMAT "<p>The requested URL %s was not found on this server.</p>"
+	char   *escaped_url = NULL;
+	char   *reason = NULL;
+	size_t reason_len;
+
+	url = (url != NULL ? url : req->uri);
+	if (url != NULL)
+		escaped_url = evhttp_htmlescape(url);
+
+	if (escaped_url != NULL) {
+		reason_len = strlen(REASON_FORMAT)+strlen(escaped_url)+1;
+		reason = mm_malloc(reason_len);
+	}
+
+	if ((escaped_url != NULL) && (reason != NULL))
+		evutil_snprintf(reason, reason_len, REASON_FORMAT, escaped_url);
+
+	evhttp_send_error(req, HTTP_NOTFOUND, reason);
+
+	if (reason != NULL)
+		mm_free(reason);
+	if (escaped_url != NULL)
+		mm_free(escaped_url);
+#undef REASON_FORMAT
+}
+
 
 /* Requires that headers and response code are already set up */
 
@@ -3459,6 +3524,7 @@ evhttp_parse_query_impl(const char *str, struct evkeyvalq *headers,
 	p = argument = line;
 	while (p != NULL && *p != '\0') {
 		char *key, *value, *decoded_value;
+		int err;
 		argument = strsep(&p, "&");
 
 		value = argument;
@@ -3482,8 +3548,10 @@ evhttp_parse_query_impl(const char *str, struct evkeyvalq *headers,
 		event_debug(("Query Param: %s -> %s\n", key, decoded_value));
 		if (flags & EVHTTP_URI_QUERY_LAST_VAL)
 			evhttp_remove_header(headers, key);
-		evhttp_add_header_internal(headers, key, decoded_value);
+		err = evhttp_add_header_internal(headers, key, decoded_value);
 		mm_free(decoded_value);
+		if (err)
+			goto error;
 	}
 
 	result = 0;
@@ -3683,40 +3751,8 @@ evhttp_handle_request(struct evhttp_request *req, void *arg)
 	if (http->gencb) {
 		(*http->gencb)(req, http->gencbarg);
 		return;
-	} else {
-		/* We need to send a 404 here */
-#define ERR_FORMAT "<html><head>" \
-		    "<title>404 Not Found</title>" \
-		    "</head><body>" \
-		    "<h1>Not Found</h1>" \
-		    "<p>The requested URL %s was not found on this server.</p>"\
-		    "</body></html>\n"
-
-		char *escaped_html;
-		struct evbuffer *buf;
-
-		if ((escaped_html = evhttp_htmlescape(req->uri)) == NULL) {
-			evhttp_connection_free(req->evcon);
-			return;
-		}
-
-		if ((buf = evbuffer_new()) == NULL) {
-			mm_free(escaped_html);
-			evhttp_connection_free(req->evcon);
-			return;
-		}
-
-		evhttp_response_code_(req, HTTP_NOTFOUND, "Not Found");
-
-		evbuffer_add_printf(buf, ERR_FORMAT, escaped_html);
-
-		mm_free(escaped_html);
-
-		evhttp_send_page_(req, buf);
-
-		evbuffer_free(buf);
-#undef ERR_FORMAT
-	}
+	} else
+		evhttp_send_notfound(req, NULL);
 }
 
 /* Listener callback when a connection arrives at a server. */
@@ -4084,6 +4120,21 @@ evhttp_set_max_body_size(struct evhttp* http, ev_ssize_t max_body_size)
 }
 
 void
+evhttp_set_max_connections(struct evhttp* http, int max_connections)
+{
+	if (max_connections < 0)
+		http->connection_max = 0;
+	else
+		http->connection_max = max_connections;
+}
+
+int
+evhttp_get_connection_count(struct evhttp* http)
+{
+	return http->connection_cnt;
+}
+
+void
 evhttp_set_default_content_type(struct evhttp *http,
 	const char *content_type) {
 	http->default_content_type = content_type;
@@ -4172,6 +4223,14 @@ evhttp_set_newreqcb(struct evhttp *http,
 {
 	http->newreqcb = cb;
 	http->newreqcbarg = cbarg;
+}
+void
+evhttp_set_errorcb(struct evhttp *http,
+    int (*cb)(struct evhttp_request *, struct evbuffer *, int, const char *, void *),
+    void *cbarg)
+{
+	http->errorcb = cb;
+	http->errorcbarg = cbarg;
 }
 
 /*
@@ -4546,8 +4605,30 @@ evhttp_get_request(struct evhttp *http, evutil_socket_t fd,
 	evcon->http_server = http;
 	evcon->ext_method_cmp = http->ext_method_cmp;
 	TAILQ_INSERT_TAIL(&http->connections, evcon, next);
+	http->connection_cnt++;
 
-	if (evhttp_associate_new_request_with_connection(evcon) == -1)
+	/* send "service unavailable" if we've reached the connection limit */
+	if (http->connection_max && http->connection_max < http->connection_cnt) {
+		struct evhttp_request *req;
+
+		if ((req = evhttp_request_new(evhttp_handle_request, http)) == NULL) {
+			evhttp_connection_free(evcon);
+			return;
+		}
+
+		req->evcon = evcon;	/* the request owns the connection */
+		req->flags |= EVHTTP_REQ_OWN_CONNECTION;
+		req->kind = EVHTTP_REQUEST;
+		/* note, req->remote_host not needed since we don't read */
+
+		TAILQ_INSERT_TAIL(&evcon->requests, req, next);
+
+		/* send error to client */
+		evcon->state = EVCON_WRITING;
+		bufferevent_enable(evcon->bufev, EV_READ); /* enable close events */
+		evhttp_send_error(req, HTTP_SERVUNAVAIL, NULL);
+
+	} else if (evhttp_associate_new_request_with_connection(evcon) == -1)
 		evhttp_connection_free(evcon);
 }
 
@@ -4593,9 +4674,8 @@ name_from_addr(struct sockaddr *sa, ev_socklen_t salen,
 }
 
 /* Create a non-blocking socket and bind it */
-/* todo: rename this function */
 static evutil_socket_t
-bind_socket_ai(struct evutil_addrinfo *ai, int reuse)
+create_bind_socket_nonblock(struct evutil_addrinfo *ai, int reuse)
 {
 	evutil_socket_t fd;
 
@@ -4669,14 +4749,14 @@ bind_socket(const char *address, ev_uint16_t port, int reuse)
 
 	/* just create an unbound socket */
 	if (address == NULL && port == 0)
-		return bind_socket_ai(NULL, 0);
+		return create_bind_socket_nonblock(NULL, 0);
 
 	aitop = make_addrinfo(address, port);
 
 	if (aitop == NULL)
 		return (-1);
 
-	fd = bind_socket_ai(aitop, reuse);
+	fd = create_bind_socket_nonblock(aitop, reuse);
 
 	evutil_freeaddrinfo(aitop);
 

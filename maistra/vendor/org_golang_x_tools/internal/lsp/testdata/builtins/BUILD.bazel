@@ -1,11 +1,19 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "go_default_library",
+    name = "builtins",
     srcs = [
+        "builtin_args.go",
+        "builtin_types.go",
         "builtins.go",
-        "iota.go",
+        "constants.go",
     ],
     importpath = "golang.org/x/tools/internal/lsp/testdata/builtins",
+    visibility = ["//:__subpackages__"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":builtins",
     visibility = ["//:__subpackages__"],
 )

@@ -9,7 +9,7 @@
  *
  * This software is licensed as described in the file COPYING, which
  * you should have received as part of this distribution. The terms
- * are also available at https://curl.haxx.se/docs/copyright.html.
+ * are also available at https://curl.se/docs/copyright.html.
  *
  * You may opt to use, copy, modify, merge, publish, distribute and/or sell
  * copies of the Software, and permit persons to whom the Software is
@@ -210,7 +210,7 @@ int test(char *URL)
     mres = curl_multi_fdset(multi, &fdread, &fdwrite, &fdexcept, &maxfd);
     if(mres)
       break;
-#ifdef _WIN32
+#if defined(WIN32) || defined(_WIN32)
     if(maxfd == -1)
       Sleep(100);
     else

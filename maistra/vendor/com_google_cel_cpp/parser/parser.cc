@@ -1,5 +1,7 @@
 #include "parser/parser.h"
 
+#include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "absl/types/optional.h"
 #include "parser/cel_grammar.inc/cel_grammar/CelLexer.h"
 #include "parser/cel_grammar.inc/cel_grammar/CelParser.h"
@@ -15,39 +17,91 @@ namespace parser {
 using antlr4::ANTLRInputStream;
 using antlr4::CommonTokenStream;
 using antlr4::ParseCancellationException;
+using antlr4::ParserRuleContext;
+
+using antlr4::tree::ErrorNode;
+using antlr4::tree::TerminalNode;
 
 using google::api::expr::v1alpha1::Expr;
 using google::api::expr::v1alpha1::ParsedExpr;
 
-cel_base::StatusOr<ParsedExpr> Parse(const std::string& expression,
-                                 const std::string& description) {
-  return ParseWithMacros(expression, Macro::AllMacros(), description);
+namespace {
+
+// ExprRecursionListener extends the standard ANTLR CelParser to ensure that
+// recursive entries into the 'expr' rule are limited to a configurable depth so
+// as to prevent stack overflows.
+class ExprRecursionListener : public ::antlr4::tree::ParseTreeListener {
+ public:
+  ExprRecursionListener(
+      const int max_recursion_depth = kDefaultMaxRecursionDepth)
+      : max_recursion_depth_(max_recursion_depth), recursion_depth_(0) {}
+
+  void visitTerminal(TerminalNode* node) override{};
+  void visitErrorNode(ErrorNode* error) override{};
+  void enterEveryRule(ParserRuleContext* ctx) override;
+  void exitEveryRule(ParserRuleContext* ctx) override;
+
+ private:
+  const int max_recursion_depth_;
+  int recursion_depth_;
+};
+
+void ExprRecursionListener::enterEveryRule(ParserRuleContext* ctx) {
+  // Throw a ParseCancellationException since the parsing would otherwise
+  // continue if this were treated as a syntax error and the problem would
+  // continue to manifest.
+  if (ctx->getRuleIndex() == ::cel_grammar::CelParser::RuleExpr) {
+    if (recursion_depth_ >= max_recursion_depth_) {
+      throw ParseCancellationException(
+          absl::StrFormat("Expression recursion limit exceeded. limit: %d",
+                          max_recursion_depth_));
+    }
+    recursion_depth_++;
+  }
 }
 
-cel_base::StatusOr<ParsedExpr> ParseWithMacros(const std::string& expression,
+void ExprRecursionListener::exitEveryRule(ParserRuleContext* ctx) {
+  if (ctx->getRuleIndex() == ::cel_grammar::CelParser::RuleExpr) {
+    recursion_depth_--;
+  }
+}
+
+}  // namespace
+
+absl::StatusOr<ParsedExpr> Parse(const std::string& expression,
+                                 const std::string& description,
+                                 const int max_recursion_depth) {
+  return ParseWithMacros(expression, Macro::AllMacros(), description,
+                         max_recursion_depth);
+}
+
+absl::StatusOr<ParsedExpr> ParseWithMacros(const std::string& expression,
                                            const std::vector<Macro>& macros,
-                                           const std::string& description) {
-  auto result = EnrichedParse(expression, macros, description);
+                                           const std::string& description,
+                                           const int max_recursion_depth) {
+  auto result =
+      EnrichedParse(expression, macros, description, max_recursion_depth);
   if (result.ok()) {
     return result->parsed_expr();
   }
   return result.status();
 }
 
-cel_base::StatusOr<VerboseParsedExpr> EnrichedParse(
+absl::StatusOr<VerboseParsedExpr> EnrichedParse(
     const std::string& expression, const std::vector<Macro>& macros,
-    const std::string& description) {
+    const std::string& description, const int max_recursion_depth) {
   ANTLRInputStream input(expression);
   ::cel_grammar::CelLexer lexer(&input);
   CommonTokenStream tokens(&lexer);
   ::cel_grammar::CelParser parser(&tokens);
-
-  ParserVisitor visitor(description, expression, macros);
+  ExprRecursionListener listener(max_recursion_depth);
+  ParserVisitor visitor(description, expression, max_recursion_depth, macros);
 
   lexer.removeErrorListeners();
   parser.removeErrorListeners();
   lexer.addErrorListener(&visitor);
   parser.addErrorListener(&visitor);
+  parser.addParseListener(&listener);
 
   // if we were to ignore errors completely:
   // std::shared_ptr<BailErrorStrategy> error_strategy(new BailErrorStrategy());

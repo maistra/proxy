@@ -1,0 +1,25 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "fillstruct",
+    srcs = [
+        "a.go",
+        "a2.go",
+        "a3.go",
+        "a4.go",
+        "fill_struct.go",
+        "fill_struct_anon.go",
+        "fill_struct_nested.go",
+        "fill_struct_package.go",
+        "fill_struct_partial.go",
+        "fill_struct_spaces.go",
+    ],
+    importpath = "golang.org/x/tools/internal/lsp/testdata/fillstruct",
+    visibility = ["//:__subpackages__"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":fillstruct",
+    visibility = ["//:__subpackages__"],
+)
