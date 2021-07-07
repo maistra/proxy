@@ -19,17 +19,17 @@ gcloud auth activate-service-account --key-file="${GOOGLE_APPLICATION_CREDENTIAL
 gcloud config set project "${GCS_PROJECT}"
 
 # Build WASM extensions first
-bazel_build //extensions:stats.wasm
-bazel_build //extensions:metadata_exchange.wasm
-bazel_build //extensions:attributegen.wasm
-bazel_build @envoy//test/tools/wee8_compile:wee8_compile_tool
+CC=clang CXX=clang++ bazel_build //extensions:stats.wasm
+CC=clang CXX=clang++ bazel_build //extensions:metadata_exchange.wasm
+CC=clang CXX=clang++ bazel_build //extensions:attributegen.wasm
+CC=cc CXX=g++ bazel_build @envoy//test/tools/wee8_compile:wee8_compile_tool
 
-bazel-bin/external/envoy/test/tools/wee8_compile/wee8_compile_tool bazel-bin/extensions/stats.wasm bazel-bin/extensions/stats.compiled.wasm
-bazel-bin/external/envoy/test/tools/wee8_compile/wee8_compile_tool bazel-bin/extensions/metadata_exchange.wasm bazel-bin/extensions/metadata_exchange.compiled.wasm
-bazel-bin/external/envoy/test/tools/wee8_compile/wee8_compile_tool bazel-bin/extensions/attributegen.wasm bazel-bin/extensions/attributegen.compiled.wasm
+CC=clang CXX=clang++ bazel-bin/external/envoy/test/tools/wee8_compile/wee8_compile_tool bazel-bin/extensions/stats.wasm bazel-bin/extensions/stats.compiled.wasm
+CC=clang CXX=clang++ bazel-bin/external/envoy/test/tools/wee8_compile/wee8_compile_tool bazel-bin/extensions/metadata_exchange.wasm bazel-bin/extensions/metadata_exchange.compiled.wasm
+CC=clang CXX=clang++ bazel-bin/external/envoy/test/tools/wee8_compile/wee8_compile_tool bazel-bin/extensions/attributegen.wasm bazel-bin/extensions/attributegen.compiled.wasm
 
 # Build Envoy
-bazel_build //src/envoy:envoy_tar
+CC=cc CXX=g++ bazel_build //src/envoy:envoy_tar
 
 # Copy artifacts to GCS
 SHA="$(git rev-parse --verify HEAD)"

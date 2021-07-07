@@ -13,25 +13,25 @@ DIR=$(cd "$(dirname "$0")" ; pwd -P)
 source "${DIR}/common.sh"
 
 # Build WASM extensions first
-bazel_build //extensions:stats.wasm
-bazel_build //extensions:metadata_exchange.wasm
-bazel_build //extensions:attributegen.wasm
-bazel_build @envoy//test/tools/wee8_compile:wee8_compile_tool
+CC=clang CXX=clang++ bazel_build //extensions:stats.wasm
+CC=clang CXX=clang++ bazel_build //extensions:metadata_exchange.wasm
+CC=clang CXX=clang++ bazel_build //extensions:attributegen.wasm
+CC=cc CXX=g++ bazel_build @envoy//test/tools/wee8_compile:wee8_compile_tool
 
-bazel-bin/external/envoy/test/tools/wee8_compile/wee8_compile_tool bazel-bin/extensions/stats.wasm bazel-bin/extensions/stats.compiled.wasm
-bazel-bin/external/envoy/test/tools/wee8_compile/wee8_compile_tool bazel-bin/extensions/metadata_exchange.wasm bazel-bin/extensions/metadata_exchange.compiled.wasm
-bazel-bin/external/envoy/test/tools/wee8_compile/wee8_compile_tool bazel-bin/extensions/attributegen.wasm bazel-bin/extensions/attributegen.compiled.wasm
+CC=clang CXX=clang++ bazel-bin/external/envoy/test/tools/wee8_compile/wee8_compile_tool bazel-bin/extensions/stats.wasm bazel-bin/extensions/stats.compiled.wasm
+CC=clang CXX=clang++ bazel-bin/external/envoy/test/tools/wee8_compile/wee8_compile_tool bazel-bin/extensions/metadata_exchange.wasm bazel-bin/extensions/metadata_exchange.compiled.wasm
+CC=clang CXX=clang++ bazel-bin/external/envoy/test/tools/wee8_compile/wee8_compile_tool bazel-bin/extensions/attributegen.wasm bazel-bin/extensions/attributegen.compiled.wasm
 
 echo "WASM extensions built succesfully. Now building envoy binary."
 
 # Build Envoy
-bazel_build //src/envoy:envoy
+CC=cc CXX=g++ bazel_build //src/envoy:envoy
 
 echo "Build succeeded. Binary generated:"
 bazel-bin/src/envoy/envoy --version
 
 # Run tests
-bazel_test //src/... //test/...
+CC=cc CXX=g++ bazel_test //src/... //test/...
 
 export GOPROXY=off
 export ENVOY_PATH=bazel-bin/src/envoy/envoy

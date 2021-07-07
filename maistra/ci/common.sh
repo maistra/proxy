@@ -21,7 +21,7 @@ COMMON_FLAGS="\
     --config=${ARCH} \
     --local_ram_resources=12288 \
     --local_cpu_resources=4 \
-    --jobs=4 \
+    --jobs=2 \
     --disk_cache=/bazel-cache \
 "
 
