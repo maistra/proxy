@@ -20,7 +20,7 @@ time bazel build \
   --incompatible_linkopts_to_linklibs \
   --local_ram_resources=12288 \
   --local_cpu_resources=4 \
-  --jobs=4 \
+  --jobs=2 \
   --disk_cache=/bazel-cache \
   //source/exe:envoy-static
 
@@ -32,7 +32,7 @@ time bazel test \
   --incompatible_linkopts_to_linklibs \
   --local_ram_resources=12288 \
   --local_cpu_resources=4 \
-  --jobs=4 \
+  --jobs=2 \
   --build_tests_only \
   --test_env=ENVOY_IP_TEST_VERSIONS=v4only \
   --test_output=all \

@@ -1,6 +1,6 @@
 # Install pip requirements.
 #
-# Generated from /tmp/tmp.GjSURvb70b/external/envoy/test/extensions/filters/network/thrift_proxy/requirements.txt
+# Generated from /tmp/tmp.vJJ9S98rTz/external/envoy/test/extensions/filters/network/thrift_proxy/requirements.txt
 
 load("@rules_python//python:whl.bzl", "whl_library")
 
