@@ -1,6 +1,6 @@
 # Install pip requirements.
 #
-# Generated from /tmp/tmp.Rq2ABqxOku/external/envoy/configs/requirements.txt
+# Generated from /tmp/tmp.BjNAnDDv6t/external/envoy/configs/requirements.txt
 
 load("@rules_python//python:whl.bzl", "whl_library")
 
