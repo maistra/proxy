@@ -219,7 +219,10 @@ public:
   // Add a listener filter prior to existing filters.
   void addListenerFilter(const std::string& filter_yaml);
 
-  // Sets the client codec to the specified type.
+  // Add a new bootstrap extension.
+  void addBootstrapExtension(const std::string& config);
+
+   // Sets the client codec to the specified type.
   void setClientCodec(envoy::extensions::filters::network::http_connection_manager::v3::
                           HttpConnectionManager::CodecType type);
 
