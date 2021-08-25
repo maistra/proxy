@@ -14,8 +14,6 @@ WINDOWS_SKIP_TARGETS = [
     "envoy.tracers.opencensus",
 ]
 
-S390X_SKIP_TARGETS = ["envoy.filters.http.lua"]
-
 # Make all contents of an external repository accessible under a filegroup.  Used for external HTTP
 # archives, e.g. cares.
 def _build_all_content(exclude = []):
@@ -845,7 +843,10 @@ def _com_github_luajit_luajit():
     external_http_archive(
         name = "com_github_luajit_luajit",
         build_file_content = BUILD_ALL_CONTENT,
-        patches = ["@envoy//bazel/foreign_cc:luajit.patch"],
+        patches = [
+            "@envoy//bazel/foreign_cc:luajit.patch",
+            "@envoy//bazel/foreign_cc:luajit-s390x.patch",
+        ],
         patch_args = ["-p1"],
         patch_cmds = ["chmod u+x build.py"],
     )
