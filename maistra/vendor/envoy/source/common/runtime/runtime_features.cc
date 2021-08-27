@@ -74,6 +74,8 @@ constexpr const char* runtime_features[] = {
     "envoy.reloadable_features.http_default_alpn",
     "envoy.reloadable_features.http_match_on_all_headers",
     "envoy.reloadable_features.http_set_copy_replace_all_headers",
+    "envoy.reloadable_features.http_reject_path_with_fragment",
+    "envoy.reloadable_features.http_strip_fragment_from_path_unsafe_if_disabled",
     "envoy.reloadable_features.http_transport_failure_reason_in_body",
     "envoy.reloadable_features.http_upstream_wait_connect_response",
     "envoy.reloadable_features.http2_skip_encoding_empty_trailers",
@@ -111,6 +113,9 @@ constexpr const char* disabled_runtime_features[] = {
     "envoy.reloadable_features.upstream_http2_flood_checks",
     // Sentinel and test flag.
     "envoy.reloadable_features.test_feature_false",
+    // When matching active listeners and wildcard matching is used, pick the listener
+    // with the same IP family type as the socket address
+    "envoy.reloadable_features.listener_wildcard_match_ip_family",
 };
 
 RuntimeFeatures::RuntimeFeatures() {
