@@ -25,6 +25,28 @@ COMMON_FLAGS="\
     --disk_cache=/bazel-cache \
 "
 
+function fix_include_paths() {
+  local pwd=`pwd`
+  pushd maistra/vendor/envoy
+
+  patch -p1 < "$pwd/maistra/ci/modify-envoy-paths.patch"
+  rm -rf envoy
+  mv include/envoy ./
+  find ./envoy ./test ./source ./tools -name BUILD -print0 | xargs -0 sed -i 's/"\/\/include\//"\/\//g'
+  find ./source -name BUILD -print0 | xargs -0 sed -i 's/"@envoy\/\/include\//"@envoy\/\//g'
+  for dir in common docs exe extensions server; do
+    find ./envoy ./source ./test ./tools \( -name \*.h -o -name \*.cc -o -name \*.j2 \) -print0 | xargs -0 sed -i "/Common.pb.h/!s/#include \"$dir\//#include \"source\/$dir\//g"
+  done
+
+  popd
+
+  patch -p1 < "$pwd/maistra/ci/modify-proxy-paths.patch"
+  find ./src ./extensions ./test -name BUILD -print0 | xargs -0 sed -i 's/"@envoy\/\/include\//"@envoy\/\//g'
+  for dir in common docs exe server; do
+    find ./src ./test ./extensions \( -name \*.h -o -name \*.cc \) -print0 | xargs -0 sed -i "s/#include \"$dir\//#include \"source\/$dir\//g"
+  done
+}
+
 function bazel_build() {
   bazel build \
     ${COMMON_FLAGS} \

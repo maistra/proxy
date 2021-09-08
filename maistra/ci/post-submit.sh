@@ -12,6 +12,9 @@ DIR=$(cd "$(dirname "$0")" ; pwd -P)
 # shellcheck disable=SC1090
 source "${DIR}/common.sh"
 
+# modify include paths to avoid overly long gcc command line
+fix_include_paths()
+
 GCS_PROJECT=${GCS_PROJECT:-maistra-prow-testing}
 ARTIFACTS_GCS_PATH=${ARTIFACTS_GCS_PATH:-gs://maistra-prow-testing/proxy}
 
