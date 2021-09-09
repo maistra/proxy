@@ -12,9 +12,6 @@ DIR=$(cd "$(dirname "$0")" ; pwd -P)
 # shellcheck disable=SC1090
 source "${DIR}/common.sh"
 
-# modify include paths to avoid overly long gcc command line
-fix_include_paths
-
 # Build WASM extensions first
 CC=clang CXX=clang++ bazel_build //extensions:stats.wasm
 CC=clang CXX=clang++ bazel_build //extensions:metadata_exchange.wasm

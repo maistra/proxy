@@ -57,3 +57,6 @@ function bazel_test() {
 # Fix path to the vendor deps
 sed -i "s|=/work/|=$(pwd)/|" maistra/bazelrc-vendor
 sed -i "s|/work/|$(pwd)/|" maistra/vendor/proxy_wasm_cpp_sdk/toolchain/cc_toolchain_config.bzl
+
+# modify include paths to avoid overly long gcc command line
+fix_include_paths
