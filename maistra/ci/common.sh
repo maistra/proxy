@@ -20,8 +20,8 @@ COMMON_FLAGS="\
     --config=release \
     --config=${ARCH} \
     --local_ram_resources=12288 \
-    --local_cpu_resources=8 \
-    --jobs=4 \
+    --local_cpu_resources=6 \
+    --jobs=3 \
     --disk_cache=/bazel-cache \
 "
 
