@@ -2,7 +2,7 @@
 
 set -e
 set -o pipefail
-set -xi
+set -x
 
 rm -rf envoy
 mv include/envoy ./

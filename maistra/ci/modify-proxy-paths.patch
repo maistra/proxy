@@ -1,0 +1,171 @@
+From 6f0f8426104a7705ded0d47df7a5bc34e130ec96 Mon Sep 17 00:00:00 2001
+From: Dmitri Dolguikh <dmitri@appliedlogic.ca>
+Date: Thu, 17 Jun 2021 19:55:48 -0700
+Subject: [PATCH] build: modify include paths to correspond to changes in envoy
+
+---
+ extensions/attributegen/plugin_test.cc                        | 4 ++--
+ extensions/common/proto_util_speed_test.cc                    | 4 ++--
+ src/envoy/extensions/wasm/wasm.cc                             | 2 +-
+ src/envoy/http/alpn/alpn_filter.h                             | 2 +-
+ src/envoy/http/alpn/config.h                                  | 2 +-
+ src/envoy/http/authn/filter_context.h                         | 2 +-
+ src/envoy/http/authn/http_filter_integration_test.cc          | 2 +-
+ src/envoy/tcp/metadata_exchange/config.h                      | 2 +-
+ src/envoy/tcp/metadata_exchange/metadata_exchange.h           | 2 +-
+ test/integration/exchanged_token_integration_test.cc          | 2 +-
+ .../istio_http_integration_test_with_envoy_jwt_filter.cc      | 2 +-
+ 11 files changed, 13 insertions(+), 13 deletions(-)
+
+diff --git a/extensions/attributegen/plugin_test.cc b/extensions/attributegen/plugin_test.cc
+index 86db14dd8a..fff0a1293f 100644
+--- a/extensions/attributegen/plugin_test.cc
++++ b/extensions/attributegen/plugin_test.cc
+@@ -21,8 +21,8 @@
+ #include "common/stats/isolated_store_impl.h"
+ #include "common/stream_info/stream_info_impl.h"
+ #include "envoy/server/lifecycle_notifier.h"
+-#include "extensions/filters/common/expr/cel_state.h"
+-#include "extensions/filters/http/wasm/wasm_filter.h"
++#include "source/extensions/filters/common/expr/cel_state.h"
++#include "source/extensions/filters/http/wasm/wasm_filter.h"
+ #include "gmock/gmock.h"
+ #include "gtest/gtest.h"
+ #include "test/mocks/grpc/mocks.h"
+diff --git a/extensions/common/proto_util_speed_test.cc b/extensions/common/proto_util_speed_test.cc
+index 8a388f041a..e2be8c153f 100644
+--- a/extensions/common/proto_util_speed_test.cc
++++ b/extensions/common/proto_util_speed_test.cc
+@@ -14,10 +14,10 @@
+  */
+ 
+ #include "benchmark/benchmark.h"
+-#include "common/stream_info/filter_state_impl.h"
++#include "source/common/stream_info/filter_state_impl.h"
+ #include "extensions/common/node_info_generated.h"
+ #include "extensions/common/proto_util.h"
+-#include "extensions/filters/common/expr/cel_state.h"
++#include "source/extensions/filters/common/expr/cel_state.h"
+ #include "google/protobuf/util/json_util.h"
+ 
+ // WASM_PROLOG
+diff --git a/src/envoy/extensions/wasm/wasm.cc b/src/envoy/extensions/wasm/wasm.cc
+index b8f1164de3..7827a06362 100644
+--- a/src/envoy/extensions/wasm/wasm.cc
++++ b/src/envoy/extensions/wasm/wasm.cc
+@@ -12,7 +12,7 @@
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+  */
+-#include "extensions/common/wasm/wasm.h"
++#include "source/extensions/common/wasm/wasm.h"
+ 
+ #include "common/stats/utility.h"
+ #include "common/version/version.h"
+diff --git a/src/envoy/http/alpn/alpn_filter.h b/src/envoy/http/alpn/alpn_filter.h
+index 302c4a7e35..2df65d3e34 100644
+--- a/src/envoy/http/alpn/alpn_filter.h
++++ b/src/envoy/http/alpn/alpn_filter.h
+@@ -16,7 +16,7 @@
+ #pragma once
+ 
+ #include "envoy/config/filter/http/alpn/v2alpha1/config.pb.h"
+-#include "extensions/filters/http/common/pass_through_filter.h"
++#include "source/extensions/filters/http/common/pass_through_filter.h"
+ 
+ namespace Envoy {
+ namespace Http {
+diff --git a/src/envoy/http/alpn/config.h b/src/envoy/http/alpn/config.h
+index e36db7f12c..49d6dd15e3 100644
+--- a/src/envoy/http/alpn/config.h
++++ b/src/envoy/http/alpn/config.h
+@@ -16,7 +16,7 @@
+ #pragma once
+ 
+ #include "envoy/config/filter/http/alpn/v2alpha1/config.pb.h"
+-#include "extensions/filters/http/common/factory_base.h"
++#include "source/extensions/filters/http/common/factory_base.h"
+ 
+ namespace Envoy {
+ namespace Http {
+diff --git a/src/envoy/http/authn/filter_context.h b/src/envoy/http/authn/filter_context.h
+index 0163d64942..81d368781c 100644
+--- a/src/envoy/http/authn/filter_context.h
++++ b/src/envoy/http/authn/filter_context.h
+@@ -21,7 +21,7 @@
+ #include "envoy/config/filter/http/authn/v2alpha1/config.pb.h"
+ #include "envoy/http/filter.h"
+ #include "envoy/network/connection.h"
+-#include "extensions/filters/http/well_known_names.h"
++#include "source/extensions/filters/http/well_known_names.h"
+ #include "src/istio/authn/context.pb.h"
+ 
+ namespace Envoy {
+diff --git a/src/envoy/http/authn/http_filter_integration_test.cc b/src/envoy/http/authn/http_filter_integration_test.cc
+index dd9b0d0cd5..f0ba6428f2 100644
+--- a/src/envoy/http/authn/http_filter_integration_test.cc
++++ b/src/envoy/http/authn/http_filter_integration_test.cc
+@@ -15,7 +15,7 @@
+ 
+ #include "common/common/base64.h"
+ #include "common/common/utility.h"
+-#include "extensions/filters/http/well_known_names.h"
++#include "source/extensions/filters/http/well_known_names.h"
+ #include "fmt/printf.h"
+ #include "src/envoy/utils/filter_names.h"
+ #include "src/istio/authn/context.pb.h"
+diff --git a/src/envoy/tcp/metadata_exchange/config.h b/src/envoy/tcp/metadata_exchange/config.h
+index 74156d9005..36b5f865bc 100644
+--- a/src/envoy/tcp/metadata_exchange/config.h
++++ b/src/envoy/tcp/metadata_exchange/config.h
+@@ -15,7 +15,7 @@
+ 
+ #pragma once
+ 
+-#include "extensions/filters/network/common/factory_base.h"
++#include "source/extensions/filters/network/common/factory_base.h"
+ #include "src/envoy/tcp/metadata_exchange/config/metadata_exchange.pb.h"
+ 
+ namespace Envoy {
+diff --git a/src/envoy/tcp/metadata_exchange/metadata_exchange.h b/src/envoy/tcp/metadata_exchange/metadata_exchange.h
+index bfb0ca5739..e284a1b41f 100644
+--- a/src/envoy/tcp/metadata_exchange/metadata_exchange.h
++++ b/src/envoy/tcp/metadata_exchange/metadata_exchange.h
+@@ -27,7 +27,7 @@
+ #include "extensions/common/context.h"
+ #include "extensions/common/node_info_bfbs_generated.h"
+ #include "extensions/common/proto_util.h"
+-#include "extensions/filters/common/expr/cel_state.h"
++#include "source/extensions/filters/common/expr/cel_state.h"
+ #include "src/envoy/tcp/metadata_exchange/config/metadata_exchange.pb.h"
+ 
+ namespace Envoy {
+diff --git a/test/integration/exchanged_token_integration_test.cc b/test/integration/exchanged_token_integration_test.cc
+index c262ba6953..b213fe2927 100644
+--- a/test/integration/exchanged_token_integration_test.cc
++++ b/test/integration/exchanged_token_integration_test.cc
+@@ -18,7 +18,7 @@
+ // (jwt-authn + istio-authn). Filters pass on processing
+ // results next filters using the request info through dynamic metadata.
+ 
+-#include "extensions/filters/http/well_known_names.h"
++#include "source/extensions/filters/http/well_known_names.h"
+ #include "fmt/printf.h"
+ #include "gmock/gmock.h"
+ #include "src/envoy/utils/filter_names.h"
+diff --git a/test/integration/istio_http_integration_test_with_envoy_jwt_filter.cc b/test/integration/istio_http_integration_test_with_envoy_jwt_filter.cc
+index 4f1cd43075..8471ad02a8 100644
+--- a/test/integration/istio_http_integration_test_with_envoy_jwt_filter.cc
++++ b/test/integration/istio_http_integration_test_with_envoy_jwt_filter.cc
+@@ -19,7 +19,7 @@
+ // metadata) and that information can only be observed at the end.
+ 
+ #include "envoy/config/trace/v3/zipkin.pb.h"
+-#include "extensions/filters/http/well_known_names.h"
++#include "source/extensions/filters/http/well_known_names.h"
+ #include "fmt/printf.h"
+ #include "gmock/gmock.h"
+ #include "src/envoy/utils/filter_names.h"
+-- 
+2.29.2
+
