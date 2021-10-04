@@ -5,7 +5,8 @@ load("@envoy_api//bazel:external_deps.bzl", "load_repository_locations")
 load(":repository_locations.bzl", "REPOSITORY_LOCATIONS_SPEC")
 load("@com_google_googleapis//:repository_rules.bzl", "switched_rules_by_language")
 
-PPC_SKIP_TARGETS = ["envoy.filters.http.lua"]
+# maistra/envoy uses luajit2 on ppc64le so http.lua can be built
+PPC_SKIP_TARGETS = []
 
 WINDOWS_SKIP_TARGETS = [
     "envoy.tracers.dynamic_ot",
