@@ -261,6 +261,39 @@ typed_config:
   EXPECT_EQ(2, stats().fail_verify_error_.value());
 }
 
+TEST_F(TestSPIFFEValidator, TestDoVerifyCertChainIntermediateCerts) {
+  initialize(TestEnvironment::substitute(R"EOF(
+name: envoy.tls.cert_validator.spiffe
+typed_config:
+  "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.SPIFFECertValidatorConfig
+  trust_domains:
+    - name: example.com
+      trust_bundle:
+        filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/ca_cert.pem"
+  )EOF"));
+
+  X509StorePtr ssl_ctx = X509_STORE_new();
+
+  // Chain contains workload, intermediate, and ca cert, so it should be accepted.
+  auto cert = readCertFromFile(TestEnvironment::substitute(
+      "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/spiffe_san_signed_by_intermediate_cert.pem"));
+  auto intermediate_ca_cert = readCertFromFile(TestEnvironment::substitute(
+      "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/intermediate_ca_cert.pem"));
+  auto ca_cert = readCertFromFile(TestEnvironment::substitute(
+      "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/ca_cert.pem"));
+
+  STACK_OF(X509) *intermediates = sk_X509_new_null();
+  sk_X509_push(intermediates, ca_cert.release());
+  sk_X509_push(intermediates, intermediate_ca_cert.release());
+  sk_X509_push(intermediates, cert.get()); // not necessary, but reflects real-world use-case
+
+  X509StoreContextPtr store_ctx = X509_STORE_CTX_new();
+  EXPECT_TRUE(X509_STORE_CTX_init(store_ctx.get(), ssl_ctx.get(), cert.get(), intermediates));
+  EXPECT_TRUE(validator().doVerifyCertChain(store_ctx.get(), nullptr, *cert, nullptr));
+
+  sk_X509_pop_free(intermediates, X509_free);
+}
+
 TEST_F(TestSPIFFEValidator, TestDoVerifyCertChainMultipleTrustDomain) {
   initialize(TestEnvironment::substitute(R"EOF(
 name: envoy.tls.cert_validator.spiffe
