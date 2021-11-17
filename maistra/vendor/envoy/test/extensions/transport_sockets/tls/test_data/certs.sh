@@ -273,6 +273,12 @@ generate_x509_cert spiffe_san ca
 generate_rsa_key non_spiffe_san
 generate_x509_cert non_spiffe_san ca
 
+cp -f spiffe_san_cert.cfg spiffe_san_signed_by_intermediate_cert.cfg
+generate_rsa_key spiffe_san_signed_by_intermediate
+generate_x509_cert spiffe_san_signed_by_intermediate intermediate_ca
+rm -f spiffe_san_signed_by_intermediate_cert.cfg
+cat spiffe_san_signed_by_intermediate_cert.pem intermediate_ca_cert.pem ca_cert.pem > spiffe_san_signed_by_intermediate_cert_chain.pem
+
 cp -f spiffe_san_cert.cfg expired_spiffe_san_cert.cfg
 generate_rsa_key expired_spiffe_san
 generate_x509_cert expired_spiffe_san ca -365
