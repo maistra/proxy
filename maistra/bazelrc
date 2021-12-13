@@ -28,7 +28,7 @@ build --test_output=all
 
 # Arch-specific build flags, triggered with --config=$ARCH in bazel build command
 build:x86_64 --copt -fcf-protection=full
-build:s390x --define=DUMMY=dummy
+build:s390x --@envoy//source/extensions/filters/common/lua:luajit2=1
 build:ppc --@envoy//source/extensions/filters/common/lua:luajit2=1
 build:aarch64 --define=DUMMY=dummy
 
