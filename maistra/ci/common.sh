@@ -60,3 +60,7 @@ sed -i "s|/work/|$(pwd)/|" maistra/vendor/proxy_wasm_cpp_sdk/toolchain/cc_toolch
 
 # modify include paths to avoid overly long gcc command line
 fix_include_paths
+
+# wasm fix for s390x https://issues.redhat.com/browse/MAISTRA-2648
+# the permanent fix is https://github.com/proxy-wasm/proxy-wasm-cpp-host/pull/198 (not a part of maistra/envoy yet)
+patch -p1 -i maistra/ci/proxy-wasm-cpp-host.patch
