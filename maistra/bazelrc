@@ -1,0 +1,34 @@
+# Common build flags
+build --copt -fPIE
+build --copt -fPIC
+build --copt -fstack-clash-protection
+build --copt -fplugin=annobin
+build --copt -fstack-protector-all
+build --copt -fstack-protector-strong
+build --copt -O2
+build --copt -fexceptions
+build --copt -D_GLIBCXX_ASSERTIONS
+build --copt -D_GLIBCXX_USE_CXX11_ABI=1
+build --copt -DENVOY_IGNORE_GLIBCXX_USE_CXX11_ABI_ERROR=1
+build --copt -Wno-error=deprecated-declarations
+build --copt -Wno-error=unused-variable
+build --copt -ldl
+build --host_force_python=PY3
+#build --host_javabase=@local_jdk//:jdk
+build --host_javabase=@bazel_tools//tools/jdk:absolute_javabase --define=ABSOLUTE_JAVABASE=/etc/alternatives/java_sdk/
+build --force_pic=true
+build --verbose_failures
+
+# Test flags
+build --test_env=ENVOY_IP_TEST_VERSIONS=v4only
+build --test_env=HEAPCHECK=minimal
+build --test_output=all
+
+# Arch-specific build flags, triggered with --config=$ARCH in bazel build command
+build:x86_64 --copt -fcf-protection=full
+build:s390x --define=DUMMY=dummy
+build:ppc --@envoy//source/extensions/filters/common/lua:luajit2=1
+build:aarch64 --define=DUMMY=dummy
+
+# Import vendor flags
+import %workspace%/maistra/bazelrc-vendor
