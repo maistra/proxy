@@ -33,9 +33,9 @@ bazel-bin/src/envoy/envoy --version
 # Run tests
 CC=cc CXX=g++ bazel_test //src/... //test/...
 
-export GOPROXY=off
 export ENVOY_PATH=bazel-bin/src/envoy/envoy
 export GO111MODULE=on
+export GOPATH=$HOME/go
 
 go test ./...
 WASM=true go test ./test/envoye2e/stats_plugin/...
