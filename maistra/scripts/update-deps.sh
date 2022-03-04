@@ -24,7 +24,6 @@ function init(){
   OUTPUT_BASE="$(mktemp -d)"
   VENDOR_DIR="${ROOT_DIR}/maistra/vendor"
   BAZELRC="${ROOT_DIR}/maistra/bazelrc-vendor"
-  PATCHES_DIR="${ROOT_DIR}/maistra/patches"
 
   rm -rf "${OUTPUT_BASE}" &&  mkdir -p "${OUTPUT_BASE}"
   rm -rf "${VENDOR_DIR}" &&  mkdir -p "${VENDOR_DIR}"
@@ -33,7 +32,7 @@ function init(){
 
   IGNORE_LIST=(
         "bazel_tools"
-	"envoy_api"
+        "envoy_api"
         "envoy_build_config"
         "local_config_cc"
         "local_jdk"
@@ -92,16 +91,8 @@ function copy_files() {
 done
 }
 
-function apply_local_patches() {
-  sed -i 's/fatal_linker_warnings = true/fatal_linker_warnings = false/g' ${VENDOR_DIR}/com_googlesource_chromium_v8/wee8/build/config/compiler/BUILD.gn
-  sed -i 's/GO_VERSION[ ]*=.*/GO_VERSION = "host"/g' ${VENDOR_DIR}/envoy/bazel/dependency_imports.bzl
-}
-
 function run_bazel() {
-  bazel --output_base="${OUTPUT_BASE}" fetch //... || true
-
-  # For some reason the command above does not fetch emscripten, so, fetch it manually
-  bazel --output_base="${OUTPUT_BASE}" fetch @emscripten_toolchain//...
+  bazel --output_base="${OUTPUT_BASE}" fetch //...
 }
 
 function main() {
@@ -109,7 +100,6 @@ function main() {
   init
   run_bazel
   copy_files
-  apply_local_patches
 
   echo
   echo "Done. Inspect the result with git status"

@@ -20,7 +20,6 @@ workspace(name = "io_istio_proxy")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load(
     "//bazel:repositories.bzl",
-    "docker_dependencies",
     "googletest_repositories",
     "istioapi_dependencies",
 )
@@ -29,9 +28,10 @@ googletest_repositories()
 
 istioapi_dependencies()
 
-bind(
-    name = "boringssl_crypto",
-    actual = "//external:ssl",
+new_local_repository(
+    name = "openssl",
+    path = "/usr/lib64/",
+    build_file = "openssl.BUILD"
 )
 
 # 1. Determine SHA256 `wget https://github.com/envoyproxy/envoy/archive/$COMMIT.tar.gz && sha256sum $COMMIT.tar.gz`
@@ -39,13 +39,20 @@ bind(
 #
 # Note: this is needed by release builder to resolve envoy dep sha to tag.
 # Commit date: 2022-02-22
-ENVOY_SHA = "4aaf9593152c6996b9da384c8918e9ad4f0abd4d"
+# ENVOY_SHA = "0b5b53f37ab13a6e2b9167405ee46f85521bde7c"
 
-ENVOY_SHA256 = "931b70266f78c9b9749ef3c6f991f9420178802028931e71f29a0419c51d00ce"
+# ENVOY_SHA256 = "c5a28f9f6f92a59728bcb8eacbdc3ea48a9f82bf63751143c2c2d05abf346f6c"
 
-ENVOY_ORG = "envoyproxy"
+# ENVOY_ORG = "maistra"
 
-ENVOY_REPO = "envoy"
+# ENVOY_REPO = "envoy"
+
+# FIXME, WiP: https://github.com/jwendell/envoy-1/tree/temp22
+ENVOY_SHA = "c26522106f04ff5064df495b7f008ecf312d287a"
+ENVOY_SHA256 = "79c0966920d2f7670e55ab030d45ef793d4e301288f9f48339e4cc65acff74d8"
+ENVOY_ORG = "jwendell"
+ENVOY_REPO = "envoy-1"
+
 
 # To override with local envoy, just pass `--override_repository=envoy=/PATH/TO/ENVOY` to Bazel or
 # persist the option in `user.bazelrc`.
@@ -57,6 +64,7 @@ http_archive(
 )
 
 load("@envoy//bazel:api_binding.bzl", "envoy_api_binding")
+envoy_api_binding()
 
 local_repository(
     name = "envoy_build_config",
@@ -64,26 +72,19 @@ local_repository(
     path = "bazel/extension_config",
 )
 
-envoy_api_binding()
-
 load("@envoy//bazel:api_repositories.bzl", "envoy_api_dependencies")
-
 envoy_api_dependencies()
 
-load("@envoy//bazel:repositories.bzl", "envoy_dependencies")
-
+load("@envoy//bazel:repositories.bzl", "envoy_dependencies", "BUILD_ALL_CONTENT")
 envoy_dependencies()
 
 load("@envoy//bazel:repositories_extra.bzl", "envoy_dependencies_extra")
-
 envoy_dependencies_extra()
 
 load("@base_pip3//:requirements.bzl", "install_deps")
-
 install_deps()
 
 load("@envoy//bazel:dependency_imports.bzl", "envoy_dependency_imports")
-
 envoy_dependency_imports()
 
 # Bazel @rules_pkg
@@ -98,48 +99,13 @@ http_archive(
 )
 
 load("@rules_pkg//:deps.bzl", "rules_pkg_dependencies")
-
 rules_pkg_dependencies()
 
-# Docker dependencies
-
-docker_dependencies()
-
-load(
-    "@io_bazel_rules_docker//repositories:repositories.bzl",
-    container_repositories = "repositories",
-)
-
-container_repositories()
-
-load("@io_bazel_rules_docker//repositories:deps.bzl", container_deps = "deps")
-
-container_deps()
-
-load(
-    "@io_bazel_rules_docker//container:container.bzl",
-    "container_pull",
-)
-
-container_pull(
-    name = "distroless_cc",
-    # Latest as of 10/21/2019. To update, remove this line, re-build, and copy the suggested digest.
-    digest = "sha256:86f16733f25964c40dcd34edf14339ddbb2287af2f7c9dfad88f0366723c00d7",
-    registry = "gcr.io",
-    repository = "distroless/cc",
-)
-
-container_pull(
-    name = "bionic",
-    # Latest as of 10/21/2019. To update, remove this line, re-build, and copy the suggested digest.
-    digest = "sha256:3e83eca7870ee14a03b8026660e71ba761e6919b6982fb920d10254688a363d4",
-    registry = "index.docker.io",
-    repository = "library/ubuntu",
-    tag = "bionic",
-)
-
-# End of docker dependencies
-
 load("//bazel:wasm.bzl", "wasm_dependencies")
-
 wasm_dependencies()
+
+new_local_repository(
+    name = "emscripten_toolchain",
+    path = "/opt/emsdk/",
+    build_file_content = BUILD_ALL_CONTENT,
+)
