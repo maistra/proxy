@@ -29,8 +29,8 @@ function init() {
 
 function get_envoy_sha() {
   local branch
-  branch="${BRANCH:-$(git describe --contains --all HEAD)}"
-
+  branch="${BRANCH:-$(git symbolic-ref --quiet --short HEAD)}"
+ 
   pushd "${WORKDIR}" >/dev/null
   git clone --depth=1 -b "${branch}" https://github.com/maistra/envoy.git
 
