@@ -1,3 +1,4 @@
+# Common build flags
 build --cxxopt -w
 
 build --host_force_python=PY3
