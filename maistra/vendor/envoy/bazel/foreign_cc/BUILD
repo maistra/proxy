@@ -70,9 +70,7 @@ configure_make(
     lib_source = "@com_github_moonjit_moonjit//:all",
     make_commands = [],
     out_include_dir = "include/moonjit-2.2",
-    static_libraries = [
-        "libluajit-5.1.a",
-    ],
+    static_libraries = ["libluajit-5.1.a"],
     tags = ["skip_on_windows"],
 )
 

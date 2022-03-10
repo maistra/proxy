@@ -1899,6 +1899,8 @@ void ConnectionManagerImpl::ActiveStream::encodeTrailers(ActiveStreamEncoderFilt
 
 void ConnectionManagerImpl::ActiveStream::maybeEndEncode(bool end_stream) {
   if (end_stream) {
+    ASSERT(!state_.remote_encode_complete_);
+    state_.remote_encode_complete_ = true;
     ASSERT(!state_.codec_saw_local_complete_);
     state_.codec_saw_local_complete_ = true;
     stream_info_.onLastDownstreamTxByteSent();
@@ -2467,6 +2469,7 @@ void ConnectionManagerImpl::ActiveStreamEncoderFilter::
 void ConnectionManagerImpl::ActiveStreamEncoderFilter::continueEncoding() { commonContinue(); }
 
 void ConnectionManagerImpl::ActiveStreamEncoderFilter::responseDataTooLarge() {
+  ENVOY_STREAM_LOG(debug, "response data too large watermark exceeded", parent_);
   if (parent_.state_.encoder_filters_streaming_) {
     onEncoderFilterAboveWriteBufferHighWatermark();
   } else {

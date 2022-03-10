@@ -345,7 +345,7 @@ private:
         : ActiveStreamFilterBase(parent, dual_filter), handle_(filter) {}
 
     // ActiveStreamFilterBase
-    bool canContinue() override { return true; }
+    bool canContinue() override { return !parent_.state_.remote_encode_complete_; }
     Buffer::WatermarkBufferPtr createBuffer() override;
     Buffer::WatermarkBufferPtr& bufferedData() override { return parent_.buffered_response_data_; }
     bool complete() override { return parent_.state_.local_complete_; }
@@ -611,7 +611,7 @@ private:
     // All state for the stream. Put here for readability.
     struct State {
       State()
-          : remote_complete_(false), local_complete_(false), codec_saw_local_complete_(false),
+          : remote_complete_(false), remote_encode_complete_(false), local_complete_(false), codec_saw_local_complete_(false),
             saw_connection_close_(false), successful_upgrade_(false), created_filter_chain_(false),
             is_internally_created_(false), decorated_propagate_(true), has_continue_headers_(false),
             is_head_request_(false) {}
@@ -624,6 +624,7 @@ private:
       bool decoder_filters_streaming_{true};
       bool destroyed_{false};
       bool remote_complete_ : 1;
+      bool remote_encode_complete_ : 1;
       bool local_complete_ : 1; // This indicates that local is complete prior to filter processing.
                                 // A filter can still stop the stream from being complete as seen
                                 // by the codec.

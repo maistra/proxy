@@ -28,6 +28,7 @@
 #include "common/config/resources.h"
 #include "common/filesystem/directory.h"
 #include "common/filesystem/filesystem_impl.h"
+#include "common/http/header_utility.h"
 #include "common/json/json_loader.h"
 #include "common/network/address_impl.h"
 #include "common/network/utility.h"
@@ -63,30 +64,38 @@ uint64_t TestRandomGenerator::random() { return generator_(); }
 
 bool TestUtility::headerMapEqualIgnoreOrder(const Http::HeaderMap& lhs,
                                             const Http::HeaderMap& rhs) {
-  if (lhs.size() != rhs.size()) {
-    return false;
-  }
+  absl::flat_hash_set<std::string> lhs_keys;
+  absl::flat_hash_set<std::string> rhs_keys;
+  lhs.iterate([](const Http::HeaderEntry& header, void* context) -> Http::HeaderMap::Iterate {
+    absl::flat_hash_set<std::string>* lhs_keys_ptr = static_cast<absl::flat_hash_set<std::string>*>(context);
+    const std::string key{header.key().getStringView()};
+    lhs_keys_ptr->insert(key);
+    return Http::HeaderMap::Iterate::Continue;
+  }, &lhs_keys);
 
   struct State {
     const Http::HeaderMap& lhs;
-    bool equal;
+    const Http::HeaderMap& rhs;
+    absl::flat_hash_set<std::string>& rhs_keys;
   };
-
-  State state{lhs, true};
-  rhs.iterate(
-      [](const Http::HeaderEntry& header, void* context) -> Http::HeaderMap::Iterate {
-        State* state = static_cast<State*>(context);
-        const Http::HeaderEntry* entry =
-            state->lhs.get(Http::LowerCaseString(std::string(header.key().getStringView())));
-        if (entry == nullptr || (entry->value() != header.value().getStringView())) {
-          state->equal = false;
-          return Http::HeaderMap::Iterate::Break;
-        }
-        return Http::HeaderMap::Iterate::Continue;
-      },
-      &state);
-
-  return state.equal;
+  State state{lhs, rhs, rhs_keys};
+  rhs.iterate([](const Http::HeaderEntry& header, void* context) -> Http::HeaderMap::Iterate {
+    State* state = static_cast<State*>(context);
+    const std::string key{header.key().getStringView()};
+    // Compare with canonicalized multi-value headers. This ensures we respect order within
+    // a header.
+    const auto lhs_entry =
+        Http::HeaderUtility::getAllOfHeaderAsString(state->lhs, Http::LowerCaseString(key));
+    const auto rhs_entry =
+        Http::HeaderUtility::getAllOfHeaderAsString(state->rhs, Http::LowerCaseString(key));
+    ASSERT(rhs_entry.result());
+    if (lhs_entry.result() != rhs_entry.result()) {
+      return Http::HeaderMap::Iterate::Break;
+    }
+    state->rhs_keys.insert(key);
+    return Http::HeaderMap::Iterate::Continue;
+  }, &state);
+  return lhs_keys.size() == rhs_keys.size();
 }
 
 bool TestUtility::buffersEqual(const Buffer::Instance& lhs, const Buffer::Instance& rhs) {
