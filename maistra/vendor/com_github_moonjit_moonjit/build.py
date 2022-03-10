@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import argparse
 import os
@@ -26,14 +26,14 @@ def main():
       os.environ["HOST_CFLAGS"] = "-fno-sanitize=memory"
       os.environ["HOST_LDFLAGS"] = "-fno-sanitize=memory"
 
-    # Blacklist LuaJIT from ASAN for now.
+    # Remove LuaJIT from ASAN for now.
     # TODO(htuch): Remove this when https://github.com/envoyproxy/envoy/issues/6084 is resolved.
-    if "ENVOY_CONFIG_ASAN" in os.environ:
-      os.environ["TARGET_CFLAGS"] += " -fsanitize-blacklist=%s/com_github_moonjit_moonjit/clang-asan-blacklist.txt" % os.environ["PWD"]
-      with open("clang-asan-blacklist.txt", "w") as f:
+    if "ENVOY_CONFIG_ASAN" in os.environ or "ENVOY_CONFIG_MSAN" in os.environ:
+      os.environ["TARGET_CFLAGS"] += " -fsanitize-blacklist=%s/com_github_moonjit_moonjit/clang-asan-blocklist.txt" % os.environ["PWD"]
+      with open("clang-asan-blocklist.txt", "w") as f:
         f.write("fun:*\n")
 
-    os.system('make V=1 PREFIX="{}" install'.format(args.prefix))
+    os.system('make -j{} V=1 PREFIX="{}" install'.format(os.cpu_count(), args.prefix))
 
 main()
 

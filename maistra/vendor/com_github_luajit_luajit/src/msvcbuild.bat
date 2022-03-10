@@ -1,31 +1,30 @@
 @rem Script to build LuaJIT with MSVC.
-@rem Copyright (C) 2005-2017 Mike Pall. See Copyright Notice in luajit.h
+@rem Copyright (C) 2005-2020 Mike Pall. See Copyright Notice in luajit.h
 @rem
-@rem Either open a "Visual Studio .NET Command Prompt"
-@rem (Note that the Express Edition does not contain an x64 compiler)
-@rem -or-
-@rem Open a "Windows SDK Command Shell" and set the compiler environment:
-@rem     setenv /release /x86
-@rem   -or-
-@rem     setenv /release /x64
+@rem Open a "Visual Studio Command Prompt" (either x86 or x64).
+@rem Then cd to this directory and run this script. Use the following
+@rem options (in order), if needed. The default is a dynamic release build.
 @rem
-@rem Then cd to this directory and run this script.
+@rem   nogc64   disable LJ_GC64 mode for x64
+@rem   debug    emit debug symbols
+@rem   amalg    amalgamated build
+@rem   static   static linkage
 
 @if not defined INCLUDE goto :FAIL
 
 @setlocal
-@set LJCOMPILE=cl /nologo /c /O2 /W3 /D_CRT_SECURE_NO_DEPRECATE /D_CRT_STDIO_INLINE=__declspec(dllexport)__inline
+@set LJCOMPILE=cl /nologo /c /W3 /D_CRT_SECURE_NO_DEPRECATE /D_CRT_STDIO_INLINE=__declspec(dllexport)__inline /DLUAJIT_ENABLE_LUA52COMPAT
 @set LJLINK=link /nologo
 @set LJMT=mt /nologo
 @set LJLIB=lib /nologo /nodefaultlib
 @set DASMDIR=..\dynasm
 @set DASM=%DASMDIR%\dynasm.lua
-@set DASC=vm_x86.dasc
+@set DASC=vm_x64.dasc
 @set LJDLLNAME=lua51.dll
 @set LJLIBNAME=lua51.lib
 @set ALL_LIB=lib_base.c lib_math.c lib_bit.c lib_string.c lib_table.c lib_io.c lib_os.c lib_package.c lib_debug.c lib_jit.c lib_ffi.c
 
-%LJCOMPILE% host\minilua.c
+%LJCOMPILE% /O2 host\minilua.c
 @if errorlevel 1 goto :BAD
 %LJLINK% /out:minilua.exe minilua.obj
 @if errorlevel 1 goto :BAD
@@ -36,19 +35,20 @@ if exist minilua.exe.manifest^
 @set LJARCH=x64
 @minilua
 @if errorlevel 8 goto :X64
+@set DASC=vm_x86.dasc
 @set DASMFLAGS=-D WIN -D JIT -D FFI
 @set LJARCH=x86
 @set LJCOMPILE=%LJCOMPILE% /arch:SSE2
 :X64
-@if "%1" neq "gc64" goto :NOGC64
+@if "%1" neq "nogc64" goto :GC64
 @shift
-@set DASC=vm_x64.dasc
-@set LJCOMPILE=%LJCOMPILE% /DLUAJIT_ENABLE_GC64
-:NOGC64
+@set DASC=vm_x86.dasc
+@set LJCOMPILE=%LJCOMPILE% /DLUAJIT_DISABLE_GC64
+:GC64
 minilua %DASM% -LN %DASMFLAGS% -o host\buildvm_arch.h %DASC%
 @if errorlevel 1 goto :BAD
 
-%LJCOMPILE% /I "." /I %DASMDIR% host\buildvm*.c
+%LJCOMPILE% /O2 /I "." /I %DASMDIR% host\buildvm*.c
 @if errorlevel 1 goto :BAD
 %LJLINK% /out:buildvm.exe buildvm*.obj
 @if errorlevel 1 goto :BAD
@@ -72,24 +72,35 @@ buildvm -m folddef -o lj_folddef.h lj_opt_fold.c
 
 @if "%1" neq "debug" goto :NODEBUG
 @shift
-@set LJCOMPILE=%LJCOMPILE% /Zi
+@set LJCOMPILE=%LJCOMPILE% /O0 /Z7
 @set LJLINK=%LJLINK% /debug /opt:ref /opt:icf /incremental:no
+@set LJCRTDBG=d
+@goto :ENDDEBUG
 :NODEBUG
+@set LJCOMPILE=%LJCOMPILE% /O2 /Z7
+@set LJLINK=%LJLINK% /release /incremental:no
+@set LJCRTDBG=
+:ENDDEBUG
 @if "%1"=="amalg" goto :AMALGDLL
 @if "%1"=="static" goto :STATIC
-%LJCOMPILE% /MD /DLUA_BUILD_AS_DLL lj_*.c lib_*.c
+@set LJCOMPILE=%LJCOMPILE% /MD%LJCRTDBG% 
+%LJCOMPILE% /DLUA_BUILD_AS_DLL lj_*.c lib_*.c
 @if errorlevel 1 goto :BAD
 %LJLINK% /DLL /out:%LJDLLNAME% lj_*.obj lib_*.obj
 @if errorlevel 1 goto :BAD
 @goto :MTDLL
 :STATIC
+@shift
+@set LJCOMPILE=%LJCOMPILE% /MT%LJCRTDBG%
 %LJCOMPILE% lj_*.c lib_*.c
 @if errorlevel 1 goto :BAD
 %LJLIB% /OUT:%LJLIBNAME% lj_*.obj lib_*.obj
 @if errorlevel 1 goto :BAD
 @goto :MTDLL
 :AMALGDLL
-%LJCOMPILE% /MD /DLUA_BUILD_AS_DLL ljamalg.c
+@shift
+@set LJCOMPILE=%LJCOMPILE% /MD%LJCRTDBG% 
+%LJCOMPILE% /DLUA_BUILD_AS_DLL ljamalg.c
 @if errorlevel 1 goto :BAD
 %LJLINK% /DLL /out:%LJDLLNAME% ljamalg.obj lj_vm.obj
 @if errorlevel 1 goto :BAD
@@ -118,5 +129,5 @@ if exist luajit.exe.manifest^
 @echo *******************************************************
 @goto :END
 :FAIL
-@echo You must open a "Visual Studio .NET Command Prompt" to run this script
+@echo You must open a "Visual Studio Command Prompt" to run this script
 :END

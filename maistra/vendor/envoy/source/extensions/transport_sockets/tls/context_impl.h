@@ -183,6 +183,7 @@ protected:
   std::vector<std::vector<uint8_t>> verify_certificate_hash_list_;
   std::vector<std::vector<uint8_t>> verify_certificate_spki_list_;
   bool allow_untrusted_certificate_{false};
+  const Envoy::Ssl::CertificateValidationContextConfig* config_{nullptr};
   Stats::Scope& scope_;
   SslStats stats_;
   std::vector<uint8_t> parsed_alpn_protocols_;

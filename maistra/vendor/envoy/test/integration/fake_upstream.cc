@@ -375,7 +375,7 @@ makeTcpListenSocket(const Network::Address::InstanceConstSharedPtr& address) {
 
 static Network::SocketPtr makeTcpListenSocket(uint32_t port, Network::Address::IpVersion version) {
   return makeTcpListenSocket(
-      Network::Utility::parseInternetAddress(Network::Test::getAnyAddressString(version), port));
+      Network::Utility::parseInternetAddress(Network::Test::getLoopbackAddressString(version), port));
 }
 
 static Network::SocketPtr
@@ -598,6 +598,21 @@ void FakeUpstream::sendUdpDatagram(const std::string& buffer,
                                                     nullptr, *peer);
     EXPECT_TRUE(rc.rc_ == buffer.length());
   });
+}
+
+AssertionResult FakeUpstream::rawWriteConnection(uint32_t index, const std::string& data,
+                                                 bool end_stream,
+                                                 std::chrono::milliseconds timeout) {
+  Thread::LockGuard lock(lock_);
+  auto iter = consumed_connections_.begin();
+  std::advance(iter, index);
+  return (*iter)->shared_connection().executeOnDispatcher(
+      [data, end_stream](Network::Connection& connection) {
+        ASSERT(connection.state() == Network::Connection::State::Open);
+        Buffer::OwnedImpl buffer(data);
+        connection.write(buffer, end_stream);
+      },
+      timeout);
 }
 
 AssertionResult FakeRawConnection::waitForData(uint64_t num_bytes, std::string* data,
