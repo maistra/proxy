@@ -1,0 +1,28 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "schema",
+    srcs = [
+        "annotation_payload.pb.go",
+        "annotation_spec_color.pb.go",
+        "data_item_payload.pb.go",
+        "dataset_metadata.pb.go",
+        "geometry.pb.go",
+    ],
+    importpath = "google.golang.org/genproto/googleapis/cloud/aiplatform/v1beta1/schema",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//googleapis/api/annotations",
+        "//googleapis/type/color",
+        "@com_github_golang_protobuf//proto:go_default_library",
+        "@org_golang_google_protobuf//reflect/protoreflect:go_default_library",
+        "@org_golang_google_protobuf//runtime/protoimpl:go_default_library",
+        "@org_golang_google_protobuf//types/known/durationpb:go_default_library",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":schema",
+    visibility = ["//visibility:public"],
+)

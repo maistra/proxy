@@ -1,0 +1,182 @@
+---
+default_linux_targets: &default_linux_targets
+  - "--" # Allows negative patterns; hack for https://github.com/bazelbuild/continuous-integration/pull/245
+  - "..."
+  - "@examples//..."
+  # TODO: Switch manual tag to platform constraint after bazel 4.0.
+  - "//test/versioned_dylib:versioned_dylib_test"
+  # Bindgen currently only has a working toolchain for 18.04
+  - "-@examples//ffi/rust_calling_c/simple/..."
+tasks:
+  ubuntu1604:
+    build_targets: *default_linux_targets
+    test_targets: *default_linux_targets
+    build_flags:
+      - "--config=rustfmt"
+  ubuntu1804:
+    build_targets: *default_linux_targets
+    test_targets:
+      - "..."
+      - "@examples//..."
+      # TODO: Switch manual tag to platform constraint after bazel 4.0.
+      - "//test/versioned_dylib:versioned_dylib_test"
+    build_flags:
+      - "--config=rustfmt"
+  ubuntu2004:
+    name: "Minimum Supported Version"
+    bazel: "3.5.0"
+    build_targets: *default_linux_targets
+    test_targets: *default_linux_targets
+    build_flags:
+      - "--config=rustfmt"
+  macos:
+    osx_targets: &osx_targets
+      - "--" # Allows negative patterns; hack for https://github.com/bazelbuild/continuous-integration/pull/245
+      - "..."
+      - "@examples//..."
+      # Skip tests for dylib support on osx, since we don't support it yet.
+      - "-@examples//ffi/rust_calling_c:matrix_dylib_test"
+      - "-@examples//ffi/rust_calling_c:matrix_dynamically_linked"
+      - "-@examples//ffi/rust_calling_c/simple/..."
+    build_targets: *osx_targets
+    test_targets: *osx_targets
+    build_flags:
+      - "--config=rustfmt"
+  rbe_ubuntu1604:
+    test_targets:
+      - "--" # Allows negative patterns; hack for https://github.com/bazelbuild/continuous-integration/pull/245
+      - "..."
+      - "//test/..."
+      - "@examples//..."
+      - "-//test/conflicting_deps:conflicting_deps_test"
+      # rust_doc_test is likely not fully sandboxed
+      - "-//test/chained_direct_deps:mod3_doc_test"
+      - "-@examples//fibonacci:fibonacci_doc_test"
+      - "-@examples//hello_lib:hello_lib_doc_test"
+      - "-@examples//ffi/rust_calling_c/simple/..."
+      # See https://github.com/bazelbuild/bazel/issues/9987
+      - "-@examples//ffi/rust_calling_c:matrix_dylib_test"
+    build_flags:
+      - "--config=rustfmt"
+  windows:
+    build_flags:
+      - "--enable_runfiles" # this is not enabled by default on windows and is necessary for the cargo build scripts
+      - "--config=rustfmt"
+    windows_targets: &windows_targets
+      - "--" # Allows negative patterns; hack for https://github.com/bazelbuild/continuous-integration/pull/245
+      - "..."
+      - "-//bindgen/..."
+      - "-//test/load_arbitrary_tool/..."
+      - "-//test/test_env/..."
+      - "-//test/proto/..."
+      - "-//tools/rust_analyzer/..."
+      - "-//test/rustfmt/..."
+      - "@examples//..."
+      - "-@examples//ffi/rust_calling_c:matrix_dylib_test"
+      - "-@examples//ffi/rust_calling_c:matrix_dynamically_linked"
+      - "-@examples//ffi/rust_calling_c/simple/..."
+      - "-@examples//sys/..."
+      - "-@examples//proto/..."
+      - "-@examples//wasm/..."
+    build_targets: *windows_targets
+    test_targets: *windows_targets
+  examples:
+    name: Examples
+    platform: ubuntu1804
+    working_directory: examples
+    test_targets:
+      - //...
+    build_flags:
+      - "--config=rustfmt"
+  docs_linux:
+    name: Docs
+    platform: ubuntu1804
+    working_directory: docs
+    build_targets:
+      - //...
+    run_targets:
+      - "//:test_docs"
+  clippy_examples:
+    name: Clippy on Examples
+    platform: ubuntu1804
+    working_directory: examples
+    build_flags:
+      - "--aspects=@rules_rust//rust:defs.bzl%rust_clippy_aspect"
+      - "--output_groups=clippy_checks"
+    build_targets:
+      - //...
+  clippy_failure:
+    name: Negative Clippy Tests
+    platform: ubuntu1804
+    shell_commands:
+      - ./test/clippy/clippy_failure_test.sh
+  rustfmt_failure:
+    name: Negative Rustfmt Tests
+    platform: ubuntu2004
+    run_targets:
+      - "//test/rustfmt:test_runner"
+  ubuntu2004_clang:
+    name: Ubuntu 20.04 with Clang
+    platform: ubuntu2004
+    build_flags:
+      - "--repo_env=CC=clang"
+      # TODO(hlopko): Make this work (some tests were failing)
+      # - "--linkopt=-fuse-ld=lld"
+    build_targets: *default_linux_targets
+    test_targets: *default_linux_targets
+  crate_universe_examples_ubuntu2004:
+    name: Crate Universe Examples
+    platform: ubuntu2004
+    environment:
+      RULES_RUST_CRATE_UNIVERSE_BOOTSTRAP: true
+    working_directory: examples/crate_universe
+    build_targets:
+      - "//..."
+    test_targets:
+      - "//..."
+  crate_universe_rbe_ubuntu1604:
+    name: Crate Universe Examples
+    platform: rbe_ubuntu1604
+    environment:
+      RULES_RUST_CRATE_UNIVERSE_BOOTSTRAP: true
+    working_directory: examples/crate_universe
+    build_targets:
+      - "//..."
+    test_targets:
+      - "//..."
+    build_flags:
+      - "--config=rustfmt"
+  crate_universe_examples_macos:
+    name: Crate Universe Examples
+    platform: macos
+    environment:
+      RULES_RUST_CRATE_UNIVERSE_BOOTSTRAP: true
+    working_directory: examples/crate_universe
+    build_targets:
+      - "//..."
+    test_targets:
+      - "//..."
+    build_flags:
+      - "--config=rustfmt"
+  crate_universe_examples_windows:
+    name: Crate Universe Examples
+    platform: windows
+    environment:
+      RULES_RUST_CRATE_UNIVERSE_BOOTSTRAP: true
+    working_directory: examples/crate_universe
+    build_flags:
+      - "--enable_runfiles" # this is not enabled by default on windows and is necessary for the cargo build scripts
+      - "--config=rustfmt"
+    crate_universe_windows_targets: &crate_universe_windows_targets
+      - "//..."
+      # TODO: There are windows specific build issues in the generated
+      # dependencies. This should be fixed and all testing enabled.
+      - "-//has_aliased_deps/..."
+      - "-//uses_proc_macro/..."
+      - "-//uses_sys_crate/..."
+    build_targets: *crate_universe_windows_targets
+    # TODO: fix test targets in `crate_universe_windows_targets`
+    test_targets: *crate_universe_windows_targets
+buildifier:
+  version: latest
+  warnings: "all"

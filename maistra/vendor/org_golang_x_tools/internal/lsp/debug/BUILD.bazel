@@ -1,0 +1,36 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "debug",
+    srcs = [
+        "info.go",
+        "metrics.go",
+        "rpc.go",
+        "serve.go",
+        "trace.go",
+    ],
+    importpath = "golang.org/x/tools/internal/lsp/debug",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//internal/event",
+        "//internal/event/core",
+        "//internal/event/export",
+        "//internal/event/export/metric",
+        "//internal/event/export/ocagent",
+        "//internal/event/export/prometheus",
+        "//internal/event/keys",
+        "//internal/event/label",
+        "//internal/lsp/cache",
+        "//internal/lsp/debug/log",
+        "//internal/lsp/debug/tag",
+        "//internal/lsp/protocol",
+        "//internal/lsp/source",
+        "@org_golang_x_xerrors//:go_default_library",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":debug",
+    visibility = ["//:__subpackages__"],
+)

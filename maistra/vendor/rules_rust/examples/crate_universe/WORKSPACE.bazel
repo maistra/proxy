@@ -1,0 +1,77 @@
+workspace(name = "rules_rust_examples_crate_universe")
+
+local_repository(
+    name = "rules_rust",
+    path = "../..",
+)
+
+load("@rules_rust//rust:repositories.bzl", "rust_repositories")
+
+rust_repositories()
+
+load("@rules_rust//crate_universe:bootstrap.bzl", "crate_universe_bootstrap")
+
+crate_universe_bootstrap()
+
+load("//basic:workspace.bzl", basic_deps = "deps")
+
+basic_deps()
+
+load("@basic_deps//:defs.bzl", basic_deps_pinned_rust_install = "pinned_rust_install")
+
+basic_deps_pinned_rust_install()
+
+load("//has_aliased_deps:workspace.bzl", has_aliased_deps_deps = "deps")
+
+has_aliased_deps_deps()
+
+load("@has_aliased_deps_deps//:defs.bzl", has_aliased_deps_deps_pinned_rust_install = "pinned_rust_install")
+
+has_aliased_deps_deps_pinned_rust_install()
+
+load("//uses_proc_macro:workspace.bzl", uses_proc_macro_deps = "deps")
+
+uses_proc_macro_deps()
+
+load("@uses_proc_macro_deps//:defs.bzl", uses_proc_macro_deps_pinned_rust_install = "pinned_rust_install")
+
+uses_proc_macro_deps_pinned_rust_install()
+
+load("//uses_sys_crate:workspace.bzl", uses_sys_crate_deps = "deps")
+
+uses_sys_crate_deps()
+
+load("@uses_sys_crate_deps//:defs.bzl", uses_sys_crate_deps_pinned_rust_install = "pinned_rust_install")
+
+uses_sys_crate_deps_pinned_rust_install()
+
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+# Used for Bazel CI
+http_archive(
+    name = "bazel_toolchains",
+    sha256 = "179ec02f809e86abf56356d8898c8bd74069f1bd7c56044050c2cd3d79d0e024",
+    strip_prefix = "bazel-toolchains-4.1.0",
+    urls = [
+        "https://mirror.bazel.build/github.com/bazelbuild/bazel-toolchains/releases/download/4.1.0/bazel-toolchains-4.1.0.tar.gz",
+        "https://github.com/bazelbuild/bazel-toolchains/releases/download/4.1.0/bazel-toolchains-4.1.0.tar.gz",
+    ],
+)
+
+load("@bazel_toolchains//rules:rbe_repo.bzl", "rbe_autoconfig")
+
+# Creates a default toolchain config for RBE.
+# Use this as is if you are using the rbe_ubuntu16_04 container,
+# otherwise refer to RBE docs.
+rbe_autoconfig(name = "buildkite_config")
+
+http_archive(
+    name = "rules_foreign_cc",
+    sha256 = "d39b6930a21aed518bf5403dbf333fff731de6314bd0d528f4df62366350a312",
+    strip_prefix = "rules_foreign_cc-98c88de5e0f57dd2a896dd595469ccd6bf97ceab",
+    url = "https://github.com/bazelbuild/rules_foreign_cc/archive/98c88de5e0f57dd2a896dd595469ccd6bf97ceab.tar.gz",
+)
+
+load("@rules_foreign_cc//foreign_cc:repositories.bzl", "rules_foreign_cc_dependencies")
+
+rules_foreign_cc_dependencies(register_preinstalled_tools = False)

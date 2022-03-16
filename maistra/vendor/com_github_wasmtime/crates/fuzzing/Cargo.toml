@@ -1,0 +1,25 @@
+[package]
+authors = ["The Wasmtime Project Developers"]
+description = "Fuzzing infrastructure for Wasmtime"
+edition = "2018"
+name = "wasmtime-fuzzing"
+publish = false
+version = "0.19.0"
+license = "Apache-2.0 WITH LLVM-exception"
+
+[dependencies]
+anyhow = "1.0.22"
+arbitrary = { version = "1.0.0", features = ["derive"] }
+env_logger = "0.8.1"
+log = "0.4.8"
+rayon = "1.2.1"
+wasmparser = "0.77"
+wasmprinter = "0.2.25"
+wasmtime = { path = "../wasmtime" }
+wasmtime-wast = { path = "../wast" }
+wasm-encoder = "0.4.1"
+wasm-smith = "0.4.4"
+wasmi = "0.7.0"
+
+[dev-dependencies]
+wat = "1.0.37"

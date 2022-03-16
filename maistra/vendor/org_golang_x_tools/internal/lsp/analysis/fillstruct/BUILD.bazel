@@ -1,0 +1,31 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "fillstruct",
+    srcs = ["fillstruct.go"],
+    importpath = "golang.org/x/tools/internal/lsp/analysis/fillstruct",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//go/analysis",
+        "//go/analysis/passes/inspect",
+        "//go/ast/astutil",
+        "//go/ast/inspector",
+        "//internal/analysisinternal",
+        "//internal/span",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":fillstruct",
+    visibility = ["//:__subpackages__"],
+)
+
+go_test(
+    name = "fillstruct_test",
+    srcs = ["fillstruct_test.go"],
+    deps = [
+        ":fillstruct",
+        "//go/analysis/analysistest",
+    ],
+)

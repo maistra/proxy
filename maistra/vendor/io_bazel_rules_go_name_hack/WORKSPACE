@@ -1,0 +1,2 @@
+# DO NOT EDIT: automatically generated WORKSPACE file for go_name_hack rule
+workspace(name = "io_bazel_rules_go_name_hack")

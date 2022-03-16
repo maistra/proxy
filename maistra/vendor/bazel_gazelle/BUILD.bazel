@@ -1,0 +1,72 @@
+load("@io_bazel_rules_go//go:def.bzl", "nogo")
+load("//:def.bzl", "gazelle", "gazelle_binary")
+
+# gazelle:prefix github.com/bazelbuild/bazel-gazelle
+# gazelle:exclude vendor
+# gazelle:exclude third_party
+# gazelle:exclude .bazelci
+# gazelle:exclude .idea
+# gazelle:exclude .github
+# gazelle:go_naming_convention import_alias
+gazelle(
+    name = "gazelle",
+    command = "fix",
+    gazelle = ":gazelle_local",
+)
+
+gazelle_binary(
+    name = "gazelle_local",
+    languages = [
+        "//language/proto",
+        "//language/go",
+        "//internal/language/test_filegroup",
+    ],
+)
+
+nogo(
+    name = "nogo",
+    vet = True,
+    visibility = ["//visibility:public"],
+)
+
+exports_files(["WORKSPACE"])
+
+filegroup(
+    name = "all_files",
+    testonly = True,
+    # keep
+    srcs = glob(["vendor/**"]) + [
+        ".bazelrc",
+        ".gitignore",
+        ".travis.yml",
+        "AUTHORS",
+        "BUILD.bazel",
+        "CODEOWNERS",
+        "CONTRIBUTING.md",
+        "CONTRIBUTORS",
+        "Design.rst",
+        "LICENSE",
+        "README.rst",
+        "WORKSPACE",
+        "def.bzl",
+        "deps.bzl",
+        "extend.rst",
+        "go.mod",
+        "go.sum",
+        "repository.rst",
+        "//cmd:all_files",
+        "//config:all_files",
+        "//flag:all_files",
+        "//internal:all_files",
+        "//label:all_files",
+        "//language:all_files",
+        "//merger:all_files",
+        "//pathtools:all_files",
+        "//repo:all_files",
+        "//resolve:all_files",
+        "//rule:all_files",
+        "//testtools:all_files",
+        "//walk:all_files",
+    ],
+    visibility = ["//visibility:public"],
+)

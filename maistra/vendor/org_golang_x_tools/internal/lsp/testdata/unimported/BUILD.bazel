@@ -1,0 +1,23 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "unimported",
+    srcs = ["unimported_cand_type.go"],
+    importpath = "golang.org/x/tools/internal/lsp/testdata/unimported",
+    visibility = ["//:__subpackages__"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":unimported",
+    visibility = ["//:__subpackages__"],
+)
+
+go_test(
+    name = "unimported_test",
+    srcs = [
+        "export_test.go",
+        "x_test.go",
+    ],
+    embed = [":unimported"],
+)

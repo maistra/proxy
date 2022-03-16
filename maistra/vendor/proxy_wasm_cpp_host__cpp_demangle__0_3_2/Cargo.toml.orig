@@ -1,0 +1,70 @@
+[package]
+authors = ["Nick Fitzgerald <fitzgen@gmail.com>", "Jim Blandy <jimb@red-bean.com>"]
+build = "build.rs"
+categories = ["development-tools::debugging", "development-tools::ffi"]
+description = "A crate for demangling C++ symbols"
+documentation = "https://docs.rs/cpp_demangle"
+exclude = ["tests/**", "in/**"]
+keywords = ["demangle", "symbolicate", "c-plus-plus", "itanium"]
+license = "Apache-2.0/MIT"
+name = "cpp_demangle"
+readme = "./README.md"
+repository = "https://github.com/gimli-rs/cpp_demangle"
+version = "0.3.2"
+
+[badges]
+
+[badges.travis-ci]
+repository = "gimli-rs/cpp_demangle"
+
+[[bin]]
+name = "afl_runner"
+path = "src/bin/afl_runner.rs"
+required-features = ["afl"]
+
+[build-dependencies]
+glob = "0.3.0"
+
+[dependencies]
+cfg-if = "1.0.0"
+
+[dependencies.afl]
+optional = true
+version = "0.8.0"
+
+[dev-dependencies]
+clap = "2.33.0"
+diff = "0.1.11"
+
+[features]
+# Default features.
+default = ["std"]
+
+# Build using the `std` library. Disabling this and enabling the `alloc` feature
+# enables `no_std` support.
+std = []
+
+# Use collections from the `alloc` crate rather than from `std`. Combined with
+# disabling `std`, this enables `no_std` support.
+alloc = []
+
+# Enable copious amounts of logging. This is for internal use only, and is only
+# useful for hacking on `cpp_demangle` itself.
+logging = []
+
+# Run all libiberty tests, even the ones that are known not to pass yet. This is
+# for internal use only.
+run_libiberty_tests = []
+
+# Enable fuzzing support. This is for internal use only.
+fuzz = ["afl"]
+
+# DEPRECATED. Don't use these features, they do nothing.
+#
+# TODO: remove on next breaking version bump.
+nightly = []
+cppfilt = []
+
+
+[profile.release]
+debug = true

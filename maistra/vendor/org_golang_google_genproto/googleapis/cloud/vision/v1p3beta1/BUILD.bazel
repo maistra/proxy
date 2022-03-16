@@ -1,0 +1,37 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "v1p3beta1",
+    srcs = [
+        "geometry.pb.go",
+        "image_annotator.pb.go",
+        "product_search.pb.go",
+        "product_search_service.pb.go",
+        "text_annotation.pb.go",
+        "web_detection.pb.go",
+    ],
+    importpath = "google.golang.org/genproto/googleapis/cloud/vision/v1p3beta1",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//googleapis/api/annotations",
+        "//googleapis/longrunning",
+        "//googleapis/rpc/status",
+        "//googleapis/type/color",
+        "//googleapis/type/latlng",
+        "@com_github_golang_protobuf//proto:go_default_library",
+        "@org_golang_google_grpc//:go_default_library",
+        "@org_golang_google_grpc//codes:go_default_library",
+        "@org_golang_google_grpc//status:go_default_library",
+        "@org_golang_google_protobuf//reflect/protoreflect:go_default_library",
+        "@org_golang_google_protobuf//runtime/protoimpl:go_default_library",
+        "@org_golang_google_protobuf//types/known/emptypb:go_default_library",
+        "@org_golang_google_protobuf//types/known/fieldmaskpb:go_default_library",
+        "@org_golang_google_protobuf//types/known/timestamppb:go_default_library",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":v1p3beta1",
+    visibility = ["//visibility:public"],
+)

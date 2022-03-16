@@ -1,0 +1,30 @@
+From 25a587052e8589914b3a08313ab9ccd292a216e2 Mon Sep 17 00:00:00 2001
+From: Jonh Wendell <jonh.wendell@redhat.com>
+Date: Fri, 5 Feb 2021 15:29:42 -0500
+Subject: [PATCH] Fix the cxx builtin directories for maistra proxy
+
+---
+ toolchain/cc_toolchain_config.bzl | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/toolchain/cc_toolchain_config.bzl b/toolchain/cc_toolchain_config.bzl
+index 4c7b327..452ac6d 100644
+--- a/toolchain/cc_toolchain_config.bzl
++++ b/toolchain/cc_toolchain_config.bzl
+@@ -161,8 +161,11 @@ def _impl(ctx):
+         # we just need to include them here so that bazel doesn't complain on
+         # "this rule is missing dependency declarations for the following files included".
+         cxx_builtin_include_directories = [
+-            "external/emscripten_toolchain/upstream/emscripten/system/include/libcxx",
+-            "external/emscripten_toolchain/upstream/emscripten/system/include/libc",
++            "/opt/emsdk/upstream/emscripten/system/include/libcxx",
++            "/opt/emsdk/upstream/emscripten/system/include/libc",
++            "/opt/emsdk/upstream/emscripten/system/include/compat",
++            "/opt/emsdk/upstream/emscripten/system/lib/libc/musl/arch/emscripten/bits",
++            "/opt/emsdk/upstream/emscripten/system/include/wasi",
+         ],
+         features = [cxx17_feature, no_canonical_prefixes_feature, opt_feature],
+     )
+-- 
+2.29.2
+

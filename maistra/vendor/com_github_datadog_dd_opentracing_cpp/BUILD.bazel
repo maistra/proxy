@@ -1,0 +1,64 @@
+cc_library(
+    name = "dd_opentracing_cpp",
+    srcs = [
+        "src/bool.h",
+        "src/bool.cpp",
+        "src/clock.h",
+        "src/encoder.cpp",
+        "src/encoder.h",
+        "src/limiter.cpp",
+        "src/limiter.h",
+        "src/logger.cpp",
+        "src/logger.h",
+        "src/opentracing_external.cpp",
+        "src/propagation.cpp",
+        "src/propagation.h",
+        "src/sample.cpp",
+        "src/sample.h",
+        "src/span.cpp",
+        "src/span.h",
+        "src/span_buffer.cpp",
+        "src/span_buffer.h",
+        "src/tracer.cpp",
+        "src/tracer.h",
+        "src/tracer_options.cpp",
+        "src/tracer_options.h",
+        "src/writer.cpp",
+        "src/writer.h",
+    ],
+    hdrs = [
+        "include/datadog/version.h",
+        "include/datadog/opentracing.h",
+        "include/datadog/tags.h",
+    ],
+    copts = [
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wnon-virtual-dtor",
+        "-Woverloaded-virtual",
+        "-Wold-style-cast",
+        "-std=c++14",
+    ],
+    strip_include_prefix = "include",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//:3rd_party_nlohmann",
+        "@com_github_msgpack_msgpack_c//:msgpack",
+        "@io_opentracing_cpp//:opentracing",
+    ],
+)
+
+cc_library(
+    name = "3rd_party_nlohmann",
+    hdrs = ["3rd_party/include/nlohmann/json.hpp"],
+    strip_include_prefix = "3rd_party/include",
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "3rd_party_catch2",
+    hdrs = ["3rd_party/include/catch2/catch.hpp"],
+    strip_include_prefix = "3rd_party/include",
+    visibility = ["//visibility:public"],
+)

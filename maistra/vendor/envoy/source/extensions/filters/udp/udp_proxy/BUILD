@@ -1,0 +1,54 @@
+load(
+    "//bazel:envoy_build_system.bzl",
+    "envoy_cc_extension",
+    "envoy_cc_library",
+    "envoy_extension_package",
+)
+
+licenses(["notice"])  # Apache 2
+
+envoy_extension_package()
+
+envoy_cc_library(
+    name = "hash_policy_lib",
+    srcs = ["hash_policy_impl.cc"],
+    hdrs = ["hash_policy_impl.h"],
+    deps = [
+        "//envoy/udp:hash_policy_interface",
+        "//source/common/common:assert_lib",
+        "//source/common/common:hash_lib",
+        "@envoy_api//envoy/extensions/filters/udp/udp_proxy/v3:pkg_cc_proto",
+    ],
+)
+
+envoy_cc_library(
+    name = "udp_proxy_filter_lib",
+    srcs = ["udp_proxy_filter.cc"],
+    hdrs = ["udp_proxy_filter.h"],
+    deps = [
+        ":hash_policy_lib",
+        "//envoy/event:file_event_interface",
+        "//envoy/event:timer_interface",
+        "//envoy/network:filter_interface",
+        "//envoy/network:listener_interface",
+        "//envoy/upstream:cluster_manager_interface",
+        "//source/common/api:os_sys_calls_lib",
+        "//source/common/network:socket_lib",
+        "//source/common/network:socket_option_factory_lib",
+        "//source/common/network:utility_lib",
+        "//source/common/upstream:load_balancer_lib",
+        "@envoy_api//envoy/extensions/filters/udp/udp_proxy/v3:pkg_cc_proto",
+    ],
+)
+
+envoy_cc_extension(
+    name = "config",
+    srcs = ["config.cc"],
+    hdrs = ["config.h"],
+    deps = [
+        ":udp_proxy_filter_lib",
+        "//envoy/registry",
+        "//envoy/server:filter_config_interface",
+        "@envoy_api//envoy/extensions/filters/udp/udp_proxy/v3:pkg_cc_proto",
+    ],
+)

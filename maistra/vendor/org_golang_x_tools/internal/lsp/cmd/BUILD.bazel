@@ -1,0 +1,73 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "cmd",
+    srcs = [
+        "call_hierarchy.go",
+        "check.go",
+        "cmd.go",
+        "definition.go",
+        "folding_range.go",
+        "format.go",
+        "highlight.go",
+        "implementation.go",
+        "imports.go",
+        "info.go",
+        "inspect.go",
+        "links.go",
+        "prepare_rename.go",
+        "references.go",
+        "rename.go",
+        "semantictokens.go",
+        "serve.go",
+        "signature.go",
+        "suggested_fix.go",
+        "symbols.go",
+        "workspace.go",
+        "workspace_symbol.go",
+    ],
+    importpath = "golang.org/x/tools/internal/lsp/cmd",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//internal/fakenet",
+        "//internal/jsonrpc2",
+        "//internal/lsp",
+        "//internal/lsp/browser",
+        "//internal/lsp/cache",
+        "//internal/lsp/debug",
+        "//internal/lsp/diff",
+        "//internal/lsp/lsprpc",
+        "//internal/lsp/protocol",
+        "//internal/lsp/source",
+        "//internal/span",
+        "//internal/tool",
+        "//internal/xcontext",
+        "@org_golang_x_xerrors//:go_default_library",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":cmd",
+    visibility = ["//:__subpackages__"],
+)
+
+go_test(
+    name = "cmd_test",
+    srcs = [
+        "capabilities_test.go",
+        "cmd_test.go",
+        "export_test.go",
+        "serve_test.go",
+    ],
+    embed = [":cmd"],
+    deps = [
+        "//internal/lsp",
+        "//internal/lsp/cache",
+        "//internal/lsp/cmd/test",
+        "//internal/lsp/protocol",
+        "//internal/lsp/tests",
+        "//internal/testenv",
+        "@org_golang_x_xerrors//:go_default_library",
+    ],
+)

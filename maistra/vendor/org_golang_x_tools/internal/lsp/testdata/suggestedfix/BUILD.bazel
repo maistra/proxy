@@ -1,0 +1,14 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "suggestedfix",
+    srcs = ["has_suggested_fix.go"],
+    importpath = "golang.org/x/tools/internal/lsp/testdata/suggestedfix",
+    visibility = ["//:__subpackages__"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":suggestedfix",
+    visibility = ["//:__subpackages__"],
+)

@@ -1,0 +1,394 @@
+commit 15bd71ed94ef2224a68b372c9aa33f3b3b1f7bbb (HEAD, tag: v1.42.0)
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-11-23
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-11-23
+
+    Update manual pages
+
+commit a76b7a37fdf35756df6fa4bf26065f52d1d6d604
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-11-23
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-11-23
+
+    Bump version number to 1.42.0, LT revision to 34:1:20
+
+commit 5cdf9ce19be275cabf9170087807a5ec834aa3b1
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-11-23
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-11-23
+
+    Update AUTHORS
+
+commit 0fba09246b58bef296682fca51f6fda86f788ef2
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-11-16
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-11-16
+
+    Build with GitHub Actions
+
+commit 444fd8180d741b07d7b0318bf9de05d66c80058b
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-11-15
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-11-15
+
+    Bump llhttp to 2.2.0
+
+commit f6b875e09deaf7fcd20448384de003ebb223fff3
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-11-15
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-11-15
+
+    Add missing cmake/FindSystemd.cmake to dist
+
+commit 694c0a4fb3e136c9ecfe1b0bc0c4464d7eec8d3c
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-11-15
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-11-15
+
+    cmake: Remove spdylay
+
+commit da7959c2e8aee0efb0bd1c7b217eb896e30fa8ea
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-11-15
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-11-15
+
+    nghttpx: Deal with the case when h2 backend is retired before it is initialized
+
+commit 2e44f23b053dac556d222674d1dccd0341e72280
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-09-24
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-09-24
+
+    Another mruby build fix
+
+commit f5351bee25a9e23058a2026a7d02c54f33e81f69
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-09-24
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-09-24
+
+    Fix `make clean` on mruby
+
+commit a1999ab2a50d775c579dda58533861a1fea57e18
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-09-24
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-09-24
+
+    Bump llhttp to 2.1.3
+
+commit 1bccccc174c69e4acc0f0b379ed6e74dfd6eb91f
+Merge: 7b4de401 4e3c61ef
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2020-09-24
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2020-09-24
+
+    Merge pull request #1511 from nghttp2/nghttpx-accesslog-path-without-query
+    
+    nghttpx: Add accesslog variables to record request path without query
+
+commit 4e3c61ef4d63dd6c3c735e901ca798728e4e1fbd
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-09-19
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-09-19
+
+    nghttpx: Add accesslog variables to record request path without query
+    
+    This commit the following variables to construct request line without
+    including query component:
+    
+    * $method
+    * $path
+    * $path_without_query
+    * $protocol_version
+
+commit 7b4de401d25af49cb7b567877272994c3b6370f5
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-09-19
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-09-19
+
+    nghttpx: Check worker wide blocker before creating new downstream connection
+
+commit 1570d5f69404b02423e2da83325ac2df58f64b55
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-09-03
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-09-03
+
+    Bump llhttp to 2.1.1
+
+commit 181a007a34f5e430eeb93e128deb6d98f1e4df82
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-09-02
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-09-02
+
+    Fix mruby build
+    
+    Copy build_config.rb to build directory because now
+    build_config.rb.lock is created along side it.
+    
+    Define toolchain depending on CC environment variable.
+
+commit 7df73a5d9055dcb2fd744973a3295d3b619ffad7
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-09-02
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-09-02
+
+    nghttpx: mrb_run was removed
+
+commit b00fa5567cfcffdfdb1ddfbf4cd6e50ec41d723f
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-09-02
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-09-02
+
+    Bump mruby to 2.1.2
+
+commit 4ecdc2903d53e06273db61b4196ca54d30be489f
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-07-26
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-07-26
+
+    Amend 7a57b039a6bbbf93a0d2c27e0b95cc01c54504ad
+
+commit 7a57b039a6bbbf93a0d2c27e0b95cc01c54504ad
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-07-26
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-07-26
+
+    Fix cmake build
+
+commit 1ce628529b5d59a0bc9ba9f70a15a85a24b74afa
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-07-26
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-07-26
+
+    nghttp2_map backed by nghttp2_ksl
+
+commit 6089353d526568878e29e67d676daeaf78bda338
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-07-24
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-07-24
+
+    Fix EXTRA_DIST
+
+commit db45fb483c0fd37ebfb38f3593ac9cc739ee8c94
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-07-24
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-07-24
+
+    Fix sphinx warnings
+    
+    This commit fixes the following warning:
+    
+    RemovedInSphinx30Warning: sphinx.locale.l_() is deprecated.  Please use `_()` instead.
+
+commit 4272dcac1da51f151c8cf7486ffd6e74a86aad1d
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-07-24
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-07-24
+
+    Update sphinx_rtd_theme
+
+commit 32ac8bdf791eacd874b4d96e5d05c780f12cf646
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-07-24
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-07-24
+
+    Add security process document
+
+commit 7f92b1e0e8c0822c72e009a279df4c8f0808ce27
+Merge: d5550e94 5497a1df
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2020-07-19
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2020-07-19
+
+    Merge pull request #1489 from tomaskrizek/doc-session-send
+    
+    doc: nghttp2_session_send is also affected by max concurrent streams
+
+commit d5550e946d0a34b6393576fc01270eb793d7b62b
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-07-14
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-07-14
+
+    Amend f1d8547b2923007d2a4095bb75d88f09000bd40b
+    
+    Better handling of tls and early data buffer
+
+commit 62411f5a6e64bdaa8f85705fe07ecad154009c8d
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-07-14
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-07-14
+
+    nghttpx: Set client_handler to special frontend objects
+
+commit e9465f0ee59ebcc5f52614e787459092067ee128
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-07-14
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-07-14
+
+    Revert "nghttpx: Fix ubsan error"
+    
+    This reverts commit 14dfeee4ed4fa9cf02594ca471404f5983fb666e.
+
+commit 14dfeee4ed4fa9cf02594ca471404f5983fb666e
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-07-14
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-07-14
+
+    nghttpx: Fix ubsan error
+
+commit f1d8547b2923007d2a4095bb75d88f09000bd40b
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-07-13
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-07-13
+
+    nghttpx: Fix stall when TLS follows after proxy protocol
+    
+    This fixes that nghttpx stalls when TLS handshake and data follow
+    after proxy protocol header and no extra read notification is
+    triggered (e.g., just small 1 HTTP request).
+
+commit 7b46edb483a47a2a0d558034be8c44a49da35295
+Merge: b6b135c0 c8bf8c65
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2020-06-28
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2020-06-28
+
+    Merge pull request #1477 from nghttp2/ignore-rst-stream-to-idle-stream
+    
+    Don't send RST_STREAM to idle stream
+
+commit 5497a1dfa724b77fc28df47b6484e9499e4a66f9
+Author:     Tomas Krizek <tomas.krizek@nic.cz>
+AuthorDate: 2020-06-19
+Commit:     Tomas Krizek <tomas.krizek@nic.cz>
+CommitDate: 2020-06-19
+
+    doc: nghttp2_session_send is also affected by max concurrent streams
+    
+    Further clarify the function also takes into account maximum concurrent
+    streams.
+    
+    Closes #691
+    Closes #817
+
+commit c8bf8c65217080b65c2c917fdcd0d63a5eb23701
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-06-10
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-06-18
+
+    Don't send RST_STREAM to idle stream
+
+commit b6b135c060f0ee434a48198c311b35cde67d1642
+Merge: abe80e37 f76ac196
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2020-06-18
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2020-06-18
+
+    Merge pull request #1488 from tomaskrizek/doc-session-send-flow-control
+    
+    doc: clarify flow control behaviour for nghttp2_session_send()
+
+commit f76ac196271b4fe837cc90eb44f88e6110b59083
+Author:     Tomas Krizek <tomas.krizek@nic.cz>
+AuthorDate: 2020-06-17
+Commit:     Tomas Krizek <tomas.krizek@nic.cz>
+CommitDate: 2020-06-17
+
+    doc: clarify flow control behaviour for nghttp2_session_send()
+    
+    The previous wording implied that if send_callback doesn't return
+    NGHTTP2_ERR_WOULDBLOCK, this function would always send all
+    submitted requests / data. This is not the case, since flow control can
+    cause some data to remain queued until WINDOW_UPDATE is received.
+
+commit abe80e371e90b808c8ec5e0423b58fb12bf96913
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-06-10
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-06-10
+
+    nghttpx: Fix logging integer
+
+commit 1ecc7940b858f5f1d84658e8502a1dcba1ec4578
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-06-06
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-06-06
+
+    Fix compile error with gcc
+
+commit ab11b2bba5a6f24b87b14aeafb10d8964bda426b
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-06-05
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-06-05
+
+    clang-format
+
+commit 6d7f1256de281f8a793ecc383b78196373a2f9c5
+Merge: ec084acd cf094bd5
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-06-05
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-06-05
+
+    Merge branch 'asraa-fix-ubsan'
+
+commit cf094bd56bd3fbe0037fc72a2ebcee3cb7724b90
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-06-05
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-06-05
+
+    Fix ubsan applying zero offset to null pointer occurred in unit test
+
+commit 78a56cf66f3bbe29f70b19eeaff0dbc63908c677
+Author:     Asra Ali <asraa@google.com>
+AuthorDate: 2020-05-18
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-06-05
+
+    fix ubsan errors
+    
+    Signed-off-by: Asra Ali <asraa@google.com>
+
+commit ec084acdba9acd266c49d9b100a56e7a3bf5dcc3
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2020-06-02
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2020-06-02
+
+    Bump version number to 1.42.0-DEV

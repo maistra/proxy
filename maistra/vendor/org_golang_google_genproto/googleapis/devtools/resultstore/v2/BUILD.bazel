@@ -1,0 +1,46 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "resultstore",
+    srcs = [
+        "action.pb.go",
+        "common.pb.go",
+        "configuration.pb.go",
+        "configured_target.pb.go",
+        "coverage.pb.go",
+        "coverage_summary.pb.go",
+        "download_metadata.pb.go",
+        "file.pb.go",
+        "file_processing_error.pb.go",
+        "file_set.pb.go",
+        "invocation.pb.go",
+        "resultstore_download.pb.go",
+        "resultstore_file_download.pb.go",
+        "resultstore_upload.pb.go",
+        "target.pb.go",
+        "test_suite.pb.go",
+        "upload_metadata.pb.go",
+    ],
+    importpath = "google.golang.org/genproto/googleapis/devtools/resultstore/v2",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//googleapis/api/annotations",
+        "@com_github_golang_protobuf//proto:go_default_library",
+        "@org_golang_google_grpc//:go_default_library",
+        "@org_golang_google_grpc//codes:go_default_library",
+        "@org_golang_google_grpc//status:go_default_library",
+        "@org_golang_google_protobuf//reflect/protoreflect:go_default_library",
+        "@org_golang_google_protobuf//runtime/protoimpl:go_default_library",
+        "@org_golang_google_protobuf//types/known/durationpb:go_default_library",
+        "@org_golang_google_protobuf//types/known/emptypb:go_default_library",
+        "@org_golang_google_protobuf//types/known/fieldmaskpb:go_default_library",
+        "@org_golang_google_protobuf//types/known/timestamppb:go_default_library",
+        "@org_golang_google_protobuf//types/known/wrapperspb:go_default_library",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":resultstore",
+    visibility = ["//visibility:public"],
+)

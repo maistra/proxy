@@ -1,0 +1,1 @@
+IS_RULES_GO = False

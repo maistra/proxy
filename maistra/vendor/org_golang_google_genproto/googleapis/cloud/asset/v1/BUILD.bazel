@@ -1,0 +1,39 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "asset",
+    srcs = [
+        "asset_service.pb.go",
+        "assets.pb.go",
+    ],
+    importpath = "google.golang.org/genproto/googleapis/cloud/asset/v1",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//googleapis/api/annotations",
+        "//googleapis/cloud/orgpolicy/v1:orgpolicy",
+        "//googleapis/cloud/osconfig/v1:osconfig",
+        "//googleapis/iam/v1:iam",
+        "//googleapis/identity/accesscontextmanager/v1:accesscontextmanager",
+        "//googleapis/longrunning",
+        "//googleapis/rpc/code",
+        "//googleapis/type/expr",
+        "@com_github_golang_protobuf//proto:go_default_library",
+        "@org_golang_google_grpc//:go_default_library",
+        "@org_golang_google_grpc//codes:go_default_library",
+        "@org_golang_google_grpc//status:go_default_library",
+        "@org_golang_google_protobuf//reflect/protoreflect:go_default_library",
+        "@org_golang_google_protobuf//runtime/protoimpl:go_default_library",
+        "@org_golang_google_protobuf//types/known/anypb:go_default_library",
+        "@org_golang_google_protobuf//types/known/durationpb:go_default_library",
+        "@org_golang_google_protobuf//types/known/emptypb:go_default_library",
+        "@org_golang_google_protobuf//types/known/fieldmaskpb:go_default_library",
+        "@org_golang_google_protobuf//types/known/structpb:go_default_library",
+        "@org_golang_google_protobuf//types/known/timestamppb:go_default_library",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":asset",
+    visibility = ["//visibility:public"],
+)

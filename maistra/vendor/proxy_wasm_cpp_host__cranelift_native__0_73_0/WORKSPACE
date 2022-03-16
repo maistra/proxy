@@ -1,0 +1,1 @@
+workspace(name = "proxy_wasm_cpp_host__cranelift_native__0_73_0")

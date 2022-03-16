@@ -1,0 +1,49 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "test",
+    srcs = [
+        "call_hierarchy.go",
+        "check.go",
+        "cmdtest.go",
+        "definition.go",
+        "folding_range.go",
+        "format.go",
+        "highlight.go",
+        "implementation.go",
+        "imports.go",
+        "links.go",
+        "prepare_rename.go",
+        "references.go",
+        "rename.go",
+        "semanticdriver.go",
+        "signature.go",
+        "suggested_fix.go",
+        "symbols.go",
+        "workspace_symbol.go",
+    ],
+    importpath = "golang.org/x/tools/internal/lsp/cmd/test",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//internal/jsonrpc2/servertest",
+        "//internal/lsp/cache",
+        "//internal/lsp/cmd",
+        "//internal/lsp/debug",
+        "//internal/lsp/diff",
+        "//internal/lsp/diff/myers",
+        "//internal/lsp/lsprpc",
+        "//internal/lsp/protocol",
+        "//internal/lsp/source",
+        "//internal/lsp/tests",
+        "//internal/span",
+        "//internal/testenv",
+        "//internal/tool",
+        "@org_golang_x_sys//execabs:go_default_library",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":test",
+    visibility = ["//:__subpackages__"],
+)

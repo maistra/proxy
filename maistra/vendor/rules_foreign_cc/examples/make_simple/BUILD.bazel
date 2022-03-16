@@ -1,0 +1,23 @@
+load("@rules_cc//cc:defs.bzl", "cc_test")
+load("@rules_foreign_cc//foreign_cc:defs.bzl", "make")
+
+make(
+    name = "make_lib",
+    build_data = ["//make_simple/code:clang_wrapper.sh"],
+    env = {
+        "CLANG_WRAPPER": "$(execpath //make_simple/code:clang_wrapper.sh)",
+    },
+    lib_source = "//make_simple/code:srcs",
+    out_static_libs = ["liba.a"],
+)
+
+cc_test(
+    name = "test_lib",
+    srcs = [
+        "test_libb.cpp",
+    ],
+    tags = ["windows"],
+    deps = [
+        ":make_lib",
+    ],
+)

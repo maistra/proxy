@@ -1,0 +1,18 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "b",
+    srcs = [
+        "b.go",
+        "c.go",
+        "e.go",
+    ],
+    importpath = "golang.org/x/tools/internal/lsp/testdata/godef/b",
+    visibility = ["//:__subpackages__"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":b",
+    visibility = ["//:__subpackages__"],
+)

@@ -1,0 +1,76 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "cache",
+    srcs = [
+        "analysis.go",
+        "cache.go",
+        "check.go",
+        "errors.go",
+        "imports.go",
+        "keys.go",
+        "load.go",
+        "mod.go",
+        "mod_tidy.go",
+        "os_darwin.go",
+        "os_windows.go",
+        "parse.go",
+        "pkg.go",
+        "session.go",
+        "snapshot.go",
+        "view.go",
+        "workspace.go",
+    ],
+    importpath = "golang.org/x/tools/internal/lsp/cache",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//go/analysis",
+        "//go/packages",
+        "//internal/analysisinternal",
+        "//internal/event",
+        "//internal/event/keys",
+        "//internal/event/label",
+        "//internal/gocommand",
+        "//internal/imports",
+        "//internal/lsp/debug/log",
+        "//internal/lsp/debug/tag",
+        "//internal/lsp/diff",
+        "//internal/lsp/protocol",
+        "//internal/lsp/source",
+        "//internal/memoize",
+        "//internal/packagesinternal",
+        "//internal/span",
+        "//internal/typesinternal",
+        "//internal/xcontext",
+        "@org_golang_x_mod//modfile:go_default_library",
+        "@org_golang_x_mod//module:go_default_library",
+        "@org_golang_x_mod//semver:go_default_library",
+        "@org_golang_x_sync//errgroup:go_default_library",
+        "@org_golang_x_sys//execabs:go_default_library",
+        "@org_golang_x_xerrors//:go_default_library",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":cache",
+    visibility = ["//:__subpackages__"],
+)
+
+go_test(
+    name = "cache_test",
+    srcs = [
+        "error_test.go",
+        "parse_test.go",
+        "view_test.go",
+        "workspace_test.go",
+    ],
+    embed = [":cache"],
+    deps = [
+        "//internal/lsp/fake",
+        "//internal/lsp/protocol",
+        "//internal/lsp/source",
+        "//internal/span",
+        "@org_golang_x_mod//modfile:go_default_library",
+    ],
+)

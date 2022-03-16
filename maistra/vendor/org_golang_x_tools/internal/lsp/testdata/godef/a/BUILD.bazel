@@ -1,0 +1,28 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "a",
+    srcs = [
+        "a.go",
+        "d.go",
+        "f.go",
+        "random.go",
+    ],
+    importpath = "golang.org/x/tools/internal/lsp/testdata/godef/a",
+    visibility = ["//:__subpackages__"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":a",
+    visibility = ["//:__subpackages__"],
+)
+
+go_test(
+    name = "a_test",
+    srcs = [
+        "a_test.go",
+        "a_x_test.go",
+    ],
+    embed = [":a"],
+)

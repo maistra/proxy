@@ -1,0 +1,27 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "myers",
+    srcs = ["diff.go"],
+    importpath = "golang.org/x/tools/internal/lsp/diff/myers",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//internal/lsp/diff",
+        "//internal/span",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":myers",
+    visibility = ["//:__subpackages__"],
+)
+
+go_test(
+    name = "myers_test",
+    srcs = ["diff_test.go"],
+    deps = [
+        ":myers",
+        "//internal/lsp/diff/difftest",
+    ],
+)

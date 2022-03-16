@@ -1,0 +1,45 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "v1beta",
+    srcs = [
+        "app_yaml.pb.go",
+        "appengine.pb.go",
+        "application.pb.go",
+        "audit_data.pb.go",
+        "certificate.pb.go",
+        "deploy.pb.go",
+        "deployed_files.pb.go",
+        "domain.pb.go",
+        "domain_mapping.pb.go",
+        "firewall.pb.go",
+        "instance.pb.go",
+        "location.pb.go",
+        "network_settings.pb.go",
+        "operation.pb.go",
+        "service.pb.go",
+        "version.pb.go",
+    ],
+    importpath = "google.golang.org/genproto/googleapis/appengine/v1beta",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//googleapis/api/annotations",
+        "//googleapis/longrunning",
+        "@com_github_golang_protobuf//proto:go_default_library",
+        "@org_golang_google_grpc//:go_default_library",
+        "@org_golang_google_grpc//codes:go_default_library",
+        "@org_golang_google_grpc//status:go_default_library",
+        "@org_golang_google_protobuf//reflect/protoreflect:go_default_library",
+        "@org_golang_google_protobuf//runtime/protoimpl:go_default_library",
+        "@org_golang_google_protobuf//types/known/durationpb:go_default_library",
+        "@org_golang_google_protobuf//types/known/emptypb:go_default_library",
+        "@org_golang_google_protobuf//types/known/fieldmaskpb:go_default_library",
+        "@org_golang_google_protobuf//types/known/timestamppb:go_default_library",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":v1beta",
+    visibility = ["//visibility:public"],
+)

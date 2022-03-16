@@ -1,0 +1,37 @@
+load("@rules_python//python:defs.bzl", "py_library", "py_binary")
+
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "dist_info",
+    srcs = glob(["*.dist-info/**"], allow_empty = True),
+)
+
+filegroup(
+    name = "data",
+    srcs = glob(["*.data/**"], allow_empty = True),
+)
+
+filegroup(
+    name = "whl",
+    srcs = glob(["*.whl"], allow_empty = True),
+    data = ["@base_pip3_pypi__markupsafe//:whl"],
+)
+
+py_library(
+    name = "pkg",
+    srcs = glob(
+        ["**/*.py"],
+        allow_empty = True,
+        exclude = [
+            "rules_python_wheel_entry_point*.py",
+            "tests/**",
+            "*/tests/**",
+        ],
+    ),
+    data = glob(["**/*"], exclude=["*.whl", "**/*.py", "rules_python_wheel_entry_point*.py", "**/* *", "BUILD.bazel", "WORKSPACE"]),
+    # This makes this directory a top-level in the python import
+    # search path for anything that depends on this.
+    imports = ["."],
+    deps = ["@base_pip3_pypi__markupsafe//:pkg"],
+)

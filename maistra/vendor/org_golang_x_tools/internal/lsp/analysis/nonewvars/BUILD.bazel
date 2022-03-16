@@ -1,0 +1,29 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "nonewvars",
+    srcs = ["nonewvars.go"],
+    importpath = "golang.org/x/tools/internal/lsp/analysis/nonewvars",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//go/analysis",
+        "//go/analysis/passes/inspect",
+        "//go/ast/inspector",
+        "//internal/analysisinternal",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":nonewvars",
+    visibility = ["//:__subpackages__"],
+)
+
+go_test(
+    name = "nonewvars_test",
+    srcs = ["nonewvars_test.go"],
+    deps = [
+        ":nonewvars",
+        "//go/analysis/analysistest",
+    ],
+)
