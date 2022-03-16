@@ -1,0 +1,5 @@
+docs
+examples
+toolchains_examples
+test/standard_cxx_flags_test
+test/detect_root_test

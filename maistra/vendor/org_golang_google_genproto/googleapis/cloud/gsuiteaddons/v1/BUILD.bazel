@@ -1,0 +1,32 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "gsuiteaddons",
+    srcs = ["gsuiteaddons.pb.go"],
+    importpath = "google.golang.org/genproto/googleapis/cloud/gsuiteaddons/v1",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//googleapis/api/annotations",
+        "//googleapis/apps/script/type",
+        "//googleapis/apps/script/type/calendar",
+        "//googleapis/apps/script/type/docs",
+        "//googleapis/apps/script/type/drive",
+        "//googleapis/apps/script/type/gmail",
+        "//googleapis/apps/script/type/sheets",
+        "//googleapis/apps/script/type/slides",
+        "@com_github_golang_protobuf//proto:go_default_library",
+        "@org_golang_google_grpc//:go_default_library",
+        "@org_golang_google_grpc//codes:go_default_library",
+        "@org_golang_google_grpc//status:go_default_library",
+        "@org_golang_google_protobuf//reflect/protoreflect:go_default_library",
+        "@org_golang_google_protobuf//runtime/protoimpl:go_default_library",
+        "@org_golang_google_protobuf//types/known/emptypb:go_default_library",
+        "@org_golang_google_protobuf//types/known/wrapperspb:go_default_library",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":gsuiteaddons",
+    visibility = ["//visibility:public"],
+)

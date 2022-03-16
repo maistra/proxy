@@ -1,0 +1,170 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@io_bazel_stardoc//stardoc:stardoc.bzl", "stardoc")
+load("//:page.bzl", "gen_header", "page")
+
+package(default_visibility = ["//visibility:private"])
+
+bzl_library(
+    name = "docs_deps",
+    srcs = [
+        "@bazel_tools//tools:bzl_srcs",
+        "@build_bazel_rules_nodejs//internal/providers:bzl",
+    ],
+    deps = [
+        "@rules_proto//proto:rules",
+    ],
+)
+
+bzl_library(
+    name = "all_docs",
+    deps = [
+        ":docs_deps",
+        "@rules_rust//:rules",
+        "@rules_rust//bindgen:rules",
+        "@rules_rust//cargo:rules",
+        "@rules_rust//crate_universe:rules",
+        "@rules_rust//proto:rules",
+        "@rules_rust//rust:rules",
+        "@rules_rust//wasm_bindgen:rules",
+    ],
+)
+
+PAGES = dict([
+    page(
+        name = "cargo_build_script",
+        symbols = [
+            "cargo_build_script",
+        ],
+    ),
+    page(
+        name = "crate_universe",
+        symbols = [
+            "crate_universe",
+            "crate",
+        ],
+    ),
+    page(
+        name = "defs",
+        symbols = [
+            "rust_binary",
+            "rust_library",
+            "rust_static_library",
+            "rust_shared_library",
+            "rust_proc_macro",
+            "rust_benchmark",
+            "rust_test",
+            "rust_test_suite",
+        ],
+    ),
+    page(
+        name = "rust_analyzer",
+        header_template = ":rust_analyzer.vm",
+        symbols = [
+            "rust_analyzer",
+            "rust_analyzer_aspect",
+        ],
+    ),
+    page(
+        name = "rust_bindgen",
+        symbols = [
+            "rust_bindgen_library",
+            "rust_bindgen_repositories",
+            "rust_bindgen_toolchain",
+            "rust_bindgen",
+        ],
+    ),
+    page(
+        name = "rust_clippy",
+        header_template = ":rust_clippy.vm",
+        symbols = [
+            "rust_clippy",
+            "rust_clippy_aspect",
+        ],
+    ),
+    page(
+        name = "rust_doc",
+        symbols = [
+            "rust_doc",
+            "rust_doc_test",
+        ],
+    ),
+    page(
+        name = "rust_fmt",
+        header_template = ":rust_fmt.vm",
+        symbols = [
+            "rustfmt_aspect",
+            "rustfmt_test",
+        ],
+    ),
+    page(
+        name = "rust_proto",
+        symbols = [
+            "rust_grpc_library",
+            "rust_proto_library",
+            "rust_proto_repositories",
+            "rust_proto_toolchain",
+        ],
+    ),
+    page(
+        name = "rust_repositories",
+        symbols = [
+            "rust_repositories",
+            "rust_repository_set",
+            "rust_toolchain",
+            "rust_toolchain_repository",
+            "rust_toolchain_repository_proxy",
+        ],
+    ),
+    page(
+        name = "rust_wasm_bindgen",
+        header_template = ":rust_wasm_bindgen.vm",
+        symbols = [
+            "rust_wasm_bindgen_repositories",
+            "rust_wasm_bindgen_toolchain",
+            "rust_wasm_bindgen",
+        ],
+    ),
+])
+
+# Generate headers for each page
+[gen_header(page = p) for p in PAGES.values()]
+
+[
+    stardoc(
+        name = "%s_md" % k,
+        out = "%s.md" % k,
+        header_template = ":%s_gen_header_vm" % k,
+        input = ":symbols.bzl",
+        symbol_names = PAGES[k].symbols,
+        deps = [":all_docs"],
+    )
+    for k in PAGES.keys()
+]
+
+genrule(
+    name = "flatten_header_vm",
+    outs = ["flatten_header.vm"],
+    cmd = ">$@ echo '# Rust rules\n\n%s\n'" % "\n".join(
+        sorted(["* [{rule}](#{rule})".format(rule = v) for k in PAGES.keys() for v in PAGES[k].symbols]),
+    ),
+    output_to_bindir = True,
+)
+
+stardoc(
+    name = "flatten_md",
+    out = "flatten.md",
+    header_template = ":flatten_header_vm",
+    input = ":symbols.bzl",
+    symbol_names = sorted([symbol for k in PAGES.keys() for symbol in PAGES[k].symbols]),
+    deps = [":all_docs"],
+)
+
+sh_binary(
+    name = "update_docs",
+    srcs = ["update_docs.sh"],
+)
+
+sh_binary(
+    name = "test_docs",
+    srcs = ["test_docs.sh"],
+)

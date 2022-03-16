@@ -1,0 +1,21 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "docs",
+    srcs = ["docs_addon_manifest.pb.go"],
+    importpath = "google.golang.org/genproto/googleapis/apps/script/type/docs",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//googleapis/api/annotations",
+        "//googleapis/apps/script/type",
+        "@com_github_golang_protobuf//proto:go_default_library",
+        "@org_golang_google_protobuf//reflect/protoreflect:go_default_library",
+        "@org_golang_google_protobuf//runtime/protoimpl:go_default_library",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":docs",
+    visibility = ["//visibility:public"],
+)

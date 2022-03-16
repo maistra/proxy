@@ -1,0 +1,29 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "instance",
+    srcs = [
+        "image_classification.pb.go",
+        "image_object_detection.pb.go",
+        "text_classification.pb.go",
+        "text_extraction.pb.go",
+        "text_sentiment.pb.go",
+        "video_action_recognition.pb.go",
+        "video_classification.pb.go",
+        "video_object_tracking.pb.go",
+    ],
+    importpath = "google.golang.org/genproto/googleapis/cloud/aiplatform/v1beta1/schema/predict/instance",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//googleapis/api/annotations",
+        "@com_github_golang_protobuf//proto:go_default_library",
+        "@org_golang_google_protobuf//reflect/protoreflect:go_default_library",
+        "@org_golang_google_protobuf//runtime/protoimpl:go_default_library",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":instance",
+    visibility = ["//visibility:public"],
+)

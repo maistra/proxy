@@ -1,0 +1,1 @@
+workspace(name = "proxy_wasm_cpp_host__wasi__0_10_2_wasi_snapshot_preview1")

@@ -1,0 +1,1 @@
+workspace(name = "org_golang_google_genproto")

@@ -1,0 +1,43 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "routes",
+    srcs = [
+        "compute_route_matrix_request.pb.go",
+        "compute_routes_request.pb.go",
+        "compute_routes_response.pb.go",
+        "fallback_info.pb.go",
+        "polyline.pb.go",
+        "route.pb.go",
+        "route_matrix_element.pb.go",
+        "route_service.pb.go",
+        "toll_passes.pb.go",
+        "vehicle_emission_type.pb.go",
+        "waypoint.pb.go",
+    ],
+    importpath = "google.golang.org/genproto/googleapis/maps/routes/v1",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//googleapis/api/annotations",
+        "//googleapis/geo/type/viewport",
+        "//googleapis/rpc/status",
+        "//googleapis/type/latlng",
+        "//googleapis/type/money",
+        "@com_github_golang_protobuf//proto:go_default_library",
+        "@org_golang_google_grpc//:go_default_library",
+        "@org_golang_google_grpc//codes:go_default_library",
+        "@org_golang_google_grpc//status:go_default_library",
+        "@org_golang_google_protobuf//reflect/protoreflect:go_default_library",
+        "@org_golang_google_protobuf//runtime/protoimpl:go_default_library",
+        "@org_golang_google_protobuf//types/known/durationpb:go_default_library",
+        "@org_golang_google_protobuf//types/known/structpb:go_default_library",
+        "@org_golang_google_protobuf//types/known/timestamppb:go_default_library",
+        "@org_golang_google_protobuf//types/known/wrapperspb:go_default_library",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":routes",
+    visibility = ["//visibility:public"],
+)

@@ -1,0 +1,38 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test", "go_tool_library")
+
+go_library(
+    name = "buildssa",
+    srcs = ["buildssa.go"],
+    importpath = "golang.org/x/tools/go/analysis/passes/buildssa",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/analysis",
+        "//go/ssa",
+    ],
+)
+
+go_tool_library(
+    name = "go_tool_library",
+    srcs = ["buildssa.go"],
+    importpath = "golang.org/x/tools/go/analysis/passes/buildssa",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/analysis:go_tool_library",
+        "//go/ssa:go_tool_library",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":buildssa",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "buildssa_test",
+    srcs = ["buildssa_test.go"],
+    deps = [
+        ":buildssa",
+        "//go/analysis/analysistest",
+    ],
+)

@@ -1,0 +1,41 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "channel",
+    srcs = [
+        "channel_partner_links.pb.go",
+        "common.pb.go",
+        "customers.pb.go",
+        "entitlements.pb.go",
+        "offers.pb.go",
+        "operations.pb.go",
+        "products.pb.go",
+        "service.pb.go",
+        "subscriber_event.pb.go",
+    ],
+    importpath = "google.golang.org/genproto/googleapis/cloud/channel/v1",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//googleapis/api/annotations",
+        "//googleapis/longrunning",
+        "//googleapis/type/money",
+        "//googleapis/type/postaladdress",
+        "@com_github_golang_protobuf//proto:go_default_library",
+        "@org_golang_google_grpc//:go_default_library",
+        "@org_golang_google_grpc//codes:go_default_library",
+        "@org_golang_google_grpc//status:go_default_library",
+        "@org_golang_google_protobuf//reflect/protoreflect:go_default_library",
+        "@org_golang_google_protobuf//runtime/protoimpl:go_default_library",
+        "@org_golang_google_protobuf//types/known/anypb:go_default_library",
+        "@org_golang_google_protobuf//types/known/emptypb:go_default_library",
+        "@org_golang_google_protobuf//types/known/fieldmaskpb:go_default_library",
+        "@org_golang_google_protobuf//types/known/timestamppb:go_default_library",
+        "@org_golang_google_protobuf//types/known/wrapperspb:go_default_library",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":channel",
+    visibility = ["//visibility:public"],
+)

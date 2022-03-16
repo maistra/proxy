@@ -1,0 +1,29 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "noresultvalues",
+    srcs = ["noresultvalues.go"],
+    importpath = "golang.org/x/tools/internal/lsp/analysis/noresultvalues",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//go/analysis",
+        "//go/analysis/passes/inspect",
+        "//go/ast/inspector",
+        "//internal/analysisinternal",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":noresultvalues",
+    visibility = ["//:__subpackages__"],
+)
+
+go_test(
+    name = "noresultvalues_test",
+    srcs = ["noresultvalues_test.go"],
+    deps = [
+        ":noresultvalues",
+        "//go/analysis/analysistest",
+    ],
+)

@@ -1,0 +1,1 @@
+workspace(name = "proxy_wasm_cpp_host__getrandom__0_2_2")

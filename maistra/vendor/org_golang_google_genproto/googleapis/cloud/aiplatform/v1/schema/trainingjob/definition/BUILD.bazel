@@ -1,0 +1,33 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "definition",
+    srcs = [
+        "automl_image_classification.pb.go",
+        "automl_image_object_detection.pb.go",
+        "automl_image_segmentation.pb.go",
+        "automl_tables.pb.go",
+        "automl_text_classification.pb.go",
+        "automl_text_extraction.pb.go",
+        "automl_text_sentiment.pb.go",
+        "automl_time_series_forecasting.pb.go",
+        "automl_video_action_recognition.pb.go",
+        "automl_video_classification.pb.go",
+        "automl_video_object_tracking.pb.go",
+        "export_evaluated_data_items_config.pb.go",
+    ],
+    importpath = "google.golang.org/genproto/googleapis/cloud/aiplatform/v1/schema/trainingjob/definition",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//googleapis/api/annotations",
+        "@com_github_golang_protobuf//proto:go_default_library",
+        "@org_golang_google_protobuf//reflect/protoreflect:go_default_library",
+        "@org_golang_google_protobuf//runtime/protoimpl:go_default_library",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":definition",
+    visibility = ["//visibility:public"],
+)

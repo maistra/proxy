@@ -1,0 +1,52 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "sdk",
+    srcs = [
+        "account_linking.pb.go",
+        "account_linking_secret.pb.go",
+        "action.pb.go",
+        "actions_sdk.pb.go",
+        "actions_testing.pb.go",
+        "config_file.pb.go",
+        "data_file.pb.go",
+        "event_logs.pb.go",
+        "files.pb.go",
+        "localized_settings.pb.go",
+        "manifest.pb.go",
+        "release_channel.pb.go",
+        "settings.pb.go",
+        "surface.pb.go",
+        "theme_customization.pb.go",
+        "validation_results.pb.go",
+        "version.pb.go",
+        "webhook.pb.go",
+    ],
+    importpath = "google.golang.org/genproto/googleapis/actions/sdk/v2",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//googleapis/actions/sdk/v2/conversation",
+        "//googleapis/actions/sdk/v2/interactionmodel",
+        "//googleapis/actions/sdk/v2/interactionmodel/prompt",
+        "//googleapis/actions/sdk/v2/interactionmodel/type",
+        "//googleapis/api/annotations",
+        "//googleapis/rpc/status",
+        "//googleapis/type/latlng",
+        "@com_github_golang_protobuf//proto:go_default_library",
+        "@org_golang_google_grpc//:go_default_library",
+        "@org_golang_google_grpc//codes:go_default_library",
+        "@org_golang_google_grpc//status:go_default_library",
+        "@org_golang_google_protobuf//reflect/protoreflect:go_default_library",
+        "@org_golang_google_protobuf//runtime/protoimpl:go_default_library",
+        "@org_golang_google_protobuf//types/known/emptypb:go_default_library",
+        "@org_golang_google_protobuf//types/known/structpb:go_default_library",
+        "@org_golang_google_protobuf//types/known/timestamppb:go_default_library",
+        "@org_golang_google_protobuf//types/known/wrapperspb:go_default_library",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":sdk",
+    visibility = ["//visibility:public"],
+)

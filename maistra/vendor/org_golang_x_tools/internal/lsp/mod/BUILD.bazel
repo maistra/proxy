@@ -1,0 +1,41 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "mod",
+    srcs = [
+        "code_lens.go",
+        "diagnostics.go",
+        "format.go",
+        "hover.go",
+    ],
+    importpath = "golang.org/x/tools/internal/lsp/mod",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//internal/event",
+        "//internal/lsp/debug/tag",
+        "//internal/lsp/protocol",
+        "//internal/lsp/source",
+        "//internal/span",
+        "@org_golang_x_mod//modfile:go_default_library",
+        "@org_golang_x_xerrors//:go_default_library",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":mod",
+    visibility = ["//:__subpackages__"],
+)
+
+go_test(
+    name = "mod_test",
+    srcs = ["mod_test.go"],
+    embed = [":mod"],
+    deps = [
+        "//internal/lsp/cache",
+        "//internal/lsp/source",
+        "//internal/lsp/tests",
+        "//internal/span",
+        "//internal/testenv",
+    ],
+)

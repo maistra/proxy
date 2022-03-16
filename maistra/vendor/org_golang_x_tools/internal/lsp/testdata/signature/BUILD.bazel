@@ -1,0 +1,19 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "signature",
+    srcs = ["signature.go"],
+    importpath = "golang.org/x/tools/internal/lsp/testdata/signature",
+    visibility = ["//:__subpackages__"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":signature",
+    visibility = ["//:__subpackages__"],
+)
+
+go_test(
+    name = "signature_test",
+    srcs = ["signature_test.go"],
+)

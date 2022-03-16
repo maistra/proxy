@@ -1,0 +1,50 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "completion",
+    srcs = [
+        "builtin.go",
+        "completion.go",
+        "deep_completion.go",
+        "format.go",
+        "keywords.go",
+        "labels.go",
+        "literal.go",
+        "package.go",
+        "printf.go",
+        "snippet.go",
+        "statements.go",
+        "util.go",
+    ],
+    importpath = "golang.org/x/tools/internal/lsp/source/completion",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//go/ast/astutil",
+        "//internal/event",
+        "//internal/imports",
+        "//internal/lsp/debug/tag",
+        "//internal/lsp/diff",
+        "//internal/lsp/fuzzy",
+        "//internal/lsp/protocol",
+        "//internal/lsp/snippet",
+        "//internal/lsp/source",
+        "//internal/span",
+        "@org_golang_x_xerrors//:go_default_library",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":completion",
+    visibility = ["//:__subpackages__"],
+)
+
+go_test(
+    name = "completion_test",
+    srcs = [
+        "deep_completion_test.go",
+        "printf_test.go",
+        "util_test.go",
+    ],
+    embed = [":completion"],
+)

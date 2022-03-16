@@ -1,0 +1,23 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "semantic",
+    srcs = [
+        "a.go",
+        "b.go",
+    ],
+    importpath = "golang.org/x/tools/internal/lsp/testdata/semantic",
+    visibility = ["//:__subpackages__"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":semantic",
+    visibility = ["//:__subpackages__"],
+)
+
+go_test(
+    name = "semantic_test",
+    srcs = ["semantic_test.go"],
+    embed = [":semantic"],
+)

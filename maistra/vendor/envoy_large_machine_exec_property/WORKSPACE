@@ -1,0 +1,2 @@
+# DO NOT EDIT: automatically generated WORKSPACE file for _exec_property_sets_repository rule
+workspace(name = "envoy_large_machine_exec_property")

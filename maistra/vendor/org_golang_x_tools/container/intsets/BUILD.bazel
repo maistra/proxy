@@ -1,0 +1,29 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "intsets",
+    srcs = [
+        "popcnt_amd64.go",
+        "popcnt_amd64.s",
+        "popcnt_generic.go",
+        "sparse.go",
+        "util.go",
+    ],
+    importpath = "golang.org/x/tools/container/intsets",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":intsets",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "intsets_test",
+    srcs = [
+        "sparse_test.go",
+        "util_test.go",
+    ],
+    embed = [":intsets"],
+)

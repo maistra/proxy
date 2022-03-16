@@ -1,0 +1,26 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "extract_function",
+    srcs = [
+        "extract_args_returns.go",
+        "extract_basic.go",
+        "extract_redefine.go",
+        "extract_return_basic.go",
+        "extract_return_complex.go",
+        "extract_return_func_lit.go",
+        "extract_return_init.go",
+        "extract_scope.go",
+        "extract_smart_initialization.go",
+        "extract_smart_return.go",
+        "extract_unnecessary_param.go",
+    ],
+    importpath = "golang.org/x/tools/internal/lsp/testdata/extract/extract_function",
+    visibility = ["//:__subpackages__"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":extract_function",
+    visibility = ["//:__subpackages__"],
+)

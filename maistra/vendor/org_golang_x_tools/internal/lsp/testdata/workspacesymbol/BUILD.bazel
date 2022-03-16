@@ -1,0 +1,17 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "workspacesymbol_lib",
+    srcs = [
+        "main.go",
+        "query.go",
+    ],
+    importpath = "golang.org/x/tools/internal/lsp/testdata/workspacesymbol",
+    visibility = ["//visibility:private"],
+)
+
+go_binary(
+    name = "workspacesymbol",
+    embed = [":workspacesymbol_lib"],
+    visibility = ["//:__subpackages__"],
+)

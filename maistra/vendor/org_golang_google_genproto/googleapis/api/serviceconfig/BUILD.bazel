@@ -1,0 +1,44 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "serviceconfig",
+    srcs = [
+        "auth.pb.go",
+        "backend.pb.go",
+        "billing.pb.go",
+        "consumer.pb.go",
+        "context.pb.go",
+        "control.pb.go",
+        "documentation.pb.go",
+        "endpoint.pb.go",
+        "log.pb.go",
+        "logging.pb.go",
+        "monitoring.pb.go",
+        "quota.pb.go",
+        "service.pb.go",
+        "source_info.pb.go",
+        "system_parameter.pb.go",
+        "usage.pb.go",
+    ],
+    importpath = "google.golang.org/genproto/googleapis/api/serviceconfig",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//googleapis/api/annotations",
+        "//googleapis/api/label",
+        "//googleapis/api/metric",
+        "//googleapis/api/monitoredres",
+        "@com_github_golang_protobuf//proto:go_default_library",
+        "@org_golang_google_protobuf//reflect/protoreflect:go_default_library",
+        "@org_golang_google_protobuf//runtime/protoimpl:go_default_library",
+        "@org_golang_google_protobuf//types/known/anypb:go_default_library",
+        "@org_golang_google_protobuf//types/known/apipb:go_default_library",
+        "@org_golang_google_protobuf//types/known/typepb:go_default_library",
+        "@org_golang_google_protobuf//types/known/wrapperspb:go_default_library",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":serviceconfig",
+    visibility = ["//visibility:public"],
+)
