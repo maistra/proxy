@@ -1,0 +1,146 @@
+diff --git a/include/proxy-wasm/exports.h b/include/proxy-wasm/exports.h
+index f0fa5dbf0..dde0ec63c 100644
+--- a/include/proxy-wasm/exports.h
++++ b/include/proxy-wasm/exports.h
+@@ -39,12 +39,12 @@ template <typename Pairs> size_t pairsSize(const Pairs &result) {
+
+ template <typename Pairs> void marshalPairs(const Pairs &result, char *buffer) {
+   char *b = buffer;
+-  *reinterpret_cast<uint32_t *>(b) = result.size();
++  *reinterpret_cast<uint32_t *>(b) = htole32(result.size());
+   b += sizeof(uint32_t);
+   for (auto &p : result) {
+-    *reinterpret_cast<uint32_t *>(b) = p.first.size();
++    *reinterpret_cast<uint32_t *>(b) = htole32(p.first.size());
+     b += sizeof(uint32_t);
+-    *reinterpret_cast<uint32_t *>(b) = p.second.size();
++    *reinterpret_cast<uint32_t *>(b) = htole32(p.second.size());
+     b += sizeof(uint32_t);
+   }
+   for (auto &p : result) {
+diff --git a/include/proxy-wasm/word.h b/include/proxy-wasm/word.h
+index e96fdfb94..549968342 100644
+--- a/include/proxy-wasm/word.h
++++ b/include/proxy-wasm/word.h
+@@ -17,6 +17,11 @@
+
+ #include <iostream>
+
++#ifdef __APPLE__
++#define htole32(x) (x)
++#define le32toh(x) (x)
++#endif
++
+ namespace proxy_wasm {
+
+ #include "proxy_wasm_common.h"
+diff --git a/src/exports.cc b/src/exports.cc
+index 1ffee3228..7772c9368 100644
+--- a/src/exports.cc
++++ b/src/exports.cc
+@@ -48,16 +48,16 @@ Pairs toPairs(std::string_view buffer) {
+   if (buffer.size() < sizeof(uint32_t)) {
+     return {};
+   }
+-  auto size = *reinterpret_cast<const uint32_t *>(b);
++  auto size = le32toh(*reinterpret_cast<const uint32_t *>(b));
+   b += sizeof(uint32_t);
+   if (sizeof(uint32_t) + size * 2 * sizeof(uint32_t) > buffer.size()) {
+     return {};
+   }
+   result.resize(size);
+   for (uint32_t i = 0; i < size; i++) {
+-    result[i].first = std::string_view(nullptr, *reinterpret_cast<const uint32_t *>(b));
++    result[i].first = std::string_view(nullptr, le32toh(*reinterpret_cast<const uint32_t *>(b)));
+     b += sizeof(uint32_t);
+-    result[i].second = std::string_view(nullptr, *reinterpret_cast<const uint32_t *>(b));
++    result[i].second = std::string_view(nullptr, le32toh(*reinterpret_cast<const uint32_t *>(b)));
+     b += sizeof(uint32_t);
+   }
+   for (auto &p : result) {
+@@ -685,7 +685,8 @@ Word writevImpl(void *raw_context, Word fd, Word iovs, Word iovs_len, Word *nwri
+     }
+     const uint32_t *iovec = reinterpret_cast<const uint32_t *>(memslice.value().data());
+     if (iovec[1] /* buf_len */) {
+-      memslice = context->wasmVm()->getMemory(iovec[0] /* buf */, iovec[1] /* buf_len */);
++      memslice = context->wasmVm()->getMemory(le32toh(iovec[0]) /* buf */,
++                                              le32toh(iovec[1]) /* buf_len */);
+       if (!memslice) {
+         return 21; // __WASI_EFAULT
+       }
+diff --git a/src/v8/v8.cc b/src/v8/v8.cc
+index 9078999cd..2e20f07d4 100644
+--- a/src/v8/v8.cc
++++ b/src/v8/v8.cc
+@@ -616,7 +616,7 @@ bool V8::getWord(uint64_t pointer, Word *word) {
+   }
+   uint32_t word32;
+   ::memcpy(&word32, memory_->data() + pointer, size);
+-  word->u64_ = word32;
++  word->u64_ = le32toh(word32);
+   return true;
+ }
+
+@@ -625,7 +625,7 @@ bool V8::setWord(uint64_t pointer, Word word) {
+   if (pointer + size > memory_->data_size()) {
+     return false;
+   }
+-  uint32_t word32 = word.u32();
++  uint32_t word32 = htole32(word.u32());
+   ::memcpy(memory_->data() + pointer, &word32, size);
+   return true;
+ }
+diff --git a/src/wasmtime/wasmtime.cc b/src/wasmtime/wasmtime.cc
+index b7d648b6e..19929efd7 100644
+--- a/src/wasmtime/wasmtime.cc
++++ b/src/wasmtime/wasmtime.cc
+@@ -461,7 +461,7 @@ bool Wasmtime::getWord(uint64_t pointer, Word *word) {
+
+   uint32_t word32;
+   ::memcpy(&word32, wasm_memory_data(memory_.get()) + pointer, size);
+-  word->u64_ = word32;
++  word->u64_ = le32toh(word32);
+   return true;
+ }
+
+@@ -470,7 +470,7 @@ bool Wasmtime::setWord(uint64_t pointer, Word word) {
+   if (pointer + size > wasm_memory_data_size(memory_.get())) {
+     return false;
+   }
+-  uint32_t word32 = word.u32();
++  uint32_t word32 = htole32(word.u32());
+   ::memcpy(wasm_memory_data(memory_.get()) + pointer, &word32, size);
+   return true;
+ }
+diff --git a/src/wavm/wavm.cc b/src/wavm/wavm.cc
+index 00b3b7358..c8762699e 100644
+--- a/src/wavm/wavm.cc
++++ b/src/wavm/wavm.cc
+@@ -390,12 +390,12 @@ bool Wavm::getWord(uint64_t pointer, Word *data) {
+   auto p = reinterpret_cast<char *>(memory_base_ + pointer);
+   uint32_t data32;
+   memcpy(&data32, p, sizeof(uint32_t));
+-  data->u64_ = data32;
++  data->u64_ = le32toh(data32);
+   return true;
+ }
+
+ bool Wavm::setWord(uint64_t pointer, Word data) {
+-  uint32_t data32 = data.u32();
++  uint32_t data32 = htole32(data.u32());
+   return setMemory(pointer, sizeof(uint32_t), &data32);
+ }
+
+diff --git a/test/runtime_test.cc b/test/runtime_test.cc
+index 8f5c524a1..3aaa036cd 100644
+--- a/test/runtime_test.cc
++++ b/test/runtime_test.cc
+@@ -154,7 +154,7 @@ TEST_P(TestVM, Memory) {
+   ASSERT_TRUE(vm_->getWord(0x2000, &word));
+   ASSERT_EQ(100, word.u64_);
+
+-  int32_t data[2] = {-1, 200};
++  uint32_t data[2] = {htole32(static_cast<uint32_t>(-1)), htole32(200)};
+   ASSERT_TRUE(vm_->setMemory(0x200, sizeof(int32_t) * 2, static_cast<void *>(data)));
+   ASSERT_TRUE(vm_->getWord(0x200, &word));
+   ASSERT_EQ(-1, static_cast<int32_t>(word.u64_));
