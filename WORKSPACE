@@ -38,21 +38,14 @@ new_local_repository(
 # 2. Update .bazelversion, envoy.bazelrc and .bazelrc if needed.
 #
 # Note: this is needed by release builder to resolve envoy dep sha to tag.
-# Commit date: 2022-02-22
-# ENVOY_SHA = "0b5b53f37ab13a6e2b9167405ee46f85521bde7c"
+# Commit date: 2022-03-19
+ENVOY_SHA = "a79d988c2744f83e8d7fe7e59730e5bdaa3338e7"
 
-# ENVOY_SHA256 = "c5a28f9f6f92a59728bcb8eacbdc3ea48a9f82bf63751143c2c2d05abf346f6c"
+ENVOY_SHA256 = "0e1ed29a5a11e6f4d92ac132511c4f7dd529edd572b32c431f69a3b4c2346128"
 
-# ENVOY_ORG = "maistra"
+ENVOY_ORG = "maistra"
 
-# ENVOY_REPO = "envoy"
-
-# FIXME, WiP: https://github.com/jwendell/envoy-1/tree/temp22
-ENVOY_SHA = "c26522106f04ff5064df495b7f008ecf312d287a"
-ENVOY_SHA256 = "79c0966920d2f7670e55ab030d45ef793d4e301288f9f48339e4cc65acff74d8"
-ENVOY_ORG = "jwendell"
-ENVOY_REPO = "envoy-1"
-
+ENVOY_REPO = "envoy"
 
 # To override with local envoy, just pass `--override_repository=envoy=/PATH/TO/ENVOY` to Bazel or
 # persist the option in `user.bazelrc`.
