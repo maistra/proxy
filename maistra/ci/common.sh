@@ -17,6 +17,7 @@ COMMON_FLAGS="\
     --@envoy//bazel:http3=false \
     --deleted_packages=@envoy//test/common/quic,@envoy//test/common/quic/platform \
     --verbose_failures \
+    --color=no \
 "
 
 function bazel_build() {
