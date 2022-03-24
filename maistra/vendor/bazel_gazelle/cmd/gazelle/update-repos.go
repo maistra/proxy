@@ -16,6 +16,7 @@ limitations under the License.
 package main
 
 import (
+	"bytes"
 	"errors"
 	"flag"
 	"fmt"
@@ -88,6 +89,9 @@ func (*updateReposConfigurer) CheckFlags(fs *flag.FlagSet, c *config.Config) err
 		if len(fs.Args()) != 0 {
 			return fmt.Errorf("got %d positional arguments with -from_file; wanted 0.\nTry -help for more information.", len(fs.Args()))
 		}
+		if !filepath.IsAbs(uc.repoFilePath) {
+			uc.repoFilePath = filepath.Join(c.WorkDir, uc.repoFilePath)
+		}
 
 	default:
 		if len(fs.Args()) == 0 {
@@ -117,7 +121,7 @@ func (*updateReposConfigurer) KnownDirectives() []string { return nil }
 
 func (*updateReposConfigurer) Configure(c *config.Config, rel string, f *rule.File) {}
 
-func updateRepos(args []string) (err error) {
+func updateRepos(wd string, args []string) (err error) {
 	// Build configuration with all languages.
 	cexts := make([]config.Configurer, 0, len(languages)+2)
 	cexts = append(cexts, &config.CommonConfigurer{}, &updateReposConfigurer{})
@@ -130,7 +134,7 @@ func updateRepos(args []string) (err error) {
 			kinds[kind] = info
 		}
 	}
-	c, err := newUpdateReposConfiguration(args, cexts)
+	c, err := newUpdateReposConfiguration(wd, args, cexts)
 	if err != nil {
 		return err
 	}
@@ -288,8 +292,11 @@ func updateRepos(args []string) (err error) {
 			if f.DefName != "" {
 				uf.SortMacro()
 			}
-			if err := uf.Save(uf.Path); err != nil {
-				return err
+			newContent := f.Format()
+			if !bytes.Equal(f.Content, newContent) {
+				if err := uf.Save(uf.Path); err != nil {
+					return err
+				}
 			}
 			delete(updatedFiles, f.Path)
 		}
@@ -298,8 +305,9 @@ func updateRepos(args []string) (err error) {
 	return nil
 }
 
-func newUpdateReposConfiguration(args []string, cexts []config.Configurer) (*config.Config, error) {
+func newUpdateReposConfiguration(wd string, args []string, cexts []config.Configurer) (*config.Config, error) {
 	c := config.New()
+	c.WorkDir = wd
 	fs := flag.NewFlagSet("gazelle", flag.ContinueOnError)
 	// Flag will call this on any parse error. Don't print usage unless
 	// -h or -help were passed explicitly.
@@ -477,8 +485,10 @@ func ensureMacroInWorkspace(uc *updateReposConfig, insertIndex int) (updated boo
 	// be called somewhere else.
 	macroValue := uc.macroFileName + "%" + uc.macroDefName
 	for _, d := range uc.workspace.Directives {
-		if d.Key == "repository_macro" && d.Value == macroValue {
-			return false
+		if d.Key == "repository_macro" {
+			if m, defName, _, _ := repo.ParseRepositoryMacroDirective(d.Value); m == uc.macroFileName && defName == uc.macroDefName {
+				return false
+			}
 		}
 	}
 

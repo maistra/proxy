@@ -87,9 +87,6 @@ private:
   void drainErrorQueue(const bool show_errno = false);
   void shutdownSsl();
   void shutdownBasic();
-  bool isThreadSafe() const {
-    return callbacks_ != nullptr && callbacks_->connection().dispatcher().isThreadSafe();
-  }
 
   const Network::TransportSocketOptionsConstSharedPtr transport_socket_options_;
   Network::TransportSocketCallbacks* callbacks_{};
@@ -106,6 +103,8 @@ class ClientSslSocketFactory : public Network::TransportSocketFactory,
 public:
   ClientSslSocketFactory(Envoy::Ssl::ClientContextConfigPtr config,
                          Envoy::Ssl::ContextManager& manager, Stats::Scope& stats_scope);
+
+  ~ClientSslSocketFactory() override;
 
   Network::TransportSocketPtr
   createTransportSocket(Network::TransportSocketOptionsConstSharedPtr options) const override;
@@ -136,6 +135,8 @@ public:
   ServerSslSocketFactory(Envoy::Ssl::ServerContextConfigPtr config,
                          Envoy::Ssl::ContextManager& manager, Stats::Scope& stats_scope,
                          const std::vector<std::string>& server_names);
+
+  ~ServerSslSocketFactory() override;
 
   Network::TransportSocketPtr
   createTransportSocket(Network::TransportSocketOptionsConstSharedPtr options) const override;

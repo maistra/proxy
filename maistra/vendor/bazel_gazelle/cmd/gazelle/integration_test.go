@@ -46,16 +46,7 @@ func skipIfWorkspaceVisible(t *testing.T, dir string) {
 }
 
 func runGazelle(wd string, args []string) error {
-	oldWd, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-	if err := os.Chdir(wd); err != nil {
-		return err
-	}
-	defer os.Chdir(oldWd)
-
-	return run(args)
+	return run(wd, args)
 }
 
 // TestHelp checks that help commands do not panic due to nil flag values.
@@ -2941,7 +2932,6 @@ go_library(
 )
 `,
 		},
-
 	})
 }
 
@@ -3053,6 +3043,73 @@ go_test(
 )
 `,
 	}})
+}
+
+// TestGoInternalVisibility_TopLevel checks that modules that are
+// named internal/ expand visibility to repos that have a sibling
+// importpath.
+//
+// Verifies #960
+func TestGoInternalVisibility_TopLevel(t *testing.T) {
+	files := []testtools.FileSpec{
+		{
+			Path:    "WORKSPACE",
+			Content: `go_repository(name="org_modernc_ccgo", importpath="modernc.org/ccgo")`,
+		}, {
+			Path:    "BUILD.bazel",
+			Content: `# gazelle:prefix modernc.org/internal`,
+		}, {
+			Path:    "internal.go",
+			Content: "package internal",
+		}, {
+			Path:    "buffer/buffer.go",
+			Content: "package buffer",
+		},
+	}
+	dir, cleanup := testtools.CreateFiles(t, files)
+	defer cleanup()
+
+	args := []string{"update"}
+	if err := runGazelle(dir, args); err != nil {
+		t.Fatal(err)
+	}
+
+	testtools.CheckFiles(t, dir, []testtools.FileSpec{
+		{
+			Path: "BUILD.bazel",
+			Content: `
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+# gazelle:prefix modernc.org/internal
+
+go_library(
+    name = "internal",
+    srcs = ["internal.go"],
+    importpath = "modernc.org/internal",
+    visibility = [
+        "//:__subpackages__",
+        "@org_modernc_ccgo//:__subpackages__",
+    ],
+)
+`,
+		},
+		{
+			Path: "buffer/BUILD.bazel",
+			Content: `
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "buffer",
+    srcs = ["buffer.go"],
+    importpath = "modernc.org/internal/buffer",
+    visibility = [
+        "//:__subpackages__",
+        "@org_modernc_ccgo//:__subpackages__",
+    ],
+)
+`,
+		},
+	})
 }
 
 func TestImportCollision(t *testing.T) {
@@ -3898,6 +3955,78 @@ gazelle_dependencies()
 	})
 }
 
+func TestExternalOnly(t *testing.T) {
+	files := []testtools.FileSpec{
+		{
+			Path: "WORKSPACE",
+		},
+		{
+			Path: "foo/foo.go",
+			Content: `package foo
+import _ "golang.org/x/baz"
+`,
+		},
+		{
+			Path: "foo/foo_test.go",
+			Content: `package foo_test
+import _ "golang.org/x/baz"
+import _ "example.com/foo"
+`,
+		},
+		{
+			Path: "foo/BUILD.bazel",
+			Content: `# gazelle:prefix example.com/foo
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "foo",
+    srcs = ["foo.go"],
+    importpath = "example.com/foo",
+    visibility = ["//visibility:public"],
+    deps = ["@org_golang_x_baz//:go_default_library"],
+)
+
+go_test(
+    name = "foo_test",
+    srcs = ["foo_test.go"],
+    embed = [":foo"],
+)`,
+		},
+	}
+	dir, cleanup := testtools.CreateFiles(t, files)
+	defer cleanup()
+
+	var args []string
+	if err := runGazelle(dir, args); err != nil {
+		t.Fatal(err)
+	}
+
+	testtools.CheckFiles(t, dir, []testtools.FileSpec{
+		{
+			Path: "foo/BUILD.bazel",
+			Content: `# gazelle:prefix example.com/foo
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "foo",
+    srcs = ["foo.go"],
+    importpath = "example.com/foo",
+    visibility = ["//visibility:public"],
+    deps = ["@org_golang_x_baz//:go_default_library"],
+)
+
+go_test(
+    name = "foo_test",
+    srcs = ["foo_test.go"],
+    deps = [
+        ":foo",
+        "@org_golang_x_baz//:go_default_library",
+    ],
+)`,
+		},
+	})
+}
+
 func TestFindRulesGoVersionWithWORKSPACE(t *testing.T) {
 	files := []testtools.FileSpec{
 		{
@@ -3945,4 +4074,183 @@ package foo
 `,
 		},
 	})
+}
+
+func TestPlatformSpecificEmbedsrcs(t *testing.T) {
+	files := []testtools.FileSpec{
+		{
+			Path: "WORKSPACE",
+		},
+		{
+			Path: "BUILD.bazel",
+			Content: `
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+# gazelle:prefix example.com/foo
+
+go_library(
+    name = "foo",
+    embedsrcs = ["deleted.txt"],
+    importpath = "example.com/foo",
+    srcs = ["foo.go"],
+)
+`,
+		},
+		{
+			Path: "foo.go",
+			Content: `
+// +build windows
+
+package foo
+
+import _ "embed"
+
+//go:embed windows.txt
+var s string
+`,
+		},
+		{
+			Path: "windows.txt",
+		},
+	}
+
+	dir, cleanup := testtools.CreateFiles(t, files)
+	defer cleanup()
+
+	if err := runGazelle(dir, []string{"update"}); err != nil {
+		t.Fatal(err)
+	}
+
+	testtools.CheckFiles(t, dir, []testtools.FileSpec{
+		{
+			Path: "BUILD.bazel",
+			Content: `
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+# gazelle:prefix example.com/foo
+
+go_library(
+    name = "foo",
+    srcs = ["foo.go"],
+    embedsrcs = select({
+        "@io_bazel_rules_go//go/platform:windows": [
+            "windows.txt",
+        ],
+        "//conditions:default": [],
+    }),
+    importpath = "example.com/foo",
+    visibility = ["//visibility:public"],
+)
+`,
+		},
+	})
+}
+
+// Checks that go:embed directives with spaces and quotes are parsed correctly.
+// This probably belongs in //language/go:go_test, but we need file names with
+// spaces, and Bazel doesn't allow those in runfiles, which that test depends
+// on.
+func TestQuotedEmbedsrcs(t *testing.T) {
+	files := []testtools.FileSpec{
+		{
+			Path: "WORKSPACE",
+		},
+		{
+			Path:    "BUILD.bazel",
+			Content: "# gazelle:prefix example.com/foo",
+		},
+		{
+			Path: "foo.go",
+			Content: strings.Join([]string{
+				"package foo",
+				"import \"embed\"",
+				"//go:embed q1.txt q2.txt \"q 3.txt\" `q 4.txt`",
+				"var fs embed.FS",
+			}, "\n"),
+		},
+		{
+			Path: "q1.txt",
+		},
+		{
+			Path: "q2.txt",
+		},
+		{
+			Path: "q 3.txt",
+		},
+		{
+			Path: "q 4.txt",
+		},
+	}
+	dir, cleanup := testtools.CreateFiles(t, files)
+	defer cleanup()
+
+	if err := runGazelle(dir, []string{"update"}); err != nil {
+		t.Fatal(err)
+	}
+
+	testtools.CheckFiles(t, dir, []testtools.FileSpec{{
+		Path: "BUILD.bazel",
+		Content: `
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+# gazelle:prefix example.com/foo
+
+go_library(
+    name = "foo",
+    srcs = ["foo.go"],
+    embedsrcs = [
+        "q 3.txt",
+        "q 4.txt",
+        "q1.txt",
+        "q2.txt",
+    ],
+    importpath = "example.com/foo",
+    visibility = ["//visibility:public"],
+)
+`,
+	}})
+}
+
+// TestUpdateReposDoesNotModifyGoSum verifies that commands executed by
+// update-repos do not modify go.sum, particularly 'go mod download' when
+// a sum is missing. Verifies #990.
+//
+// This could also be tested in language/go/update_import_test.go, but that
+// test relies on stubs for speed, and it's important to run the real
+// go command here.
+func TestUpdateReposDoesNotModifyGoSum(t *testing.T) {
+	if testing.Short() {
+		// Test may download small files over network.
+		t.Skip()
+	}
+	goSumFile := testtools.FileSpec{
+		// go.sum only contains the sum for the mod file, not the content.
+		// This is common for transitive dependencies not needed by the main module.
+		Path:    "go.sum",
+		Content: "golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=\n",
+	}
+	files := []testtools.FileSpec{
+		{
+			Path:    "WORKSPACE",
+			Content: "# gazelle:repo bazel_gazelle",
+		},
+		{
+			Path: "go.mod",
+			Content: `
+module test
+
+go 1.16
+
+require golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
+`,
+		},
+		goSumFile,
+	}
+	dir, cleanup := testtools.CreateFiles(t, files)
+	defer cleanup()
+
+	if err := runGazelle(dir, []string{"update-repos", "-from_file=go.mod"}); err != nil {
+		t.Fatal(err)
+	}
+	testtools.CheckFiles(t, dir, []testtools.FileSpec{goSumFile})
 }

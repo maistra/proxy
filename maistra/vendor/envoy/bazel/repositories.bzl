@@ -722,7 +722,11 @@ def _com_google_protobuf():
 
     external_http_archive(
         "com_google_protobuf",
-        patches = ["@envoy//bazel:protobuf.patch"],
+        patches = [
+            "@envoy//bazel:protobuf.patch",
+            # This patch adds the protobuf_version.bzl file to the protobuf tree, which is missing from the 3.18.0 tarball.
+            "@envoy//bazel:protobuf-add-version.patch",
+        ],
         patch_args = ["-p1"],
     )
 

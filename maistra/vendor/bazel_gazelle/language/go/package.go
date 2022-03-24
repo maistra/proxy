@@ -42,8 +42,8 @@ type goPackage struct {
 // goTarget contains information used to generate an individual Go rule
 // (library, binary, or test).
 type goTarget struct {
-	sources, imports, copts, clinkopts platformStringsBuilder
-	cgo                                bool
+	sources, embedSrcs, imports, cppopts, copts, cxxopts, clinkopts platformStringsBuilder
+	cgo, hasInternalTest                                            bool
 }
 
 // protoTarget contains information used to generate a go_proto_library rule.
@@ -92,7 +92,7 @@ var pkgVersionRe = regexp.MustCompile("^v[0-9]+$")
 // An error is returned if a file is buildable but invalid (for example, a
 // test .go file containing cgo code). Files that are not buildable will not
 // be added to any target (for example, .txt files).
-func (pkg *goPackage) addFile(c *config.Config, info fileInfo, cgo bool) error {
+func (pkg *goPackage) addFile(c *config.Config, er *embedResolver, info fileInfo, cgo bool) error {
 	switch {
 	case info.ext == unknownExt || !cgo && (info.ext == cExt || info.ext == csExt):
 		return nil
@@ -107,9 +107,12 @@ func (pkg *goPackage) addFile(c *config.Config, info fileInfo, cgo bool) error {
 		if info.isCgo {
 			return fmt.Errorf("%s: use of cgo in test not supported", info.path)
 		}
-		pkg.test.addFile(c, info)
+		pkg.test.addFile(c, er, info)
+		if !info.isExternalTest {
+			pkg.test.hasInternalTest = true
+		}
 	default:
-		pkg.library.addFile(c, info)
+		pkg.library.addFile(c, er, info)
 	}
 
 	return nil
@@ -257,17 +260,41 @@ func goProtoImportPath(c *config.Config, pkg proto.Package, rel string) string {
 	return InferImportPath(c, rel)
 }
 
-func (t *goTarget) addFile(c *config.Config, info fileInfo) {
+func (t *goTarget) addFile(c *config.Config, er *embedResolver, info fileInfo) {
 	t.cgo = t.cgo || info.isCgo
 	add := getPlatformStringsAddFunction(c, info, nil)
 	add(&t.sources, info.name)
 	add(&t.imports, info.imports...)
+	if er != nil {
+		for _, embed := range info.embeds {
+			embedSrcs, err := er.resolve(embed)
+			if err != nil {
+				log.Print(err)
+				continue
+			}
+			add(&t.embedSrcs, embedSrcs...)
+		}
+	}
+	for _, cppopts := range info.cppopts {
+		optAdd := add
+		if len(cppopts.tags) > 0 {
+			optAdd = getPlatformStringsAddFunction(c, info, cppopts.tags)
+		}
+		optAdd(&t.cppopts, cppopts.opts)
+	}
 	for _, copts := range info.copts {
 		optAdd := add
 		if len(copts.tags) > 0 {
 			optAdd = getPlatformStringsAddFunction(c, info, copts.tags)
 		}
 		optAdd(&t.copts, copts.opts)
+	}
+	for _, cxxopts := range info.cxxopts {
+		optAdd := add
+		if len(cxxopts.tags) > 0 {
+			optAdd = getPlatformStringsAddFunction(c, info, cxxopts.tags)
+		}
+		optAdd(&t.cxxopts, cxxopts.opts)
 	}
 	for _, clinkopts := range info.clinkopts {
 		optAdd := add

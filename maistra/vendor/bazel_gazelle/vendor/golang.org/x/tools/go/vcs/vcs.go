@@ -1,4 +1,4 @@
-// Copyright 2012 The Go Authors.  All rights reserved.
+// Copyright 2012 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -19,10 +19,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	exec "golang.org/x/sys/execabs"
 	"log"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -648,15 +648,6 @@ func expand(match map[string]string, s string) string {
 
 // vcsPaths lists the known vcs paths.
 var vcsPaths = []*vcsPath{
-	// go.googlesource.com
-	{
-		prefix: "go.googlesource.com",
-		re:     `^(?P<root>go\.googlesource\.com/[A-Za-z0-9_.\-]+/?)$`,
-		vcs:    "git",
-		repo:   "https://{root}",
-		check:  noVCSSuffix,
-	},
-
 	// Github
 	{
 		prefix: "github.com/",

@@ -24,8 +24,8 @@ go_test(
         "example_test.go",
     ],
     data = glob(["testdata/**"]),
-    embed = [":encoding"],
     deps = [
+        ":encoding",
         "//encoding/charmap",
         "//encoding/unicode",
         "//transform",

@@ -12,5 +12,4 @@ go_test(
     name = "dot_go_test",
     srcs = ["dot_test.go"],
     _gazelle_imports = ["testing"],
-    embed = [":dot_go"],
 )
