@@ -795,10 +795,6 @@ def _proxy_wasm_cpp_host():
     external_http_archive(
         name = "proxy_wasm_cpp_host",
         build_file = "@envoy//bazel/external:proxy_wasm_cpp_host.BUILD",
-        # The patch fixes WASM on s390x https://issues.redhat.com/browse/MAISTRA-2648
-        # The permanent fix is https://github.com/proxy-wasm/proxy-wasm-cpp-host/pull/198
-        patches = ["@envoy//bazel/external:proxy_wasm_s390x.patch"],
-        patch_args = ["-p1"],
     )
 
 def _emscripten_toolchain():
