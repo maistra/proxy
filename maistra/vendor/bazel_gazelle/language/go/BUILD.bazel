@@ -1,3 +1,4 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 load(":def.bzl", "std_package_list")
 
@@ -17,6 +18,7 @@ go_library(
         "config.go",
         "constants.go",
         "dep.go",
+        "embed.go",
         "fileinfo.go",
         "fix.go",
         "generate.go",
@@ -44,6 +46,7 @@ go_library(
         "//rule",
         "@com_github_bazelbuild_buildtools//build:go_default_library",
         "@com_github_pelletier_go_toml//:go-toml",
+        "@org_golang_x_mod//module",
         "@org_golang_x_sync//errgroup",
     ],
 )
@@ -75,7 +78,7 @@ go_test(
         "//testtools",
         "//walk",
         "@com_github_bazelbuild_buildtools//build:go_default_library",
-        "@org_golang_x_tools//go/vcs:go_default_library",
+        "@org_golang_x_tools//go/vcs",
     ],
 )
 
@@ -89,6 +92,7 @@ filegroup(
         "constants.go",
         "def.bzl",
         "dep.go",
+        "embed.go",
         "fileinfo.go",
         "fileinfo_go_test.go",
         "fileinfo_test.go",
@@ -116,4 +120,11 @@ alias(
     name = "go_default_library",
     actual = ":go",
     visibility = ["//visibility:public"],
+)
+
+bzl_library(
+    name = "def",
+    srcs = ["def.bzl"],
+    visibility = ["//visibility:public"],
+    deps = ["@io_bazel_rules_go//go:def"],
 )

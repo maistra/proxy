@@ -14,6 +14,7 @@
 #include "envoy/config/route/v3/route_components.pb.h"
 #include "envoy/extensions/filters/network/http_connection_manager/v3/http_connection_manager.pb.h"
 #include "envoy/extensions/transport_sockets/tls/v3/cert.pb.h"
+#include "envoy/extensions/transport_sockets/tls/v3/common.pb.h"
 #include "envoy/extensions/upstreams/http/v3/http_protocol_options.pb.h"
 #include "envoy/http/codes.h"
 
@@ -80,7 +81,8 @@ public:
     }
 
     ServerSslOptions&
-    setSanMatchers(std::vector<envoy::type::matcher::v3::StringMatcher> san_matchers) {
+    setSanMatchers(std::vector<envoy::extensions::transport_sockets::tls::v3::SubjectAltNameMatcher>
+                       san_matchers) {
       san_matchers_ = san_matchers;
       return *this;
     }
@@ -94,7 +96,8 @@ public:
     bool ocsp_staple_required_{false};
     bool tlsv1_3_{false};
     bool expect_client_ecdsa_cert_{false};
-    std::vector<envoy::type::matcher::v3::StringMatcher> san_matchers_{};
+    std::vector<envoy::extensions::transport_sockets::tls::v3::SubjectAltNameMatcher>
+        san_matchers_{};
   };
 
   // Set up basic config, using the specified IpVersion for all connections: listeners, upstream,
@@ -149,6 +152,11 @@ public:
   static envoy::config::cluster::v3::Cluster
   buildStaticCluster(const std::string& name, int port, const std::string& address,
                      const std::string& lb_policy = "ROUND_ROBIN");
+
+  static envoy::config::cluster::v3::Cluster
+  buildH1ClusterWithHighCircuitBreakersLimits(const std::string& name, int port,
+                                              const std::string& address,
+                                              const std::string& lb_policy = "ROUND_ROBIN");
 
   // ADS configurations
   static envoy::config::cluster::v3::Cluster

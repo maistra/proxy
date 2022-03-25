@@ -116,7 +116,16 @@ func (gl *goLang) GenerateRules(args language.GenerateArgs) language.GenerateRes
 	}
 
 	// Build a set of packages from files in this directory.
-	goPackageMap, goFilesWithUnknownPackage := buildPackages(c, args.Dir, args.Rel, goFiles, hasTestdata)
+	goFileInfos := make([]fileInfo, len(goFiles))
+	var er *embedResolver
+	for i, name := range goFiles {
+		path := filepath.Join(args.Dir, name)
+		goFileInfos[i] = goFileInfo(path, args.Rel)
+		if len(goFileInfos[i].embeds) > 0 && er == nil {
+			er = newEmbedResolver(args.Dir, args.Rel, c.ValidBuildFileNames, gl.goPkgRels, args.Subdirs, args.RegularFiles, args.GenFiles)
+		}
+	}
+	goPackageMap, goFilesWithUnknownPackage := buildPackages(c, args.Dir, args.Rel, hasTestdata, er, goFileInfos)
 
 	// Select a package to generate rules for. If there is no package, create
 	// an empty package so we can generate empty rules.
@@ -212,7 +221,7 @@ func (gl *goLang) GenerateRules(args language.GenerateArgs) language.GenerateRes
 		// compiler deal with the error.
 		cgo := pkg.haveCgo()
 		for _, info := range goFilesWithUnknownPackage {
-			if err := pkg.addFile(c, info, cgo); err != nil {
+			if err := pkg.addFile(c, er, info, cgo); err != nil {
 				log.Print(err)
 			}
 		}
@@ -220,7 +229,7 @@ func (gl *goLang) GenerateRules(args language.GenerateArgs) language.GenerateRes
 		// Process the other static files.
 		for _, file := range otherFiles {
 			info := otherFileInfo(filepath.Join(args.Dir, file))
-			if err := pkg.addFile(c, info, cgo); err != nil {
+			if err := pkg.addFile(c, er, info, cgo); err != nil {
 				log.Print(err)
 			}
 		}
@@ -247,7 +256,7 @@ func (gl *goLang) GenerateRules(args language.GenerateArgs) language.GenerateRes
 				continue
 			}
 			info := fileNameInfo(filepath.Join(args.Dir, f))
-			if err := pkg.addFile(c, info, cgo); err != nil {
+			if err := pkg.addFile(c, er, info, cgo); err != nil {
 				log.Print(err)
 			}
 		}
@@ -264,13 +273,12 @@ func (gl *goLang) GenerateRules(args language.GenerateArgs) language.GenerateRes
 			libName = lib.Name()
 		}
 		rules = append(rules, lib)
-		if r := g.maybeGenerateToolLib(lib, pkg); r != nil {
-			rules = append(rules, r)
-		}
+		g.maybePublishToolLib(lib, pkg)
 		if r := g.maybeGenerateExtraLib(lib, pkg); r != nil {
 			rules = append(rules, r)
 		}
 		if r := g.maybeGenerateAlias(pkg, libName); r != nil {
+			g.maybePublishToolLib(r, pkg)
 			rules = append(rules, r)
 		}
 		rules = append(rules,
@@ -313,30 +321,28 @@ func filterFiles(files *[]string, pred func(string) bool) {
 	*files = (*files)[:w]
 }
 
-func buildPackages(c *config.Config, dir, rel string, goFiles []string, hasTestdata bool) (packageMap map[string]*goPackage, goFilesWithUnknownPackage []fileInfo) {
+func buildPackages(c *config.Config, dir, rel string, hasTestdata bool, er *embedResolver, goFiles []fileInfo) (packageMap map[string]*goPackage, goFilesWithUnknownPackage []fileInfo) {
 	// Process .go and .proto files first, since these determine the package name.
 	packageMap = make(map[string]*goPackage)
 	for _, f := range goFiles {
-		path := filepath.Join(dir, f)
-		info := goFileInfo(path, rel)
-		if info.packageName == "" {
-			goFilesWithUnknownPackage = append(goFilesWithUnknownPackage, info)
+		if f.packageName == "" {
+			goFilesWithUnknownPackage = append(goFilesWithUnknownPackage, f)
 			continue
 		}
-		if info.packageName == "documentation" {
+		if f.packageName == "documentation" {
 			// go/build ignores this package
 			continue
 		}
 
-		if _, ok := packageMap[info.packageName]; !ok {
-			packageMap[info.packageName] = &goPackage{
-				name:        info.packageName,
+		if _, ok := packageMap[f.packageName]; !ok {
+			packageMap[f.packageName] = &goPackage{
+				name:        f.packageName,
 				dir:         dir,
 				rel:         rel,
 				hasTestdata: hasTestdata,
 			}
 		}
-		if err := packageMap[info.packageName].addFile(c, info, false); err != nil {
+		if err := packageMap[f.packageName].addFile(c, er, f, false); err != nil {
 			log.Print(err)
 		}
 	}
@@ -517,71 +523,23 @@ func (g *generator) generateTest(pkg *goPackage, library string) *rule.Rule {
 	if !pkg.test.sources.hasGo() {
 		return goTest // empty
 	}
-	g.setCommonAttrs(goTest, pkg.rel, nil, pkg.test, library)
+	var embed string
+	if pkg.test.hasInternalTest {
+		embed = library
+	}
+	g.setCommonAttrs(goTest, pkg.rel, nil, pkg.test, embed)
 	if pkg.hasTestdata {
 		goTest.SetAttr("data", rule.GlobValue{Patterns: []string{"testdata/**"}})
 	}
 	return goTest
 }
 
-// maybeGenerateToolLib generates a go_tool_library target equivalent to the
-// go_library in the same directory. maybeGenerateToolLib returns nil for
-// packages outside golang.org/x/tools and for packages that aren't known
-// dependencies of nogo.
-//
-// HACK(#834): This is only needed by golang.org/x/tools for dependencies of
-// nogo. go_tool_library should be removed when bazelbuild/rules_go#2374 is
-// resolved, so these targets shouldn't be generated in other repositories.
-// Generating them here automatically makes it easier to upgrade
-// org_golang_x_tools.
-func (g *generator) maybeGenerateToolLib(lib *rule.Rule, pkg *goPackage) *rule.Rule {
-	// Check whether we should generate go_tool_library.
-	gc := getGoConfig(g.c)
-	if gc.prefix != "golang.org/x/tools" || gc.prefixRel != "" || !isToolLibImportPath(pkg.importPath) {
-		return nil
-	}
-
-	// Generate the target.
-	toolLib := rule.NewRule("go_tool_library", "go_tool_library")
-	var visibility []string
+// maybePublishToolLib makes the given go_library rule public if needed for nogo.
+// Updating it here automatically makes it easier to upgrade org_golang_x_tools.
+func (g *generator) maybePublishToolLib(lib *rule.Rule, pkg *goPackage) {
 	if pkg.importPath == "golang.org/x/tools/go/analysis/internal/facts" {
 		// Imported by nogo main. We add a visibility exception.
-		visibility = []string{"//visibility:public"}
-	} else {
-		visibility = g.commonVisibility(pkg.importPath)
-	}
-	g.setCommonAttrs(toolLib, pkg.rel, visibility, pkg.library, "")
-	g.setImportAttrs(toolLib, pkg.importPath)
-	return toolLib
-}
-
-func isToolLibImportPath(imp string) bool {
-	if !strings.HasPrefix(imp, "golang.org/x/tools/") {
-		return false
-	}
-	pass := strings.TrimPrefix(imp, "golang.org/x/tools/go/analysis/passes/")
-	if pass != imp && strings.Index(pass, "/") < 0 {
-		// Direct dependency of nogo
-		return true
-	}
-	switch imp {
-	case "golang.org/x/tools/go/analysis",
-		"golang.org/x/tools/go/analysis/internal/facts",
-		"golang.org/x/tools/go/analysis/passes/internal/analysisutil",
-		"golang.org/x/tools/go/ast/astutil",
-		"golang.org/x/tools/go/ast/inspector",
-		"golang.org/x/tools/go/cfg",
-		"golang.org/x/tools/go/gcexportdata",
-		"golang.org/x/tools/go/internal/gcimporter",
-		"golang.org/x/tools/go/ssa",
-		"golang.org/x/tools/go/types/objectpath",
-		"golang.org/x/tools/go/types/typeutil",
-		"golang.org/x/tools/internal/analysisinternal",
-		"golang.org/x/tools/internal/lsp/fuzzy":
-		// Indirect dependency of nogo.
-		return true
-	default:
-		return false
+		lib.SetAttr("visibility", []string{"//visibility:public"})
 	}
 }
 
@@ -649,14 +607,23 @@ func (g *generator) setCommonAttrs(r *rule.Rule, pkgRel string, visibility []str
 	if !target.sources.isEmpty() {
 		r.SetAttr("srcs", target.sources.buildFlat())
 	}
+	if !target.embedSrcs.isEmpty() {
+		r.SetAttr("embedsrcs", target.embedSrcs.build())
+	}
 	if target.cgo {
 		r.SetAttr("cgo", true)
 	}
 	if !target.clinkopts.isEmpty() {
 		r.SetAttr("clinkopts", g.options(target.clinkopts.build(), pkgRel))
 	}
+	if !target.cppopts.isEmpty() {
+		r.SetAttr("cppopts", g.options(target.cppopts.build(), pkgRel))
+	}
 	if !target.copts.isEmpty() {
 		r.SetAttr("copts", g.options(target.copts.build(), pkgRel))
+	}
+	if !target.cxxopts.isEmpty() {
+		r.SetAttr("cxxopts", g.options(target.cxxopts.build(), pkgRel))
 	}
 	if g.shouldSetVisibility && len(visibility) > 0 {
 		r.SetAttr("visibility", visibility)
@@ -702,7 +669,15 @@ func (g *generator) commonVisibility(importPath string) []string {
 		parent := strings.TrimSuffix(g.rel[:relIndex], "/")
 		visibility = append(visibility, fmt.Sprintf("//%s:__subpackages__", parent))
 	} else if importIndex >= 0 {
+		// This entire module is within an internal directory.
+		// Identify other repos which should have access too.
 		visibility = append(visibility, "//:__subpackages__")
+		for _, repo := range g.c.Repos {
+			if pathtools.HasPrefix(repo.AttrString("importpath"), importPath[:importIndex]) {
+				visibility = append(visibility, "@"+repo.Name()+"//:__subpackages__")
+			}
+		}
+
 	} else {
 		return []string{"//visibility:public"}
 	}
@@ -796,5 +771,7 @@ func escapeOption(opt string) string {
 		"\t", "\\\t",
 		"\n", "\\\n",
 		"\r", "\\\r",
+		"$(", "$(",
+		"$", "$$",
 	).Replace(opt)
 }
