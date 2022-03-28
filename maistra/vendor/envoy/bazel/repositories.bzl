@@ -959,10 +959,6 @@ def _proxy_wasm_cpp_host():
         name = "proxy_wasm_cpp_host",
         #        patches = ["@envoy//bazel/external:0001-proxy-wasm-cpp-host-with-openssl-support.patch"],
         #        patch_args = ["-p1"],
-        # The patch fixes WASM on s390x https://issues.redhat.com/browse/MAISTRA-2648
-        # The permanent fix is https://github.com/proxy-wasm/proxy-wasm-cpp-host/pull/198
-        patches = ["@envoy//bazel/external:proxy-wasm-cpp-host-s390x-support.patch"],
-        patch_args = ["-p1"],
     )
 
 def _com_github_google_jwt_verify():
