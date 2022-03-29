@@ -866,9 +866,12 @@ config("toolchain") {
   visibility = [ "./*" ]
 
   defines = []
-  cflags = ["-fplugin=annobin", "-fstack-clash-protection", "-fstack-protector-all", "-fstack-protector-strong", "-D_FORTIFY_SOURCE=2", "-O2", "-fPIE", "-fexceptions", "-D_GLIBCXX_ASSERTIONS", "-D_GLIBCXX_USE_CXX11_ABI", "-Wall"]
+  cflags = ["-fplugin=annobin", "-fstack-clash-protection", "-fstack-protector-all", "-fstack-protector-strong", "-fPIE", "-fexceptions", "-D_GLIBCXX_ASSERTIONS", "-D_GLIBCXX_USE_CXX11_ABI", "-Wall"]
   if (v8_current_cpu == "x64") {
     cflags += ["-fcf-protection=full"]
+  }
+  if (!is_debug) {
+    cflags += ["-D_FORTIFY_SOURCE=2", "-O2"]
   }
   ldflags = []
 
