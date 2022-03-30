@@ -41,11 +41,14 @@ int io_handle_free(BIO* bio) {
     }
     BIO_set_init(bio, 0);
     BIO_clear_flags(bio, INT_MAX);
-    auto* meth = static_cast<BIO_METHOD*>(BIO_get_app_data(bio));
-    if (meth != nullptr) {
-      BIO_meth_free(meth);
-    }
   }
+
+  auto* meth = static_cast<BIO_METHOD*>(BIO_get_app_data(bio));
+  if (meth != nullptr) {
+    BIO_meth_free(meth);
+    BIO_set_app_data(bio, nullptr);
+  }
+
   return 1;
 }
 
@@ -123,13 +126,18 @@ long io_handle_ctrl(BIO* b, int cmd, long num, void*) {
 BIO* BIO_new_io_handle(Envoy::Network::IoHandle* io_handle) {
   BIO* b;
   BIO_METHOD* meth = BIO_meth_new(BIO_get_new_index(), "io_handle");
+  bool ok = meth != nullptr;
 
-  // no return value checks on set calls as they always return "1"
-  BIO_meth_set_write(meth, io_handle_write);
-  BIO_meth_set_read(meth, io_handle_read);
-  BIO_meth_set_ctrl(meth, io_handle_ctrl);
-  BIO_meth_set_create(meth, io_handle_new);
-  BIO_meth_set_destroy(meth, io_handle_free);
+  ok = ok && BIO_meth_set_write(meth, io_handle_write) == 1;
+  ok = ok && BIO_meth_set_read(meth, io_handle_read) == 1;
+  ok = ok && BIO_meth_set_ctrl(meth, io_handle_ctrl) == 1;
+  ok = ok && BIO_meth_set_create(meth, io_handle_new) == 1;
+  ok = ok && BIO_meth_set_destroy(meth, io_handle_free) == 1;
+
+  if (!ok && meth != nullptr) {
+    BIO_meth_free(meth);
+  }
+  RELEASE_ASSERT(ok, "");
 
   b = BIO_new(meth);
   RELEASE_ASSERT(b != nullptr, "");

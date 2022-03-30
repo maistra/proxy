@@ -522,7 +522,7 @@ TEST_P(SslCertficateIntegrationTest, BothEcdsaAndRsaOnlyRsaOcspResponse) {
 }
 
 // Server has two certificates, but only ECDSA has OCSP, which should be returned.
-TEST_P(SslCertficateIntegrationTest, DISABLED_BothEcdsaAndRsaOnlyEcdsaOcspResponse) {
+TEST_P(SslCertficateIntegrationTest, BothEcdsaAndRsaOnlyEcdsaOcspResponse) {
   server_rsa_cert_ = true;
   server_ecdsa_cert_ = true;
   server_ecdsa_cert_ocsp_staple_ = true;
@@ -764,7 +764,7 @@ TEST_P(SslTapIntegrationTest, TruncationWithMultipleDataFrames) {
 }
 
 // Validate a single request with text proto output.
-TEST_P(SslTapIntegrationTest, DISABLED_RequestWithTextProto) {
+TEST_P(SslTapIntegrationTest, RequestWithTextProto) {
   format_ = envoy::config::tap::v3::OutputSink::PROTO_TEXT;
   ConnectionCreationFunction creator = [&]() -> Network::ClientConnectionPtr {
     return makeSslClientConnection({});
@@ -786,7 +786,7 @@ TEST_P(SslTapIntegrationTest, DISABLED_RequestWithTextProto) {
 }
 
 // Validate a single request with JSON (body as string) output. This test uses an upstream tap.
-TEST_P(SslTapIntegrationTest, DISABLED_RequestWithJsonBodyAsStringUpstreamTap) {
+TEST_P(SslTapIntegrationTest, RequestWithJsonBodyAsStringUpstreamTap) {
   upstream_tap_ = true;
   max_rx_bytes_ = 5;
   max_tx_bytes_ = 4;
