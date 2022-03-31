@@ -159,6 +159,7 @@ const std::string& SslHandshakerImpl::urlEncodedPemEncodedPeerCertificateChain()
         absl::StrReplaceAll(
             pem, {{"\n", "%0A"}, {" ", "%20"}, {"+", "%2B"}, {"/", "%2F"}, {"=", "%3D"}}));
   }
+  sk_X509_pop_free(cert_chain, X509_free);
   return cached_url_encoded_pem_encoded_peer_cert_chain_;
 }
 

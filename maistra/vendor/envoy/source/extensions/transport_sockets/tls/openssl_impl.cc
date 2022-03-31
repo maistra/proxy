@@ -49,14 +49,11 @@ int set_strict_cipher_list(SSL_CTX* ctx, const char* str) {
   return 1;
 }
 
-STACK_OF(X509) * SSL_get_peer_full_cert_chain(const SSL* ssl) {
+STACK_OF(X509)* SSL_get_peer_full_cert_chain(const SSL* ssl) {
   STACK_OF(X509)* to_copy = SSL_get_peer_cert_chain(ssl);
-  if (!to_copy) {
-    return nullptr;
-  }
-  STACK_OF(X509)* ret = sk_X509_dup(SSL_get_peer_cert_chain(ssl));
-
-  if (SSL_is_server(ssl)) {
+  // sk_X509_dup does not increase reference counts on certs in the stack.
+  STACK_OF(X509)* ret = to_copy == nullptr ? nullptr : sk_X509_dup(to_copy);
+  if (ret != nullptr && SSL_is_server(ssl)) {
     X509* peer_cert = SSL_get_peer_certificate(ssl);
     if (peer_cert == nullptr) {
       return ret;

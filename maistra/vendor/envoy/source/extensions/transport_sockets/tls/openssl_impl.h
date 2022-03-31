@@ -19,7 +19,13 @@ namespace Tls {
 
 int set_strict_cipher_list(SSL_CTX* ctx, const char* str);
 
-STACK_OF(X509) * SSL_get_peer_full_cert_chain(const SSL* ssl);
+// SSL_get_peer_full_cert_chain exists in the BoringSSL library. This diverges in that
+// the caller will own the returned certificate chain and needs to call sk_X509_pop_free on any
+// non-null value this returns.
+// Also, note that this call does not increase reference counts of any certs in the chain, and
+// therefore the result should not be persisted but rather used and discarded directly in the
+// consuming call.
+STACK_OF(X509)* SSL_get_peer_full_cert_chain(const SSL* ssl);
 
 void allowRenegotiation(SSL* ssl);
 
