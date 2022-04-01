@@ -20,6 +20,7 @@ build --verbose_failures
 
 # Test flags
 build --test_env=ENVOY_IP_TEST_VERSIONS=v4only
+build --test_env=HEAPCHECK=minimal
 build --test_output=all
 
 # Arch-specific build flags, triggered with --config=$ARCH in bazel build command
