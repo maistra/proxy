@@ -13,12 +13,17 @@ COMMON_FLAGS="\
     --local_ram_resources=12288 \
     --local_cpu_resources=6 \
     --jobs=3 \
-    --disk_cache=/bazel-cache \
     --@envoy//bazel:http3=false \
     --deleted_packages=@envoy//test/common/quic,@envoy//test/common/quic/platform \
     --verbose_failures \
     --color=no \
 "
+
+if [ -n "${BAZEL_REMOTE_CACHE}" ]; then
+  COMMON_FLAGS+=" --remote_cache=${BAZEL_REMOTE_CACHE} "
+elif [ -n "${BAZEL_DISK_CACHE}" ]; then
+  COMMON_FLAGS+=" --disk_cache=${BAZEL_DISK_CACHE} "
+fi
 
 function bazel_build() {
   bazel build \
