@@ -11,15 +11,6 @@ index e65b55e..f0a61dd 100644
  #
  # Use this if you want to force a 32 bit build on a 64 bit multilib OS.
  #CC= $(DEFAULT_CC) -m32
-@@ -36,7 +36,7 @@ CC ?= $(DEFAULT_CC)
- # to slow down the C part by not omitting it. Debugging, tracebacks and
- # unwinding are not affected -- the assembler part has frame unwind
- # information and GCC emits it where needed (x64) or with -g (see CCDEBUG).
--CCOPT= -O2 -fomit-frame-pointer
-+CCOPT= -O2 -fomit-frame-pointer -fPIC -fPIE -fplugin=annobin -fstack-protector-strong -fstack-protector-all
- # Use this if you want to generate a smaller binary (but it's slower):
- #CCOPT= -Os -fomit-frame-pointer
- # Note: it's no longer recommended to use -O3 with GCC 4.x.
 @@ -48,7 +48,7 @@ CCOPT= -O2 -fomit-frame-pointer
  # the binaries to a different machine you could also use: -march=native
  #

@@ -393,13 +393,4 @@ try-import %workspace%/clang.bazelrc
 try-import %workspace%/user.bazelrc
 try-import %workspace%/local_tsan.bazelrc
 
-build --cxxopt -D_GLIBCXX_USE_CXX11_ABI=1
-build --cxxopt -DENVOY_IGNORE_GLIBCXX_USE_CXX11_ABI_ERROR=1
-build --cxxopt -Wnon-virtual-dtor
-build --cxxopt -Wformat
-build --cxxopt -Wformat-security
-build --cxxopt -Wno-error=deprecated-declarations
-build --cxxopt -Wno-error=unused-variable
-build --cxxopt -w
-build --cxxopt -ldl
-build --copt -DOPENSSL_IS_BORINGSSL=0
+import %workspace%/maistra/bazelrc
