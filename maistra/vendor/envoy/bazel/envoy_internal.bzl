@@ -7,7 +7,7 @@ def envoy_copts(repository, test = False):
     posix_options = [
         "-Wall",
         "-Wextra",
-        "-Werror",
+#        "-Werror", FIXME: https://issues.redhat.com/browse/OSSM-1201
         "-Wnon-virtual-dtor",
         "-Woverloaded-virtual",
         "-Wold-style-cast",

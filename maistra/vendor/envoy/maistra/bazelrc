@@ -1,0 +1,5 @@
+# FIXME: https://issues.redhat.com/browse/OSSM-1201
+build --cxxopt -w
+
+build --copt -DOPENSSL_IS_BORINGSSL=0
+build --verbose_failures
