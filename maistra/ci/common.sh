@@ -6,10 +6,18 @@ if [ "${ARCH}" = "ppc64le" ]; then
 fi
 export ARCH
 
+OUTPUT_TO_IGNORE="\
+INFO: From|\
+Fixing bazel-out|\
+cache:INFO:  - ok|\
+processwrapper-sandbox.*execroot.*io_istio_proxy|\
+proto is unused\
+"
+
 COMMON_FLAGS="\
-    --incompatible_linkopts_to_linklibs \
     --config=release \
     --config=${ARCH} \
+    --config=clang \
     --local_ram_resources=12288 \
     --local_cpu_resources=6 \
     --jobs=3 \
@@ -17,6 +25,7 @@ COMMON_FLAGS="\
     --deleted_packages=@envoy//test/common/quic,@envoy//test/common/quic/platform \
     --verbose_failures \
     --color=no \
+    --show_progress_rate_limit=10 \
 "
 
 if [ -n "${BAZEL_REMOTE_CACHE}" ]; then
@@ -28,14 +37,16 @@ fi
 function bazel_build() {
   bazel build \
     ${COMMON_FLAGS} \
-    "${@}"
+    "${@}" \
+  2>&1 | grep -v -E "${OUTPUT_TO_IGNORE}"
 }
 
 function bazel_test() {
   bazel test \
     ${COMMON_FLAGS} \
     --build_tests_only \
-    "${@}"
+    "${@}" \
+  2>&1 | grep -v -E "${OUTPUT_TO_IGNORE}"
 }
 
 # Fix path to the vendor deps

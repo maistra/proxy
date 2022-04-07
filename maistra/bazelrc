@@ -1,19 +1,5 @@
-# Common build flags
-build --copt -fPIE
-build --copt -fPIC
-build --copt -D_GLIBCXX_ASSERTIONS
-build --copt -D_GLIBCXX_USE_CXX11_ABI=1
-build --copt -DENVOY_IGNORE_GLIBCXX_USE_CXX11_ABI_ERROR=1
-build --copt -Wno-error=deprecated-declarations
-build --copt -Wno-error=unused-variable
-build --copt -Wno-error=unused-function
-build --copt -Wno-error=parentheses
-build --copt -Wno-error=implicit-function-declaration
-build --copt -Wno-error=old-style-cast
-build --copt -Wno-error=conversion-null
-build --copt -Wno-error=implicit-fallthrough
-build --copt -Wno-error=unused-parameter # for sni_verifier.cc
-build --copt -ldl
+build --cxxopt -w
+
 build --host_force_python=PY3
 build --host_javabase=@bazel_tools//tools/jdk:absolute_javabase --define=ABSOLUTE_JAVABASE=/etc/alternatives/java_sdk/
 build --verbose_failures
