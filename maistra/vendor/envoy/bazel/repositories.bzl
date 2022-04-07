@@ -821,10 +821,7 @@ def _com_googlesource_chromium_v8():
         name = "com_googlesource_chromium_v8",
         genrule_cmd_file = "@envoy//bazel/external:wee8.genrule_cmd",
         build_file = "@envoy//bazel/external:wee8.BUILD",
-        patches = [
-            "@envoy//bazel/external:wee8.patch",
-            "@envoy//bazel/external:wee8-annobin.patch",
-        ],
+        patches = ["@envoy//bazel/external:wee8.patch"],
     )
     native.bind(
         name = "wee8",

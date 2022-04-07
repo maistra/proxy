@@ -4,7 +4,7 @@ set -e
 set -o pipefail
 set -x
 
-source /opt/rh/gcc-toolset-9/enable
+export CC=clang CXX=clang++
 
 ARCH=$(uname -p)
 if [ "${ARCH}" = "ppc64le" ]; then
@@ -16,13 +16,12 @@ export BUILD_SCM_REVISION="Maistra PR #${PULL_NUMBER:-undefined}"
 export BUILD_SCM_STATUS="SHA=${PULL_PULL_SHA:-undefined}"
 
 COMMON_FLAGS="\
-    --incompatible_linkopts_to_linklibs \
+    --config=clang \
     --local_ram_resources=12288 \
     --local_cpu_resources=6 \
     --jobs=3 \
     --deleted_packages=test/common/quic,test/common/quic/platform \
     --//bazel:http3=false \
-    --verbose_failures \
     --color=no \
 "
 
