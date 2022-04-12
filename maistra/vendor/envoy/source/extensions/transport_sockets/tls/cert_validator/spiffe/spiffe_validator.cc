@@ -165,9 +165,9 @@ int SPIFFEValidator::doVerifyCertChain(X509_STORE_CTX* store_ctx,
   bssl::UniquePtr<X509_STORE_CTX> verify_ctx(X509_STORE_CTX_new());
   // We make a copy of X509_VERIFY_PARAMs in the store_ctx that we received as a parameter.
   // This is a precaution mostly, as Envoy doesn't configure any X509_VERIFY_PARAMs.
-  // Note that there's no api to copy crls from one store_ctx to another; the assumption is that
-  // neither X509_V_FLAG_CRL_CHECK nor X509_V_FLAG_CRL_CHECK_ALL verify_params are not used.
-  // Should this change, consider opening up X509_STORE_CTX struct, which is internal atm.
+  // Note that there's no api to copy crls from one store_ctx to another; the assumption is that 
+  // X509_V_FLAG_CRL_CHECK/X509_V_FLAG_CRL_CHECK_ALL verify_params are not used.
+  // Should this change, consider opening up X509_STORE_CTX struct, which is internal atm. 
   X509_STORE_CTX_init(verify_ctx.get(), trust_bundle, &leaf_cert, X509_STORE_CTX_get0_untrusted(store_ctx));
   X509_VERIFY_PARAM* verify_params = X509_VERIFY_PARAM_new();
   X509_VERIFY_PARAM_inherit(verify_params, X509_STORE_CTX_get0_param(store_ctx));

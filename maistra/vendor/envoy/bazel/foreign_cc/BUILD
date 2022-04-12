@@ -135,6 +135,7 @@ configure_make(
     out_include_dir = "include/luajit-2.1",
     out_static_libs = ["libluajit-5.1.a"],
     tags = ["skip_on_windows"],
+    targets = [],
 )
 
 envoy_cmake(
