@@ -228,16 +228,27 @@ std::vector<absl::string_view> Filter::getAlpnProtocols(const unsigned char* dat
     return protocols;
   }
 
-  absl::string_view str(reinterpret_cast<const char*>(data));
-  for (unsigned int i = 0; i < len;) {
-    uint32_t protocol_length = 0;
-    protocol_length <<= 8;
-    protocol_length |= data[i];
-    ++i;
-    absl::string_view protocol(str.substr(i, protocol_length));
-    protocols.push_back(protocol);
+  // The data buffer contains a sequence of non-terminated strings, where each
+  // string is preceded by 1 byte that gives it's length (excluding the length
+  // byte itself). No string can be zero length, and the last string must not
+  // overrun or underrun the buffer.
+  unsigned int i = 0;
+  do {
+    uint8_t protocol_length = data[i++];
+
+    if (protocol_length == 0) {
+      ENVOY_LOG_PERIODIC(warn, std::chrono::minutes(1), "tls inspector: ALPN protocol length is zero");
+      break;
+    }
+
+    if (protocol_length > (len - i)) {
+      ENVOY_LOG_PERIODIC(warn, std::chrono::minutes(1), "tls inspector: ALPN protocol length is too long");
+      break;
+    }
+
+    protocols.emplace_back(reinterpret_cast<const char*>(data + i), protocol_length);
     i += protocol_length;
-  }
+  } while (i < len);
 
   return protocols;
 }
