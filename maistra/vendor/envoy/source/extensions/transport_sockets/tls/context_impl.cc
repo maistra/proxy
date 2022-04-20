@@ -737,10 +737,6 @@ ServerContextImpl::ServerContextImpl(Stats::Scope& scope,
       if (!response->matchesCertificate(*tls_context_.cert_contexts_[i].cert_chain_)) {
         throw EnvoyException("OCSP response does not match its TLS certificate");
       }
-      if (response->isExpired()) {
-        ENVOY_LOG_MISC(warn, "Expired OCSP response has been loaded for the certificate chain {}",
-                       tls_context_.cert_contexts_[i].getCertChainFileName());
-      }
       tls_context_.cert_contexts_[i].ocsp_response_ = std::move(response);
     }
   }
