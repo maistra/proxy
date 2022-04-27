@@ -1111,8 +1111,16 @@ config("toolchain") {
 
   if (is_clang) {
     cflags += [ "-Wmissing-field-initializers" ]
+    if (v8_current_cpu == "s390x") {
+      cflags += [
+        "-fno-integrated-as",
+        "-Wno-unreachable-code",
+        "-Wno-invalid-offsetof",
+      ]
+      ldflags = [ "-fuse-ld=gold" ]
+    }
 
-    if (v8_current_cpu != "mips" && v8_current_cpu != "mipsel") {
+    if (v8_current_cpu != "mips" && v8_current_cpu != "mipsel" && v8_current_cpu != "s390x") {
       # We exclude MIPS because the IsMipsArchVariant macro causes trouble.
       cflags += [ "-Wunreachable-code" ]
     }
