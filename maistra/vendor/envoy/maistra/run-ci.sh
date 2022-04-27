@@ -17,6 +17,7 @@ export BUILD_SCM_STATUS="SHA=${PULL_PULL_SHA:-undefined}"
 
 COMMON_FLAGS="\
     --config=clang \
+    --config=${ARCH} \
     --local_ram_resources=12288 \
     --local_cpu_resources=6 \
     --jobs=3 \

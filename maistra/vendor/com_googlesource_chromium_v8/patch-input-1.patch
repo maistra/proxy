@@ -1,0 +1,31 @@
+--- wee8/BUILD.gn
++++ wee8/BUILD.gn
+@@ -1111,8 +1111,16 @@ config("toolchain") {
+ 
+   if (is_clang) {
+     cflags += [ "-Wmissing-field-initializers" ]
++    if (v8_current_cpu == "s390x") {
++      cflags += [
++        "-fno-integrated-as",
++        "-Wno-unreachable-code",
++        "-Wno-invalid-offsetof",
++      ]
++      ldflags = [ "-fuse-ld=gold" ]
++    }
+ 
+-    if (v8_current_cpu != "mips" && v8_current_cpu != "mipsel") {
++    if (v8_current_cpu != "mips" && v8_current_cpu != "mipsel" && v8_current_cpu != "s390x") {
+       # We exclude MIPS because the IsMipsArchVariant macro causes trouble.
+       cflags += [ "-Wunreachable-code" ]
+     }
+--- wee8/build/config/compiler/compiler.gni
++++ wee8/build/config/compiler/compiler.gni
+@@ -197,7 +197,7 @@ declare_args() {
+   # Not supported for macOS (see docs/mac_lld.md), and not functional at all for
+   # iOS. But used for mac cross-compile on linux (may not work properly).
+   # The default linker everywhere else.
+-  use_lld = is_clang && (!is_apple || host_os == "linux")
++  use_lld = is_clang && (!is_apple || host_os == "linux") && current_cpu != "s390x"
+ }
+ 
+ declare_args() {

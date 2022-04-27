@@ -3,6 +3,7 @@
 import argparse
 import os
 import shutil
+import subprocess
 
 def main():
     parser = argparse.ArgumentParser()
@@ -25,6 +26,15 @@ def main():
     if "ENVOY_MSAN" in os.environ:
       os.environ["HOST_CFLAGS"] = "-fno-sanitize=memory"
       os.environ["HOST_LDFLAGS"] = "-fno-sanitize=memory"
+
+    arch = subprocess.check_output(["uname","-m"]).decode("utf-8").strip()
+    compiler = os.environ.get("CC", "")
+    if "clang" in compiler and arch in ["s390x"]:
+        extra_clang_cflags = " -fgnuc-version=10 -fno-integrated-as -Wno-implicit-function-declaration -D_Float32=float -D_Float64=double -D_Float128=double -D_Float32x=double -D_Float64x=double"
+        os.environ["TARGET_CFLAGS"] += extra_clang_cflags
+        os.environ["TARGET_LDFLAGS"] += " -fgnuc-version=10"
+        os.environ["HOST_CFLAGS"] = os.environ.get("HOST_CFLAGS", "") + extra_clang_cflags
+        os.environ["HOST_LDFLAGS"] = os.environ.get("HOST_LDFLAGS", "") + " -fgnuc-version=10"
 
     # Remove LuaJIT from ASAN for now.
     # TODO(htuch): Remove this when https://github.com/envoyproxy/envoy/issues/6084 is resolved.
