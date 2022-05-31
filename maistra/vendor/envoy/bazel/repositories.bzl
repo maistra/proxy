@@ -486,7 +486,13 @@ cc_library(
 """,
         patch_args = ["-p1"],
         # Patches ASAN violation of initialization fiasco
-        patches = ["@envoy//bazel:antlr.patch"],
+        patches = [
+            "@envoy//bazel:antlr.patch",
+            # antlr_s390x_ossm_1526.patch is a temporary workaround for antlr4 crash problem on s390x
+            # https://issues.redhat.com/browse/OSSM-1526
+            # https://github.com/antlr/antlr4/issues/3728
+            "@envoy//bazel:antlr_s390x_ossm_1526.patch"
+        ],
     )
 
 def _com_github_nghttp2_nghttp2():
