@@ -218,7 +218,7 @@ int foo (void) {
 }"
 
     # Check if strlcpy() is available
-    mkl_compile_check "strlcpy" "HAVE_STRLCPY" disable CC "" \
+    mkl_compile_check "strlcpy" "HAVE_STRLCPY" disable CXX "" \
 "
 #define _DARWIN_C_SOURCE
 #include <string.h>

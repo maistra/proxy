@@ -15,12 +15,11 @@ source_set("gmock") {
     "include/gmock/gmock-matchers.h",
     "include/gmock/gmock.h",
   ]
-  deps = [ "//third_party/googletest:gmock" ]
+#
+# Fix for known gmock test failre (https://github.com/v8/v8/commit/eac21d572e92a82f5656379bc90f8ecf1ff884fc)
+# 
+ public_deps = [ "//third_party/googletest:gmock" ]
 
-  public_configs = [
-    "//third_party/googletest:gmock_config",
-    "//third_party/googletest:gtest_config",
-  ]
 }
 
 # The file/directory layout of Google Test is not yet considered stable. Until
