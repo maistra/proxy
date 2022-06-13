@@ -1,7 +1,7 @@
 --- wee8/BUILD.gn
 +++ wee8/BUILD.gn
-@@ -1111,8 +1111,16 @@ config("toolchain") {
- 
+@@ -1111,8 +1111,24 @@ config("toolchain") {
+
    if (is_clang) {
      cflags += [ "-Wmissing-field-initializers" ]
 +    if (v8_current_cpu == "s390x") {
@@ -12,9 +12,17 @@
 +      ]
 +      ldflags = [ "-fuse-ld=gold" ]
 +    }
- 
++    if (v8_current_cpu == "ppc64") {
++      cflags += [
++        "-fno-integrated-as",
++        "-Wno-unreachable-code",
++        "-Wno-invalid-offsetof",
++      ]
++      ldflags = [ "-fuse-ld=lld" ]
++    }
+
 -    if (v8_current_cpu != "mips" && v8_current_cpu != "mipsel") {
-+    if (v8_current_cpu != "mips" && v8_current_cpu != "mipsel" && v8_current_cpu != "s390x") {
++    if (v8_current_cpu != "mips" && v8_current_cpu != "mipsel" && v8_current_cpu != "s390x"  && v8_current_cpu != "ppc64") {
        # We exclude MIPS because the IsMipsArchVariant macro causes trouble.
        cflags += [ "-Wunreachable-code" ]
      }
@@ -25,7 +33,7 @@
    # iOS. But used for mac cross-compile on linux (may not work properly).
    # The default linker everywhere else.
 -  use_lld = is_clang && (!is_apple || host_os == "linux")
-+  use_lld = is_clang && (!is_apple || host_os == "linux") && current_cpu != "s390x"
++  use_lld = is_clang && (!is_apple || host_os == "linux") && current_cpu != "s390x" && current_cpu != "ppc64"
  }
  
  declare_args() {
@@ -39,3 +47,19 @@
    DCHECK_EQ(kPushedStackSpace, pushed_stack_space);
    __ Call(trampoline_code, RelocInfo::CODE_TARGET);
 
+--- wee8/testing/gmock/BUILD.gn
++++ wee8/testing/gmock/BUILD.gn
+@@ -15,12 +15,8 @@
+     "include/gmock/gmock-matchers.h",
+     "include/gmock/gmock.h",
+   ]
+-  deps = [ "//third_party/googletest:gmock" ]
++  public_deps = [ "//third_party/googletest:gmock" ]
+
+-  public_configs = [
+-    "//third_party/googletest:gmock_config",
+-    "//third_party/googletest:gtest_config",
+-  ]
+ }
+
+ # The file/directory layout of Google Test is not yet considered stable. Until

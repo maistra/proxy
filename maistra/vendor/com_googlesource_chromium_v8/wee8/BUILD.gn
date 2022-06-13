@@ -1119,8 +1119,16 @@ config("toolchain") {
       ]
       ldflags = [ "-fuse-ld=gold" ]
     }
+    if (v8_current_cpu == "ppc64") {
+      cflags += [
+        "-fno-integrated-as",
+        "-Wno-unreachable-code",
+        "-Wno-invalid-offsetof",
+      ]
+      ldflags = [ "-fuse-ld=lld" ]
+    }
 
-    if (v8_current_cpu != "mips" && v8_current_cpu != "mipsel" && v8_current_cpu != "s390x") {
+    if (v8_current_cpu != "mips" && v8_current_cpu != "mipsel" && v8_current_cpu != "s390x"  && v8_current_cpu != "ppc64") {
       # We exclude MIPS because the IsMipsArchVariant macro causes trouble.
       cflags += [ "-Wunreachable-code" ]
     }
