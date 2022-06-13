@@ -829,7 +829,7 @@ def _com_googlesource_chromium_v8():
         build_file = "@envoy//bazel/external:wee8.BUILD",
         patches = [
             "@envoy//bazel/external:wee8.patch",
-            "@envoy//bazel/external:wee8-s390x.patch",
+            "@envoy//bazel/external:wee8-s390x-ppc64.patch",
         ],
     )
     native.bind(
@@ -1145,7 +1145,7 @@ def _is_arch(ctxt, arch):
     return arch in res.stdout
 
 def _is_linux_ppc(ctxt):
-    return _is_linux(ctxt) and _is_arch(ctxt, "ppc")
+    return _is_linux(ctxt) and _is_arch(ctxt, "ppc64le")
 
 def _is_linux_s390x(ctxt):
     return _is_linux(ctxt) and _is_arch(ctxt, "s390x")
