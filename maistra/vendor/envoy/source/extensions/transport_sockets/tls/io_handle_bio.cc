@@ -40,11 +40,14 @@ int io_handle_free(BIO* bio) {
     }
     BIO_set_init(bio, 0);
     BIO_clear_flags(bio, INT_MAX);
-    auto* meth = static_cast<BIO_METHOD*>(BIO_get_app_data(bio));
-    if (meth != nullptr) {
-      BIO_meth_free(meth);
-    }
   }
+
+  auto* meth = static_cast<BIO_METHOD*>(BIO_get_app_data(bio));
+  if (meth != nullptr) {
+    BIO_meth_free(meth);
+    BIO_set_app_data(bio, nullptr);
+  }
+
   return 1;
 }
 
