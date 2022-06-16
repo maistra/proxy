@@ -17,18 +17,9 @@ gcloud config set project "${GCS_PROJECT}"
 # Fix path to the vendor deps
 sed -i "s|=/work/|=$(pwd)/|" maistra/bazelrc-vendor
 
-ARCH=$(uname -p)
-if [ "${ARCH}" = "ppc64le" ]; then
-  ARCH="ppc"
-fi
-
 # Build
 bazel build \
-  --config=release \
-  --config=${ARCH} \
-  --local_resources 12288,4.0,1.0 \
-  --jobs=4 \
-  --disk_cache=/bazel-cache \
+  ${COMMON_FLAGS} \
   //src/envoy:envoy_tar \
   2>&1 | grep -v -E "${OUTPUT_TO_IGNORE}"
 
