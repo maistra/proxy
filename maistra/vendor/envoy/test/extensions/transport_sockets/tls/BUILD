@@ -123,23 +123,23 @@ envoy_cc_test_library(
     ],
 )
 
-envoy_cc_test_library(
-    name = "test_private_key_method_provider_test_lib",
-    srcs = [
-        "test_private_key_method_provider.cc",
-    ],
-    hdrs = [
-        "test_private_key_method_provider.h",
-    ],
-    external_deps = ["ssl"],
-    deps = [
-        "//include/envoy/api:api_interface",
-        "//include/envoy/event:dispatcher_interface",
-        "//include/envoy/server:transport_socket_config_interface",
-        "//include/envoy/ssl/private_key:private_key_config_interface",
-        "//include/envoy/ssl/private_key:private_key_interface",
-        "//source/common/config:utility_lib",
-        "//source/common/protobuf:utility_lib",
-        "@envoy_api//envoy/extensions/transport_sockets/tls/v3:pkg_cc_proto",
-    ],
-)
+#envoy_cc_test_library(
+#    name = "test_private_key_method_provider_test_lib",
+#    srcs = [
+#        "test_private_key_method_provider.cc",
+#    ],
+#    hdrs = [
+#        "test_private_key_method_provider.h",
+#    ],
+#    external_deps = ["ssl"],
+#    deps = [
+#        "//include/envoy/api:api_interface",
+#        "//include/envoy/event:dispatcher_interface",
+#        "//include/envoy/server:transport_socket_config_interface",
+#        "//include/envoy/ssl/private_key:private_key_config_interface",
+#        "//include/envoy/ssl/private_key:private_key_interface",
+#        "//source/common/config:utility_lib",
+#        "//source/common/protobuf:utility_lib",
+#        "@envoy_api//envoy/extensions/transport_sockets/tls/v3:pkg_cc_proto",
+#    ],
+#)

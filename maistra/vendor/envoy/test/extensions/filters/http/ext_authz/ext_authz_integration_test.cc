@@ -53,8 +53,11 @@ public:
   void initiateClientConnection(uint64_t request_body_length) {
     auto conn = makeClientConnection(lookupPort("http"));
     codec_client_ = makeHttpConnection(std::move(conn));
-    Http::TestRequestHeaderMapImpl headers{
-        {":method", "POST"}, {":path", "/test"}, {":scheme", "http"}, {":authority", "host"}};
+    Http::TestRequestHeaderMapImpl headers{{":method", "POST"},     {":path", "/test"},
+                                           {":scheme", "http"},     {":authority", "host"},
+                                           {"x-duplicate", "one"},  {"x-duplicate", "two"},
+                                           {"x-duplicate", "three"}};
+
     TestUtility::feedBufferWithRandomCharacters(request_body_, request_body_length);
     response_ = codec_client_->makeRequestWithBody(headers, request_body_.toString());
   }
@@ -84,6 +87,9 @@ public:
     auto* http_request = attributes->mutable_request()->mutable_http();
 
     EXPECT_TRUE(attributes->request().has_time());
+
+    // Duplicate headers in the check request should be merged.
+    EXPECT_EQ("one,two,three", (*http_request->mutable_headers())["x-duplicate"]);
 
     // Clear fields which are not relevant.
     attributes->clear_source();
@@ -221,6 +227,9 @@ public:
         {":scheme", "http"},
         {":authority", "host"},
         {"x-case-sensitive-header", case_sensitive_header_value_},
+        {"x-duplicate", "one"},
+        {"x-duplicate", "two"},
+        {"x-duplicate", "three"},
     });
   }
 
@@ -232,6 +241,11 @@ public:
     RELEASE_ASSERT(result, result.message());
     result = ext_authz_request_->waitForEndStream(*dispatcher_);
     RELEASE_ASSERT(result, result.message());
+
+    // Duplicate headers in the check request should be merged.
+    const auto duplicate =
+        ext_authz_request_->headers().get(Http::LowerCaseString(std::string("x-duplicate")));
+    EXPECT_EQ("one,two,three", duplicate->value().getStringView());
   }
 
   void cleanup() {
@@ -289,6 +303,7 @@ public:
       allowed_headers:
         patterns:
         - exact: X-Case-Sensitive-Header
+        - exact: x-duplicate
   failure_mode_allow: true
   )EOF";
 };

@@ -33,6 +33,7 @@
 #include "common/router/debug_config.h"
 #include "common/router/retry_state_impl.h"
 #include "common/router/upstream_request.h"
+#include "common/runtime/runtime_features.h"
 #include "common/runtime/runtime_impl.h"
 #include "common/stream_info/uint32_accessor_impl.h"
 #include "common/tracing/http_tracer_impl.h"
@@ -106,7 +107,16 @@ bool convertRequestHeadersForInternalRedirect(Http::RequestHeaderMap& downstream
   // Replace the original host, scheme and path.
   downstream_headers.setScheme(absolute_url.scheme());
   downstream_headers.setHost(absolute_url.host_and_port());
-  downstream_headers.setPath(absolute_url.path_and_query_params());
+  auto path_and_query = absolute_url.path_and_query_params();
+  if (Runtime::runtimeFeatureEnabled("envoy.reloadable_features.http_reject_path_with_fragment")) {
+    // Envoy treats internal redirect as a new request and will reject it if URI path
+    // contains #fragment. However the Location header is allowed to have #fragment in URI path. To
+    // prevent Envoy from rejecting internal redirect, strip the #fragment from Location URI if it
+    // is present.
+    auto fragment_pos = path_and_query.find('#');
+    path_and_query = path_and_query.substr(0, fragment_pos);
+  }
+  downstream_headers.setPath(path_and_query);
 
   return true;
 }

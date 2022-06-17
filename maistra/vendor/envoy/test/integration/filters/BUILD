@@ -4,9 +4,52 @@ load(
     "//bazel:envoy_build_system.bzl",
     "envoy_cc_test_library",
     "envoy_package",
+    "envoy_proto_library",
 )
 
 envoy_package()
+
+envoy_proto_library(
+    name = "add_body_filter_proto",
+    srcs = ["add_body_filter.proto"],
+)
+
+envoy_cc_test_library(
+    name = "add_body_filter_config_lib",
+    srcs = [
+        "add_body_filter.cc",
+    ],
+    deps = [
+        ":add_body_filter_proto_cc_proto",
+        ":common_lib",
+        "//include/envoy/http:filter_interface",
+        "//include/envoy/registry",
+        "//include/envoy/server:filter_config_interface",
+        "//source/extensions/filters/http/common:factory_base_lib",
+        "//source/extensions/filters/http/common:pass_through_filter_lib",
+    ],
+)
+
+envoy_proto_library(
+    name = "crash_filter_proto",
+    srcs = ["crash_filter.proto"],
+)
+
+envoy_cc_test_library(
+    name = "crash_filter_config_lib",
+    srcs = [
+        "crash_filter.cc",
+    ],
+    deps = [
+        ":common_lib",
+        ":crash_filter_proto_cc_proto",
+        "//include/envoy/http:filter_interface",
+        "//include/envoy/registry",
+        "//include/envoy/server:filter_config_interface",
+        "//source/extensions/filters/http/common:factory_base_lib",
+        "//source/extensions/filters/http/common:pass_through_filter_lib",
+    ],
+)
 
 envoy_cc_test_library(
     name = "add_trailers_filter_config_lib",
@@ -254,6 +297,20 @@ envoy_cc_test_library(
     deps = [
         ":common_lib",
         "//include/envoy/event:timer_interface",
+        "//include/envoy/http:filter_interface",
+        "//include/envoy/registry",
+        "//include/envoy/server:filter_config_interface",
+        "//source/extensions/filters/http/common:pass_through_filter_lib",
+        "//test/extensions/filters/http/common:empty_http_filter_config_lib",
+    ],
+)
+
+envoy_cc_test_library(
+    name = "encoder_decoder_buffer_filter_lib",
+    srcs = [
+        "encoder_decoder_buffer_filter.cc",
+    ],
+    deps = [
         "//include/envoy/http:filter_interface",
         "//include/envoy/registry",
         "//include/envoy/server:filter_config_interface",

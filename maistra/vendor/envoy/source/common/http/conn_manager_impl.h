@@ -614,7 +614,8 @@ private:
           : remote_complete_(false), remote_encode_complete_(false), local_complete_(false), codec_saw_local_complete_(false),
             saw_connection_close_(false), successful_upgrade_(false), created_filter_chain_(false),
             is_internally_created_(false), decorated_propagate_(true), has_continue_headers_(false),
-            is_head_request_(false) {}
+            is_head_request_(false), decoder_filter_chain_aborted_(false),
+            encoder_filter_chain_aborted_(false) {}
 
       uint32_t filter_call_state_{0};
       // The following 3 members are booleans rather than part of the space-saving bitfield as they
@@ -643,6 +644,9 @@ private:
       // is ever called, this is set to true so commonContinue resumes processing the 100-Continue.
       bool has_continue_headers_ : 1;
       bool is_head_request_ : 1;
+      // True when the filter chain iteration was aborted with local reply.
+      bool decoder_filter_chain_aborted_ : 1;
+      bool encoder_filter_chain_aborted_ : 1;
       // Whether a filter has indicated that the request should be treated as a headers only
       // request.
       bool decoding_headers_only_{false};

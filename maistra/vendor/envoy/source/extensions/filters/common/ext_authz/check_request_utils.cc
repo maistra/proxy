@@ -115,14 +115,19 @@ void CheckRequestUtils::setHttpRequest(
   }
 
   // Fill in the headers.
-  auto mutable_headers = httpreq.mutable_headers();
+  auto* mutable_headers = httpreq.mutable_headers();
   headers.iterate(
       [](const Envoy::Http::HeaderEntry& e, void* ctx) {
         // Skip any client EnvoyAuthPartialBody header, which could interfere with internal use.
         if (e.key().getStringView() != Http::Headers::get().EnvoyAuthPartialBody.get()) {
+          const std::string key(e.key().getStringView());
           auto* mutable_headers = static_cast<Envoy::Protobuf::Map<std::string, std::string>*>(ctx);
-          (*mutable_headers)[std::string(e.key().getStringView())] =
-              std::string(e.value().getStringView());
+          if (mutable_headers->find(key) == mutable_headers->end()) {
+            (*mutable_headers)[key] = std::string(e.value().getStringView());
+          } else {
+            // Merge duplicate headers.
+            (*mutable_headers)[key].append(",").append(std::string(e.value().getStringView()));
+          }
         }
         return Envoy::Http::HeaderMap::Iterate::Continue;
       },
