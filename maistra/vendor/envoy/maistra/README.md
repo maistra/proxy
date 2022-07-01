@@ -51,6 +51,40 @@ The [run-ci.sh script](./run-ci.sh) is the one that runs on our CI (more on this
 
 Note that we changed a bunch of compilation flags, when comparing to upstream. Most (but not all) of these changes are on the [bazelrc](./bazelrc) file, which is included from the [main .bazelrc](../.bazelrc) file. Again, feel free to tweak these files during local development.
 
+## Running tests
+
+
+### Testing changes 
+
+To test run Envoy's test suite locally one can run the same script that gets used in CI:
+
+```sh
+maistra/run-ci.sh
+```
+
+This will build Envoy and check that all tests pass. When this succeeds, generally CI tests will pass as well.
+
+### Executing tests with sanitizers enabled.
+
+Our build flows support executing Envoy's test suite with [sanitizers](https://github.com/google/sanitizers) enabled.
+This allows one to test for memory leaks, undefined behaviour, data races, and so on.
+The easiest way to get started is to execute the examples below in the docker image pointed out above.
+
+```sh
+# Test for undefined behaviour / leaks
+maistra/test-with-asan.sh //test/common/common:base64_test
+ ```
+
+```sh
+# Test for potential data races and deadlocks
+maistra/test-with-tsan.sh //test/common/common:base64_test
+```
+
+```sh
+# Test for uninitialized memory access
+maistra/test-with-msan.sh //test/common/common:base64_test
+```
+
 ## New versions
 
 The next version is chosen based on the version the Istio project will use. For example, if Maistra 2.3 is going to ship Istio 1.14, then, we are going to use whatever version of Envoy Istio 1.14 uses (which is 1.22). That will be our `maistra-2.3` branch.
