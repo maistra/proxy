@@ -1,7 +1,5 @@
 1.20.4 (June 9, 2022)
 =====================
-1.20.6 (June 16, 2022)
-======================
 
 Incompatible Behavior Changes
 -----------------------------
@@ -10,6 +8,8 @@ Incompatible Behavior Changes
 Minor Behavior Changes
 ----------------------
 *Changes that may cause incompatibilities for some users, but should not for most*
+
+* cryptomb: remove RSA PKCS1 v1.5 padding support.
 
 Bug Fixes
 ---------
@@ -20,7 +20,6 @@ Bug Fixes
 * oauth: fixed CVE-2022-29226 due to which oauth filter allows trivial bypass. The OAuth filter implementation does not include a mechanism for validating access tokens, so by design when the HMAC signed cookie is missing a full authentication flow should be triggered. However, the current implementation assumes that access tokens are always validated thus allowing access in the presence of any access token attached to the request.
 * oauth: fixed CVE-2022-29228 due to which oauth filter calls continueDecoding() from within decodeHeaders(). The OAuth filter would try to invoke the remaining filters in the chain after emitting a local response, which triggers an ASSERT() in newer versions and corrupts memory on earlier versions.
 * router: fixed CVE-2022-29227 which caused an internal redirect crash for requests with body/trailers. Envoy would previously crash in some cases when processing internal redirects for requests with bodies or trailers if the redirect prompts an Envoy-generated local reply.
-* ci: fix disk space issue that have prevented publication.
 
 Removed Config or Runtime
 -------------------------
