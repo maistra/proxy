@@ -46,16 +46,22 @@ Pairs toPairs(std::string_view buffer) {
   if (buffer.size() < sizeof(uint32_t)) {
     return {};
   }
-  auto size = *reinterpret_cast<const uint32_t *>(b);
+  bool reverse = "null" != contextOrEffectiveContext()->wasmVm()->runtime();
+  auto size = reverse ? wasmtoh(*reinterpret_cast<const uint32_t *>(b))
+                      : *reinterpret_cast<const uint32_t *>(b);
   b += sizeof(uint32_t);
   if (sizeof(uint32_t) + size * 2 * sizeof(uint32_t) > buffer.size()) {
     return {};
   }
   result.resize(size);
   for (uint32_t i = 0; i < size; i++) {
-    result[i].first = std::string_view(nullptr, *reinterpret_cast<const uint32_t *>(b));
+    result[i].first =
+        std::string_view(nullptr, reverse ? wasmtoh(*reinterpret_cast<const uint32_t *>(b))
+                                          : *reinterpret_cast<const uint32_t *>(b));
     b += sizeof(uint32_t);
-    result[i].second = std::string_view(nullptr, *reinterpret_cast<const uint32_t *>(b));
+    result[i].second =
+        std::string_view(nullptr, reverse ? wasmtoh(*reinterpret_cast<const uint32_t *>(b))
+                                          : *reinterpret_cast<const uint32_t *>(b));
     b += sizeof(uint32_t);
   }
   for (auto &p : result) {
@@ -652,6 +658,7 @@ Word grpc_send(Word token, Word message_ptr, Word message_size, Word end_stream)
 // logs.
 Word writevImpl(Word fd, Word iovs, Word iovs_len, Word *nwritten_ptr) {
   auto context = contextOrEffectiveContext();
+  bool reverse = "null" != context->wasmVm()->runtime();
 
   // Read syscall args.
   uint64_t log_level;
@@ -675,7 +682,9 @@ Word writevImpl(Word fd, Word iovs, Word iovs_len, Word *nwritten_ptr) {
     }
     const uint32_t *iovec = reinterpret_cast<const uint32_t *>(memslice.value().data());
     if (iovec[1] /* buf_len */) {
-      memslice = context->wasmVm()->getMemory(iovec[0] /* buf */, iovec[1] /* buf_len */);
+      auto iovec0 = reverse ? wasmtoh(iovec[0]) : iovec[0];
+      auto iovec1 = reverse ? wasmtoh(iovec[1]) : iovec[1];
+      memslice = context->wasmVm()->getMemory(iovec0 /* buf */, iovec1 /* buf_len */);
       if (!memslice) {
         return 21; // __WASI_EFAULT
       }
