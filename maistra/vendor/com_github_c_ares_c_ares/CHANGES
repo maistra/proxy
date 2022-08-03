@@ -1,5 +1,206 @@
    Changelog for the c-ares project. Generated with git2changes.pl
 
+Version 1.17.2 (24 Jul 2021)
+
+bradh352 (24 Jul 2021)
+- fix typo
+
+- prep for 1.17.2 release
+
+GitHub (30 Jun 2021)
+- [jeanpierrecartal brought this change]
+
+  Replace strdup() with ares_strdup() (#408)
+  
+  strdup() is used in src/lib/ares_parse_a_reply.c and src/lib/ares_parse_aaaa_reply.c whereas allocated memory is freed using ares_free().
+  
+  Bug: 407
+  Fix By: Jean-pierre Cartal (@jeanpierrecartal)
+
+- [Brad House brought this change]
+
+  Validate hostnames in DNS responses and discard from malicious servers (#406)
+  
+  To prevent possible users having XSS issues due to intentionally malformed DNS replies, validate hostnames returned in responses and return EBADRESP if they are not valid.
+  
+  It is not clear what legitimate issues this may cause at this point.
+  
+  Bug Reported By: philipp.jeitner@sit.fraunhofer.de
+  Fix By: Brad House (@bradh352)
+
+bradh352 (11 Jun 2021)
+- ares_expand_name(): fix formatting and handling of root name response
+  
+  Fixes issue introduced in prior commit with formatting and handling
+  of parsing a root name response which should not be escaped.
+  
+  Fix By: Brad House
+
+- ares_expand_name() should escape more characters
+  
+  RFC1035 5.1 specifies some reserved characters and escaping sequences
+  that are allowed to be specified.  Expand the list of reserved characters
+  and also escape non-printable characters using the \DDD format as
+  specified in the RFC.
+  
+  Bug Reported By: philipp.jeitner@sit.fraunhofer.de
+  Fix By: Brad House (@bradh352)
+
+GitHub (15 Apr 2021)
+- [HALX99 brought this change]
+
+  Fix can't get dns server on macos and ios (#401)
+  
+  If DNS configuration didn't include search domains on MacOS (or iOS) it would throw an error instead of ignoring.
+  
+  Fix By: @halx99
+
+- [catalinh-bd brought this change]
+
+  Bugfix/crash in ares  sortaddrinfo (#400)
+  
+  The bug was generated because there was no check for the number
+  of items in the list and invalid memory was accesed when the list
+  was empty. There is a check for null after calling malloc but on
+  some systems it always returns a valid address for size equals 0.
+  Relates To: #392, 0903dcecabca283d0fa771632892dc7592b7a66d
+  
+  Fix By: @catalinh-bd
+
+bradh352 (2 Mar 2021)
+- Null deref if ares_getaddrinfo() is terminated with ares_destroy()
+  
+  ares_freeaddrinfo() was not checking for a Null ptr during cleanup of
+  an aborted query.
+  
+  Once that was resolved it uncovered another possible issue with
+  multiple simultaneous underlying queries being outstanding and
+  possibly prematurely cleaning up the handle.
+  
+  Reported By: Michael Kourlas
+  Fix By: Brad House (@bradh352)
+
+GitHub (18 Feb 2021)
+- [Brad House brought this change]
+
+  CMake: RANDOM_FILE not defined #397
+  
+  RANDOM_FILE was never defined by cmake, causing RC4 key generation to use the less secure rand() method.
+  
+  Also, due to clashes with chain-building from other projects (e.g. curl) that may define RANDOM_FILE, this was renamed to CARES_RANDOM_FILE.
+  
+  This is the proposed change for #396
+  
+  Fix By: Brad House (@bradh352)
+
+- [Anton Danielsson brought this change]
+
+  CMake: fix Make install for iOS/MacOS (#395)
+  
+  INSTALL TARGETS were missing the BUNDLE DESTINATION
+  
+  Fix By: Anton Danielsson (@anton-danielsson)
+
+- [František Dvořák brought this change]
+
+  Fix build with autotools out of source tree (#394)
+  
+  Add missing include directory, which fixes the build with autotools in separated build directory.
+  
+  Fix By: František Dvořák (@valtri)
+
+bradh352 (15 Jan 2021)
+- fuzzing: HAVE_CONFIG_H may not be defined so cannot include ares_setup.h.  Its not needed even though we include ares_nameser.h
+
+- remove redundant header checks
+
+- properly detect netinet/tcp.h on openbsd
+
+- more portability updates
+
+- renamed nameser.h to ares_nameser.h requires Makefile.inc update for distributed files
+
+- more portability updates
+
+- remove bad files
+
+- portability updates for test cases
+
+- Portability Updates for arpa/nameser.h (#388)
+  
+  There is too much inconsistency between platforms for arpa/nameser.h and arpa/nameser_compat.h for the way the current files are structured.  Still load the respective system files but make our private nameser.h more forgiving.
+  
+  Fixes: #388
+  Fix By: Brad House (@bradh352)
+
+- ares_parse_ptr_reply() handle NULL for addr/addr_len. Fixes #392
+  
+  NodeJS passes NULL for addr and 0 for addrlen parameters to ares_parse_ptr_reply().  On systems where malloc(0) returned NULL, this would cause the function to return ARES_ENOMEM, but the cleanup wasn't handled properly and would crash.
+  
+  This patche fixes that bug, and also hardens ares_free_hostent() to not leak memory during cleanup.
+  
+  Fixes: #392
+  Fix By: Brad House (@bradh352)
+
+- Define behavior of malloc(0)
+  
+  Some systems may return either NULL or a valid pointer on malloc(0).  c-ares should never call malloc(0) so lets return NULL so we're more likely to find an issue if it were to occur.
+
+GitHub (24 Dec 2020)
+- [dhrumilrana brought this change]
+
+  z/OS: port (#390)
+  
+  Port c-ares to z/OS.
+  
+  Fix By: Dhrumil Rana (@dhrumilrana)
+
+- [vburdo brought this change]
+
+  Use unbuffered stdio for /dev/urandom to read only requested data (#391)
+  
+  Buffered fread() reads 4096 bytes which is completely unnecessary and potentially may cause problems.
+  I discovered this on private linux configuration where custom /dev/urandom implementation has poor performance.
+  
+  Fix By: @vburdo
+
+- [Jay Freeman (saurik) brought this change]
+
+  This relative header #include needs to use quotes. (#386)
+  
+  Fix By: Jay Freeman (@saurik)
+
+bradh352 (23 Nov 2020)
+- Win32: Fix tools build with autotools static library
+  When c-ares is being built as static on Win32, CARES_STATICLIB must
+  be defined, but it wasn't being pulled in for the tools.
+  
+  Fixes: #384
+  Fix By: Brad House (@bradh352)
+
+- Loosen requirements for static c-ares library when building tests
+  
+  It appears that when building tests, it would hardcode enabling building
+  of the c-ares static library.  This was probably due to Windows limitations
+  in symbol visibility.
+  
+  This change will use the static library if it exists for tests, always.
+  Otherwise, it will only forcibly enable static libraries for tests on
+  Windows.
+  
+  Fixes: #380
+  Fix By: Brad House (@bradh352)
+
+- Remove legacy comment about ahost/acountry/adig targets
+
+- Distribute fuzzinput/fuzznames for fuzz tests
+  
+  The fuzz test files were not being distributed.  This doesn't appear to be
+  a regression, it looks like they have never been distributed.
+  
+  Fixes: #379
+  Fix By: Brad House (@bradh352)
+
 Version 1.17.1 (19 Nov 2020)
 
 GitHub (19 Nov 2020)
@@ -4849,87 +5050,3 @@ Yang Tse (21 Jun 2009)
 
 - Refactor how libraries are checked for connect() function,
   and check for connect() as it is done for other functions.
-
-Gisle Vanem (20 Jun 2009)
-- Remove unneeded defines.
-
-- Use select_s() and not select().
-
-Yang Tse (19 Jun 2009)
-- sclose() function-like macro definition used to close a socket,
-  now solely based on HAVE_CLOSESOCKET and HAVE_CLOSESOCKET_CAMEL
-  config file preprocessor definitions.
-
-- add CloseSocket camel case function check
-
-- check for socket() and closesocket() as it is done for other functions
-
-- Remove HAVE_CONFIG_H definition from here,
-  CFLAGS from common.dj already defines it.
-
-- initial step towards decoupling c-ares from libcurl for DOS
-
-- don't ignore these subdirs, they must be removed first
-
-- Remove DEBUGBUILD symbol definition, is not required for programs using the library.
-
-- DEBUGBUILD symbol definition for debug builds
-
-- ignore some subdirs
-
-- fix comment
-
-- Try to make more clear that --enable-curldebug has nothing to do with --enable-debug for this library.
-
-- Revert last change, it is inappropriate.
-
-Gisle Vanem (12 Jun 2009)
-- Replace CURLDEBUG with DEBUGBUILD.
-
-Yang Tse (11 Jun 2009)
-- when running automake copy missing files instead of symlinking them
-
-- Adjusted to take in account that...
-  
-  With the curl memory tracking feature decoupled from the debug build feature,
-  CURLDEBUG and DEBUGBUILD preprocessor symbol definitions are used as follows:
-  
-  CURLDEBUG used for curl debug memory tracking specific code (--enable-curldebug)
-  
-  DEBUGBUILD used for debug enabled specific code (--enable-debug)
-
-- c-ares' --enable-debug --enable-curldebug decoupling follow-up
-
-- mention last changes
-
-- Remove buildconf.bat from release and daily snapshot archives.
-  
-  buildconf.bat is only for CVS tree builds.
-
-- Ensure that buildconf.bat does nothing unless it is used with a CVS checkout.
-
-- CVS-INFO file only present in CVS tree, never in release nor daily snapshot
-  archives. Used as a sentinel file in buildconf.bat to differentiate CVS builds.
-
-Gisle Vanem (8 Jun 2009)
-- Update comment about "ML". Removed "-D_USE_32BIT_TIME_T" (not a requirement).
-
-Yang Tse (8 Jun 2009)
-- just comment it out
-
-- For debugging purposes...
-  
-  Disable the '-export-symbols-regex' to discard this as the origin
-  of link failures related with shared libraries and non-GNU linkers.
-
-- c-ares Makefile.am back to using $(top_builddir) for *_LDADD
-
-- c-ares' -no-undefined and --enable-curldebug adjustments
-
-- Use relative path to built c-ares tree libtool library
-
-- John E. Malmberg noticed that the configure script was failing to detect the
-  timeval struct on VMS when building with _XOPEN_SOURCE_EXTENDED undefined due
-  to definition taking place in socket.h instead of time.h
-
-- Fix compiler warning: out of bound access

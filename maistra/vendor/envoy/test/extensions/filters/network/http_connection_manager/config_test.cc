@@ -2257,7 +2257,7 @@ TEST_F(HttpConnectionManagerConfigTest, PathWithEscapedSlashesActionDefaultOverr
 
   EXPECT_CALL(context_.runtime_loader_.snapshot_,
               featureEnabled(_, An<const envoy::type::v3::FractionalPercent&>()))
-      .WillOnce(Return(true));
+      .WillRepeatedly(Return(true));
   EXPECT_CALL(context_.runtime_loader_.snapshot_, getInteger(_, _)).Times(AnyNumber());
   EXPECT_CALL(context_.runtime_loader_.snapshot_,
               getInteger("http_connection_manager.path_with_escaped_slashes_action", 0))
@@ -2269,6 +2269,18 @@ TEST_F(HttpConnectionManagerConfigTest, PathWithEscapedSlashesActionDefaultOverr
   EXPECT_EQ(envoy::extensions::filters::network::http_connection_manager::v3::
                 HttpConnectionManager::UNESCAPE_AND_REDIRECT,
             config.pathWithEscapedSlashesAction());
+
+  // Check the UNESCAPE_AND_FORWARD override to mollify coverage check
+  EXPECT_CALL(context_.runtime_loader_.snapshot_,
+              getInteger("http_connection_manager.path_with_escaped_slashes_action", 0))
+      .WillOnce(Return(4));
+  HttpConnectionManagerConfig config1(parseHttpConnectionManagerFromYaml(yaml_string), context_,
+                                      date_provider_, route_config_provider_manager_,
+                                      scoped_routes_config_provider_manager_, http_tracer_manager_,
+                                      filter_config_provider_manager_);
+  EXPECT_EQ(envoy::extensions::filters::network::http_connection_manager::v3::
+                HttpConnectionManager::UNESCAPE_AND_FORWARD,
+            config1.pathWithEscapedSlashesAction());
 }
 
 // Verify that runtime override does not affect non default configuration value.

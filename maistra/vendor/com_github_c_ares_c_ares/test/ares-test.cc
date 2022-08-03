@@ -1,9 +1,11 @@
+#include "ares_setup.h"
+#include "ares.h"
+#include "ares_nameser.h"
 #include "ares-test.h"
 #include "ares-test-ai.h"
 #include "dns-proto.h"
 
 // Include ares internal files for DNS protocol details
-#include "nameser.h"
 #include "ares_dns.h"
 
 #ifdef HAVE_NETDB_H
@@ -135,7 +137,7 @@ bool LibraryTest::ShouldAllocFail(size_t size) {
 
 // static
 void* LibraryTest::amalloc(size_t size) {
-  if (ShouldAllocFail(size)) {
+  if (ShouldAllocFail(size) || size == 0) {
     if (verbose) std::cerr << "Failing malloc(" << size << ") request" << std::endl;
     return nullptr;
   } else {
@@ -312,7 +314,7 @@ void MockServer::ProcessFD(int fd) {
     std::cerr << "Not a request" << std::endl;
     return;
   }
-  if (DNS_HEADER_OPCODE(data) != ns_o_query) {
+  if (DNS_HEADER_OPCODE(data) != O_QUERY) {
     std::cerr << "Not a query (opcode " << DNS_HEADER_OPCODE(data)
               << ")" << std::endl;
     return;
@@ -342,7 +344,7 @@ void MockServer::ProcessFD(int fd) {
               << " bytes after name)" << std::endl;
     return;
   }
-  if (DNS_QUESTION_CLASS(question) != ns_c_in) {
+  if (DNS_QUESTION_CLASS(question) != C_IN) {
     std::cerr << "Unexpected question class (" << DNS_QUESTION_CLASS(question)
               << ")" << std::endl;
     return;

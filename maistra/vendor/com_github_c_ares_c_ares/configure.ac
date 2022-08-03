@@ -1,9 +1,9 @@
 AC_PREREQ(2.57)
 
-AC_INIT([c-ares], [1.17.1],
+AC_INIT([c-ares], [1.17.2],
   [c-ares mailing list: http://cool.haxx.se/mailman/listinfo/c-ares])
 
-CARES_VERSION_INFO="6:2:4"
+CARES_VERSION_INFO="6:3:4"
 dnl This flag accepts an argument of the form current[:revision[:age]]. So,
 dnl passing -version-info 3:12:1 sets current to 3, revision to 12, and age to
 dnl 1.
@@ -383,6 +383,15 @@ AS_IF([test "x$host_vendor" = "xapple"], [
     AC_DEFINE([CARES_USE_LIBRESOLV], [1], [Use resolver library to configure cares])
   ], [
     AC_MSG_ERROR([Unable to find libresolv which is required for iPhone targets])
+  ])
+])
+
+dnl resolv lib for z/OS
+AS_IF([test "x$host_vendor" = "xibm" -a "x$host_os" = "xopenedition" ], [
+  AC_SEARCH_LIBS([res_init], [resolv], [
+    AC_DEFINE([CARES_USE_LIBRESOLV], [1], [Use resolver library to configure cares])
+  ], [
+    AC_MSG_ERROR([Unable to find libresolv which is required for z/OS])
   ])
 ])
 
@@ -841,22 +850,22 @@ dnl Check for user-specified random device
 AC_ARG_WITH(random,
 AC_HELP_STRING([--with-random=FILE],
                [read randomness from FILE (default=/dev/urandom)]),
-    [ RANDOM_FILE="$withval" ],
+    [ CARES_RANDOM_FILE="$withval" ],
     [
         dnl Check for random device.  If we're cross compiling, we can't
         dnl check, and it's better to assume it doesn't exist than it is
         dnl to fail on AC_CHECK_FILE or later.
         if test "$cross_compiling" = "no"; then
-          AC_CHECK_FILE("/dev/urandom", [ RANDOM_FILE="/dev/urandom"] )
+          AC_CHECK_FILE("/dev/urandom", [ CARES_RANDOM_FILE="/dev/urandom"] )
         else
           AC_MSG_WARN([cannot check for /dev/urandom while cross compiling; assuming none])
         fi
 
     ]
 )
-if test -n "$RANDOM_FILE" && test X"$RANDOM_FILE" != Xno ; then
-        AC_SUBST(RANDOM_FILE)
-        AC_DEFINE_UNQUOTED(RANDOM_FILE, "$RANDOM_FILE",
+if test -n "$CARES_RANDOM_FILE" && test X"$CARES_RANDOM_FILE" != Xno ; then
+        AC_SUBST(CARES_RANDOM_FILE)
+        AC_DEFINE_UNQUOTED(CARES_RANDOM_FILE, "$CARES_RANDOM_FILE",
         [a suitable file/device to read random data from])
 fi
 

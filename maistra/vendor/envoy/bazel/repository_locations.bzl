@@ -96,12 +96,12 @@ REPOSITORY_LOCATIONS_SPEC = dict(
         project_name = "c-ares",
         project_desc = "C library for asynchronous DNS requests",
         project_url = "https://c-ares.haxx.se/",
-        version = "1.17.1",
-        sha256 = "d73dd0f6de824afd407ce10750ea081af47eba52b8a6cb307d220131ad93fc40",
+        version = "1.17.2",
+        sha256 = "4803c844ce20ce510ef0eb83f8ea41fa24ecaae9d280c468c582d2bb25b3913d",
         strip_prefix = "c-ares-{version}",
         urls = ["https://github.com/c-ares/c-ares/releases/download/cares-{underscore_version}/c-ares-{version}.tar.gz"],
         use_category = ["dataplane_core", "controlplane"],
-        release_date = "2020-11-19",
+        release_date = "2021-07-24",
         cpe = "cpe:2.3:a:c-ares_project:c-ares:*",
     ),
     com_github_circonus_labs_libcircllhist = dict(
@@ -660,14 +660,14 @@ REPOSITORY_LOCATIONS_SPEC = dict(
         project_name = "V8",
         project_desc = "Google’s open source high-performance JavaScript and WebAssembly engine, written in C++",
         project_url = "https://v8.dev",
-        version = "8.8.278.8",
+        version = "9.0.257.17",
         # This archive was created using https://storage.googleapis.com/envoyproxy-wee8/wee8-archive.sh
         # and contains complete checkout of V8 with all dependencies necessary to build wee8.
-        sha256 = "0c5c7b534a619d3f6077dd3583b7976a2cfe7f8ea71ca1e2d81a9de1d40131f9",
+        sha256 = "0eaf060eae4907f7d961fc31b0692175003f56cee320c7e4da4d19b47c2557f3",
         urls = ["https://storage.googleapis.com/envoyproxy-wee8/wee8-{version}.tar.gz"],
         use_category = ["dataplane_ext"],
         extensions = ["envoy.wasm.runtime.v8"],
-        release_date = "2020-12-04",
+        release_date = "2021-04-12",
         cpe = "cpe:2.3:a:google:v8:*",
     ),
     com_googlesource_quiche = dict(
