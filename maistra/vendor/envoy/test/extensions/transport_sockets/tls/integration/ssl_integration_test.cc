@@ -97,32 +97,32 @@ INSTANTIATE_TEST_SUITE_P(IpVersions, SslIntegrationTest,
 // which is included in logs. For an unknown code, verify that no crash occurs.
 // TODO (dmitri-d) enable the test once SSL_send_fatal_alert call/workaround is implemented for OpenSSL
 // see https://issues.redhat.com/browse/MAISTRA-2291
-//TEST_P(SslIntegrationTest, UnknownSslAlert) {
-//  initialize();
-//  Network::ClientConnectionPtr connection = makeSslClientConnection({});
-//  ConnectionStatusCallbacks callbacks;
-//  connection->addConnectionCallbacks(callbacks);
-//  connection->connect();
-//  while (!callbacks.connected()) {
-//    dispatcher_->run(Event::Dispatcher::RunType::NonBlock);
-//  }
-//
-//  Ssl::ConnectionInfoConstSharedPtr ssl_info = connection->ssl();
-//  SSL* ssl =
-//      dynamic_cast<const Extensions::TransportSockets::Tls::SslHandshakerImpl*>(ssl_info.get())
-//          ->ssl();
-//  ASSERT_EQ(connection->state(), Network::Connection::State::Open);
-//  ASSERT_NE(ssl, nullptr);
-//  SSL_send_fatal_alert(ssl, 255);
-//  while (!callbacks.closed()) {
-//    dispatcher_->run(Event::Dispatcher::RunType::NonBlock);
-//  }
-//
-//  const std::string counter_name = listenerStatPrefix("ssl.connection_error");
-//  Stats::CounterSharedPtr counter = test_server_->counter(counter_name);
-//  test_server_->waitForCounterGe(counter_name, 1);
-//  connection->close(Network::ConnectionCloseType::NoFlush);
-//}
+TEST_P(SslIntegrationTest, DISABLED_UnknownSslAlert) {
+  initialize();
+  Network::ClientConnectionPtr connection = makeSslClientConnection({});
+  ConnectionStatusCallbacks callbacks;
+  connection->addConnectionCallbacks(callbacks);
+  connection->connect();
+  while (!callbacks.connected()) {
+    dispatcher_->run(Event::Dispatcher::RunType::NonBlock);
+  }
+
+  Ssl::ConnectionInfoConstSharedPtr ssl_info = connection->ssl();
+  SSL* ssl =
+      dynamic_cast<const Extensions::TransportSockets::Tls::SslHandshakerImpl*>(ssl_info.get())
+          ->ssl();
+  ASSERT_EQ(connection->state(), Network::Connection::State::Open);
+  ASSERT_NE(ssl, nullptr);
+  // SSL_send_fatal_alert(ssl, 255);
+  while (!callbacks.closed()) {
+    dispatcher_->run(Event::Dispatcher::RunType::NonBlock);
+  }
+
+  const std::string counter_name = listenerStatPrefix("ssl.connection_error");
+  Stats::CounterSharedPtr counter = test_server_->counter(counter_name);
+  test_server_->waitForCounterGe(counter_name, 1);
+  connection->close(Network::ConnectionCloseType::NoFlush);
+}
 
 TEST_P(SslIntegrationTest, RouterRequestAndResponseWithGiantBodyBuffer) {
   ConnectionCreationFunction creator = [&]() -> Network::ClientConnectionPtr {

@@ -9,6 +9,9 @@
 /* Defined for build that exposes internal static functions for testing. */
 #undef CARES_EXPOSE_STATICS
 
+/* a suitable file/device to read random data from */
+#undef CARES_RANDOM_FILE
+
 /* Defined for build with symbol hiding. */
 #undef CARES_SYMBOL_HIDING
 
@@ -375,9 +378,6 @@
 
 /* Define to the version of this package. */
 #undef PACKAGE_VERSION
-
-/* a suitable file/device to read random data from */
-#undef RANDOM_FILE
 
 /* Define to the type qualifier pointed by arg 5 for recvfrom. */
 #undef RECVFROM_QUAL_ARG5
