@@ -1,5 +1,7 @@
 #!/bin/bash
 
+export CC=clang CXX=clang++
+
 ARCH=$(uname -p)
 if [ "${ARCH}" = "ppc64le" ]; then
   ARCH="ppc"
@@ -17,21 +19,16 @@ proto is unused\
 COMMON_FLAGS="\
     --config=release \
     --config=${ARCH} \
-    --config=clang \
-    --local_ram_resources=12288 \
-    --local_cpu_resources=6 \
-    --jobs=3 \
-    --@envoy//bazel:http3=false \
-    --deleted_packages=@envoy//test/common/quic,@envoy//test/common/quic/platform \
-    --verbose_failures \
-    --color=no \
-    --show_progress_rate_limit=10 \
 "
 
 if [ -n "${BAZEL_REMOTE_CACHE}" ]; then
   COMMON_FLAGS+=" --remote_cache=${BAZEL_REMOTE_CACHE} "
 elif [ -n "${BAZEL_DISK_CACHE}" ]; then
   COMMON_FLAGS+=" --disk_cache=${BAZEL_DISK_CACHE} "
+fi
+
+if [ -n "${CI}" ]; then
+  COMMON_FLAGS+=" --config=ci-config " 
 fi
 
 function bazel_build() {
