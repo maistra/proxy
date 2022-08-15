@@ -3,17 +3,31 @@ build --cxxopt -w
 build --host_force_python=PY3
 build --host_javabase=@bazel_tools//tools/jdk:absolute_javabase --define=ABSOLUTE_JAVABASE=/etc/alternatives/java_sdk/
 build --verbose_failures
+build --config=clang
 
 # Test flags
 build --test_env=ENVOY_IP_TEST_VERSIONS=v4only
 build --test_env=HEAPCHECK=minimal
 build --test_output=all
 
+# As of today we do not support QUIC/HTTP3 -- hence we exclude it from the build, always.
+build --deleted_packages=test/common/quic,test/common/quic/platform
+build "--//bazel:http3"=false
+
 # Arch-specific build flags, triggered with --config=$ARCH in bazel build command
 build:x86_64 --linkopt=-fuse-ld=lld
 build:s390x --@envoy//source/extensions/filters/common/lua:luajit2=1 --cxxopt='-includeoptional' --copt=-Wno-error=type-limits --copt=-Wno-error=uninitialized --linkopt=-fuse-ld=gold
 build:ppc --linkopt=-fuse-ld=lld --@envoy//source/extensions/filters/common/lua:luajit2=1
 build:aarch64 --linkopt=-fuse-ld=lld
+
+# Throttle resources to work for our CI environemt
+build:ci-config --local_ram_resources=12288
+build:ci-config --local_cpu_resources=6
+build:ci-config --jobs=3
+
+# Colored ouput messes with some of the logging systems in CI, so we disable that.
+build:ci-config --color=no
+build:ci-config --show_progress_rate_limit=10
 
 # Import vendor flags
 # import %workspace%/maistra/bazelrc-vendor
