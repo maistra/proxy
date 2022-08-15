@@ -4,10 +4,9 @@ set -e
 set -o pipefail
 set -x
 
-export CC=clang CXX=clang++
 DIR=$(cd "$(dirname "$0")" ; pwd -P)
 
-# shellcheck disable=SC1090
+# shellcheck disable=SC1091
 source "${DIR}/common.sh"
 
 GCS_PROJECT=${GCS_PROJECT:-maistra-prow-testing}
