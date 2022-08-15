@@ -4,11 +4,9 @@ set -e
 set -o pipefail
 set -x
 
-export CC=clang CXX=clang++
-
 DIR=$(cd "$(dirname "$0")" ; pwd -P)
 
-# shellcheck disable=SC1090
+# shellcheck disable=SC1091
 source "${DIR}/common.sh"
 
 # Build WASM extensions first
