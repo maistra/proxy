@@ -20,6 +20,7 @@ workspace(name = "io_istio_proxy")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load(
     "//bazel:repositories.bzl",
+    "docker_dependencies",
     "googletest_repositories",
     "istioapi_dependencies",
 )
@@ -38,14 +39,13 @@ new_local_repository(
 # 2. Update .bazelversion, envoy.bazelrc and .bazelrc if needed.
 #
 # Note: this is needed by release builder to resolve envoy dep sha to tag.
-# Commit date: 2022-10-24
-ENVOY_SHA = "d9707e2eba1104823f5fde7d6f739112edc3e60f"
+ENVOY_SHA = "3b1536c765ef11411986a75f163b5f7be2b1af46"
 
-ENVOY_SHA256 = "11e3cd6e1a327d29a9c6fdeb3c0489241712e3e167ed340b3130378428b0acc5"
+ENVOY_SHA256 = "b49bb96116a46c6ad0928049aeeb280686b53c7220d93885a5bb685dcd05b58e"
 
-ENVOY_ORG = "envoyproxy"
+ENVOY_ORG = "oschaaf"
 
-ENVOY_REPO = "envoy"
+ENVOY_REPO = "envoy-maistra"
 
 # To override with local envoy, just pass `--override_repository=envoy=/PATH/TO/ENVOY` to Bazel or
 # persist the option in `user.bazelrc`.
@@ -97,6 +97,19 @@ http_archive(
 
 load("@rules_pkg//:deps.bzl", "rules_pkg_dependencies")
 rules_pkg_dependencies()
+
+# Docker dependencies
+
+docker_dependencies()
+load(
+    "@io_bazel_rules_docker//repositories:repositories.bzl",
+    container_repositories = "repositories",
+)
+container_repositories()
+load("@io_bazel_rules_docker//repositories:deps.bzl", container_deps = "deps")
+container_deps()
+
+# End of docker dependencies
 
 load("//bazel:wasm.bzl", "wasm_dependencies")
 wasm_dependencies()
