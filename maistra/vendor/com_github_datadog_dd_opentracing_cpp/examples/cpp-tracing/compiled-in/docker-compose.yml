@@ -1,0 +1,17 @@
+version: "3.2"
+services:
+  dd-opentracing-cpp-example:
+    build:
+      context: ./
+    depends_on:
+      - dd-agent
+  dd-agent:
+    container_name: dd-agent
+    volumes:
+      - '/var/run/docker.sock:/var/run/docker.sock:ro'
+      - '/proc/:/host/proc/:ro'
+      - '/sys/fs/cgroup/:/host/sys/fs/cgroup:ro'
+    environment:
+      - 'DD_APM_ENABLED=true'
+      - DD_API_KEY
+    image: 'datadog/agent'

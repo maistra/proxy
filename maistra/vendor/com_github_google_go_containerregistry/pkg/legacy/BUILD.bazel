@@ -1,0 +1,18 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "legacy",
+    srcs = [
+        "config.go",
+        "doc.go",
+    ],
+    importpath = "github.com/google/go-containerregistry/pkg/legacy",
+    visibility = ["//visibility:public"],
+    deps = ["//pkg/v1:pkg"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":legacy",
+    visibility = ["//visibility:public"],
+)

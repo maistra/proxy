@@ -1,0 +1,15 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "semver",
+    srcs = ["semver.go"],
+    importmap = "github.com/google/go-containerregistry/vendor/golang.org/x/mod/semver",
+    importpath = "golang.org/x/mod/semver",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":semver",
+    visibility = ["//visibility:public"],
+)

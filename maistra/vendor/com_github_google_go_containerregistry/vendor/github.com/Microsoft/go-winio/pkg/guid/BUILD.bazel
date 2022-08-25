@@ -1,0 +1,16 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "guid",
+    srcs = ["guid.go"],
+    importmap = "github.com/google/go-containerregistry/vendor/github.com/Microsoft/go-winio/pkg/guid",
+    importpath = "github.com/Microsoft/go-winio/pkg/guid",
+    visibility = ["//visibility:public"],
+    deps = ["//vendor/golang.org/x/sys/windows"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":guid",
+    visibility = ["//visibility:public"],
+)
