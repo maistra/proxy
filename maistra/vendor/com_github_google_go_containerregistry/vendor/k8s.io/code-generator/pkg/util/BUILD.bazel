@@ -1,0 +1,18 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "util",
+    srcs = [
+        "build.go",
+        "plural_exceptions.go",
+    ],
+    importmap = "github.com/google/go-containerregistry/vendor/k8s.io/code-generator/pkg/util",
+    importpath = "k8s.io/code-generator/pkg/util",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":util",
+    visibility = ["//visibility:public"],
+)

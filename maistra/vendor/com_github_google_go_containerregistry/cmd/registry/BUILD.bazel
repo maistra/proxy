@@ -1,0 +1,15 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "registry_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/google/go-containerregistry/cmd/registry",
+    visibility = ["//visibility:private"],
+    deps = ["//pkg/registry"],
+)
+
+go_binary(
+    name = "registry",
+    embed = [":registry_lib"],
+    visibility = ["//visibility:public"],
+)

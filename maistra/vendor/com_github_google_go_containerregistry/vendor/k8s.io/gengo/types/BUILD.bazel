@@ -1,0 +1,20 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "types",
+    srcs = [
+        "comments.go",
+        "doc.go",
+        "flatten.go",
+        "types.go",
+    ],
+    importmap = "github.com/google/go-containerregistry/vendor/k8s.io/gengo/types",
+    importpath = "k8s.io/gengo/types",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":types",
+    visibility = ["//visibility:public"],
+)

@@ -1,0 +1,53 @@
+#include "source/exe/process_wide.h"
+
+#include "source/common/common/assert.h"
+#include "source/common/event/libevent.h"
+#include "source/common/http/http2/nghttp2.h"
+#include "source/server/proto_descriptors.h"
+
+#include "ares.h"
+
+namespace Envoy {
+namespace {
+// Static variable to count initialization pairs. For tests like
+// main_common_test, we need to count to avoid double initialization or
+// shutdown.
+std::atomic<uint32_t>& processWideInitialized() {
+  MUTABLE_CONSTRUCT_ON_FIRST_USE(std::atomic<uint32_t>);
+};
+} // namespace
+
+ProcessWide::ProcessWide() {
+  if (processWideInitialized()++ == 0) {
+    ares_library_init(ARES_LIB_INIT_ALL);
+    Event::Libevent::Global::initialize();
+    Envoy::Server::validateProtoDescriptors();
+    Http::Http2::initializeNghttp2Logging();
+
+    // We do not initialize Google gRPC here -- we instead instantiate
+    // Grpc::GoogleGrpcContext in MainCommon immediately after instantiating
+    // ProcessWide. This is because ProcessWide is instantiated in the unit-test
+    // flow in test/test_runner.h, and grpc_init() instantiates threads which
+    // allocate memory asynchronous to running tests, making it hard to
+    // accurately measure memory consumption, and making unit-test debugging
+    // non-deterministic. See https://github.com/envoyproxy/envoy/issues/8282
+    // for details. Of course we also need grpc_init called in unit-tests that
+    // test Google gRPC, and the relevant classes must also instantiate
+    // Grpc::GoogleGrpcContext, which allows for nested instantiation.
+    //
+    // It appears that grpc_init() started instantiating threads in grpc 1.22.1,
+    // which was integrated in https://github.com/envoyproxy/envoy/pull/8196,
+    // around the time the flakes in #8282 started being reported.
+  }
+}
+
+ProcessWide::~ProcessWide() {
+  auto& process_wide_initialized = processWideInitialized();
+  ASSERT(process_wide_initialized > 0);
+  if (--process_wide_initialized == 0) {
+    process_wide_initialized = false;
+    ares_library_cleanup();
+  }
+}
+
+} // namespace Envoy

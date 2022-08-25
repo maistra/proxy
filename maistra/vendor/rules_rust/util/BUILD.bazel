@@ -1,0 +1,17 @@
+sh_binary(
+    name = "fetch_shas",
+    srcs = ["fetch_shas.sh"],
+)
+
+filegroup(
+    name = "distro",
+    srcs = [
+        "BUILD.bazel",
+        "fetch_shas.sh",
+        "//util/dir_zipper:distro",
+        "//util/import:distro",
+        "//util/label:distro",
+        "//util/process_wrapper:distro",
+    ],
+    visibility = ["//:__subpackages__"],
+)

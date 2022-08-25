@@ -1,0 +1,19 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "help_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/google/go-containerregistry/cmd/crane/help",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//cmd/crane/cmd",
+        "//vendor/github.com/spf13/cobra",
+        "//vendor/github.com/spf13/cobra/doc",
+    ],
+)
+
+go_binary(
+    name = "help",
+    embed = [":help_lib"],
+    visibility = ["//visibility:public"],
+)

@@ -1,0 +1,42 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "registry",
+    srcs = [
+        "blobs.go",
+        "error.go",
+        "manifest.go",
+        "registry.go",
+        "tls.go",
+    ],
+    importpath = "github.com/google/go-containerregistry/pkg/registry",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/internal/httptest",
+        "//pkg/v1:pkg",
+        "//pkg/v1/types",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":registry",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "registry_test",
+    srcs = [
+        "compatibility_test.go",
+        "example_test.go",
+        "registry_test.go",
+        "tls_test.go",
+    ],
+    deps = [
+        ":registry",
+        "//pkg/name",
+        "//pkg/v1/random",
+        "//pkg/v1/remote",
+        "//pkg/v1/tarball",
+    ],
+)

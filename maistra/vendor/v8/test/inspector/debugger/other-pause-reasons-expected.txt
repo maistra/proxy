@@ -1,0 +1,28 @@
+Test that all 'other' reasons are explicitly encoded on a pause event if they overlap with another reason
+
+Running test: testBreakpointPauseReason
+Paused with reason: instrumentation and data: {"scriptId":"3","url":"foo.js"}.
+Paused with reason: other and data: {}.
+
+Running test: testTriggeredPausePauseReason
+Paused with reason: instrumentation and data: {"scriptId":"4","url":"foo.js"}.
+Paused with reason: other and data: {}.
+
+Running test: testSteppingPauseReason
+Paused with reason: instrumentation and data: {"scriptId":"5","url":"foo.js"}.
+Paused with reason: other and data: {}.
+Paused with reason: other and data: {}.
+Paused with reason: instrumentation and data: {"scriptId":"6","url":"bar.js"}.
+
+Running test: testOnlyReportOtherWithEmptyDataOnce
+Paused with reason: other and data: {}.
+
+Running test: testDebuggerStatementReason
+Paused with reason: instrumentation and data: {"scriptId":"8","url":"foo.js"}.
+Paused with reason: other and data: {}.
+
+Running test: testAsyncSteppingPauseReason
+Paused with reason: instrumentation and data: {"scriptId":"9","url":"foo.js"}.
+Paused with reason: other and data: {}.
+Paused with reason: other and data: {}.
+Paused with reason: instrumentation and data: {"scriptId":"10","url":"bar.js"}.
