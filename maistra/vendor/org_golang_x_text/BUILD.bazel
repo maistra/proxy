@@ -1,0 +1,14 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "text",
+    srcs = ["doc.go"],
+    importpath = "golang.org/x/text",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":text",
+    visibility = ["//visibility:public"],
+)

@@ -1,0 +1,18 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "challenge",
+    srcs = [
+        "addr.go",
+        "authchallenge.go",
+    ],
+    importmap = "github.com/google/go-containerregistry/vendor/github.com/docker/distribution/registry/client/auth/challenge",
+    importpath = "github.com/docker/distribution/registry/client/auth/challenge",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":challenge",
+    visibility = ["//visibility:public"],
+)

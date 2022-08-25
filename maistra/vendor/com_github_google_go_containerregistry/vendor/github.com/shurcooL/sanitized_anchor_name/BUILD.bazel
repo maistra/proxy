@@ -1,0 +1,15 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "sanitized_anchor_name",
+    srcs = ["main.go"],
+    importmap = "github.com/google/go-containerregistry/vendor/github.com/shurcooL/sanitized_anchor_name",
+    importpath = "github.com/shurcooL/sanitized_anchor_name",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":sanitized_anchor_name",
+    visibility = ["//visibility:public"],
+)

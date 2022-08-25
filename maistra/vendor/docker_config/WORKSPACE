@@ -1,0 +1,2 @@
+# DO NOT EDIT: automatically generated WORKSPACE file for toolchain_configure rule
+workspace(name = "docker_config")

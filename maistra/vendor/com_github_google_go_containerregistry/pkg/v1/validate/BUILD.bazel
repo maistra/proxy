@@ -1,0 +1,25 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "validate",
+    srcs = [
+        "doc.go",
+        "image.go",
+        "index.go",
+        "layer.go",
+    ],
+    importpath = "github.com/google/go-containerregistry/pkg/v1/validate",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/logs",
+        "//pkg/v1:pkg",
+        "//pkg/v1/types",
+        "//vendor/github.com/google/go-cmp/cmp",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":validate",
+    visibility = ["//visibility:public"],
+)

@@ -1,0 +1,31 @@
+load("@rules_python//python:defs.bzl", "py_library", "py_binary")
+load("@rules_python//third_party/github.com/bazelbuild/bazel-skylib/rules:copy_file.bzl", "copy_file")
+
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "dist_info",
+    srcs = glob(["*.dist-info/**"], allow_empty = True),
+)
+
+filegroup(
+    name = "data",
+    srcs = glob(["*.data/**"], allow_empty = True),
+)
+
+filegroup(
+    name = "whl",
+    srcs = glob(["*.whl"], allow_empty = True),
+    data = [],
+)
+
+py_library(
+    name = "pkg",
+    srcs = glob(["**/*.py"], exclude=[], allow_empty = True),
+    data = [] + glob(["**/*"], exclude=["**/* *", "**/*.dist-info/RECORD", "**/*.py", "**/*.pyc", "**/__pycache__/**", "*.whl", "BUILD.bazel", "WORKSPACE", "rules_python_wheel_entry_point*.py"]),
+    # This makes this directory a top-level in the python import
+    # search path for anything that depends on this.
+    imports = ["."],
+    deps = [],
+    tags = ["pypi_name=MarkupSafe","pypi_version=2.0.1"],
+)
