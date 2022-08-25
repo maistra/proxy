@@ -1,0 +1,38 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "pkg",
+    srcs = [
+        "config.go",
+        "doc.go",
+        "hash.go",
+        "image.go",
+        "index.go",
+        "layer.go",
+        "manifest.go",
+        "platform.go",
+        "progress.go",
+        "zz_deepcopy_generated.go",
+    ],
+    importpath = "github.com/google/go-containerregistry/pkg/v1",
+    visibility = ["//visibility:public"],
+    deps = ["//pkg/v1/types"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":pkg",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "pkg_test",
+    srcs = [
+        "config_test.go",
+        "hash_test.go",
+        "manifest_test.go",
+        "platform_test.go",
+    ],
+    embed = [":pkg"],
+    deps = ["//vendor/github.com/google/go-cmp/cmp"],
+)

@@ -1,0 +1,8 @@
+diff --git a/protobuf_version.bzl b/protobuf_version.bzl
+new file mode 100644
+index 0000000000..f3ef08340d
+--- /dev/null
++++ b/protobuf_version.bzl
+@@ -0,0 +1 @@
++PROTOBUF_VERSION = '3.18.0'
+

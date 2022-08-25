@@ -1,0 +1,18 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "codes",
+    srcs = [
+        "code_string.go",
+        "codes.go",
+    ],
+    importmap = "github.com/google/go-containerregistry/vendor/google.golang.org/grpc/codes",
+    importpath = "google.golang.org/grpc/codes",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":codes",
+    visibility = ["//visibility:public"],
+)

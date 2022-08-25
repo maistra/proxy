@@ -1,0 +1,19 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "module",
+    srcs = ["module.go"],
+    importmap = "github.com/google/go-containerregistry/vendor/golang.org/x/mod/module",
+    importpath = "golang.org/x/mod/module",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vendor/golang.org/x/mod/semver",
+        "//vendor/golang.org/x/xerrors",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":module",
+    visibility = ["//visibility:public"],
+)

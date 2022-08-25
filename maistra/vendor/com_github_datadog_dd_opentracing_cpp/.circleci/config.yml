@@ -1,0 +1,157 @@
+version: 2
+
+defaults: &defaults
+  working_directory: ~/dd-opentracing-cpp
+  docker:
+    - image: datadog/docker-library:dd_opentracing_cpp_build_0_3_5
+
+jobs:
+  build:
+    <<: *defaults
+    environment:
+      CMAKE_ARGS: -DBUILD_PLUGIN=ON -DBUILD_STATIC=ON -DBUILD_SHARED=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      CFLAGS: -march=x86-64 -fPIC
+      CXXFLAGS: -march=x86-64 -fPIC
+      LDFLAGS: -fPIC
+    steps:
+      - checkout
+      - run:
+          name: Run clang-format
+          command: |
+            find include src test -iname '*.h' -o -iname '*.cpp' | while read fname; do 
+              changes=$(clang-format-6.0 -output-replacements-xml $fname | grep -c "<replacement " || true)
+              if [ $changes != 0 ]
+              then
+                clang-format-6.0 -output-replacements-xml $fname
+                echo "$fname did not pass clang-format, consider running: find include src test -iname '*.h' -o -iname '*.cpp' | xargs clang-format-6.0 -i"
+                exit 1
+              fi
+            done
+      - run:
+          name: Check version info is up-to-date
+          command: ./test/version/version_check
+      - run:
+          name: Build source dependencies
+          command: |
+            ./scripts/install_dependencies.sh
+      - run:
+          name: Build (with cmake)
+          command: |
+            rm -rf .build
+            mkdir -p .build
+            mkdir -p /tmp/build/
+            cd .build
+            cmake $CMAKE_ARGS ..
+            make
+            make install
+            cp libdd_opentracing_plugin.so /tmp/build/libdd_opentracing_plugin.so
+            cp libdd_opentracing.so /tmp/build/libdd_opentracing.so
+      - run:
+          name: Build (with bazel)
+          command: |
+            export CC=clang-6.0
+            export CXX=clang++-6.0
+            bazel build //:dd_opentracing_cpp
+      - persist_to_workspace:
+          root: /tmp/
+          paths:
+            - build
+      - store_artifacts:
+          path: /tmp/build
+
+  test_sanitizer_base: &test_sanitizer_base
+    <<: *defaults
+    steps:
+      - checkout
+      - run:
+          name: Build source dependencies
+          command: |
+            ./scripts/install_dependencies.sh
+      - run:
+          name: Build and test
+          command: |
+            rm -rf .build
+            mkdir -p .build
+            cd .build
+            cmake $CMAKE_ARGS ..
+            make
+            env $RUN_ARGS ctest --output-on-failure
+
+  test_tsan:
+    <<: *test_sanitizer_base
+    environment:
+      CMAKE_ARGS: -DBUILD_TESTING=ON -DSANITIZE_THREAD=On -DSANITIZE_UNDEFINED=On
+      RUN_ARGS: TSAN_OPTIONS=detect_deadlocks=1:second_deadlock_stack=1
+
+  test_asan:
+    <<: *test_sanitizer_base
+    environment:
+      CMAKE_ARGS: -DBUILD_TESTING=ON -DSANITIZE_ADDRESS=On
+      RUN ARGS:
+
+  integration_test_nginx:
+    working_directory: ~/dd-opentracing-cpp
+    docker:
+      - image: datadog/docker-library:dd_opentracing_cpp_test_0_3_1
+    environment:
+      NGINX_VERSION: 1.14.0
+      OPENTRACING_NGINX_VERSION: 0.8.0
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+      - run:
+          name: Install nginx
+          command: |
+            CODENAME=$(lsb_release -s -c) # eg "bionic", "xenial"
+            wget http://nginx.org/keys/nginx_signing.key
+            apt-key add nginx_signing.key
+            echo deb http://nginx.org/packages/ubuntu/ ${CODENAME} nginx >> /etc/apt/sources.list
+            echo deb-src http://nginx.org/packages/ubuntu/ ${CODENAME} nginx >> /etc/apt/sources.list
+            apt-get update
+            apt-get install nginx=${NGINX_VERSION}-1~${CODENAME}
+      - run:
+          name: Integration test
+          command: |
+            # Install OpenTracing module
+            wget https://github.com/opentracing-contrib/nginx-opentracing/releases/download/v${OPENTRACING_NGINX_VERSION}/linux-amd64-nginx-${NGINX_VERSION}-ngx_http_module.so.tgz
+            NGINX_MODULES=$(nginx -V 2>&1 | grep "configure arguments" | sed -n 's/.*--modules-path=\([^ ]*\).*/\1/p')
+            tar zxvf linux-amd64-nginx-${NGINX_VERSION}-ngx_http_module.so.tgz -C "${NGINX_MODULES}"
+            # Install the Datadog plugin
+            cp ./build/libdd_opentracing_plugin.so "/usr/local/lib/libdd_opentracing_plugin.so"
+            # Change the config to use it.
+            cd ./test/integration/nginx/
+            NGINX_CONF=$(nginx -V 2>&1 | grep "configure arguments" | sed -n 's/.*--conf-path=\([^ ]*\).*/\1/p')
+            cp nginx.conf $NGINX_CONF
+            cp dd-config.json /etc/dd-config.json
+            mkdir -p /var/www/
+            cp index.html /var/www/
+            # Run the tests.
+            ./nginx_integration_test.sh
+
+_workflow_filters:
+  _version_tag: &version_tag
+    # Allows semver or "test" tags, with any suffix.
+    # eg v1.2.3 v0.1.1 v1.2.3-ayy-lmao test test-ayy-lmao
+    # "test" is useful if you want to ensure all workflows run without creating a version.
+    only: /(v[0-9]+\.[0-9]+\.[0-9]|test).*/
+
+  _run_on_release_tag: &run_on_release_tag
+    filters:
+      tags:
+        <<: *version_tag
+
+workflows:
+  version: 2
+  build_test_deploy:
+    jobs:
+      - build:
+          <<: *run_on_release_tag
+      - test_tsan:
+          <<: *run_on_release_tag
+      - test_asan:
+          <<: *run_on_release_tag
+      - integration_test_nginx:
+          <<: *run_on_release_tag
+          requires:
+            - build

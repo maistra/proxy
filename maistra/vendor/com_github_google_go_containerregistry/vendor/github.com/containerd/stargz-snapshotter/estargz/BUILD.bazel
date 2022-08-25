@@ -1,0 +1,25 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "estargz",
+    srcs = [
+        "build.go",
+        "estargz.go",
+        "types.go",
+    ],
+    importmap = "github.com/google/go-containerregistry/vendor/github.com/containerd/stargz-snapshotter/estargz",
+    importpath = "github.com/containerd/stargz-snapshotter/estargz",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vendor/github.com/containerd/stargz-snapshotter/estargz/errorutil",
+        "//vendor/github.com/opencontainers/go-digest",
+        "//vendor/github.com/pkg/errors",
+        "//vendor/golang.org/x/sync/errgroup",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":estargz",
+    visibility = ["//visibility:public"],
+)

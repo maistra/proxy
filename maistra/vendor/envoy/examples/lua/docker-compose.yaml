@@ -1,0 +1,16 @@
+version: "3.8"
+services:
+
+  proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile-proxy
+    ports:
+    - "8000:8000"
+
+  web_service:
+    build:
+      context: .
+      dockerfile: Dockerfile-web-service
+    ports:
+    - "8080:80"

@@ -1,0 +1,37 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "empty",
+    srcs = [
+        "doc.go",
+        "image.go",
+        "index.go",
+    ],
+    importpath = "github.com/google/go-containerregistry/pkg/v1/empty",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/v1:pkg",
+        "//pkg/v1/partial",
+        "//pkg/v1/types",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":empty",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "empty_test",
+    srcs = [
+        "image_test.go",
+        "index_test.go",
+    ],
+    embed = [":empty"],
+    deps = [
+        "//pkg/v1:pkg",
+        "//pkg/v1/types",
+        "//pkg/v1/validate",
+    ],
+)

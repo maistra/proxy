@@ -1,0 +1,24 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "cmd",
+    srcs = [
+        "copy.go",
+        "gc.go",
+        "list.go",
+    ],
+    importpath = "github.com/google/go-containerregistry/cmd/gcrane/cmd",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/gcrane",
+        "//pkg/name",
+        "//pkg/v1/google",
+        "//vendor/github.com/spf13/cobra",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":cmd",
+    visibility = ["//visibility:public"],
+)

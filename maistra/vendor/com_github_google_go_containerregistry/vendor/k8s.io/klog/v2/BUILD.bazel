@@ -1,0 +1,19 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "klog",
+    srcs = [
+        "klog.go",
+        "klog_file.go",
+    ],
+    importmap = "github.com/google/go-containerregistry/vendor/k8s.io/klog/v2",
+    importpath = "k8s.io/klog/v2",
+    visibility = ["//visibility:public"],
+    deps = ["//vendor/github.com/go-logr/logr"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":klog",
+    visibility = ["//visibility:public"],
+)

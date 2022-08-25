@@ -1,0 +1,20 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "and",
+    srcs = ["and_closer.go"],
+    importpath = "github.com/google/go-containerregistry/pkg/v1/internal/and",
+    visibility = ["//pkg/v1:__subpackages__"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":and",
+    visibility = ["//pkg/v1:__subpackages__"],
+)
+
+go_test(
+    name = "and_test",
+    srcs = ["and_closer_test.go"],
+    embed = [":and"],
+)
