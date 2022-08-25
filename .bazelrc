@@ -56,4 +56,4 @@ build --action_env=CXXFLAGS="-Wno-unused-variable -Wno-deprecated-copy -Wbuiltin
 build:libc++ --action_env=CXXFLAGS=-stdlib="libc++ -Wno-unused-variable -Wno-deprecated-copy -Wbuiltin-assume-aligned-alignmenti -Wno-shorten-64-to-32"
 build:rbe-toolchain-clang-libc++ --action_env=CXXFLAGS="-stdlib=libc++ -Wno-unused-variable -Wno-deprecated-copy -Wbuiltin-assume-aligned-alignmenti -Wno-shorten-64-to-32"
 
-try-import %workspace%/maistra/bazelrc
+import %workspace%/maistra/bazelrc

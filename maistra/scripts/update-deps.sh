@@ -34,17 +34,18 @@ function init(){
         "bazel_tools"
         "envoy_api"
         "envoy_build_config"
-        "local_config_cc"
+        "local_config"
         "local_jdk"
-        "local_config_cc_toolchains"
-        "local_config_platform"
-        "local_config_sh"
-        "local_config_xcode"
-        "bazel_gazelle_go_repository_cache"
-        "bazel_gazelle_go_repository_config"
-        "bazel_gazelle_go_repository_tools"
+        "bazel_gazelle_go"
         "openssl"
         "go_sdk"
+        "remotejdk"
+        "rust"
+        "nodejs"
+        "rules_foreign_cc_framework_toolchain_freebsd_commands"
+        "rules_foreign_cc_framework_toolchain_macos_commands"
+        "rules_foreign_cc_framework_toolchain_windows_commands"
+        "emscripten"
   )
 }
 
@@ -62,7 +63,7 @@ function validate() {
 function contains () {
   local e match="$1"
   shift
-  for e; do [[ "$e" == "$match" ]] && return 0; done
+  for e; do [[ "$match" == "$e"* ]] && return 0; done
   return 1
 }
 
@@ -84,15 +85,15 @@ function copy_files() {
       cp "${cp_flags}" "${f}" "${VENDOR_DIR}" || echo "Copy of ${f} failed. Ignoring..."
       echo "build --override_repository=${repo_name}=/work/maistra/vendor/${repo_name}" >> "${BAZELRC}"
     fi
+  done
 
   find "${VENDOR_DIR}" -name .git -type d -print0 | xargs -0 -r rm -rf
   find "${VENDOR_DIR}" -name .gitignore -type f -delete
   find "${VENDOR_DIR}" -name '*.pyc' -delete
-done
 }
 
 function run_bazel() {
-  bazel --output_base="${OUTPUT_BASE}" fetch //...
+  bazel --output_base="${OUTPUT_BASE}" build --nobuild //...
 }
 
 function main() {

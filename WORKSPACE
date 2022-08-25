@@ -40,11 +40,11 @@ new_local_repository(
 #
 # Note: this is needed by release builder to resolve envoy dep sha to tag.
 # Commit date: 2022-07-29
-ENVOY_SHA = "2ba6db6633d24dbe4aa2c5cf8ebba9f84767e3f4"
+ENVOY_SHA = "8fa5f3a659fa2bdf5507cc95a5042961ff7470cb"
 
-ENVOY_SHA256 = "558cb2faf2e4fb697d691963b81bd8dba78f93d925cac90d42238b3b6c2b452b"
+ENVOY_SHA256 = "2bef4896f7a0b2da4d785df56c0ff3dc3fa7c2d6c44f36d1016f3aba1d88aa68"
 
-ENVOY_ORG = "envoyproxy"
+ENVOY_ORG = "maistra"
 
 ENVOY_REPO = "envoy"
 
@@ -110,9 +110,3 @@ container_deps()
 
 load("//bazel:wasm.bzl", "wasm_dependencies")
 wasm_dependencies()
-
-new_local_repository(
-    name = "emscripten_toolchain",
-    path = "/opt/emsdk/",
-    build_file_content = BUILD_ALL_CONTENT,
-)
