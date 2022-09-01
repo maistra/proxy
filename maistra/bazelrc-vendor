@@ -98,7 +98,6 @@ build --override_repository=rules_foreign_cc_framework_toolchain_linux_commands=
 build --override_repository=rules_fuzzing=/work/maistra/vendor/rules_fuzzing
 build --override_repository=rules_fuzzing_oss_fuzz=/work/maistra/vendor/rules_fuzzing_oss_fuzz
 build --override_repository=rules_java=/work/maistra/vendor/rules_java
-build --override_repository=rules_jvm_external=/work/maistra/vendor/rules_jvm_external
 build --override_repository=rules_pkg=/work/maistra/vendor/rules_pkg
 build --override_repository=rules_proto=/work/maistra/vendor/rules_proto
 build --override_repository=rules_python=/work/maistra/vendor/rules_python

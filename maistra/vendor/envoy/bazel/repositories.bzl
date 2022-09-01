@@ -872,22 +872,6 @@ cc_library(name = "curl", visibility = ["//visibility:public"], deps = ["@envoy/
         actual = "@envoy//bazel/foreign_cc:curl",
     )
 
-def _com_googlesource_chromium_v8():
-    external_genrule_repository(
-        name = "com_googlesource_chromium_v8",
-        genrule_cmd_file = "@envoy//bazel/external:wee8.genrule_cmd",
-        build_file = "@envoy//bazel/external:wee8.BUILD",
-        patches = [
-            "@envoy//bazel/external:wee8.patch",
-            "@envoy//bazel/external:wee8-s390x.patch",
-        ],
-    )
-    native.bind(
-        name = "wee8",
-        actual = "@com_googlesource_chromium_v8//:wee8",
-    )
-
-
 def _v8():
     external_http_archive(
         name = "v8",
