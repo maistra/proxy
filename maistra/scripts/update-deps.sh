@@ -94,9 +94,9 @@ function copy_files() {
 }
 
 function run_bazel() {
-  bazel --output_base="${OUTPUT_BASE}" build --nobuild \
-    --config=x86_64 --config=s390x --config=ppc \
-    //src/... //test/... //extensions/...
+  for config in s390x ppc x86_64; do
+    bazel --output_base="${OUTPUT_BASE}" build --nobuild --config="${config}" //src/... //test/... //extensions/...
+  done
 }
 
 function main() {
