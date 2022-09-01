@@ -89,11 +89,14 @@ function copy_files() {
 
   find "${VENDOR_DIR}" -name .git -type d -print0 | xargs -0 -r rm -rf
   find "${VENDOR_DIR}" -name .gitignore -type f -delete
+  find "${VENDOR_DIR}" -name __pycache__ -type d -print0 | xargs -0 -r rm -rf
   find "${VENDOR_DIR}" -name '*.pyc' -delete
 }
 
 function run_bazel() {
-  bazel --output_base="${OUTPUT_BASE}" build --nobuild //...
+  bazel --output_base="${OUTPUT_BASE}" build --nobuild \
+    --config=x86_64 --config=s390x --config=ppc \
+    //src/... //test/... //extensions/...
 }
 
 function main() {
