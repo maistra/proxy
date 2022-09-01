@@ -33,10 +33,10 @@
 
 #include "zconf.h"
 
+
 #ifdef __cplusplus
 extern "C" {
 #endif
-
 #define ZLIB_VERSION "1.2.11.1-motley"
 #define ZLIB_VERNUM 0x12b1
 #define ZLIB_VER_MAJOR 1

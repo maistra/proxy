@@ -1,4 +1,20 @@
+
+
 package(default_visibility = ["//visibility:public"])
+
+# Doesn't have any effect
+# sh_binary(
+#     name = "local_link_to_host",
+#     srcs = ["local_link_to_host.sh"],
+# )
+
+genrule(
+    name = "local_link_rule",
+    # Dummy output file, just to make genrule happy
+    outs = ["hello.txt"],
+    cmd = "/work/maistra/vendor/emsdk/local_link_to_host.sh; echo hello world >$@",
+)
+
 
 config_setting(
     name = "linux",
@@ -32,7 +48,10 @@ config_setting(
     ],
 )
 
-filegroup(name = "empty")
+filegroup(  name = "empty", 
+            srcs = ["local_link_rule"], 
+        )
+
 
 alias(
     name = "binaries",
@@ -48,7 +67,6 @@ alias(
 alias(
     name = "node_modules",
     actual = select({
-        ":linux": "@emscripten_npm_linux//:node_modules",
         ":macos": "@emscripten_npm_mac//:node_modules",
         ":macos_arm64": "@emscripten_npm_mac//:node_modules",
         ":windows": "@emscripten_npm_win//:node_modules",

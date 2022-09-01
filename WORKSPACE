@@ -72,6 +72,29 @@ envoy_api_dependencies()
 load("@envoy//bazel:repositories.bzl", "envoy_dependencies", "BUILD_ALL_CONTENT")
 envoy_dependencies()
 
+new_local_repository(
+    name = "emscripten_bin_linux",
+    path = "/opt/emsdk/",
+    build_file_content = BUILD_ALL_CONTENT,
+)
+
+new_local_repository(
+    name = "emscripten_npm_linux",
+    path = "/lib/node_modules/npm",
+    build_file_content = BUILD_ALL_CONTENT,
+)
+
+local_repository(
+    name = "local-toolchain",
+    path = "maistra/local",
+)
+
+load("@build_bazel_rules_nodejs//:index.bzl", "node_repositories")
+node_repositories(
+    vendored_node = "@local-toolchain//:tree",
+    vendored_yarn = "@local-toolchain//:tree/usr/share/yarn",
+)
+
 load("@envoy//bazel:repositories_extra.bzl", "envoy_dependencies_extra")
 envoy_dependencies_extra()
 
@@ -110,3 +133,4 @@ container_deps()
 
 load("//bazel:wasm.bzl", "wasm_dependencies")
 wasm_dependencies()
+

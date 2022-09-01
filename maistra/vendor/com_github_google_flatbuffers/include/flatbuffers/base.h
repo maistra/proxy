@@ -258,6 +258,9 @@ namespace flatbuffers {
   #endif
 #endif // !FLATBUFFERS_HAS_NEW_STRTOD
 
+// The following define added to fix OSSM-1931
+#define FLATBUFFERS_LOCALE_INDEPENDENT 0
+
 #ifndef FLATBUFFERS_LOCALE_INDEPENDENT
   // Enable locale independent functions {strtof_l, strtod_l,strtoll_l, strtoull_l}.
   #if ((defined(_MSC_VER) && _MSC_VER >= 1800)            || \

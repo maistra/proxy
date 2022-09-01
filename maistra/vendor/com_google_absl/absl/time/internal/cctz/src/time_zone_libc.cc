@@ -27,6 +27,9 @@
 #include "absl/time/internal/cctz/include/cctz/civil_time.h"
 #include "absl/time/internal/cctz/include/cctz/time_zone.h"
 
+// The following undef added to fix OSSM-1931
+#undef __EMSCRIPTEN__
+
 #if defined(_AIX)
 extern "C" {
 extern long altzone;

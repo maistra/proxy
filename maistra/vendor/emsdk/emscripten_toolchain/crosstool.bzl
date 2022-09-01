@@ -911,7 +911,17 @@ def _impl(ctx):
                 "-iwithsysroot" + "/include/compat",
                 "-iwithsysroot" + "/include",
                 "-isystem",
-                emscripten_dir + "/lib/clang/15.0.0/include",
+                #emscripten_dir + "/lib/clang/15.0.0/include",
+                # The following added to fix OSSM-1931
+                "/opt/emsdk/system/lib/libstdcxx/include",
+                "-isystem",
+                "/opt/emsdk/system/lib/libc/musl/include",
+                "-isystem",
+                "/opt/emsdk/system/lib/libc/musl/arch/emscripten",
+                "-isystem",
+                "/opt/emsdk/system/include",
+                "-isystem",
+                "/opt/emsdk/system/lib/libc/musl/arch/generic",
             ],
         ),
         # Inputs and outputs
@@ -1073,7 +1083,13 @@ def _impl(ctx):
         emscripten_dir + "/emscripten/cache/sysroot/include/c++/v1",
         emscripten_dir + "/emscripten/cache/sysroot/include/compat",
         emscripten_dir + "/emscripten/cache/sysroot/include",
-        emscripten_dir + "/lib/clang/15.0.0/include",
+        #emscripten_dir + "/lib/clang/15.0.0/include",
+        # The following added to fix OSSM-1931
+        "/opt/emsdk/system/lib/libstdcxx/include",
+        "/opt/emsdk/system/lib/libc/musl/include",
+        "/opt/emsdk/system/lib/libc/musl/arch/emscripten",
+        "/opt/emsdk/system/include",
+        "/opt/emsdk/system/lib/libc/musl/arch/generic",               
     ]
 
     artifact_name_patterns = []
