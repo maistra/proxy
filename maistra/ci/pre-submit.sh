@@ -10,6 +10,7 @@ DIR=$(cd "$(dirname "$0")" ; pwd -P)
 source "${DIR}/common.sh"
 
 # Build WASM extensions first
+# FIXME: https://issues.redhat.com/browse/OSSM-1931
 # time bazel_build //extensions:stats.wasm
 # time bazel_build //extensions:metadata_exchange.wasm
 # time bazel_build //extensions:attributegen.wasm
@@ -35,5 +36,6 @@ export GO111MODULE=on
 export GOPATH=$HOME/go
 
 time go test ./...
+# FIXME: https://issues.redhat.com/browse/OSSM-1931
 # export WASM=true
 # time go test ./test/envoye2e/stats_plugin/...
