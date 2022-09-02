@@ -17,12 +17,6 @@ gcloud config set project "${GCS_PROJECT}"
 
 # Build WASM extensions first
 # FIXME: https://issues.redhat.com/browse/OSSM-1931
-mkdir -p bazel-bin/extensions
-touch bazel-bin/extensions/stats.wasm bazel-bin/extensions/stats.compiled.wasm
-touch bazel-bin/extensions/metadata_exchange.wasm bazel-bin/extensions/metadata_exchange.compiled.wasm
-touch bazel-bin/extensions/attributegen.wasm bazel-bin/extensions/attributegen.compiled.wasm
-
-# FIXME: https://issues.redhat.com/browse/OSSM-1931
 # bazel_build //extensions:stats.wasm
 # bazel_build //extensions:metadata_exchange.wasm
 # bazel_build //extensions:attributegen.wasm
@@ -34,6 +28,12 @@ touch bazel-bin/extensions/attributegen.wasm bazel-bin/extensions/attributegen.c
 
 # Build Envoy
 bazel_build //src/envoy:envoy_tar
+
+# FIXME: https://issues.redhat.com/browse/OSSM-1931
+mkdir -p bazel-bin/extensions
+touch bazel-bin/extensions/stats.wasm bazel-bin/extensions/stats.compiled.wasm
+touch bazel-bin/extensions/metadata_exchange.wasm bazel-bin/extensions/metadata_exchange.compiled.wasm
+touch bazel-bin/extensions/attributegen.wasm bazel-bin/extensions/attributegen.compiled.wasm
 
 # Copy artifacts to GCS
 SHA="$(git rev-parse --verify HEAD)"
