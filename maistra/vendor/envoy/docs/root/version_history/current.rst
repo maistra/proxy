@@ -2,6 +2,8 @@
 =====================
 1.20.6 (June 16, 2022)
 ======================
+1.20.8 (Pending)
+================
 
 Incompatible Behavior Changes
 -----------------------------
@@ -24,7 +26,6 @@ Bug Fixes
 
 Removed Config or Runtime
 -------------------------
-*Normally occurs at the end of the* :ref:`deprecation period <deprecated>`
 
 New Features
 ------------
