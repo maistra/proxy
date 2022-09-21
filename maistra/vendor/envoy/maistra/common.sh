@@ -14,7 +14,6 @@ export ARCH
 
 COMMON_FLAGS="\
     --config=${ARCH} \
-    --config=clang \
     --define crypto=system \
 "
 if [ -n "${CI}" ]; then

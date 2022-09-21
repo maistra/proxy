@@ -18,6 +18,16 @@ time bazel build \
 echo "Build succeeded. Binary generated:"
 bazel-bin/source/exe/envoy-static --version
 
+# By default, `bazel test` command performs simultaneous
+# build and test activity.
+# The following build step helps reduce resources usage
+# by compiling tests first.
+# Build tests
+time bazel build \
+  ${COMMON_FLAGS} \
+  --build_tests_only \
+  //test/...
+
 # Run tests
 time bazel test \
   ${COMMON_FLAGS} \
