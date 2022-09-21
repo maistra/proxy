@@ -6,6 +6,7 @@ build --cxxopt -w
 build --copt -DOPENSSL_IS_BORINGSSL=0
 build --verbose_failures
 build --config=clang
+build --test_env=ENVOY_IP_TEST_VERSIONS=v4only
 
 # As of today we do not support QUIC/HTTP3 -- hence we exclude it from the build, always.
 build --deleted_packages=test/common/quic,test/common/quic/platform
@@ -26,4 +27,3 @@ build:ci-config --jobs=3
 build:ci-config --color=no
 
 build:ci-config --test_output=all
-build:ci-config --test_env=ENVOY_IP_TEST_VERSIONS=v4only
