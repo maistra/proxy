@@ -74,12 +74,13 @@ template <typename Pairs> size_t pairsSize(const Pairs &result) {
 
 template <typename Pairs> void marshalPairs(const Pairs &result, char *buffer) {
   char *b = buffer;
-  *reinterpret_cast<uint32_t *>(b) = htowasm(result.size());
+  bool reverse = "null" != contextOrEffectiveContext()->wasmVm()->getEngineName();
+  *reinterpret_cast<uint32_t *>(b) = reverse ? htowasm(result.size()) : result.size();
   b += sizeof(uint32_t);
   for (auto &p : result) {
-    *reinterpret_cast<uint32_t *>(b) = htowasm(p.first.size());
+    *reinterpret_cast<uint32_t *>(b) = reverse ? htowasm(p.first.size()) : p.first.size();
     b += sizeof(uint32_t);
-    *reinterpret_cast<uint32_t *>(b) = htowasm(p.second.size());
+    *reinterpret_cast<uint32_t *>(b) = reverse ? htowasm(p.second.size()) : p.second.size();
     b += sizeof(uint32_t);
   }
   for (auto &p : result) {
