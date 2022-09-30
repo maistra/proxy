@@ -1035,7 +1035,14 @@ def _proxy_wasm_cpp_sdk():
     external_http_archive(name = "proxy_wasm_cpp_sdk")
 
 def _proxy_wasm_cpp_host():
-    external_http_archive(name = "proxy_wasm_cpp_host")
+    external_http_archive(
+        name = "proxy_wasm_cpp_host",
+        # proxy-wasm-cpp-host-s390x-support.patch fixes WASM on s390x error https://issues.redhat.com/browse/OSSM-1815
+        # maistra-2.3 issue: https://issues.redhat.com/browse/OSSM-1956
+        # The permanent fix is: https://github.com/proxy-wasm/proxy-wasm-cpp-host/pull/282
+        patches = ["@envoy//bazel/external:proxy-wasm-cpp-host-s390x-support.patch"],
+        patch_args = ["-p1"],
+    )
 
 def _emsdk():
     external_http_archive(name = "emsdk")

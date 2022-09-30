@@ -1,0 +1,72 @@
+diff --git a/include/proxy-wasm/exports.h b/include/proxy-wasm/exports.h
+index 2b3d0db745..4f3efc3152 100644
+--- a/include/proxy-wasm/exports.h
++++ b/include/proxy-wasm/exports.h
+@@ -74,12 +74,13 @@ template <typename Pairs> size_t pairsSize(const Pairs &result) {
+ 
+ template <typename Pairs> void marshalPairs(const Pairs &result, char *buffer) {
+   char *b = buffer;
+-  *reinterpret_cast<uint32_t *>(b) = htowasm(result.size());
++  bool reverse = "null" != contextOrEffectiveContext()->wasmVm()->getEngineName();
++  *reinterpret_cast<uint32_t *>(b) = reverse ? htowasm(result.size()) : result.size();
+   b += sizeof(uint32_t);
+   for (auto &p : result) {
+-    *reinterpret_cast<uint32_t *>(b) = htowasm(p.first.size());
++    *reinterpret_cast<uint32_t *>(b) = reverse ? htowasm(p.first.size()) : p.first.size();
+     b += sizeof(uint32_t);
+-    *reinterpret_cast<uint32_t *>(b) = htowasm(p.second.size());
++    *reinterpret_cast<uint32_t *>(b) = reverse ? htowasm(p.second.size()) : p.second.size();
+     b += sizeof(uint32_t);
+   }
+   for (auto &p : result) {
+diff --git a/src/exports.cc b/src/exports.cc
+index c203946b8b..d7a59bc903 100644
+--- a/src/exports.cc
++++ b/src/exports.cc
+@@ -65,16 +65,22 @@ Pairs toPairs(std::string_view buffer) {
+   if (buffer.size() < sizeof(uint32_t)) {
+     return {};
+   }
+-  auto size = wasmtoh(*reinterpret_cast<const uint32_t *>(b));
++  bool reverse = "null" != contextOrEffectiveContext()->wasmVm()->getEngineName();
++  auto size = reverse ? wasmtoh(*reinterpret_cast<const uint32_t *>(b))
++                      : *reinterpret_cast<const uint32_t *>(b);
+   b += sizeof(uint32_t);
+   if (sizeof(uint32_t) + size * 2 * sizeof(uint32_t) > buffer.size()) {
+     return {};
+   }
+   result.resize(size);
+   for (uint32_t i = 0; i < size; i++) {
+-    result[i].first = std::string_view(nullptr, wasmtoh(*reinterpret_cast<const uint32_t *>(b)));
++    result[i].first =
++        std::string_view(nullptr, reverse ? wasmtoh(*reinterpret_cast<const uint32_t *>(b))
++                                          : *reinterpret_cast<const uint32_t *>(b));
+     b += sizeof(uint32_t);
+-    result[i].second = std::string_view(nullptr, wasmtoh(*reinterpret_cast<const uint32_t *>(b)));
++    result[i].second =
++        std::string_view(nullptr, reverse ? wasmtoh(*reinterpret_cast<const uint32_t *>(b))
++                                          : *reinterpret_cast<const uint32_t *>(b));
+     b += sizeof(uint32_t);
+   }
+   for (auto &p : result) {
+@@ -691,6 +697,7 @@ Word wasi_unstable_fd_prestat_dir_name(Word /*fd*/, Word /*path_ptr*/, Word /*pa
+ // logs.
+ Word writevImpl(Word fd, Word iovs, Word iovs_len, Word *nwritten_ptr) {
+   auto *context = contextOrEffectiveContext();
++  bool reverse = "null" != context->wasmVm()->getEngineName();
+ 
+   // Read syscall args.
+   uint64_t log_level;
+@@ -714,8 +721,9 @@ Word writevImpl(Word fd, Word iovs, Word iovs_len, Word *nwritten_ptr) {
+     }
+     const auto *iovec = reinterpret_cast<const uint32_t *>(memslice.value().data());
+     if (iovec[1] != 0U /* buf_len */) {
+-      memslice = context->wasmVm()->getMemory(wasmtoh(iovec[0]) /* buf */,
+-                                              wasmtoh(iovec[1]) /* buf_len */);
++      auto iovec0 = reverse ? wasmtoh(iovec[0]) : iovec[0];
++      auto iovec1 = reverse ? wasmtoh(iovec[1]) : iovec[1];
++      memslice = context->wasmVm()->getMemory(iovec0 /* buf */, iovec1 /* buf_len */);
+       if (!memslice) {
+         return 21; // __WASI_EFAULT
+       }
+
