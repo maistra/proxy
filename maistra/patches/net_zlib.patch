@@ -1,0 +1,13 @@
+diff -ruN a/CMakeLists.txt b/CMakeLists.txt
+--- a/CMakeLists.txt	2022-10-07 10:36:19.430150961 +0200
++++ b/CMakeLists.txt	2022-10-07 10:36:19.484151434 +0200
+@@ -24,6 +24,9 @@
+ check_include_file(stdint.h    HAVE_STDINT_H)
+ check_include_file(stddef.h    HAVE_STDDEF_H)
+ 
++# Added to fix OSSM-1931
++add_definitions(-DHAVE_UNISTD_H=1)
++
+ #
+ # Check to see if we have large file support
+ #
