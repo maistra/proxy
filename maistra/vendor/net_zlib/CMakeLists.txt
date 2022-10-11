@@ -24,6 +24,9 @@ check_include_file(sys/types.h HAVE_SYS_TYPES_H)
 check_include_file(stdint.h    HAVE_STDINT_H)
 check_include_file(stddef.h    HAVE_STDDEF_H)
 
+# Added to fix OSSM-1931
+add_definitions(-DHAVE_UNISTD_H=1)
+
 #
 # Check to see if we have large file support
 #

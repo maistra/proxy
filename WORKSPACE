@@ -14,6 +14,7 @@
 #
 ################################################################################
 #
+
 workspace(name = "io_istio_proxy")
 
 # http_archive is not a native function since bazel 0.19
@@ -71,6 +72,25 @@ envoy_api_dependencies()
 
 load("@envoy//bazel:repositories.bzl", "envoy_dependencies", "BUILD_ALL_CONTENT")
 envoy_dependencies()
+
+# Added for OSSM-1931: emscripten is in /opt/emsdk
+new_local_repository(
+    name = "emscripten_bin_linux",
+    path = "/opt/emsdk/",
+    build_file_content = BUILD_ALL_CONTENT,
+)
+
+# Added for OSSM-1931: find npm in /lib
+new_local_repository(
+    name = "emscripten_npm_linux",
+    path = "/lib/node_modules/npm",
+    build_file_content = BUILD_ALL_CONTENT,
+)
+
+local_repository(
+    name = "local-toolchain",
+    path = "maistra/local",
+)
 
 load("@envoy//bazel:repositories_extra.bzl", "envoy_dependencies_extra")
 envoy_dependencies_extra()

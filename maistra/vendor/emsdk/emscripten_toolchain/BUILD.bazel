@@ -14,7 +14,6 @@ filegroup(
         "env.bat",
         "@emsdk//:binaries",
         "@emsdk//:node_modules",
-        "@nodejs//:node_files",
     ],
 )
 
@@ -31,7 +30,6 @@ filegroup(
         "link_wrapper.py",
         ":common-script-includes",
         "@emsdk//:binaries",
-        "@nodejs//:node_files",
     ],
 )
 
@@ -41,7 +39,6 @@ filegroup(
         ":compile-emscripten",
         ":link-emscripten",
         "@emsdk//:binaries",
-        "@nodejs//:node_files",
     ],
 )
 
