@@ -1,9 +1,12 @@
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
-load("@build_bazel_rules_nodejs//:index.bzl", "npm_install", "node_repositories")
+load("@build_bazel_rules_nodejs//:index.bzl", "npm_install")
 load(":revisions.bzl", "EMSCRIPTEN_TAGS")
+
+load("@envoy//bazel:repositories.bzl", "envoy_dependencies", "BUILD_ALL_CONTENT")
 
 def _parse_version(v):
     return [int(u) for u in v.split(".")]
+
 
 def emscripten_deps(emscripten_version = "latest"):
     version = emscripten_version
@@ -24,14 +27,8 @@ def emscripten_deps(emscripten_version = "latest"):
     # This could potentially backfire for projects with multiple emscripten
     # dependencies that use different emscripten versions
     excludes = native.existing_rules().keys()
-    if "nodejs_toolchains" not in excludes:
-        # Node 16 is the first version that supports darwin_arm64
-        node_repositories(
-            node_version = "16.6.2",
-        )
-
     if "emscripten_bin_linux" not in excludes:
-        http_archive(
+       http_archive(
             name = "emscripten_bin_linux",
             strip_prefix = "install",
             url = emscripten_url.format("linux", revision.hash, "", "tbz2"),
@@ -39,6 +36,12 @@ def emscripten_deps(emscripten_version = "latest"):
             build_file = "@emsdk//emscripten_toolchain:emscripten.BUILD",
             type = "tar.bz2",
         )
+    # nodejs is taken from the host
+    #if "nodejs_toolchains" not in excludes:
+        # # Node 16 is the first version that supports darwin_arm64
+        # node_repositories(
+        #     node_version = "16.6.2",
+        # )
 
     if "emscripten_bin_mac" not in excludes:
         http_archive(
@@ -70,12 +73,13 @@ def emscripten_deps(emscripten_version = "latest"):
             type = "zip",
         )
 
-    if "emscripten_npm_linux" not in excludes:
-        npm_install(
-            name = "emscripten_npm_linux",
-            package_json = "@emscripten_bin_linux//:emscripten/package.json",
-            package_lock_json = "@emscripten_bin_linux//:emscripten/package-lock.json",
-        )
+    # Commented out, as it downloads  nodejs again
+    # if "emscripten_npm_linux" not in excludes:
+    #     npm_install(
+    #         name = "emscripten_npm_linux",
+    #         package_json = "@emscripten_bin_linux//:emscripten/package.json",
+    #         package_lock_json = "@emscripten_bin_linux//:emscripten/package-lock.json",
+    #     )
 
     if "emscripten_npm_mac" not in excludes:
         npm_install(
