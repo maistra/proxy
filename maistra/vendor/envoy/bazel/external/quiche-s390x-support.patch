@@ -1,0 +1,18 @@
+diff --git a/quiche/common/quiche_endian.h b/quiche/common/quiche_endian.h
+index 30639ccd37..64fb00246d 100644
+--- a/quiche/common/quiche_endian.h
++++ b/quiche/common/quiche_endian.h
+@@ -23,7 +23,12 @@ enum Endianness {
+ class QUICHE_EXPORT_PRIVATE QuicheEndian {
+  public:
+   // Convert |x| from host order (little endian) to network order (big endian).
+-#if defined(__clang__) || \
++#if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
++    __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
++  static uint16_t HostToNet16(uint16_t x) { return x; }
++  static uint32_t HostToNet32(uint32_t x) { return x; }
++  static uint64_t HostToNet64(uint64_t x) { return x; }
++#elif defined(__clang__) || \
+     (defined(__GNUC__) && \
+      ((__GNUC__ == 4 && __GNUC_MINOR__ >= 8) || __GNUC__ >= 5))
+   static uint16_t HostToNet16(uint16_t x) { return __builtin_bswap16(x); }
