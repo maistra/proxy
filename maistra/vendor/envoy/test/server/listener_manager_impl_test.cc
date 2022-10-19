@@ -6298,8 +6298,8 @@ filter_chains:
   EXPECT_CALL(*listener_foo_update1, onDestroy());
 }
 
-// FIXME https://issues.redhat.com/browse/OSSM-1802
-TEST_P(ListenerManagerImplTest, DISABLED_ListenSocketFactoryIsClonedFromListenerDrainingFilterChain) {
+
+TEST_P(ListenerManagerImplTest, ListenSocketFactoryIsClonedFromListenerDrainingFilterChain) {
   InSequence s;
 
   EXPECT_CALL(*worker_, start(_, _));
@@ -6351,7 +6351,28 @@ filter_chains:
 
   // The warmed up starts the drain timer.
   EXPECT_CALL(*worker_, addListener(_, _, _, _));
+  EXPECT_CALL(server_.options_, drainTime()).WillOnce(Return(std::chrono::seconds(600)));
+  Event::MockTimer* filter_chain_drain_timer = new Event::MockTimer(&server_.dispatcher_);
+  EXPECT_CALL(*filter_chain_drain_timer, enableTimer(std::chrono::milliseconds(600000), _));
+  listener_foo_update1->target_.ready();
+  checkStats(__LINE__, 1, 1, 0, 0, 1, 0, 1);
+  EXPECT_CALL(*worker_, removeFilterChains(_, _, _));
+  filter_chain_drain_timer->invokeCallback();
+
+  // Stop the active listener listener_foo_update1.
+  std::function<void()> stop_completion;
+  EXPECT_CALL(*worker_, stopListener(_, _))
+      .WillOnce(Invoke(
+          [&stop_completion](Network::ListenerConfig&, std::function<void()> completion) -> void {
+            ASSERT_TRUE(completion != nullptr);
+            stop_completion = std::move(completion);
+          }));
+  EXPECT_CALL(*listener_foo_update1->drain_manager_, startDrainSequence(_));
+  EXPECT_TRUE(manager_->removeListener("foo"));
+
+  EXPECT_CALL(*worker_, removeListener(_, _));
   listener_foo_update1->drain_manager_->drain_sequence_completion_();
+
   EXPECT_CALL(*listener_foo_update1, onDestroy());
   worker_->callRemovalCompletion();
 
@@ -6370,6 +6391,7 @@ filter_chains:
   EXPECT_CALL(*listener_foo, onDestroy());
   EXPECT_CALL(*listener_foo_expect_reuse_socket, onDestroy());
 }
+
 
 TEST(ListenerMessageUtilTest, ListenerMessageSameAreEquivalent) {
   envoy::config::listener::v3::Listener listener1;
