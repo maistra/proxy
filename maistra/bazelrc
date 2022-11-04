@@ -33,4 +33,4 @@ build:ci-config --color=no
 build:ci-config --show_progress_rate_limit=10
 
 # Import vendor flags
-# import %workspace%/maistra/bazelrc-vendor
+import %workspace%/maistra/bazelrc-vendor

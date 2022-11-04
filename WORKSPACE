@@ -113,9 +113,3 @@ container_deps()
 
 load("//bazel:wasm.bzl", "wasm_dependencies")
 wasm_dependencies()
-
-new_local_repository(
-    name = "emscripten_toolchain",
-    path = "/opt/emsdk/",
-    build_file_content = BUILD_ALL_CONTENT,
-)

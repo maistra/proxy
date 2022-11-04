@@ -47,4 +47,4 @@ function bazel_test() {
 }
 
 # Fix path to the vendor deps
-#sed -i "s|=/work/|=$(pwd)/|" maistra/bazelrc-vendor
+sed -i "s|=/work/|=$(pwd)/|" maistra/bazelrc-vendor

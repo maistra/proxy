@@ -53,4 +53,4 @@ build --action_env=CXXFLAGS=-Wno-unused-variable
 build:libc++ --action_env=CXXFLAGS=-stdlib="libc++ -Wno-unused-variable"
 build:rbe-toolchain-clang-libc++ --action_env=CXXFLAGS="-stdlib=libc++ -Wno-unused-variable"
 
-try-import %workspace%/maistra/bazelrc
+import %workspace%/maistra/bazelrc
