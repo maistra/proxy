@@ -1,0 +1,21 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "retry",
+    srcs = ["retry.go"],
+    importpath = "github.com/google/go-containerregistry/pkg/internal/retry",
+    visibility = ["//pkg:__subpackages__"],
+    deps = ["//pkg/internal/retry/wait"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":retry",
+    visibility = ["//pkg:__subpackages__"],
+)
+
+go_test(
+    name = "retry_test",
+    srcs = ["retry_test.go"],
+    embed = [":retry"],
+)

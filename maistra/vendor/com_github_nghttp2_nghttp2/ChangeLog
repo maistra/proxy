@@ -1,0 +1,153 @@
+commit 87fef4ab71bebb2168f8d3d554df8d2f0f01f497 (HEAD, tag: v1.50.0, origin/master, origin/HEAD, master)
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2022-09-21
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2022-09-21
+
+    Update manual pages
+
+commit 844af88dc1ead7036d19f0cc9fe23d4e70a5a967
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2022-09-21
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2022-09-21
+
+    Bump package and library versions
+
+commit 2f6ebfdf8c34851e78ce602e7017dc577ee50404
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2022-09-21
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2022-09-21
+
+    Update AUTHORS
+
+commit 25858d8adadedcedb6ac11552e0a2d347a782eeb
+Merge: 931adb14 11d1f954
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2022-09-20
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2022-09-20
+
+    Merge pull request #1800 from nghttp2/bump-ngtcp2
+    
+    Bump ngtcp2
+
+commit 11d1f954126b9908797093c3156476e94e0c7f3b
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2022-09-20
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2022-09-20
+
+    Bump ngtcp2
+
+commit 931adb146b2279dc6db0f0696144bdf76661fa99
+Merge: f13cff01 6a513dc9
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2022-09-15
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2022-09-15
+
+    Merge pull request #1799 from nghttp2/dyn-dns-family
+    
+    nghttpx: Respect backend-address-family on dynamic DNS lookup
+
+commit 6a513dc9fde51b393761b2da4cbdb878dce8202b
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2022-09-15
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2022-09-15
+
+    nghttpx: Respect backend-address-family on dynamic DNS lookup
+
+commit f13cff01bb51b4e594ab7f4fcd736fb40a87ab19
+Merge: 9f5bf5c7 2608333c
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2022-09-15
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2022-09-15
+
+    Merge pull request #1798 from nghttp2/bump-libbpf
+    
+    Bump libbpf to v1.0.0
+
+commit 2608333ce55d392eca1167b8bef165427d573dc2
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2022-09-15
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2022-09-15
+
+    Bump libbpf to v1.0.0
+
+commit 9f5bf5c7ddc6ea7392e2b0c3631aef9c1d73a156
+Merge: 921b4d02 eb06e33e
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2022-09-07
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2022-09-07
+
+    Merge pull request #1792 from nghttp2/option-no-rfc9113-ltws-validation
+    
+    Option no rfc9113 ltws validation
+
+commit eb06e33e383e839e39f3310a9f58ff8e51b4e224
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2022-09-06
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2022-09-07
+
+    Add nghttp2_option_set_no_rfc9113_leading_and_trailing_ws_validation
+
+commit a94d2de89a347f433801ad2d7eecead88a5fbc27
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2022-09-06
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2022-09-07
+
+    Check leading white spaces in :protocol
+
+commit 921b4d027a2f0d32cd9ff34fdb19bd5a18ac8ad4
+Merge: 1340b296 026ff48e
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2022-09-06
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2022-09-06
+
+    Merge pull request #1791 from nghttp2/bump-ngtcp2
+    
+    Bump ngtcp2
+
+commit 026ff48edbf445109f83e6b79fc3ee63a54a237b
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2022-09-01
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2022-09-01
+
+    Bump ngtcp2
+
+commit 1340b296dde152fb0771f1eb4e4c221047d37ab7
+Merge: f919cf1a fc5a020b
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2022-08-29
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2022-08-29
+
+    Merge pull request #1787 from heitbaum/patch-1
+    
+    Fix typographic error
+
+commit fc5a020bc62eb5f860e22e50dad2060ef8cd22fd
+Author:     Rudi Heitbaum <rudi@heitbaum.com>
+AuthorDate: 2022-08-29
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2022-08-29
+
+    Fix typographic error
+
+commit f919cf1a8e88e2949e289570e8bee679bea87f32
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2022-08-22
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2022-08-22
+
+    Bump package version

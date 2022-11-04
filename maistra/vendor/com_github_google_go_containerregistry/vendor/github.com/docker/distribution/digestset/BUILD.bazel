@@ -1,0 +1,16 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "digestset",
+    srcs = ["set.go"],
+    importmap = "github.com/google/go-containerregistry/vendor/github.com/docker/distribution/digestset",
+    importpath = "github.com/docker/distribution/digestset",
+    visibility = ["//visibility:public"],
+    deps = ["//vendor/github.com/opencontainers/go-digest"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":digestset",
+    visibility = ["//visibility:public"],
+)

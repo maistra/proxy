@@ -1,0 +1,34 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "k8schain",
+    srcs = [
+        "doc.go",
+        "k8schain.go",
+        "k8schain_aws.go",
+        "k8schain_azure.go",
+        "k8schain_gcp.go",
+    ],
+    importpath = "github.com/google/go-containerregistry/pkg/authn/k8schain",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/authn",
+        "//pkg/name",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":k8schain",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "k8schain_test",
+    srcs = ["k8schain_test.go"],
+    embed = [":k8schain"],
+    deps = [
+        "//pkg/authn",
+        "//pkg/name",
+    ],
+)

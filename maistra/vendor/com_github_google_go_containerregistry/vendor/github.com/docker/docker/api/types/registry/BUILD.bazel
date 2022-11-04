@@ -1,0 +1,19 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "registry",
+    srcs = [
+        "authenticate.go",
+        "registry.go",
+    ],
+    importmap = "github.com/google/go-containerregistry/vendor/github.com/docker/docker/api/types/registry",
+    importpath = "github.com/docker/docker/api/types/registry",
+    visibility = ["//visibility:public"],
+    deps = ["//vendor/github.com/opencontainers/image-spec/specs-go/v1:specs-go"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":registry",
+    visibility = ["//visibility:public"],
+)

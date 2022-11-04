@@ -1,0 +1,20 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "counterfeiter_lib",
+    srcs = ["main.go"],
+    importmap = "github.com/google/go-containerregistry/vendor/github.com/maxbrunsfeld/counterfeiter/v6",
+    importpath = "github.com/maxbrunsfeld/counterfeiter/v6",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//vendor/github.com/maxbrunsfeld/counterfeiter/v6/arguments",
+        "//vendor/github.com/maxbrunsfeld/counterfeiter/v6/command",
+        "//vendor/github.com/maxbrunsfeld/counterfeiter/v6/generator",
+    ],
+)
+
+go_binary(
+    name = "v6",
+    embed = [":counterfeiter_lib"],
+    visibility = ["//visibility:public"],
+)

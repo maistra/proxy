@@ -1,0 +1,49 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "gcrane",
+    srcs = [
+        "copy.go",
+        "doc.go",
+        "options.go",
+    ],
+    importpath = "github.com/google/go-containerregistry/pkg/gcrane",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/authn",
+        "//pkg/crane",
+        "//pkg/internal/retry",
+        "//pkg/logs",
+        "//pkg/name",
+        "//pkg/v1/google",
+        "//pkg/v1/remote",
+        "//pkg/v1/remote/transport",
+        "//vendor/golang.org/x/sync/errgroup",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":gcrane",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "gcrane_test",
+    srcs = ["copy_test.go"],
+    embed = [":gcrane"],
+    deps = [
+        "//pkg/internal/httptest",
+        "//pkg/internal/retry",
+        "//pkg/logs",
+        "//pkg/name",
+        "//pkg/registry",
+        "//pkg/v1/google",
+        "//pkg/v1/partial",
+        "//pkg/v1/random",
+        "//pkg/v1/remote",
+        "//pkg/v1/remote/transport",
+        "//pkg/v1/types",
+        "//vendor/github.com/google/go-cmp/cmp",
+    ],
+)

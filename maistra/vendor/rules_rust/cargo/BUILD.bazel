@@ -1,0 +1,20 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+
+package(default_visibility = ["//visibility:public"])
+
+bzl_library(
+    name = "bzl_lib",
+    srcs = glob(["**/*.bzl"]),
+    deps = ["//cargo/private:bzl_lib"],
+)
+
+filegroup(
+    name = "distro",
+    srcs = glob(["*.bzl"]) + [
+        "//cargo/bootstrap:distro",
+        "//cargo/cargo_build_script_runner:distro",
+        "//cargo/private:distro",
+        "BUILD.bazel",
+    ],
+    visibility = ["//:__subpackages__"],
+)

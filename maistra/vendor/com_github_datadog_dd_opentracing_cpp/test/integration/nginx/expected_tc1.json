@@ -1,0 +1,68 @@
+[
+  [
+    {
+      "error": 0,
+      "meta": {
+        "component": "nginx",
+        "http.method": "GET",
+        "http.status_code": "200",
+        "http.status_line": "",
+        "http.url": "http://localhost/",
+        "operation": "GET /index.html"
+      },
+      "metrics": {
+        "_dd.limit_psr": 1,
+        "_dd.rule_psr": 1,
+        "_sampling_priority_v1": 1
+      },
+      "name": "nginx.handle",
+      "resource": "/",
+      "service": "nginx",
+      "type": "web"
+    }
+  ],
+  [
+    {
+      "error": 0,
+      "meta": {
+        "component": "nginx",
+        "http.method": "GET",
+        "http.status_code": "200",
+        "http.status_line": "",
+        "http.url": "http://localhost/",
+        "operation": "GET /index.html"
+      },
+      "metrics": {
+        "_dd.limit_psr": 1,
+        "_dd.rule_psr": 1,
+        "_sampling_priority_v1": 1
+      },
+      "name": "nginx.handle",
+      "resource": "/",
+      "service": "nginx",
+      "type": "web"
+    }
+  ],
+  [
+    {
+      "error": 0,
+      "meta": {
+        "component": "nginx",
+        "http.method": "GET",
+        "http.status_code": "200",
+        "http.status_line": "",
+        "http.url": "http://localhost/",
+        "operation": "GET /index.html"
+      },
+      "metrics": {
+        "_dd.limit_psr": 1,
+        "_dd.rule_psr": 1,
+        "_sampling_priority_v1": 1
+      },
+      "name": "nginx.handle",
+      "resource": "/",
+      "service": "nginx",
+      "type": "web"
+    }
+  ]
+]

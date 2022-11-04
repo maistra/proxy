@@ -1,0 +1,29 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "stream",
+    srcs = ["layer.go"],
+    importpath = "github.com/google/go-containerregistry/pkg/v1/stream",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/v1:pkg",
+        "//pkg/v1/types",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":stream",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "stream_test",
+    srcs = ["layer_test.go"],
+    embed = [":stream"],
+    deps = [
+        "//pkg/v1:pkg",
+        "//pkg/v1/tarball",
+        "//pkg/v1/types",
+    ],
+)

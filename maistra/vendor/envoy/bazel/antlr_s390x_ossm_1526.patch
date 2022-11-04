@@ -1,0 +1,11 @@
+--- a/runtime/Cpp/runtime/src/Lexer.cpp
++++ b/runtime/Cpp/runtime/src/Lexer.cpp
+@@ -73,7 +73,7 @@
+     tokenStartCharIndex = _input->index();
+     tokenStartCharPositionInLine = getInterpreter<atn::LexerATNSimulator>()->getCharPositionInLine();
+     tokenStartLine = getInterpreter<atn::LexerATNSimulator>()->getLine();
+-    _text = "";
++    _text.clear();
+     do {
+       type = Token::INVALID_TYPE;
+       size_t ttype;

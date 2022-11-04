@@ -1,0 +1,183 @@
+load("//lib/tests/write_source_files:write_source_file_test.bzl", "write_source_file_test")
+load("//lib/tests:generate_outputs.bzl", "generate_outputs")
+load("//lib:write_source_files.bzl", "write_source_files")
+load("//lib:copy_to_directory.bzl", "copy_to_directory")
+load("//lib:directory_path.bzl", "directory_path")
+load("//lib:output_files.bzl", "output_files")
+
+genrule(
+    name = "a-desired",
+    outs = ["a-desired.js"],
+    cmd = "echo 'console.log(\"a*\");' > $@",
+)
+
+generate_outputs(
+    name = "b_c-desired",
+    output_contents = [
+        """console.log(\"b*\");
+""",
+        "not used!",
+    ],
+    output_files = [
+        "b-desired.js",
+        "c-desired.js",
+    ],
+)
+
+output_files(
+    name = "b-desired",
+    paths = ["%s/b-desired.js" % package_name()],
+    target = ":b_c-desired",
+)
+
+genrule(
+    name = "e-contained",
+    outs = ["e-contained.js"],
+    cmd = "echo 'console.log(\"e*\");' > $@",
+)
+
+copy_to_directory(
+    name = "e_dir-desired",
+    srcs = [":e-contained"],
+)
+
+genrule(
+    name = "f-contained",
+    outs = ["f-contained.js"],
+    cmd = "echo 'console.log(\"f*\");' > $@",
+)
+
+copy_to_directory(
+    name = "e_f_dir-desired",
+    srcs = [
+        ":e-contained",
+        ":f-contained",
+    ],
+)
+
+directory_path(
+    name = "f-desired",
+    directory = ":e_f_dir-desired",
+    path = "f-contained.js",
+)
+
+generate_outputs(
+    name = "g_h-desired",
+    output_contents = [
+        """console.log(\"g*\");
+""",
+        "not used!",
+    ],
+    output_files = [
+        "g-desired.js",
+        "h-desired.js",
+    ],
+    output_group = "gh_output_group",
+)
+
+output_files(
+    name = "g-desired",
+    output_group = "gh_output_group",
+    paths = ["%s/g-desired.js" % package_name()],
+    target = ":g_h-desired",
+)
+
+write_source_file_test(
+    name = "write_to_source_files_a_test",
+    in_file = ":a-desired",
+    out_file = "a.js",
+)
+
+write_source_file_test(
+    name = "write_to_source_files_b_test",
+    in_file = ":b-desired",
+    out_file = "b.js",
+)
+
+write_source_file_test(
+    name = "write_to_source_files_f_test",
+    in_file = ":f-desired",
+    out_file = "f.js",
+)
+
+write_source_file_test(
+    name = "write_to_source_files_g_test",
+    in_file = ":g-desired",
+    out_file = "g.js",
+)
+
+write_source_files(
+    name = "macro_smoke_test",
+    additional_update_targets = [
+        "//lib/tests/write_source_files/subdir:macro_smoke_test",
+    ],
+    files = {
+        "a2.js": ":a-desired",
+        "b2.js": ":b-desired",
+        "e2_dir": ":e_dir-desired",
+        "f2.js": ":f-desired",
+        "g2.js": ":g-desired",
+    },
+    # TODO: figure out ERROR: cannot compare a directory against a file
+    tags = ["no-remote-exec"],
+)
+
+genrule(
+    name = "dist",
+    outs = ["dist.js"],
+    cmd = "echo 'dist' > $@",
+)
+
+# ibazel run //lib/tests/write_source_files:write_dist
+# See e2e/write_source_files_gitignored
+write_source_files(
+    name = "write_dist",
+    diff_test = False,
+    files = {"dist.js": ":dist"},
+)
+
+# Generate a readonly file in nested readonly directories
+genrule(
+    name = "subdir",
+    outs = ["subdir_test"],
+    cmd = ";".join([
+        "mkdir -p $@/a/b/c",
+        "echo 'test' > $@/a/b/c/test.txt",
+        "chmod -R -w $@/*",
+    ]),
+)
+
+# Write nested subdirectories to source
+# See e2e/write_source_files_subdir_multiple_runs
+write_source_files(
+    name = "write_subdir",
+    diff_test = False,
+    files = {"subdir_test": ":subdir"},
+)
+
+# Generate some directories including symlinks
+genrule(
+    name = "symlinks",
+    outs = ["symlink_test"],
+    cmd = ";".join([
+        "mkdir -p $@/a $@/b",
+        "echo 'test' > $@/a/test.txt",
+        "pushd $@/b",
+        "ln -s ../a/test.txt",
+    ]),
+)
+
+# Write symlinks to source
+# See e2e/write_source_files_symlinks
+write_source_files(
+    name = "write_symlinks",
+    diff_test = False,
+    files = {"symlink_test": ":symlinks"},
+)
+
+write_source_files(
+    name = "write_from_external_repo",
+    files = {
+        "skylib_LICENSE": "@bazel_skylib//:LICENSE",
+    },
+)
