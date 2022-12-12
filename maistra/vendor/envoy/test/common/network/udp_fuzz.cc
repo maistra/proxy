@@ -1,3 +1,4 @@
+#include <limits>
 #include <fuzzer/FuzzedDataProvider.h>
 
 #include "envoy/config/core/v3/base.pb.h"

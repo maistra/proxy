@@ -16,8 +16,6 @@
 set -e
 set -o pipefail
 
-source /opt/rh/gcc-toolset-9/enable
-
 function init(){
   ROOT_DIR="$(pwd)"
 
