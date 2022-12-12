@@ -302,7 +302,7 @@ Reduction BranchElimination::UpdateConditions(
     Node* node, ControlPathConditions conditions) {
   // Only signal that the node has Changed if the condition information has
   // changed.
-  if (reduced_.Set(node, true) | node_conditions_.Set(node, conditions)) {
+  if (reduced_.Set(node, true) || node_conditions_.Set(node, conditions)) {
     return Changed(node);
   }
   return NoChange();
