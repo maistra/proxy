@@ -23,6 +23,7 @@ function init(){
 
   OUTPUT_BASE="$(mktemp -d)"
   VENDOR_DIR="${ROOT_DIR}/maistra/vendor"
+  PATCH_DIR="${ROOT_DIR}/maistra/patches"
   BAZELRC="${ROOT_DIR}/maistra/bazelrc-vendor"
 
   rm -rf "${OUTPUT_BASE}" &&  mkdir -p "${OUTPUT_BASE}"
@@ -69,11 +70,9 @@ function contains () {
 
 function copy_files() {
   local cp_flags
-
   for f in "${OUTPUT_BASE}"/external/*; do
     if [ -d "${f}" ]; then
       repo_name=$(basename "${f}")
-
       if contains "${repo_name}" "${IGNORE_LIST[@]}" ; then
         continue
       fi
@@ -85,7 +84,14 @@ function copy_files() {
       cp "${cp_flags}" "${f}" "${VENDOR_DIR}" || echo "Copy of ${f} failed. Ignoring..."
       echo "build --override_repository=${repo_name}=/work/maistra/vendor/${repo_name}" >> "${BAZELRC}"
     fi
-  done
+  done 
+
+  # OSSM-1931: Install acorn module in maistra/vendor
+  npm install acorn@8.8.0
+  # npm always installs "acorn" in $WORKDIR/node_modules
+  # move it in the vendor directory
+  mv node_modules/acorn maistra/vendor/acorn
+  /bin/rm -rf node_modules
 
   find "${VENDOR_DIR}" -name .git -type d -print0 | xargs -0 -r rm -rf
   find "${VENDOR_DIR}" -name .gitignore -type f -delete
@@ -93,10 +99,28 @@ function copy_files() {
   find "${VENDOR_DIR}" -name '*.pyc' -delete
 }
 
+function apply_patches() {
+   # Patch emsdk and net_zlib
+  pushd "${OUTPUT_BASE}/external/emsdk" 
+  patch -p1 -i "${PATCH_DIR}"/emsdk.patch
+  popd
+
+  pushd "${OUTPUT_BASE}/external/net_zlib"
+  patch -p1  -i "${PATCH_DIR}"/net_zlib.patch
+  popd
+}
+
 function run_bazel() {
-  for config in s390x ppc x86_64; do
-    bazel --output_base="${OUTPUT_BASE}" build --nobuild --config="${config}" //src/... //test/... //extensions/...
+  # Fetch stats_plugin just to load emsdk and net_zlib dependencies
+  bazel --output_base="${OUTPUT_BASE}" fetch //extensions/stats:stats_plugin || true
+
+  apply_patches
+
+  # Fetch all the rest and check everything using "build --nobuild "option
+  for config in s390x ppc x86_64; do   
+    bazel --output_base="${OUTPUT_BASE}" build --nobuild --config="${config}" //src/... //test/...  //extensions/...
   done
+ 
 }
 
 function main() {

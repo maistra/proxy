@@ -7,6 +7,7 @@ if [ "${ARCH}" = "ppc64le" ]; then
   ARCH="ppc"
 fi
 export ARCH
+export EMSCRIPTEN="/opt/emsdk"
 
 OUTPUT_TO_IGNORE="\
 INFO: From|\
@@ -16,9 +17,19 @@ processwrapper-sandbox.*execroot.*io_istio_proxy|\
 proto is unused\
 "
 
+# Store in an env var the working directory absolute path
+# (it is different in different build environments)
+WORKDIR=$(pwd)
+export WORKDIR
+
+# NODE_PATH: searching path for Node.js (necessary for "acorn" module)
+# WORKDIR  : working directory path passed to Bazel
 COMMON_FLAGS="\
     --config=release \
     --config=${ARCH} \
+    --action_env=EMSCRIPTEN=${EMSCRIPTEN} \
+    --action_env=WORKDIR=${WORKDIR} \
+    --action_env=NODE_PATH=${WORKDIR}/maistra/vendor/ \
 "
 
 if [ -n "${BAZEL_REMOTE_CACHE}" ]; then
@@ -48,3 +59,9 @@ function bazel_test() {
 
 # Fix path to the vendor deps
 sed -i "s|=/work/|=$(pwd)/|" maistra/bazelrc-vendor
+
+# Create symbolic links to existent executables in the builder
+mkdir -p "$WORKDIR/maistra/local/bin"
+ln -f -s /bin/node "$WORKDIR/maistra/local/bin/node"
+ln -f -s /usr/bin/wasm-emscripten-finalize "$WORKDIR/maistra/local/bin/wasm-emscripten-finalize"
+ln -f -s /usr/bin/wasm-opt "$WORKDIR/maistra/local/bin/wasm-opt"
