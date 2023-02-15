@@ -44,7 +44,7 @@ func TestBasicTCPFlow(t *testing.T) {
 			},
 			&driver.Envoy{Bootstrap: params.LoadTestData("testdata/bootstrap/client.yaml.tmpl")},
 			&driver.Envoy{Bootstrap: params.LoadTestData("testdata/bootstrap/server.yaml.tmpl")},
-			&driver.Sleep{1 * time.Second},
+			&driver.Sleep{Duration: 1 * time.Second},
 			&driver.TCPServer{Prefix: "hello"},
 			&driver.Repeat{
 				N:    10,
@@ -71,13 +71,13 @@ func TestBasicTCPFlow(t *testing.T) {
 func TestBasicHTTP(t *testing.T) {
 	params := driver.NewTestParams(t, map[string]string{}, envoye2e.ProxyE2ETests)
 	if err := (&driver.Scenario{
-		[]driver.Step{
+		Steps: []driver.Step{
 			&driver.XDS{},
 			&driver.Update{Node: "client", Version: "0", Listeners: []string{driver.LoadTestData("testdata/listener/client.yaml.tmpl")}},
 			&driver.Update{Node: "server", Version: "0", Listeners: []string{driver.LoadTestData("testdata/listener/server.yaml.tmpl")}},
 			&driver.Envoy{Bootstrap: params.LoadTestData("testdata/bootstrap/client.yaml.tmpl")},
 			&driver.Envoy{Bootstrap: params.LoadTestData("testdata/bootstrap/server.yaml.tmpl")},
-			&driver.Sleep{1 * time.Second},
+			&driver.Sleep{Duration: 1 * time.Second},
 			driver.Get(params.Ports.ClientPort, "hello, world!"),
 		},
 	}).Run(params); err != nil {
@@ -90,13 +90,13 @@ func TestBasicHTTPwithTLS(t *testing.T) {
 	params.Vars["ClientTLSContext"] = params.LoadTestData("testdata/transport_socket/client.yaml.tmpl")
 	params.Vars["ServerTLSContext"] = params.LoadTestData("testdata/transport_socket/server.yaml.tmpl")
 	if err := (&driver.Scenario{
-		[]driver.Step{
+		Steps: []driver.Step{
 			&driver.XDS{},
 			&driver.Update{Node: "client", Version: "0", Listeners: []string{driver.LoadTestData("testdata/listener/client.yaml.tmpl")}},
 			&driver.Update{Node: "server", Version: "0", Listeners: []string{driver.LoadTestData("testdata/listener/server.yaml.tmpl")}},
 			&driver.Envoy{Bootstrap: params.LoadTestData("testdata/bootstrap/client.yaml.tmpl")},
 			&driver.Envoy{Bootstrap: params.LoadTestData("testdata/bootstrap/server.yaml.tmpl")},
-			&driver.Sleep{1 * time.Second},
+			&driver.Sleep{Duration: 1 * time.Second},
 			driver.Get(params.Ports.ClientPort, "hello, world!"),
 		},
 	}).Run(params); err != nil {
@@ -108,7 +108,7 @@ func TestBasicHTTPwithTLS(t *testing.T) {
 func TestBasicHTTPGateway(t *testing.T) {
 	params := driver.NewTestParams(t, map[string]string{}, envoye2e.ProxyE2ETests)
 	if err := (&driver.Scenario{
-		[]driver.Step{
+		Steps: []driver.Step{
 			&driver.XDS{},
 			&driver.Update{
 				Node: "server", Version: "0",
@@ -119,8 +119,66 @@ func TestBasicHTTPGateway(t *testing.T) {
 				},
 			},
 			&driver.Envoy{Bootstrap: params.LoadTestData("testdata/bootstrap/server.yaml.tmpl")},
-			&driver.Sleep{1 * time.Second},
+			&driver.Sleep{Duration: 1 * time.Second},
 			driver.Get(params.Ports.ClientPort, "hello, world!"),
+		},
+	}).Run(params); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestBasicCONNECT(t *testing.T) {
+	params := driver.NewTestParams(t, map[string]string{}, envoye2e.ProxyE2ETests)
+	params.Vars["ServerClusterName"] = "internal_outbound"
+	params.Vars["ServerInternalAddress"] = "internal_inbound"
+	params.Vars["ServerNetworkFilters"] = driver.LoadTestData("testdata/filters/restore_tls.yaml.tmpl")
+
+	updateClient := &driver.Update{Node: "client", Version: "{{ .N }}",
+		Clusters: []string{
+			driver.LoadTestData("testdata/cluster/internal_outbound.yaml.tmpl"),
+			driver.LoadTestData("testdata/cluster/original_dst.yaml.tmpl"),
+		},
+		Listeners: []string{
+			driver.LoadTestData("testdata/listener/client.yaml.tmpl"),
+			driver.LoadTestData("testdata/listener/internal_outbound.yaml.tmpl"),
+		},
+		Secrets: []string{
+			driver.LoadTestData("testdata/secret/client.yaml.tmpl"),
+		},
+	}
+
+	updateServer := &driver.Update{Node: "server", Version: "{{ .N }}",
+		Clusters: []string{
+			driver.LoadTestData("testdata/cluster/internal_inbound.yaml.tmpl"),
+		},
+		Listeners: []string{
+			driver.LoadTestData("testdata/listener/terminate_connect.yaml.tmpl"),
+			driver.LoadTestData("testdata/listener/server.yaml.tmpl"),
+		},
+		Secrets: []string{
+			driver.LoadTestData("testdata/secret/server.yaml.tmpl"),
+		},
+	}
+
+	if err := (&driver.Scenario{
+		Steps: []driver.Step{
+			&driver.XDS{},
+			updateClient, updateServer,
+			&driver.Envoy{Bootstrap: params.LoadTestData("testdata/bootstrap/client.yaml.tmpl")},
+			&driver.Envoy{Bootstrap: params.LoadTestData("testdata/bootstrap/server.yaml.tmpl")},
+			&driver.Sleep{Duration: 1 * time.Second},
+			driver.Get(params.Ports.ClientPort, "hello, world!"),
+			// xDS load generator:
+			// &driver.Repeat{
+			// 	Duration: time.Second * 20,
+			// 	Step: &driver.Scenario{
+			// 		[]driver.Step{
+			// 			&driver.Sleep{10000 * time.Millisecond},
+			// 			updateClient, updateServer,
+			// 			// may need short delay so we don't eat all the CPU
+			// 		},
+			// 	},
+			// },
 		},
 	}).Run(params); err != nil {
 		t.Fatal(err)

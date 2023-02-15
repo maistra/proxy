@@ -40,10 +40,10 @@ new_local_repository(
 # 2. Update .bazelversion, envoy.bazelrc and .bazelrc if needed.
 #
 # Note: this is needed by release builder to resolve envoy dep sha to tag.
-# Commit date: 2022-07-29
-ENVOY_SHA = "49af557244cbbf9f2c6d1ee8958b882e5b9b1d0c"
+# Commit date: 2023-02-10
+ENVOY_SHA = "33f7528fcf8b24a810dcaa2aa085cad6bc6227cf"
 
-ENVOY_SHA256 = "ecb88b0eb82590fd96483de1096347c66b049bb0f7da2649f62c101edaf5310e"
+ENVOY_SHA256 = "f84ef776ee811d2777513c526cf314a5b6d0272cb24616232ba8b680d1464a1d"
 
 ENVOY_ORG = "maistra"
 
@@ -94,6 +94,10 @@ local_repository(
 
 load("@envoy//bazel:repositories_extra.bzl", "envoy_dependencies_extra")
 envoy_dependencies_extra()
+
+load("@envoy//bazel:python_dependencies.bzl", "envoy_python_dependencies")
+
+envoy_python_dependencies()
 
 load("@base_pip3//:requirements.bzl", "install_deps")
 install_deps()
