@@ -1,0 +1,17 @@
+title = "Maistra Proxy gitleaks configuration"
+
+# The following rule lists all affected files and folders
+# to account for all known files so any additions can be flagged.
+# To be complete each file should have a regexp to identify
+# the specific key in question (todo). 
+[[rules]]
+   description = "PRIVATE KEY CHECK PATHS"
+   regex = '''-----BEGIN ((EC|PGP|DSA|RSA|OPENSSH) )?PRIVATE KEY( BLOCK)?-----'''
+   tags = ["key"]
+   [rules.allowlist]
+      description = "test files"
+      paths = [
+         '''^testdata/certs/(.*?).(pem|key|cert)$''',
+         '''^test/envoye2e/tcp_metadata_exchange/(.*?).(pem|key)$''',
+      ]
+
