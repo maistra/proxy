@@ -48,6 +48,7 @@ build --override_repository=com_github_pkg_errors=/work/maistra/vendor/com_githu
 build --override_repository=com_github_skyapm_cpp2sky=/work/maistra/vendor/com_github_skyapm_cpp2sky
 build --override_repository=com_github_spf13_afero=/work/maistra/vendor/com_github_spf13_afero
 build --override_repository=com_github_tencent_rapidjson=/work/maistra/vendor/com_github_tencent_rapidjson
+build --override_repository=com_github_zlib_ng_zlib_ng=/work/maistra/vendor/com_github_zlib_ng_zlib_ng
 build --override_repository=com_google_absl=/work/maistra/vendor/com_google_absl
 build --override_repository=com_google_cel_cpp=/work/maistra/vendor/com_google_cel_cpp
 build --override_repository=com_google_googleapis=/work/maistra/vendor/com_google_googleapis
@@ -55,7 +56,6 @@ build --override_repository=com_google_googleapis_imports=/work/maistra/vendor/c
 build --override_repository=com_google_googletest=/work/maistra/vendor/com_google_googletest
 build --override_repository=com_google_protobuf=/work/maistra/vendor/com_google_protobuf
 build --override_repository=com_googlesource_chromium_base_trace_event_common=/work/maistra/vendor/com_googlesource_chromium_base_trace_event_common
-build --override_repository=com_googlesource_chromium_zlib=/work/maistra/vendor/com_googlesource_chromium_zlib
 build --override_repository=com_googlesource_code_re2=/work/maistra/vendor/com_googlesource_code_re2
 build --override_repository=com_googlesource_googleurl=/work/maistra/vendor/com_googlesource_googleurl
 build --override_repository=com_lightstep_tracer_cpp=/work/maistra/vendor/com_lightstep_tracer_cpp

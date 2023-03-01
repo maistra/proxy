@@ -18,6 +18,8 @@
 # This software is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY
 # KIND, either express or implied.
 #
+# SPDX-License-Identifier: curl
+#
 ###########################################################################
 # Shared between Makefile.am and CMakeLists.txt
 
@@ -140,6 +142,7 @@ DPAGES = \
   next.d \
   no-alpn.d \
   no-buffer.d \
+  no-clobber.d \
   no-keepalive.d \
   no-npn.d \
   no-progress-meter.d \
@@ -197,12 +200,14 @@ DPAGES = \
   quote.d \
   random-file.d \
   range.d \
+  rate.d \
   raw.d \
   referer.d \
   remote-header-name.d \
   remote-name-all.d \
   remote-name.d \
   remote-time.d \
+  remove-on-error.d \
   request-target.d \
   request.d \
   resolve.d \

@@ -282,7 +282,6 @@ typed_config:
   EXPECT_EQ(2, stats().fail_verify_error_.value());
 }
 
-
 TEST_F(TestSPIFFEValidator, TestDoVerifyCertChainMultipleTrustDomain) {
   initialize(TestEnvironment::substitute(R"EOF(
 name: envoy.tls.cert_validator.spiffe
@@ -558,9 +557,9 @@ typed_config:
         filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/intermediate_ca_cert.pem"
   )EOF"),
              time_system);
-  EXPECT_EQ(19956, validator().daysUntilFirstCertExpires());
+  EXPECT_EQ(20036, validator().daysUntilFirstCertExpires());
   time_system.setSystemTime(std::chrono::milliseconds(864000000));
-  EXPECT_EQ(19946, validator().daysUntilFirstCertExpires());
+  EXPECT_EQ(20026, validator().daysUntilFirstCertExpires());
 }
 
 TEST_F(TestSPIFFEValidator, TestAddClientValidationContext) {

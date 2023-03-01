@@ -19,6 +19,8 @@
 # This software is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY
 # KIND, either express or implied.
 #
+# SPDX-License-Identifier: curl
+#
 ###########################################################################
 
 =begin comment
@@ -101,17 +103,19 @@ sub printdesc {
             print ".fi\n"; # fill-in
         }
         # skip lines starting with space (examples)
-        if($d =~ /^[^ ]/) {
+        if($d =~ /^[^ ]/ && $d =~ /--/) {
             for my $k (keys %optlong) {
                 my $l = manpageify($k);
-                $d =~ s/--$k([^a-z0-9_-])(\W)/$l$1$2/;
+                $d =~ s/--\Q$k\E([^a-z0-9_-])([^a-zA-Z0-9_])/$l$1$2/;
             }
         }
         # quote "bare" minuses in the output
         $d =~ s/( |\\fI|^)--/$1\\-\\-/g;
         $d =~ s/([ -]|\\fI|^)-/$1\\-/g;
         # handle single quotes first on the line
-        $d =~ s/(\s*)\'/$1\\(aq/;
+        $d =~ s/^(\s*)\'/$1\\(aq/;
+        # handle double quotes first on the line
+        $d =~ s/^(\s*)\"/$1\\(dq/;
         print $d;
     }
     if($exam) {
@@ -195,9 +199,13 @@ sub single {
     my $requires;
     my $category;
     my $seealso;
+    my $copyright;
+    my $spdx;
     my @examples; # there can be more than one
     my $magic; # cmdline special option
     my $line;
+    my $multi;
+    my $experimental;
     while(<F>) {
         $line++;
         if(/^Short: *(.)/i) {
@@ -236,12 +244,28 @@ sub single {
         elsif(/^Example: *(.*)/i) {
             push @examples, $1;
         }
+        elsif(/^Multi: *(.*)/i) {
+            $multi=$1;
+        }
+        elsif(/^Experimental: yes/i) {
+            $experimental=1;
+        }
+        elsif(/^C: (.*)/i) {
+            $copyright=$1;
+        }
+        elsif(/^SPDX-License-Identifier: (.*)/i) {
+            $spdx=$1;
+        }
         elsif(/^Help: *(.*)/i) {
             ;
         }
         elsif(/^---/) {
             if(!$long) {
                 print STDERR "ERROR: no 'Long:' in $f\n";
+                return 1;
+            }
+            if($multi !~ /(single|append|boolean|mutex)/) {
+                print STDERR "ERROR: bad 'Multi:' in $f\n";
                 return 1;
             }
             if(!$category) {
@@ -258,6 +282,14 @@ sub single {
             }
             if(!$seealso) {
                 print STDERR "$f:$line:1:ERROR: no 'See-also:' field present\n";
+                return 2;
+            }
+            if(!$copyright) {
+                print STDERR "$f:$line:1:ERROR: no 'C:' field present\n";
+                return 2;
+            }
+            if(!$spdx) {
+                print STDERR "$f:$line:1:ERROR: no 'SPDX-License-Identifier:' field present\n";
                 return 2;
             }
             last;
@@ -306,8 +338,34 @@ sub single {
         print ".SH DESCRIPTION\n";
     }
 
+    if($experimental) {
+        print "**WARNING**: this option is experimental. Do not use in production.\n\n";
+    }
+
     printdesc(@desc);
     undef @desc;
+
+    if($multi eq "single") {
+        print "\nIf --$long is provided several times, the last set ".
+            "value will be used.\n";
+    }
+    elsif($multi eq "append") {
+        print "\n--$long can be used several times in a command line\n";
+    }
+    elsif($multi eq "boolean") {
+        my $rev = "no-$long";
+        # for options that start with "no-" the reverse is then without
+        # the no- prefix
+        if($long =~ /^no-/) {
+            $rev = $long;
+            $rev =~ s/^no-//;
+        }
+        print "\nProviding --$long multiple times has no extra effect.\n".
+            "Disable it again with --$rev.\n";
+    }
+    elsif($multi eq "mutex") {
+        print "\nProviding --$long multiple times has no extra effect.\n";
+    }
 
     my @foot;
     if($seealso) {
@@ -349,7 +407,8 @@ sub single {
             my $l = manpageify($k);
             $mstr .= sprintf "%s$l", $mstr?" and ":"";
         }
-        push @foot, overrides($standalone, "This option overrides $mstr. ");
+        push @foot, overrides($standalone,
+                              "This option is mutually exclusive to $mstr. ");
     }
     if($examples[0]) {
         my $s ="";
@@ -459,6 +518,8 @@ sub listhelp {
  *
  * This software is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY
  * KIND, either express or implied.
+ *
+ * SPDX-License-Identifier: curl
  *
  ***************************************************************************/
 #include "tool_setup.h"

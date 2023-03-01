@@ -36,7 +36,7 @@ V8_WARN_UNUSED_RESULT MaybeHandle<JSReceiver> CoerceOptionsToObject(
 // printing the error message.
 V8_EXPORT_PRIVATE V8_WARN_UNUSED_RESULT Maybe<bool> GetStringOption(
     Isolate* isolate, Handle<JSReceiver> options, const char* property,
-    std::vector<const char*> values, const char* method_name,
+    const std::vector<const char*>& values, const char* method_name,
     std::unique_ptr<char[]>* result);
 
 // A helper template to get string from option into a enum.
@@ -104,34 +104,30 @@ V8_WARN_UNUSED_RESULT static Maybe<T> GetStringOrBooleanOption(
   // 6. Let value be ? ToString(value).
   ASSIGN_RETURN_ON_EXCEPTION_VALUE(
       isolate, value_str, Object::ToString(isolate, value), Nothing<T>());
-  // 7. If values does not contain an element equal to value, throw a
-  // RangeError exception.
+  // If values does not contain an element equal to value, return fallback.
   // 8. Return value.
   value_str = String::Flatten(isolate, value_str);
-  DisallowGarbageCollection no_gc;
-  const String::FlatContent& flat = value_str->GetFlatContent(no_gc);
-  int32_t length = value_str->length();
-  for (size_t i = 0; i < str_values.size(); i++) {
-    if (static_cast<int32_t>(strlen(str_values.at(i))) == length) {
-      if (flat.IsOneByte()) {
-        if (CompareCharsEqual(str_values.at(i), flat.ToOneByteVector().begin(),
-                              length)) {
-          return Just(enum_values[i]);
-        }
-      } else {
-        if (CompareCharsEqual(str_values.at(i), flat.ToUC16Vector().begin(),
-                              length)) {
-          return Just(enum_values[i]);
+  {
+    DisallowGarbageCollection no_gc;
+    const String::FlatContent& flat = value_str->GetFlatContent(no_gc);
+    int32_t length = value_str->length();
+    for (size_t i = 0; i < str_values.size(); i++) {
+      if (static_cast<int32_t>(strlen(str_values.at(i))) == length) {
+        if (flat.IsOneByte()) {
+          if (CompareCharsEqual(str_values.at(i),
+                                flat.ToOneByteVector().begin(), length)) {
+            return Just(enum_values[i]);
+          }
+        } else {
+          if (CompareCharsEqual(str_values.at(i), flat.ToUC16Vector().begin(),
+                                length)) {
+            return Just(enum_values[i]);
+          }
         }
       }
     }
-  }
-  THROW_NEW_ERROR_RETURN_VALUE(
-      isolate,
-      NewRangeError(MessageTemplate::kValueOutOfRange, value,
-                    isolate->factory()->NewStringFromAsciiChecked(method),
-                    property_str),
-      Nothing<T>());
+  }  // end of no_gc
+  return Just(fallback_value);
 }
 
 // ECMA402 9.2.10. GetOption( options, property, type, values, fallback)
@@ -153,6 +149,11 @@ V8_EXPORT_PRIVATE V8_WARN_UNUSED_RESULT Maybe<bool> GetBoolOption(
 V8_EXPORT_PRIVATE V8_WARN_UNUSED_RESULT Maybe<int> GetNumberOption(
     Isolate* isolate, Handle<JSReceiver> options, Handle<String> property,
     int min, int max, int fallback);
+
+// #sec-getoption while type is "number"
+V8_EXPORT_PRIVATE V8_WARN_UNUSED_RESULT Maybe<double> GetNumberOptionAsDouble(
+    Isolate* isolate, Handle<JSReceiver> options, Handle<String> property,
+    double default_value);
 
 // ecma402/#sec-defaultnumberoption
 V8_EXPORT_PRIVATE V8_WARN_UNUSED_RESULT Maybe<int> DefaultNumberOption(

@@ -81,13 +81,13 @@ FlagsCondition CommuteFlagsCondition(FlagsCondition condition) {
 }
 
 bool InstructionOperand::InterferesWith(const InstructionOperand& other) const {
-  const bool kComplexFPAliasing = !kSimpleFPAliasing &&
+  const bool kCombineFPAliasing = kFPAliasing == AliasingKind::kCombine &&
                                   this->IsFPLocationOperand() &&
                                   other.IsFPLocationOperand();
   const bool kComplexS128SlotAliasing =
       (this->IsSimd128StackSlot() && other.IsAnyStackSlot()) ||
       (other.IsSimd128StackSlot() && this->IsAnyStackSlot());
-  if (!kComplexFPAliasing && !kComplexS128SlotAliasing) {
+  if (!kCombineFPAliasing && !kComplexS128SlotAliasing) {
     return EqualsCanonicalized(other);
   }
   const LocationOperand& loc = *LocationOperand::cast(this);
@@ -98,7 +98,7 @@ bool InstructionOperand::InterferesWith(const InstructionOperand& other) const {
   MachineRepresentation rep = loc.representation();
   MachineRepresentation other_rep = other_loc.representation();
 
-  if (kComplexFPAliasing && !kComplexS128SlotAliasing) {
+  if (kCombineFPAliasing && !kComplexS128SlotAliasing) {
     if (rep == other_rep) return EqualsCanonicalized(other);
     if (kind == LocationOperand::REGISTER) {
       // FP register-register interference.
@@ -126,7 +126,7 @@ bool InstructionOperand::InterferesWith(const InstructionOperand& other) const {
 bool LocationOperand::IsCompatible(LocationOperand* op) {
   if (IsRegister() || IsStackSlot()) {
     return op->IsRegister() || op->IsStackSlot();
-  } else if (kSimpleFPAliasing) {
+  } else if (kFPAliasing != AliasingKind::kCombine) {
     // A backend may choose to generate the same instruction sequence regardless
     // of the FP representation. As a result, we can relax the compatibility and
     // allow a Double to be moved in a Float for example. However, this is only
@@ -162,8 +162,11 @@ std::ostream& operator<<(std::ostream& os, const InstructionOperand& op) {
                     << ")";
         case UnallocatedOperand::FIXED_FP_REGISTER:
           return os << "(="
-                    << DoubleRegister::from_code(
-                           unalloc->fixed_register_index())
+                    << (unalloc->IsSimd128Register()
+                            ? i::RegisterName((Simd128Register::from_code(
+                                  unalloc->fixed_register_index())))
+                            : i::RegisterName(DoubleRegister::from_code(
+                                  unalloc->fixed_register_index())))
                     << ")";
         case UnallocatedOperand::MUST_HAVE_REGISTER:
           return os << "(R)";
@@ -246,6 +249,9 @@ std::ostream& operator<<(std::ostream& os, const InstructionOperand& op) {
         case MachineRepresentation::kSimd128:
           os << "|s128";
           break;
+        case MachineRepresentation::kSimd256:
+          os << "|s256";
+          break;
         case MachineRepresentation::kTaggedSigned:
           os << "|ts";
           break;
@@ -296,8 +302,8 @@ bool ParallelMove::IsRedundant() const {
 
 void ParallelMove::PrepareInsertAfter(
     MoveOperands* move, ZoneVector<MoveOperands*>* to_eliminate) const {
-  bool no_aliasing =
-      kSimpleFPAliasing || !move->destination().IsFPLocationOperand();
+  bool no_aliasing = kFPAliasing != AliasingKind::kCombine ||
+                     !move->destination().IsFPLocationOperand();
   MoveOperands* replacement = nullptr;
   MoveOperands* eliminated = nullptr;
   for (MoveOperands* curr : *this) {
@@ -329,7 +335,7 @@ Instruction::Instruction(InstructionCode opcode)
   parallel_moves_[1] = nullptr;
 
   // PendingOperands are required to be 8 byte aligned.
-  STATIC_ASSERT(offsetof(Instruction, operands_) % 8 == 0);
+  static_assert(offsetof(Instruction, operands_) % 8 == 0);
 }
 
 Instruction::Instruction(InstructionCode opcode, size_t output_count,
@@ -561,13 +567,6 @@ Handle<CodeT> Constant::ToCode() const {
   return value;
 }
 
-const StringConstantBase* Constant::ToDelayedStringConstant() const {
-  DCHECK_EQ(kDelayedStringConstant, type());
-  const StringConstantBase* value =
-      bit_cast<StringConstantBase*>(static_cast<intptr_t>(value_));
-  return value;
-}
-
 std::ostream& operator<<(std::ostream& os, const Constant& constant) {
   switch (constant.type()) {
     case Constant::kInt32:
@@ -585,9 +584,6 @@ std::ostream& operator<<(std::ostream& os, const Constant& constant) {
       return os << Brief(*constant.ToHeapObject());
     case Constant::kRpoNumber:
       return os << "RPO" << constant.ToRpoNumber().ToInt();
-    case Constant::kDelayedStringConstant:
-      return os << "DelayedStringConstant: "
-                << constant.ToDelayedStringConstant();
   }
   UNREACHABLE();
 }
@@ -933,6 +929,7 @@ static MachineRepresentation FilterRepresentation(MachineRepresentation rep) {
     case MachineRepresentation::kFloat32:
     case MachineRepresentation::kFloat64:
     case MachineRepresentation::kSimd128:
+    case MachineRepresentation::kSimd256:
     case MachineRepresentation::kCompressedPointer:
     case MachineRepresentation::kCompressed:
     case MachineRepresentation::kSandboxedPointer:
@@ -1043,9 +1040,10 @@ size_t GetConservativeFrameSizeInBytes(FrameStateType type,
           static_cast<int>(parameters_count), static_cast<int>(locals_count));
       return info.frame_size_in_bytes();
     }
-    case FrameStateType::kArgumentsAdaptor:
-      // The arguments adaptor frame state is only used in the deoptimizer and
-      // does not occupy any extra space in the stack. Check out the design doc:
+    case FrameStateType::kInlinedExtraArguments:
+      // The inlined extra arguments frame state is only used in the deoptimizer
+      // and does not occupy any extra space in the stack.
+      // Check out the design doc:
       // https://docs.google.com/document/d/150wGaUREaZI6YWqOQFD5l2mWQXaPbbZjcAIJLOFrzMs/edit
       // We just need to account for the additional parameters we might push
       // here.
@@ -1120,7 +1118,7 @@ size_t FrameStateDescriptor::GetHeight() const {
       // Custom, non-JS calling convention (that does not have a notion of
       // a receiver or context).
       return parameters_count();
-    case FrameStateType::kArgumentsAdaptor:
+    case FrameStateType::kInlinedExtraArguments:
     case FrameStateType::kConstructStub:
     case FrameStateType::kJavaScriptBuiltinContinuation:
     case FrameStateType::kJavaScriptBuiltinContinuationWithCatch:

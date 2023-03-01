@@ -205,11 +205,23 @@ class V8_EXPORT V8InspectorSession {
   virtual void triggerPreciseCoverageDeltaUpdate(StringView occasion) = 0;
 };
 
+class V8_EXPORT WebDriverValue {
+ public:
+  explicit WebDriverValue(std::unique_ptr<StringBuffer> type,
+                          v8::MaybeLocal<v8::Value> value = {})
+      : type(std::move(type)), value(value) {}
+  std::unique_ptr<StringBuffer> type;
+  v8::MaybeLocal<v8::Value> value;
+};
+
 class V8_EXPORT V8InspectorClient {
  public:
   virtual ~V8InspectorClient() = default;
 
   virtual void runMessageLoopOnPause(int contextGroupId) {}
+  virtual void runMessageLoopOnInstrumentationPause(int contextGroupId) {
+    runMessageLoopOnPause(contextGroupId);
+  }
   virtual void quitMessageLoopOnPause() {}
   virtual void runIfWaitingForDebugger(int contextGroupId) {}
 
@@ -219,6 +231,10 @@ class V8_EXPORT V8InspectorClient {
   virtual void beginUserGesture() {}
   virtual void endUserGesture() {}
 
+  virtual std::unique_ptr<WebDriverValue> serializeToWebDriverValue(
+      v8::Local<v8::Value> v8_value, int max_depth) {
+    return nullptr;
+  }
   virtual std::unique_ptr<StringBuffer> valueSubtype(v8::Local<v8::Value>) {
     return nullptr;
   }
@@ -270,6 +286,9 @@ class V8_EXPORT V8InspectorClient {
   // The caller would defer to generating a random 64 bit integer if
   // this method returns 0.
   virtual int64_t generateUniqueId() { return 0; }
+
+  virtual void dispatchError(v8::Local<v8::Context>, v8::Local<v8::Message>,
+                             v8::Local<v8::Value>) {}
 };
 
 // These stack trace ids are intended to be passed between debuggers and be
@@ -345,9 +364,12 @@ class V8_EXPORT V8Inspector {
     virtual void sendNotification(std::unique_ptr<StringBuffer> message) = 0;
     virtual void flushProtocolNotifications() = 0;
   };
-  virtual std::unique_ptr<V8InspectorSession> connect(int contextGroupId,
-                                                      Channel*,
-                                                      StringView state) = 0;
+  enum ClientTrustLevel { kUntrusted, kFullyTrusted };
+  virtual std::unique_ptr<V8InspectorSession> connect(
+      int contextGroupId, Channel*, StringView state,
+      ClientTrustLevel client_trust_level) {
+    return nullptr;
+  }
 
   // API methods.
   virtual std::unique_ptr<V8StackTrace> createStackTrace(

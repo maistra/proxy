@@ -106,7 +106,7 @@ bool SimulatorHelper::FillRegisters(Isolate* isolate,
   state->sp = reinterpret_cast<void*>(simulator->sp());
   state->fp = reinterpret_cast<void*>(simulator->fp());
   state->lr = reinterpret_cast<void*>(simulator->lr());
-#elif V8_TARGET_ARCH_MIPS || V8_TARGET_ARCH_MIPS64 || V8_TARGET_ARCH_LOONG64
+#elif V8_TARGET_ARCH_MIPS64 || V8_TARGET_ARCH_LOONG64
   if (!simulator->has_bad_pc()) {
     state->pc = reinterpret_cast<void*>(simulator->get_pc());
   }
@@ -127,6 +127,13 @@ bool SimulatorHelper::FillRegisters(Isolate* isolate,
   state->fp = reinterpret_cast<void*>(simulator->get_register(Simulator::fp));
   state->lr = reinterpret_cast<void*>(simulator->get_register(Simulator::ra));
 #elif V8_TARGET_ARCH_RISCV64
+  if (!simulator->has_bad_pc()) {
+    state->pc = reinterpret_cast<void*>(simulator->get_pc());
+  }
+  state->sp = reinterpret_cast<void*>(simulator->get_register(Simulator::sp));
+  state->fp = reinterpret_cast<void*>(simulator->get_register(Simulator::fp));
+  state->lr = reinterpret_cast<void*>(simulator->get_register(Simulator::ra));
+#elif V8_TARGET_ARCH_RISCV32
   if (!simulator->has_bad_pc()) {
     state->pc = reinterpret_cast<void*>(simulator->get_pc());
   }
@@ -226,6 +233,13 @@ bool TickSample::GetStackSample(Isolate* v8_isolate, RegisterState* regs,
     sample_info->embedder_state = embedder_state->GetState();
   }
 
+  Context top_context = isolate->context();
+  if (top_context.ptr() != i::Context::kNoContext &&
+      top_context.ptr() != i::Context::kInvalidContext) {
+    NativeContext top_native_context = top_context.native_context();
+    sample_info->context = reinterpret_cast<void*>(top_native_context.ptr());
+  }
+
   i::Address js_entry_sp = isolate->js_entry_sp();
   if (js_entry_sp == 0) return true;  // Not executing JS now.
 
@@ -292,13 +306,6 @@ bool TickSample::GetStackSample(Isolate* v8_isolate, RegisterState* regs,
                                reinterpret_cast<i::Address>(regs->sp),
                                reinterpret_cast<i::Address>(regs->lr),
                                js_entry_sp);
-
-  Context top_context = isolate->context();
-  if (top_context.ptr() != i::Context::kNoContext &&
-      top_context.ptr() != i::Context::kInvalidContext) {
-    NativeContext top_native_context = top_context.native_context();
-    sample_info->context = reinterpret_cast<void*>(top_native_context.ptr());
-  }
 
   if (it.done()) return true;
 

@@ -61,6 +61,34 @@ ExtraExecRustcFlagsInfo = provider(
     fields = {"extra_exec_rustc_flags": "List[string] Extra flags to pass to rustc in exec configuration"},
 )
 
+IsProcMacroDepInfo = provider(
+    doc = "Records if this is a transitive dependency of a proc-macro.",
+    fields = {"is_proc_macro_dep": "Boolean"},
+)
+
+def _is_proc_macro_dep_impl(ctx):
+    return IsProcMacroDepInfo(is_proc_macro_dep = ctx.build_setting_value)
+
+is_proc_macro_dep = rule(
+    doc = "Records if this is a transitive dependency of a proc-macro.",
+    implementation = _is_proc_macro_dep_impl,
+    build_setting = config.bool(flag = True),
+)
+
+IsProcMacroDepEnabledInfo = provider(
+    doc = "Enables the feature to record if a library is a transitive dependency of a proc-macro.",
+    fields = {"enabled": "Boolean"},
+)
+
+def _is_proc_macro_dep_enabled_impl(ctx):
+    return IsProcMacroDepEnabledInfo(enabled = ctx.build_setting_value)
+
+is_proc_macro_dep_enabled = rule(
+    doc = "Enables the feature to record if a library is a transitive dependency of a proc-macro.",
+    implementation = _is_proc_macro_dep_enabled_impl,
+    build_setting = config.bool(flag = True),
+)
+
 def _get_rustc_env(attr, toolchain, crate_name):
     """Gathers rustc environment variables
 
@@ -78,7 +106,7 @@ def _get_rustc_env(attr, toolchain, crate_name):
         patch, pre = patch.split("-", 1)
     else:
         pre = ""
-    return {
+    result = {
         "CARGO_CFG_TARGET_ARCH": toolchain.target_arch,
         "CARGO_CFG_TARGET_OS": toolchain.os,
         "CARGO_CRATE_NAME": crate_name,
@@ -92,6 +120,12 @@ def _get_rustc_env(attr, toolchain, crate_name):
         "CARGO_PKG_VERSION_PATCH": patch,
         "CARGO_PKG_VERSION_PRE": pre,
     }
+    if hasattr(attr, "_is_proc_macro_dep_enabled") and attr._is_proc_macro_dep_enabled[IsProcMacroDepEnabledInfo].enabled:
+        is_proc_macro_dep = "0"
+        if hasattr(attr, "_is_proc_macro_dep") and attr._is_proc_macro_dep[IsProcMacroDepInfo].is_proc_macro_dep:
+            is_proc_macro_dep = "1"
+        result["BAZEL_RULES_RUST_IS_PROC_MACRO_DEP"] = is_proc_macro_dep
+    return result
 
 def get_compilation_mode_opts(ctx, toolchain):
     """Gathers rustc flags for the current compilation mode (opt/debug)
@@ -119,7 +153,19 @@ def _are_linkstamps_supported(feature_configuration, has_grep_includes):
             has_grep_includes)
 
 def _should_use_pic(cc_toolchain, feature_configuration, crate_type):
-    if crate_type in ("cdylib" or "dylib"):
+    """Whether or not [PIC][pic] should be enabled
+
+    [pic]: https://en.wikipedia.org/wiki/Position-independent_code
+
+    Args:
+        cc_toolchain (CcToolchainInfo): The current `cc_toolchain`.
+        feature_configuration (FeatureConfiguration): Feature configuration to be queried.
+        crate_type (str): A Rust target's crate type.
+
+    Returns:
+        bool: Whether or not [PIC][pic] should be enabled.
+    """
+    if crate_type in ("cdylib", "dylib"):
         return cc_toolchain.needs_pic_for_dynamic_libraries(feature_configuration = feature_configuration)
     return False
 
@@ -191,9 +237,12 @@ def collect_deps(
                     ] else [dep_info.transitive_crate_outputs],
                 ),
             )
-            transitive_noncrates.append(dep_info.transitive_noncrates)
+
+            if "proc-macro" not in [crate_info.type, crate_info.wrapped_crate_type]:
+                transitive_noncrates.append(dep_info.transitive_noncrates)
+                transitive_link_search_paths.append(dep_info.link_search_path_files)
+
             transitive_build_infos.append(dep_info.transitive_build_infos)
-            transitive_link_search_paths.append(dep_info.link_search_path_files)
 
         elif cc_info:
             # This dependency is a cc_library
@@ -566,8 +615,8 @@ def collect_inputs(
                 output_replacement = crate_info.output.path,
             )
 
-    # If stamping is enabled include the volatile status info file
-    stamp_info = [ctx.version_file] if stamp else []
+    # If stamping is enabled include the volatile and stable status info file
+    stamp_info = [ctx.version_file, ctx.info_file] if stamp else []
 
     compile_inputs = depset(
         linkstamp_outs + stamp_info,
@@ -673,6 +722,7 @@ def construct_arguments(
     # If stamping is enabled, enable the functionality in the process wrapper
     if stamp:
         process_wrapper_flags.add("--volatile-status-file", ctx.version_file)
+        process_wrapper_flags.add("--stable-status-file", ctx.info_file)
 
     # Both ctx.label.workspace_root and ctx.label.package are relative paths
     # and either can be empty strings. Avoid trailing/double slashes in the path.
@@ -791,6 +841,9 @@ def construct_arguments(
         rustc_flags.add("--extern")
         rustc_flags.add("proc_macro")
 
+    if toolchain.llvm_cov and ctx.configuration.coverage_enabled:
+        rustc_flags.add("--codegen=instrument-coverage")
+
     # Make bin crate data deps available to tests.
     for data in getattr(attr, "data", []):
         if rust_common.crate_info in data:
@@ -799,6 +852,9 @@ def construct_arguments(
                 # Trying to make CARGO_BIN_EXE_{} canonical across platform by strip out extension if exists
                 env_basename = dep_crate_info.output.basename[:-(1 + len(dep_crate_info.output.extension))] if len(dep_crate_info.output.extension) > 0 else dep_crate_info.output.basename
                 env["CARGO_BIN_EXE_" + env_basename] = dep_crate_info.output.short_path
+
+    # Add environment variables from the Rust toolchain.
+    env.update(toolchain.env)
 
     # Update environment with user provided variables.
     env.update(expand_dict_value_locations(
@@ -817,8 +873,14 @@ def construct_arguments(
     if hasattr(ctx.attr, "_extra_rustc_flags") and not is_exec_configuration(ctx):
         rustc_flags.add_all(ctx.attr._extra_rustc_flags[ExtraRustcFlagsInfo].extra_rustc_flags)
 
+    if hasattr(ctx.attr, "_extra_rustc_flag") and not is_exec_configuration(ctx):
+        rustc_flags.add_all(ctx.attr._extra_rustc_flag[ExtraRustcFlagsInfo].extra_rustc_flags)
+
     if hasattr(ctx.attr, "_extra_exec_rustc_flags") and is_exec_configuration(ctx):
         rustc_flags.add_all(ctx.attr._extra_exec_rustc_flags[ExtraExecRustcFlagsInfo].extra_exec_rustc_flags)
+
+    if hasattr(ctx.attr, "_extra_exec_rustc_flag") and is_exec_configuration(ctx):
+        rustc_flags.add_all(ctx.attr._extra_exec_rustc_flag[ExtraExecRustcFlagsInfo].extra_exec_rustc_flags)
 
     # Create a struct which keeps the arguments separate so each may be tuned or
     # replaced where necessary
@@ -923,7 +985,7 @@ def rustc_compile_action(
     if toolchain.os == "windows" and crate_info.type == "cdylib":
         # Rustc generates the import library with a `.dll.lib` extension rather than the usual `.lib` one that msvc
         # expects (see https://github.com/rust-lang/rust/pull/29520 for more context).
-        interface_library = ctx.actions.declare_file(crate_info.output.basename + ".lib")
+        interface_library = ctx.actions.declare_file(crate_info.output.basename + ".lib", sibling = crate_info.output)
         outputs.append(interface_library)
 
     # The action might generate extra output that we don't want to include in the `DefaultInfo` files.
@@ -935,10 +997,10 @@ def rustc_compile_action(
     dsym_folder = None
     if crate_info.type in ("cdylib", "bin") and not crate_info.is_test:
         if toolchain.os == "windows":
-            pdb_file = ctx.actions.declare_file(crate_info.output.basename[:-len(crate_info.output.extension)] + "pdb")
+            pdb_file = ctx.actions.declare_file(crate_info.output.basename[:-len(crate_info.output.extension)] + "pdb", sibling = crate_info.output)
             action_outputs.append(pdb_file)
         elif toolchain.os == "darwin":
-            dsym_folder = ctx.actions.declare_directory(crate_info.output.basename + ".dSYM")
+            dsym_folder = ctx.actions.declare_directory(crate_info.output.basename + ".dSYM", sibling = crate_info.output)
             action_outputs.append(dsym_folder)
 
     if ctx.executable._process_wrapper:
@@ -976,8 +1038,12 @@ def rustc_compile_action(
             ),
         )
 
+    coverage_runfiles = []
+    if toolchain.llvm_cov and ctx.configuration.coverage_enabled and crate_info.is_test:
+        coverage_runfiles = [toolchain.llvm_cov, toolchain.llvm_profdata]
+
     runfiles = ctx.runfiles(
-        files = getattr(ctx.files, "data", []),
+        files = getattr(ctx.files, "data", []) + coverage_runfiles,
         collect_data = True,
     )
 
@@ -986,15 +1052,29 @@ def rustc_compile_action(
     out_binary = getattr(attr, "out_binary", False)
 
     providers = [
-        crate_info,
-        dep_info,
         DefaultInfo(
             # nb. This field is required for cc_library to depend on our output.
             files = depset(outputs),
             runfiles = runfiles,
             executable = crate_info.output if crate_info.type == "bin" or crate_info.is_test or out_binary else None,
         ),
+        coverage_common.instrumented_files_info(
+            ctx,
+            dependency_attributes = ["deps", "crate"],
+            extensions = ["rs"],
+            source_attributes = ["srcs"],
+        ),
     ]
+
+    if crate_info.type in ["staticlib", "cdylib"] and not out_binary:
+        # These rules are not supposed to be depended on by other rust targets, and
+        # as such they shouldn't provide a CrateInfo. However, one may still want to
+        # write a rust_test for them, so we provide the CrateInfo wrapped in a provider
+        # that rust_test understands.
+        providers.extend([rust_common.test_crate_info(crate = crate_info), dep_info])
+    else:
+        providers.extend([crate_info, dep_info])
+
     if toolchain.target_arch != "wasm32":
         providers += establish_cc_info(ctx, attr, crate_info, toolchain, cc_toolchain, feature_configuration, interface_library)
     if pdb_file:
@@ -1006,6 +1086,21 @@ def rustc_compile_action(
 
 def _is_dylib(dep):
     return not bool(dep.static_library or dep.pic_static_library)
+
+def _collect_nonstatic_linker_inputs(cc_info):
+    shared_linker_inputs = []
+    for linker_input in cc_info.linking_context.linker_inputs.to_list():
+        dylibs = [
+            lib
+            for lib in linker_input.libraries
+            if _is_dylib(lib)
+        ]
+        if dylibs:
+            shared_linker_inputs.append(cc_common.create_linker_input(
+                owner = linker_input.owner,
+                libraries = depset(dylibs),
+            ))
+    return shared_linker_inputs
 
 def establish_cc_info(ctx, attr, crate_info, toolchain, cc_toolchain, feature_configuration, interface_library):
     """If the produced crate is suitable yield a CcInfo to allow for interop with cc rules
@@ -1085,9 +1180,20 @@ def establish_cc_info(ctx, attr, crate_info, toolchain, cc_toolchain, feature_co
         CcInfo(linking_context = linking_context),
         toolchain.stdlib_linkflags,
     ]
+
     for dep in getattr(attr, "deps", []):
         if CcInfo in dep:
-            cc_infos.append(dep[CcInfo])
+            # A Rust staticlib or shared library doesn't need to propagate linker inputs
+            # of its dependencies, except for shared libraries.
+            if crate_info.type in ["cdylib", "staticlib"]:
+                shared_linker_inputs = _collect_nonstatic_linker_inputs(dep[CcInfo])
+                if shared_linker_inputs:
+                    linking_context = cc_common.create_linking_context(
+                        linker_inputs = depset(shared_linker_inputs),
+                    )
+                    cc_infos.append(CcInfo(linking_context = linking_context))
+            else:
+                cc_infos.append(dep[CcInfo])
 
     if crate_info.type in ("rlib", "lib") and toolchain.libstd_and_allocator_ccinfo:
         # TODO: if we already have an rlib in our deps, we could skip this
@@ -1264,8 +1370,25 @@ def _portable_link_flags(lib, use_pic, ambiguous_libs):
     if ambiguous_libs and artifact.path in ambiguous_libs:
         artifact = ambiguous_libs[artifact.path]
     if lib.static_library or lib.pic_static_library:
+        # To ensure appropriate linker library argument order, in the presence
+        # of both native libraries that depend on rlibs and rlibs that depend
+        # on native libraries, we use an approach where we "sandwich" the
+        # rust libraries between two similar sections of all of native
+        # libraries:
+        # n1 n2 ... r1 r2 ... n1 n2 ...
+        # A         B         C
+        # This way any dependency from a native library to a rust library
+        # is resolved from A to B, and any dependency from a rust library to
+        # a native one is resolved from B to C.
+        # The question of resolving dependencies from a native library from A
+        # to any rust library is addressed in a different place, where we
+        # create symlinks to the rlibs, pretending they are native libraries,
+        # and adding references to these symlinks in the native section A.
+        # We rely in the behavior of -Clink-arg to put the linker args
+        # at the end of the linker invocation constructed by rustc.
         return [
             "-lstatic=%s" % get_lib_name(artifact),
+            "-Clink-arg=-l%s" % get_lib_name(artifact),
         ]
     elif _is_dylib(lib):
         return [
@@ -1332,7 +1455,6 @@ def _add_native_link_flags(args, dep_info, linkstamp_outs, ambiguous_libs, crate
         toolchain (rust_toolchain): The current `rust_toolchain`
         cc_toolchain (CcToolchainInfo): The current `cc_toolchain`
         feature_configuration (FeatureConfiguration): feature configuration to use with cc_toolchain
-
     """
     if crate_type in ["lib", "rlib"]:
         return
@@ -1440,6 +1562,18 @@ extra_rustc_flags = rule(
     build_setting = config.string_list(flag = True),
 )
 
+def _extra_rustc_flag_impl(ctx):
+    return ExtraRustcFlagsInfo(extra_rustc_flags = [f for f in ctx.build_setting_value if f != ""])
+
+extra_rustc_flag = rule(
+    doc = (
+        "Add additional rustc_flag from the command line with `--@rules_rust//:extra_rustc_flag`. " +
+        "Multiple uses are accumulated and appended after the extra_rustc_flags."
+    ),
+    implementation = _extra_rustc_flag_impl,
+    build_setting = config.string(flag = True, allow_multiple = True),
+)
+
 def _extra_exec_rustc_flags_impl(ctx):
     return ExtraExecRustcFlagsInfo(extra_exec_rustc_flags = ctx.build_setting_value)
 
@@ -1451,4 +1585,16 @@ extra_exec_rustc_flags = rule(
     ),
     implementation = _extra_exec_rustc_flags_impl,
     build_setting = config.string_list(flag = True),
+)
+
+def _extra_exec_rustc_flag_impl(ctx):
+    return ExtraExecRustcFlagsInfo(extra_exec_rustc_flags = [f for f in ctx.build_setting_value if f != ""])
+
+extra_exec_rustc_flag = rule(
+    doc = (
+        "Add additional rustc_flags in the exec configuration from the command line with `--@rules_rust//:extra_exec_rustc_flag`. " +
+        "Multiple uses are accumulated and appended after the extra_exec_rustc_flags."
+    ),
+    implementation = _extra_exec_rustc_flag_impl,
+    build_setting = config.string(flag = True, allow_multiple = True),
 )

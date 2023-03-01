@@ -18,6 +18,8 @@
 # This software is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY
 # KIND, either express or implied.
 #
+# SPDX-License-Identifier: curl
+#
 ###########################################################################
 
 # These are all libcurl example programs to be test compiled
@@ -31,7 +33,6 @@ check_PROGRAMS = \
   debug \
   externalsocket \
   fileupload \
-  fopen \
   ftp-wildcard \
   ftpget \
   ftpgetinfo \
@@ -44,6 +45,7 @@ check_PROGRAMS = \
   getinmemory \
   getredirect \
   getreferrer \
+  headerapi \
   http-post \
   http2-download \
   http2-pushinmemory \
@@ -96,7 +98,6 @@ check_PROGRAMS = \
   postit2-formadd \
   progressfunc \
   resolve \
-  rtsp \
   sendrecv \
   sepheaders \
   sftpget \
@@ -123,7 +124,6 @@ COMPLICATED_EXAMPLES = \
   cacertinmem.c \
   crawler.c \
   curlgtk.c \
-  curlx.c \
   ephiperfifo.c \
   evhiperfifo.c \
   ghiper.c \

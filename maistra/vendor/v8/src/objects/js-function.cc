@@ -4,8 +4,11 @@
 
 #include "src/objects/js-function.h"
 
+#include "src/baseline/baseline-batch-compiler.h"
 #include "src/codegen/compiler.h"
 #include "src/diagnostics/code-tracer.h"
+#include "src/execution/isolate.h"
+#include "src/execution/tiering-manager.h"
 #include "src/heap/heap-inl.h"
 #include "src/ic/ic.h"
 #include "src/init/bootstrapper.h"
@@ -62,6 +65,22 @@ bool JSFunction::HasAttachedOptimizedCode() const {
   return (result & kOptimizedJSFunctionCodeKindsMask) != 0;
 }
 
+bool JSFunction::HasAvailableHigherTierCodeThan(CodeKind kind) const {
+  return HasAvailableHigherTierCodeThanWithFilter(kind,
+                                                  kJSFunctionCodeKindsMask);
+}
+
+bool JSFunction::HasAvailableHigherTierCodeThanWithFilter(
+    CodeKind kind, CodeKinds filter_mask) const {
+  const int kind_as_int_flag = static_cast<int>(CodeKindToCodeKindFlag(kind));
+  DCHECK(base::bits::IsPowerOfTwo(kind_as_int_flag));
+  // Smear right - any higher present bit means we have a higher tier available.
+  const int mask = kind_as_int_flag | (kind_as_int_flag - 1);
+  const CodeKinds masked_available_kinds =
+      GetAvailableCodeKinds() & filter_mask;
+  return (masked_available_kinds & static_cast<CodeKinds>(~mask)) != 0;
+}
+
 bool JSFunction::HasAvailableOptimizedCode() const {
   CodeKinds result = GetAvailableCodeKinds();
   return (result & kOptimizedJSFunctionCodeKindsMask) != 0;
@@ -84,18 +103,14 @@ namespace {
 V8_WARN_UNUSED_RESULT bool HighestTierOf(CodeKinds kinds,
                                          CodeKind* highest_tier) {
   DCHECK_EQ((kinds & ~kJSFunctionCodeKindsMask), 0);
-  if ((kinds & CodeKindFlag::TURBOFAN) != 0) {
-    *highest_tier = CodeKind::TURBOFAN;
-    return true;
-  } else if ((kinds & CodeKindFlag::BASELINE) != 0) {
-    *highest_tier = CodeKind::BASELINE;
-    return true;
-  } else if ((kinds & CodeKindFlag::INTERPRETED_FUNCTION) != 0) {
-    *highest_tier = CodeKind::INTERPRETED_FUNCTION;
-    return true;
-  }
-  DCHECK_EQ(kinds, 0);
-  return false;
+  // Higher tiers > lower tiers.
+  static_assert(CodeKind::TURBOFAN > CodeKind::INTERPRETED_FUNCTION);
+  if (kinds == 0) return false;
+  const int highest_tier_log2 =
+      31 - base::bits::CountLeadingZeros(static_cast<uint32_t>(kinds));
+  DCHECK(CodeKindIsJSFunction(static_cast<CodeKind>(highest_tier_log2)));
+  *highest_tier = static_cast<CodeKind>(highest_tier_log2);
+  return true;
 }
 
 }  // namespace
@@ -117,6 +132,7 @@ base::Optional<CodeKind> JSFunction::GetActiveTier() const {
 #ifdef DEBUG
   CHECK(highest_tier == CodeKind::TURBOFAN ||
         highest_tier == CodeKind::BASELINE ||
+        highest_tier == CodeKind::MAGLEV ||
         highest_tier == CodeKind::INTERPRETED_FUNCTION);
 
   if (highest_tier == CodeKind::INTERPRETED_FUNCTION) {
@@ -135,15 +151,17 @@ bool JSFunction::ActiveTierIsIgnition() const {
   return GetActiveTier() == CodeKind::INTERPRETED_FUNCTION;
 }
 
-bool JSFunction::ActiveTierIsTurbofan() const {
-  return GetActiveTier() == CodeKind::TURBOFAN;
-}
-
 bool JSFunction::ActiveTierIsBaseline() const {
   return GetActiveTier() == CodeKind::BASELINE;
 }
 
-CodeKind JSFunction::NextTier() const { return CodeKind::TURBOFAN; }
+bool JSFunction::ActiveTierIsMaglev() const {
+  return GetActiveTier() == CodeKind::MAGLEV;
+}
+
+bool JSFunction::ActiveTierIsTurbofan() const {
+  return GetActiveTier() == CodeKind::TURBOFAN;
+}
 
 bool JSFunction::CanDiscardCompiled() const {
   // Essentially, what we are asking here is, has this function been compiled
@@ -160,6 +178,146 @@ bool JSFunction::CanDiscardCompiled() const {
   return (result & kJSFunctionCodeKindsMask) != 0;
 }
 
+namespace {
+
+constexpr TieringState TieringStateFor(CodeKind target_kind,
+                                       ConcurrencyMode mode) {
+  DCHECK(target_kind == CodeKind::MAGLEV || target_kind == CodeKind::TURBOFAN);
+  return target_kind == CodeKind::MAGLEV
+             ? (IsConcurrent(mode) ? TieringState::kRequestMaglev_Concurrent
+                                   : TieringState::kRequestMaglev_Synchronous)
+             : (IsConcurrent(mode)
+                    ? TieringState::kRequestTurbofan_Concurrent
+                    : TieringState::kRequestTurbofan_Synchronous);
+}
+
+}  // namespace
+
+void JSFunction::MarkForOptimization(Isolate* isolate, CodeKind target_kind,
+                                     ConcurrencyMode mode) {
+  if (!isolate->concurrent_recompilation_enabled() ||
+      isolate->bootstrapper()->IsActive()) {
+    mode = ConcurrencyMode::kSynchronous;
+  }
+
+  DCHECK(CodeKindIsOptimizedJSFunction(target_kind));
+  DCHECK(!is_compiled() || ActiveTierIsIgnition() || ActiveTierIsBaseline() ||
+         ActiveTierIsMaglev());
+  DCHECK(!ActiveTierIsTurbofan());
+  DCHECK(shared().HasBytecodeArray());
+  DCHECK(shared().allows_lazy_compilation() ||
+         !shared().optimization_disabled());
+
+  if (IsConcurrent(mode)) {
+    if (IsInProgress(tiering_state())) {
+      if (v8_flags.trace_concurrent_recompilation) {
+        PrintF("  ** Not marking ");
+        ShortPrint();
+        PrintF(" -- already in optimization queue.\n");
+      }
+      return;
+    }
+    if (v8_flags.trace_concurrent_recompilation) {
+      PrintF("  ** Marking ");
+      ShortPrint();
+      PrintF(" for concurrent %s recompilation.\n",
+             CodeKindToString(target_kind));
+    }
+  }
+
+  set_tiering_state(TieringStateFor(target_kind, mode));
+}
+
+void JSFunction::SetInterruptBudget(Isolate* isolate) {
+  raw_feedback_cell().set_interrupt_budget(
+      TieringManager::InterruptBudgetFor(isolate, *this));
+}
+
+// static
+Maybe<bool> JSFunctionOrBoundFunctionOrWrappedFunction::CopyNameAndLength(
+    Isolate* isolate,
+    Handle<JSFunctionOrBoundFunctionOrWrappedFunction> function,
+    Handle<JSReceiver> target, Handle<String> prefix, int arg_count) {
+  // Setup the "length" property based on the "length" of the {target}.
+  // If the targets length is the default JSFunction accessor, we can keep the
+  // accessor that's installed by default on the
+  // JSBoundFunction/JSWrappedFunction. It lazily computes the value from the
+  // underlying internal length.
+  Handle<AccessorInfo> function_length_accessor =
+      isolate->factory()->function_length_accessor();
+  LookupIterator length_lookup(isolate, target,
+                               isolate->factory()->length_string(), target,
+                               LookupIterator::OWN);
+  if (!target->IsJSFunction() ||
+      length_lookup.state() != LookupIterator::ACCESSOR ||
+      !length_lookup.GetAccessors().is_identical_to(function_length_accessor)) {
+    Handle<Object> length(Smi::zero(), isolate);
+    Maybe<PropertyAttributes> attributes =
+        JSReceiver::GetPropertyAttributes(&length_lookup);
+    if (attributes.IsNothing()) return Nothing<bool>();
+    if (attributes.FromJust() != ABSENT) {
+      Handle<Object> target_length;
+      ASSIGN_RETURN_ON_EXCEPTION_VALUE(isolate, target_length,
+                                       Object::GetProperty(&length_lookup),
+                                       Nothing<bool>());
+      if (target_length->IsNumber()) {
+        length = isolate->factory()->NewNumber(std::max(
+            0.0, DoubleToInteger(target_length->Number()) - arg_count));
+      }
+    }
+    LookupIterator it(isolate, function, isolate->factory()->length_string(),
+                      function);
+    DCHECK_EQ(LookupIterator::ACCESSOR, it.state());
+    RETURN_ON_EXCEPTION_VALUE(isolate,
+                              JSObject::DefineOwnPropertyIgnoreAttributes(
+                                  &it, length, it.property_attributes()),
+                              Nothing<bool>());
+  }
+
+  // Setup the "name" property based on the "name" of the {target}.
+  // If the target's name is the default JSFunction accessor, we can keep the
+  // accessor that's installed by default on the
+  // JSBoundFunction/JSWrappedFunction. It lazily computes the value from the
+  // underlying internal name.
+  Handle<AccessorInfo> function_name_accessor =
+      isolate->factory()->function_name_accessor();
+  LookupIterator name_lookup(isolate, target, isolate->factory()->name_string(),
+                             target);
+  if (!target->IsJSFunction() ||
+      name_lookup.state() != LookupIterator::ACCESSOR ||
+      !name_lookup.GetAccessors().is_identical_to(function_name_accessor) ||
+      (name_lookup.IsFound() && !name_lookup.HolderIsReceiver())) {
+    Handle<Object> target_name;
+    ASSIGN_RETURN_ON_EXCEPTION_VALUE(isolate, target_name,
+                                     Object::GetProperty(&name_lookup),
+                                     Nothing<bool>());
+    Handle<String> name;
+    if (target_name->IsString()) {
+      ASSIGN_RETURN_ON_EXCEPTION_VALUE(
+          isolate, name,
+          Name::ToFunctionName(isolate, Handle<String>::cast(target_name)),
+          Nothing<bool>());
+      if (!prefix.is_null()) {
+        ASSIGN_RETURN_ON_EXCEPTION_VALUE(
+            isolate, name, isolate->factory()->NewConsString(prefix, name),
+            Nothing<bool>());
+      }
+    } else if (prefix.is_null()) {
+      name = isolate->factory()->empty_string();
+    } else {
+      name = prefix;
+    }
+    LookupIterator it(isolate, function, isolate->factory()->name_string());
+    DCHECK_EQ(LookupIterator::ACCESSOR, it.state());
+    RETURN_ON_EXCEPTION_VALUE(isolate,
+                              JSObject::DefineOwnPropertyIgnoreAttributes(
+                                  &it, name, it.property_attributes()),
+                              Nothing<bool>());
+  }
+
+  return Just(true);
+}
+
 // static
 MaybeHandle<String> JSBoundFunction::GetName(Isolate* isolate,
                                              Handle<JSBoundFunction> function) {
@@ -174,12 +332,19 @@ MaybeHandle<String> JSBoundFunction::GetName(Isolate* isolate,
     function = handle(JSBoundFunction::cast(function->bound_target_function()),
                       isolate);
   }
+  if (function->bound_target_function().IsJSWrappedFunction()) {
+    Handle<JSWrappedFunction> target(
+        JSWrappedFunction::cast(function->bound_target_function()), isolate);
+    Handle<String> name;
+    ASSIGN_RETURN_ON_EXCEPTION(
+        isolate, name, JSWrappedFunction::GetName(isolate, target), String);
+    return factory->NewConsString(target_name, name);
+  }
   if (function->bound_target_function().IsJSFunction()) {
     Handle<JSFunction> target(
         JSFunction::cast(function->bound_target_function()), isolate);
-    Handle<Object> name = JSFunction::GetName(isolate, target);
-    if (!name->IsString()) return target_name;
-    return factory->NewConsString(target_name, Handle<String>::cast(name));
+    Handle<String> name = JSFunction::GetName(isolate, target);
+    return factory->NewConsString(target_name, name);
   }
   // This will omit the proper target name for bound JSProxies.
   return target_name;
@@ -202,6 +367,16 @@ Maybe<int> JSBoundFunction::GetLength(Isolate* isolate,
       nof_bound_arguments = Smi::kMaxValue;
     }
   }
+  if (function->bound_target_function().IsJSWrappedFunction()) {
+    Handle<JSWrappedFunction> target(
+        JSWrappedFunction::cast(function->bound_target_function()), isolate);
+    int target_length = 0;
+    MAYBE_ASSIGN_RETURN_ON_EXCEPTION_VALUE(
+        isolate, target_length, JSWrappedFunction::GetLength(isolate, target),
+        Nothing<int>());
+    int length = std::max(0, target_length - nof_bound_arguments);
+    return Just(length);
+  }
   // All non JSFunction targets get a direct property and don't use this
   // accessor.
   Handle<JSFunction> target(JSFunction::cast(function->bound_target_function()),
@@ -219,7 +394,107 @@ Handle<String> JSBoundFunction::ToString(Handle<JSBoundFunction> function) {
 }
 
 // static
-Handle<Object> JSFunction::GetName(Isolate* isolate,
+MaybeHandle<String> JSWrappedFunction::GetName(
+    Isolate* isolate, Handle<JSWrappedFunction> function) {
+  STACK_CHECK(isolate, MaybeHandle<String>());
+  Factory* factory = isolate->factory();
+  Handle<String> target_name = factory->empty_string();
+  Handle<JSReceiver> target =
+      handle(function->wrapped_target_function(), isolate);
+  if (target->IsJSBoundFunction()) {
+    return JSBoundFunction::GetName(
+        isolate,
+        handle(JSBoundFunction::cast(function->wrapped_target_function()),
+               isolate));
+  } else if (target->IsJSFunction()) {
+    return JSFunction::GetName(
+        isolate,
+        handle(JSFunction::cast(function->wrapped_target_function()), isolate));
+  }
+  // This will omit the proper target name for bound JSProxies.
+  return target_name;
+}
+
+// static
+Maybe<int> JSWrappedFunction::GetLength(Isolate* isolate,
+                                        Handle<JSWrappedFunction> function) {
+  STACK_CHECK(isolate, Nothing<int>());
+  Handle<JSReceiver> target =
+      handle(function->wrapped_target_function(), isolate);
+  if (target->IsJSBoundFunction()) {
+    return JSBoundFunction::GetLength(
+        isolate,
+        handle(JSBoundFunction::cast(function->wrapped_target_function()),
+               isolate));
+  }
+  // All non JSFunction targets get a direct property and don't use this
+  // accessor.
+  return Just(Handle<JSFunction>::cast(target)->length());
+}
+
+// static
+Handle<String> JSWrappedFunction::ToString(Handle<JSWrappedFunction> function) {
+  Isolate* const isolate = function->GetIsolate();
+  return isolate->factory()->function_native_code_string();
+}
+
+// static
+MaybeHandle<Object> JSWrappedFunction::Create(
+    Isolate* isolate, Handle<NativeContext> creation_context,
+    Handle<JSReceiver> value) {
+  // The value must be a callable according to the specification.
+  DCHECK(value->IsCallable());
+  // The intermediate wrapped functions are not user-visible. And calling a
+  // wrapped function won't cause a side effect in the creation realm.
+  // Unwrap here to avoid nested unwrapping at the call site.
+  if (value->IsJSWrappedFunction()) {
+    Handle<JSWrappedFunction> target_wrapped =
+        Handle<JSWrappedFunction>::cast(value);
+    value =
+        Handle<JSReceiver>(target_wrapped->wrapped_target_function(), isolate);
+  }
+
+  // 1. Let internalSlotsList be the internal slots listed in Table 2, plus
+  // [[Prototype]] and [[Extensible]].
+  // 2. Let wrapped be ! MakeBasicObject(internalSlotsList).
+  // 3. Set wrapped.[[Prototype]] to
+  // callerRealm.[[Intrinsics]].[[%Function.prototype%]].
+  // 4. Set wrapped.[[Call]] as described in 2.1.
+  // 5. Set wrapped.[[WrappedTargetFunction]] to Target.
+  // 6. Set wrapped.[[Realm]] to callerRealm.
+  Handle<JSWrappedFunction> wrapped =
+      isolate->factory()->NewJSWrappedFunction(creation_context, value);
+
+  // 7. Let result be CopyNameAndLength(wrapped, Target, "wrapped").
+  Maybe<bool> is_abrupt =
+      JSFunctionOrBoundFunctionOrWrappedFunction::CopyNameAndLength(
+          isolate, wrapped, value, Handle<String>(), 0);
+
+  // 8. If result is an Abrupt Completion, throw a TypeError exception.
+  if (is_abrupt.IsNothing()) {
+    DCHECK(isolate->has_pending_exception());
+    isolate->clear_pending_exception();
+    // TODO(v8:11989): provide a non-observable inspection on the
+    // pending_exception to the newly created TypeError.
+    // https://github.com/tc39/proposal-shadowrealm/issues/353
+
+    // The TypeError thrown is created with creation Realm's TypeError
+    // constructor instead of the executing Realm's.
+    THROW_NEW_ERROR_RETURN_VALUE(
+        isolate,
+        NewError(Handle<JSFunction>(creation_context->type_error_function(),
+                                    isolate),
+                 MessageTemplate::kCannotWrap),
+        {});
+  }
+  DCHECK(is_abrupt.FromJust());
+
+  // 9. Return wrapped.
+  return wrapped;
+}
+
+// static
+Handle<String> JSFunction::GetName(Isolate* isolate,
                                    Handle<JSFunction> function) {
   if (function->shared().name_should_print_as_anonymous()) {
     return isolate->factory()->anonymous_string();
@@ -250,7 +525,7 @@ void JSFunction::EnsureClosureFeedbackCellArray(
   // cases.
   if (reset_budget_for_feedback_allocation ||
       !has_closure_feedback_cell_array) {
-    function->SetInterruptBudget();
+    function->SetInterruptBudget(isolate);
   }
 
   if (has_closure_feedback_cell_array) {
@@ -269,7 +544,7 @@ void JSFunction::EnsureClosureFeedbackCellArray(
     Handle<FeedbackCell> feedback_cell =
         isolate->factory()->NewOneClosureCell(feedback_cell_array);
     function->set_raw_feedback_cell(*feedback_cell, kReleaseStore);
-    function->SetInterruptBudget();
+    function->SetInterruptBudget(isolate);
   } else {
     function->raw_feedback_cell().set_value(*feedback_cell_array,
                                             kReleaseStore);
@@ -277,14 +552,28 @@ void JSFunction::EnsureClosureFeedbackCellArray(
 }
 
 // static
-void JSFunction::EnsureFeedbackVector(Handle<JSFunction> function,
-                                      IsCompiledScope* is_compiled_scope) {
-  Isolate* const isolate = function->GetIsolate();
-  DCHECK(is_compiled_scope->is_compiled());
+void JSFunction::EnsureFeedbackVector(Isolate* isolate,
+                                      Handle<JSFunction> function,
+                                      IsCompiledScope* compiled_scope) {
+  DCHECK(compiled_scope->is_compiled());
   DCHECK(function->shared().HasFeedbackMetadata());
   if (function->has_feedback_vector()) return;
 #if V8_ENABLE_WEBASSEMBLY
   if (function->shared().HasAsmWasmData()) return;
+#endif  // V8_ENABLE_WEBASSEMBLY
+
+  CreateAndAttachFeedbackVector(isolate, function, compiled_scope);
+}
+
+// static
+void JSFunction::CreateAndAttachFeedbackVector(
+    Isolate* isolate, Handle<JSFunction> function,
+    IsCompiledScope* compiled_scope) {
+  DCHECK(compiled_scope->is_compiled());
+  DCHECK(function->shared().HasFeedbackMetadata());
+  DCHECK(!function->has_feedback_vector());
+#if V8_ENABLE_WEBASSEMBLY
+  DCHECK(!function->shared().HasAsmWasmData());
 #endif  // V8_ENABLE_WEBASSEMBLY
 
   Handle<SharedFunctionInfo> shared(function->shared(), isolate);
@@ -293,15 +582,18 @@ void JSFunction::EnsureFeedbackVector(Handle<JSFunction> function,
   EnsureClosureFeedbackCellArray(function, false);
   Handle<ClosureFeedbackCellArray> closure_feedback_cell_array =
       handle(function->closure_feedback_cell_array(), isolate);
-  Handle<HeapObject> feedback_vector = FeedbackVector::New(
-      isolate, shared, closure_feedback_cell_array, is_compiled_scope);
+  Handle<FeedbackVector> feedback_vector = FeedbackVector::New(
+      isolate, shared, closure_feedback_cell_array, compiled_scope);
   // EnsureClosureFeedbackCellArray should handle the special case where we need
   // to allocate a new feedback cell. Please look at comment in that function
   // for more details.
   DCHECK(function->raw_feedback_cell() !=
          isolate->heap()->many_closures_cell());
   function->raw_feedback_cell().set_value(*feedback_vector, kReleaseStore);
-  function->SetInterruptBudget();
+  function->SetInterruptBudget(isolate);
+
+  DCHECK_EQ(v8_flags.log_function_events,
+            feedback_vector->log_next_execution());
 }
 
 // static
@@ -331,17 +623,32 @@ void JSFunction::InitializeFeedbackCell(
   }
 
   const bool needs_feedback_vector =
-      !FLAG_lazy_feedback_allocation || FLAG_always_opt ||
+      !v8_flags.lazy_feedback_allocation || v8_flags.always_turbofan ||
       // We also need a feedback vector for certain log events, collecting type
       // profile and more precise code coverage.
-      FLAG_log_function_events || !isolate->is_best_effort_code_coverage() ||
-      isolate->is_collecting_type_profile();
+      v8_flags.log_function_events ||
+      !isolate->is_best_effort_code_coverage() ||
+      isolate->is_collecting_type_profile() ||
+      function->shared().sparkplug_compiled();
 
   if (needs_feedback_vector) {
-    EnsureFeedbackVector(function, is_compiled_scope);
+    CreateAndAttachFeedbackVector(isolate, function, is_compiled_scope);
   } else {
     EnsureClosureFeedbackCellArray(function,
                                    reset_budget_for_feedback_allocation);
+  }
+  // TODO(jgruber): Unduplicate these conditions from tiering-manager.cc.
+  if (function->shared().sparkplug_compiled() &&
+      CanCompileWithBaseline(isolate, function->shared()) &&
+      function->ActiveTierIsIgnition()) {
+    if (v8_flags.baseline_batch_compilation) {
+      isolate->baseline_batch_compiler()->EnqueueFunction(function);
+    } else {
+      IsCompiledScope is_compiled_scope(
+          function->shared().is_compiled_scope(isolate));
+      Compiler::CompileBaseline(isolate, function, Compiler::CLEAR_EXCEPTION,
+                                &is_compiled_scope);
+    }
   }
 }
 
@@ -370,22 +677,13 @@ void SetInstancePrototype(Isolate* isolate, Handle<JSFunction> function,
       Handle<Map> new_map =
           Map::Copy(isolate, initial_map, "SetInstancePrototype");
       JSFunction::SetInitialMap(isolate, function, new_map, value);
-
-      // If the function is used as the global Array function, cache the
-      // updated initial maps (and transitioned versions) in the native context.
-      Handle<Context> native_context(function->context().native_context(),
-                                     isolate);
-      Handle<Object> array_function(
-          native_context->get(Context::ARRAY_FUNCTION_INDEX), isolate);
-      if (array_function->IsJSFunction() &&
-          *function == JSFunction::cast(*array_function)) {
-        CacheInitialJSArrayMaps(isolate, native_context, new_map);
-      }
+      DCHECK_IMPLIES(!isolate->bootstrapper()->IsActive(),
+                     *function != function->native_context().array_function());
     }
 
     // Deoptimize all code that embeds the previous initial map.
-    initial_map->dependent_code().DeoptimizeDependentCodeGroup(
-        isolate, DependentCode::kInitialMapChangedGroup);
+    DependentCode::DeoptimizeDependencyGroups(
+        isolate, *initial_map, DependentCode::kInitialMapChangedGroup);
   } else {
     // Put the value in the initial map field until an initial map is
     // needed.  At that point, a new initial map is created and the
@@ -423,8 +721,7 @@ void JSFunction::SetPrototype(Handle<JSFunction> function,
     JSObject::MigrateToMap(isolate, function, new_map);
 
     FunctionKind kind = function->shared().kind();
-    Handle<Context> native_context(function->context().native_context(),
-                                   isolate);
+    Handle<Context> native_context(function->native_context(), isolate);
 
     construct_prototype = Handle<JSReceiver>(
         IsGeneratorFunction(kind)
@@ -454,7 +751,7 @@ void JSFunction::SetInitialMap(Isolate* isolate, Handle<JSFunction> function,
   }
   map->SetConstructor(*constructor);
   function->set_prototype_or_initial_map(*map, kReleaseStore);
-  if (FLAG_log_maps) {
+  if (v8_flags.log_maps) {
     LOG(isolate, MapEvent("InitialMap", Handle<Map>(), map, "",
                           SharedFunctionInfo::DebugName(
                               handle(function->shared(), isolate))));
@@ -621,6 +918,7 @@ bool CanSubclassHaveInobjectProperties(InstanceType instance_type) {
     case JS_GLOBAL_OBJECT_TYPE:
     case JS_GLOBAL_PROXY_TYPE:
     case JS_PROXY_TYPE:
+    case JS_WRAPPED_FUNCTION_TYPE:
     case MAP_TYPE:
     case ODDBALL_TYPE:
     case PROPERTY_CELL_TYPE:
@@ -679,8 +977,9 @@ bool FastInitializeDerivedMap(Isolate* isolate, Handle<JSFunction> new_target,
       static_cast<int>(constructor->shared().expected_nof_properties()),
       JSFunction::CalculateExpectedNofProperties(isolate, new_target));
   JSFunction::CalculateInstanceSizeHelper(
-      instance_type, true, embedder_fields, expected_nof_properties,
-      &instance_size, &in_object_properties);
+      instance_type, constructor_initial_map->has_prototype_slot(),
+      embedder_fields, expected_nof_properties, &instance_size,
+      &in_object_properties);
 
   int pre_allocated = constructor_initial_map->GetInObjectProperties() -
                       constructor_initial_map->UnusedPropertyFields();
@@ -756,7 +1055,8 @@ MaybeHandle<Map> JSFunction::GetDerivedMap(Isolate* isolate,
                                JSReceiver::GetFunctionRealm(new_target), Map);
     DCHECK(context->IsNativeContext());
     Handle<Object> maybe_index = JSReceiver::GetDataProperty(
-        constructor, isolate->factory()->native_context_index_symbol());
+        isolate, constructor,
+        isolate->factory()->native_context_index_symbol());
     int index = maybe_index->IsSmi() ? Smi::ToInt(*maybe_index)
                                      : Context::OBJECT_FUNCTION_INDEX;
     Handle<JSFunction> realm_constructor(JSFunction::cast(context->get(index)),
@@ -778,11 +1078,11 @@ namespace {
 // Assert that the computations in TypedArrayElementsKindToConstructorIndex and
 // TypedArrayElementsKindToRabGsabCtorIndex are sound.
 #define TYPED_ARRAY_CASE(Type, type, TYPE, ctype)                         \
-  STATIC_ASSERT(Context::TYPE##_ARRAY_FUN_INDEX ==                        \
+  static_assert(Context::TYPE##_ARRAY_FUN_INDEX ==                        \
                 Context::FIRST_FIXED_TYPED_ARRAY_FUN_INDEX +              \
                     ElementsKind::TYPE##_ELEMENTS -                       \
                     ElementsKind::FIRST_FIXED_TYPED_ARRAY_ELEMENTS_KIND); \
-  STATIC_ASSERT(Context::RAB_GSAB_##TYPE##_ARRAY_MAP_INDEX ==             \
+  static_assert(Context::RAB_GSAB_##TYPE##_ARRAY_MAP_INDEX ==             \
                 Context::FIRST_RAB_GSAB_TYPED_ARRAY_MAP_INDEX +           \
                     ElementsKind::TYPE##_ELEMENTS -                       \
                     ElementsKind::FIRST_FIXED_TYPED_ARRAY_ELEMENTS_KIND);
@@ -802,11 +1102,14 @@ int TypedArrayElementsKindToRabGsabCtorIndex(ElementsKind elements_kind) {
 
 }  // namespace
 
-Handle<Map> JSFunction::GetDerivedRabGsabMap(Isolate* isolate,
-                                             Handle<JSFunction> constructor,
-                                             Handle<JSReceiver> new_target) {
-  Handle<Map> map =
-      GetDerivedMap(isolate, constructor, new_target).ToHandleChecked();
+MaybeHandle<Map> JSFunction::GetDerivedRabGsabMap(
+    Isolate* isolate, Handle<JSFunction> constructor,
+    Handle<JSReceiver> new_target) {
+  MaybeHandle<Map> maybe_map = GetDerivedMap(isolate, constructor, new_target);
+  Handle<Map> map;
+  if (!maybe_map.ToHandle(&map)) {
+    return MaybeHandle<Map>();
+  }
   {
     DisallowHeapAllocation no_alloc;
     NativeContext context = isolate->context().native_context();
@@ -837,15 +1140,20 @@ int JSFunction::ComputeInstanceSizeWithMinSlack(Isolate* isolate) {
   return initial_map().instance_size();
 }
 
+std::unique_ptr<char[]> JSFunction::DebugNameCStr() {
+  return shared().DebugNameCStr();
+}
+
 void JSFunction::PrintName(FILE* out) {
-  PrintF(out, "%s", shared().DebugNameCStr().get());
+  PrintF(out, "%s", DebugNameCStr().get());
 }
 
 namespace {
 
 bool UseFastFunctionNameLookup(Isolate* isolate, Map map) {
   DCHECK(map.IsJSFunctionMap());
-  if (map.NumberOfOwnDescriptors() < JSFunction::kMinDescriptorsForFastBind) {
+  if (map.NumberOfOwnDescriptors() <
+      JSFunction::kMinDescriptorsForFastBindAndWrap) {
     return false;
   }
   DCHECK(!map.is_dictionary_map());
@@ -880,7 +1188,7 @@ Handle<String> JSFunction::GetDebugName(Handle<JSFunction> function) {
     // that exact behavior and go with SharedFunctionInfo::DebugName()
     // in case of the fast-path.
     Handle<Object> name =
-        GetDataProperty(function, isolate->factory()->name_string());
+        GetDataProperty(isolate, function, isolate->factory()->name_string());
     if (name->IsString()) return Handle<String>::cast(name);
   }
   return SharedFunctionInfo::DebugName(handle(function->shared(), isolate));
@@ -935,7 +1243,7 @@ Handle<String> JSFunction::ToString(Handle<JSFunction> function) {
 
   // Check if we should print {function} as a class.
   Handle<Object> maybe_class_positions = JSReceiver::GetDataProperty(
-      function, isolate->factory()->class_positions_symbol());
+      isolate, function, isolate->factory()->class_positions_symbol());
   if (maybe_class_positions->IsClassPositions()) {
     ClassPositions class_positions =
         ClassPositions::cast(*maybe_class_positions);
@@ -1037,13 +1345,8 @@ void JSFunction::CalculateInstanceSizeHelper(InstanceType instance_type,
   DCHECK_LE(static_cast<unsigned>(requested_embedder_fields),
             JSObject::kMaxEmbedderFields);
   int header_size = JSObject::GetHeaderSize(instance_type, has_prototype_slot);
-  if (requested_embedder_fields) {
-    // If there are embedder fields, then the embedder fields start offset must
-    // be properly aligned (embedder fields are located between object header
-    // and inobject fields).
-    header_size = RoundUp<kSystemPointerSize>(header_size);
-    requested_embedder_fields *= kEmbedderDataSlotSizeInTaggedSlots;
-  }
+  requested_embedder_fields *= kEmbedderDataSlotSizeInTaggedSlots;
+
   int max_nof_fields =
       (JSObject::kMaxInstanceSize - header_size) >> kTaggedSizeLog2;
   CHECK_LE(max_nof_fields, JSObject::kMaxInObjectProperties);
@@ -1061,14 +1364,14 @@ void JSFunction::CalculateInstanceSizeHelper(InstanceType instance_type,
            static_cast<unsigned>(JSObject::kMaxInstanceSize));
 }
 
-void JSFunction::ClearTypeFeedbackInfo() {
+void JSFunction::ClearAllTypeFeedbackInfoForTesting() {
   ResetIfCodeFlushed();
   if (has_feedback_vector()) {
     FeedbackVector vector = feedback_vector();
     Isolate* isolate = GetIsolate();
-    if (vector.ClearSlots(isolate)) {
+    if (vector.ClearAllSlotsForTesting(isolate)) {
       IC::OnFeedbackChanged(isolate, vector, FeedbackSlot::Invalid(),
-                            "ClearTypeFeedbackInfo");
+                            "ClearAllTypeFeedbackInfoForTesting");
     }
   }
 }

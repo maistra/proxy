@@ -1845,7 +1845,8 @@ TEST_F(DnsFilterTest, InvalidShortBufferTest) {
   EXPECT_EQ(1, config_->stats().downstream_rx_invalid_queries_.value());
 }
 
-TEST_F(DnsFilterTest, RandomizeFirstAnswerTest) {
+// FIXME (Maistra): See https://github.com/envoyproxy/envoy/pull/24330
+TEST_F(DnsFilterTest, DISABLED_RandomizeFirstAnswerTest) {
   InSequence s;
 
   setup(forward_query_off_config);

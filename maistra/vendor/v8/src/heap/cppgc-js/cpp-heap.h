@@ -15,7 +15,9 @@ static_assert(
 #include "include/v8-metrics.h"
 #include "src/base/flags.h"
 #include "src/base/macros.h"
+#include "src/base/optional.h"
 #include "src/heap/cppgc/heap-base.h"
+#include "src/heap/cppgc/marker.h"
 #include "src/heap/cppgc/stats-collector.h"
 #include "src/logging/metrics.h"
 
@@ -31,7 +33,8 @@ class CppMarkingState;
 class V8_EXPORT_PRIVATE CppHeap final
     : public cppgc::internal::HeapBase,
       public v8::CppHeap,
-      public cppgc::internal::StatsCollector::AllocationObserver {
+      public cppgc::internal::StatsCollector::AllocationObserver,
+      public cppgc::internal::GarbageCollector {
  public:
   enum GarbageCollectionFlagValues : uint8_t {
     kNoFlags = 0,
@@ -40,6 +43,9 @@ class V8_EXPORT_PRIVATE CppHeap final
   };
 
   using GarbageCollectionFlags = base::Flags<GarbageCollectionFlagValues>;
+  using StackState = cppgc::internal::GarbageCollector::Config::StackState;
+  using CollectionType =
+      cppgc::internal::GarbageCollector::Config::CollectionType;
 
   class MetricRecorderAdapter final : public cppgc::internal::MetricRecorder {
    public:
@@ -47,19 +53,22 @@ class V8_EXPORT_PRIVATE CppHeap final
 
     explicit MetricRecorderAdapter(CppHeap& cpp_heap) : cpp_heap_(cpp_heap) {}
 
-    void AddMainThreadEvent(const FullCycle& cppgc_event) final;
+    void AddMainThreadEvent(const GCCycle& cppgc_event) final;
     void AddMainThreadEvent(const MainThreadIncrementalMark& cppgc_event) final;
     void AddMainThreadEvent(
         const MainThreadIncrementalSweep& cppgc_event) final;
 
     void FlushBatchedIncrementalEvents();
 
-    // The following 3 methods are only used for reporting nested cpp events
+    // The following methods are only used for reporting nested cpp events
     // through V8. Standalone events are reported directly.
-    bool MetricsReportPending() const;
+    bool FullGCMetricsReportPending() const;
+    bool YoungGCMetricsReportPending() const;
 
-    const base::Optional<cppgc::internal::MetricRecorder::FullCycle>
+    const base::Optional<cppgc::internal::MetricRecorder::GCCycle>
     ExtractLastFullGcEvent();
+    const base::Optional<cppgc::internal::MetricRecorder::GCCycle>
+    ExtractLastYoungGcEvent();
     const base::Optional<
         cppgc::internal::MetricRecorder::MainThreadIncrementalMark>
     ExtractLastIncrementalMarkEvent();
@@ -76,11 +85,24 @@ class V8_EXPORT_PRIVATE CppHeap final
         incremental_mark_batched_events_;
     v8::metrics::GarbageCollectionFullMainThreadBatchedIncrementalSweep
         incremental_sweep_batched_events_;
-    base::Optional<cppgc::internal::MetricRecorder::FullCycle>
+    base::Optional<cppgc::internal::MetricRecorder::GCCycle>
         last_full_gc_event_;
+    base::Optional<cppgc::internal::MetricRecorder::GCCycle>
+        last_young_gc_event_;
     base::Optional<cppgc::internal::MetricRecorder::MainThreadIncrementalMark>
         last_incremental_mark_event_;
   };
+
+  class PauseConcurrentMarkingScope final {
+   public:
+    explicit PauseConcurrentMarkingScope(CppHeap*);
+
+   private:
+    base::Optional<cppgc::internal::MarkerBase::PauseConcurrentMarkingScope>
+        pause_scope_;
+  };
+
+  static void InitializeOncePerProcess();
 
   static CppHeap* From(v8::CppHeap* heap) {
     return static_cast<CppHeap*>(heap);
@@ -89,10 +111,10 @@ class V8_EXPORT_PRIVATE CppHeap final
     return static_cast<const CppHeap*>(heap);
   }
 
-  CppHeap(
-      v8::Platform* platform,
-      const std::vector<std::unique_ptr<cppgc::CustomSpaceBase>>& custom_spaces,
-      const v8::WrapperDescriptor& wrapper_descriptor);
+  CppHeap(v8::Platform*,
+          const std::vector<std::unique_ptr<cppgc::CustomSpaceBase>>&,
+          const v8::WrapperDescriptor&, cppgc::Heap::MarkingType,
+          cppgc::Heap::SweepingType);
   ~CppHeap() final;
 
   CppHeap(const CppHeap&) = delete;
@@ -108,15 +130,14 @@ class V8_EXPORT_PRIVATE CppHeap final
 
   void EnableDetachedGarbageCollectionsForTesting();
 
-  void CollectGarbageForTesting(
-      cppgc::internal::GarbageCollector::Config::CollectionType,
-      cppgc::internal::GarbageCollector::Config::StackState);
+  void CollectGarbageForTesting(CollectionType, StackState);
 
   void CollectCustomSpaceStatisticsAtLastGC(
       std::vector<cppgc::CustomSpaceIndex>,
       std::unique_ptr<CustomSpaceStatisticsReceiver>);
 
   void FinishSweepingIfRunning();
+  void FinishSweepingIfOutOfWork();
 
   void InitializeTracing(
       cppgc::internal::GarbageCollector::Config::CollectionType,
@@ -124,8 +145,11 @@ class V8_EXPORT_PRIVATE CppHeap final
   void StartTracing();
   bool AdvanceTracing(double max_duration);
   bool IsTracingDone();
-  void TraceEpilogue(cppgc::internal::GarbageCollector::Config::CollectionType);
+  void TraceEpilogue();
   void EnterFinalPause(cppgc::EmbedderStackState stack_state);
+  bool FinishConcurrentMarkingIfNeeded();
+
+  void RunMinorGC(StackState);
 
   // StatsCollector::AllocationObserver interface.
   void AllocatedObjectSizeIncreased(size_t) final;
@@ -143,7 +167,15 @@ class V8_EXPORT_PRIVATE CppHeap final
   std::unique_ptr<CppMarkingState> CreateCppMarkingState();
   std::unique_ptr<CppMarkingState> CreateCppMarkingStateForMutatorThread();
 
+  // cppgc::internal::GarbageCollector interface.
+  void CollectGarbage(Config) override;
+  const cppgc::EmbedderStackState* override_stack_state() const override;
+  void StartIncrementalGarbageCollection(Config) override;
+  size_t epoch() const override;
+
  private:
+  void ReduceGCCapabilititesFromFlags();
+
   void FinalizeIncrementalGarbageCollectionIfNeeded(
       cppgc::Heap::StackState) final {
     // For unified heap, CppHeap shouldn't finalize independently (i.e.
@@ -156,8 +188,14 @@ class V8_EXPORT_PRIVATE CppHeap final
   void FinalizeIncrementalGarbageCollectionForTesting(
       cppgc::EmbedderStackState) final;
 
+  MarkingType SelectMarkingType() const;
+  SweepingType SelectSweepingType() const;
+
   Isolate* isolate_ = nullptr;
   bool marking_done_ = false;
+  // |collection_type_| is initialized when marking is in progress.
+  base::Optional<cppgc::internal::GarbageCollector::Config::CollectionType>
+      collection_type_;
   GarbageCollectionFlags current_gc_flags_;
 
   // Buffered allocated bytes. Reporting allocated bytes to V8 can trigger a GC

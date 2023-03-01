@@ -35,6 +35,11 @@ ObjectHashTable::ObjectHashTable(Address ptr)
   SLOW_DCHECK(IsObjectHashTable());
 }
 
+RegisteredSymbolTable::RegisteredSymbolTable(Address ptr)
+    : HashTable<RegisteredSymbolTable, RegisteredSymbolTableShape>(ptr) {
+  SLOW_DCHECK(IsRegisteredSymbolTable());
+}
+
 EphemeronHashTable::EphemeronHashTable(Address ptr)
     : ObjectHashTableBase<EphemeronHashTable, ObjectHashTableShape>(ptr) {
   SLOW_DCHECK(IsEphemeronHashTable());
@@ -51,6 +56,7 @@ NameToIndexHashTable::NameToIndexHashTable(Address ptr)
 }
 
 CAST_ACCESSOR(ObjectHashTable)
+CAST_ACCESSOR(RegisteredSymbolTable)
 CAST_ACCESSOR(EphemeronHashTable)
 CAST_ACCESSOR(ObjectHashSet)
 CAST_ACCESSOR(NameToIndexHashTable)
@@ -133,6 +139,11 @@ Handle<Map> HashTable<Derived, Shape>::GetMap(ReadOnlyRoots roots) {
 // static
 Handle<Map> NameToIndexHashTable::GetMap(ReadOnlyRoots roots) {
   return roots.name_to_index_hash_table_map_handle();
+}
+
+// static
+Handle<Map> RegisteredSymbolTable::GetMap(ReadOnlyRoots roots) {
+  return roots.registered_symbol_table_map_handle();
 }
 
 // static
@@ -228,6 +239,12 @@ Object HashTable<Derived, Shape>::KeyAt(PtrComprCageBase cage_base,
 }
 
 template <typename Derived, typename Shape>
+void HashTable<Derived, Shape>::SetKeyAt(InternalIndex entry, Object value,
+                                         WriteBarrierMode mode) {
+  set_key(EntryToIndex(entry), value, mode);
+}
+
+template <typename Derived, typename Shape>
 void HashTable<Derived, Shape>::set_key(int index, Object value) {
   DCHECK(!IsEphemeronHashTable());
   FixedArray::set(index, value);
@@ -265,6 +282,21 @@ bool ObjectHashTableShape::IsMatch(Handle<Object> key, Object other) {
   return key->SameValue(other);
 }
 
+bool RegisteredSymbolTableShape::IsMatch(Handle<String> key, Object value) {
+  DCHECK(value.IsString());
+  return key->Equals(String::cast(value));
+}
+
+uint32_t RegisteredSymbolTableShape::Hash(ReadOnlyRoots roots,
+                                          Handle<String> key) {
+  return key->EnsureHash();
+}
+
+uint32_t RegisteredSymbolTableShape::HashForObject(ReadOnlyRoots roots,
+                                                   Object object) {
+  return String::cast(object).EnsureHash();
+}
+
 bool NameToIndexShape::IsMatch(Handle<Name> key, Object other) {
   return *key == other;
 }
@@ -295,12 +327,13 @@ Handle<NameToIndexHashTable> NameToIndexHashTable::Add(
   SLOW_DCHECK(table->FindEntry(isolate, key).is_not_found());
   // Check whether the dictionary should be extended.
   table = EnsureCapacity(isolate, table);
-
+  DisallowGarbageCollection no_gc;
+  auto raw_table = *table;
   // Compute the key object.
-  InternalIndex entry = table->FindInsertionEntry(isolate, key->hash());
-  table->set(EntryToIndex(entry), *key);
-  table->set(EntryToValueIndex(entry), Smi::FromInt(index));
-  table->ElementAdded();
+  InternalIndex entry = raw_table.FindInsertionEntry(isolate, key->hash());
+  raw_table.set(EntryToIndex(entry), *key);
+  raw_table.set(EntryToValueIndex(entry), Smi::FromInt(index));
+  raw_table.ElementAdded();
   return table;
 }
 
