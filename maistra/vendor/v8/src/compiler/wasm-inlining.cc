@@ -29,7 +29,17 @@ Reduction WasmInliner::Reduce(Node* node) {
 }
 
 #define TRACE(...) \
-  if (FLAG_trace_wasm_inlining) PrintF(__VA_ARGS__);
+  if (v8_flags.trace_wasm_inlining) PrintF(__VA_ARGS__)
+
+void WasmInliner::Trace(Node* call, int inlinee, const char* decision) {
+  TRACE("[function %d: considering node %d, call to %d: %s]\n", function_index_,
+        call->id(), inlinee, decision);
+}
+
+int WasmInliner::GetCallCount(Node* call) {
+  if (!v8_flags.wasm_speculative_inlining) return 0;
+  return mcgraph()->GetCallCount(call->id());
+}
 
 // TODO(12166): Save inlined frames for trap/--trace-wasm purposes. Consider
 //              tail calls.
@@ -55,107 +65,125 @@ Reduction WasmInliner::ReduceCall(Node* call) {
   }
   auto info = OpParameter<RelocatablePtrConstantInfo>(callee->op());
   uint32_t inlinee_index = static_cast<uint32_t>(info.value());
-  TRACE("[function %d: considering node %d, call to %d... ", function_index_,
-        call->id(), inlinee_index)
   if (info.rmode() != RelocInfo::WASM_CALL) {
-    TRACE("not a wasm call]\n")
+    Trace(call, inlinee_index, "not a wasm call");
     return NoChange();
   }
   if (inlinee_index < module()->num_imported_functions) {
-    TRACE("imported function]\n")
-    return NoChange();
-  }
-  if (inlinee_index == function_index_) {
-    TRACE("recursive call]\n")
+    Trace(call, inlinee_index, "imported function");
     return NoChange();
   }
 
-  TRACE("adding to inlining candidates!]\n")
-
-  bool is_speculative_call_ref = false;
-  int call_count = 0;
-  if (FLAG_wasm_speculative_inlining) {
-    base::MutexGuard guard(&module()->type_feedback.mutex);
-    auto maybe_feedback =
-        module()->type_feedback.feedback_for_function.find(function_index_);
-    if (maybe_feedback != module()->type_feedback.feedback_for_function.end()) {
-      wasm::FunctionTypeFeedback feedback = maybe_feedback->second;
-      wasm::WasmCodePosition position =
-          source_positions_->GetSourcePosition(call).ScriptOffset();
-      DCHECK_NE(position, wasm::kNoCodePosition);
-      auto index_in_feedback_vector = feedback.positions.find(position);
-      if (index_in_feedback_vector != feedback.positions.end()) {
-        is_speculative_call_ref = true;
-        call_count = feedback.feedback_vector[index_in_feedback_vector->second]
-                         .absolute_call_frequency;
-      }
-    }
+  // We limit the times a function can be inlined to avoid repeatedly inlining
+  // recursive calls. Since we only check here (and not in {Finalize}), it is
+  // possible to exceed this limit if we find a large number of calls in a
+  // single pass.
+  constexpr int kMaximumInlinedCallsPerFunction = 3;
+  if (function_inlining_count_[inlinee_index] >=
+      kMaximumInlinedCallsPerFunction) {
+    Trace(call, inlinee_index,
+          "too many inlined calls to (recursive?) function");
+    return NoChange();
   }
 
   CHECK_LT(inlinee_index, module()->functions.size());
   const wasm::WasmFunction* inlinee = &module()->functions[inlinee_index];
   base::Vector<const byte> function_bytes = wire_bytes_->GetCode(inlinee->code);
 
-  CandidateInfo candidate{call, inlinee_index, is_speculative_call_ref,
-                          call_count, function_bytes.length()};
+  int call_count = GetCallCount(call);
+
+  int wire_byte_size = static_cast<int>(function_bytes.size());
+  int min_count_for_inlining = wire_byte_size / 2;
+
+  // If liftoff ran and collected call counts, only inline calls that have been
+  // invoked often, except for truly tiny functions.
+  if (v8_flags.liftoff && v8_flags.wasm_speculative_inlining &&
+      wire_byte_size >= 12 && call_count < min_count_for_inlining) {
+    Trace(call, inlinee_index, "not called often enough");
+    return NoChange();
+  }
+
+  Trace(call, inlinee_index, "adding to inlining candidates!");
+
+  CandidateInfo candidate{call, inlinee_index, call_count,
+                          function_bytes.length()};
 
   inlining_candidates_.push(candidate);
   return NoChange();
 }
 
+bool SmallEnoughToInline(size_t current_graph_size, uint32_t candidate_size) {
+  if (WasmInliner::graph_size_allows_inlining(current_graph_size +
+                                              candidate_size)) {
+    return true;
+  }
+  // For truly tiny functions, let's be a bit more generous.
+  return candidate_size <= 12 &&
+         WasmInliner::graph_size_allows_inlining(current_graph_size - 100);
+}
+
+void WasmInliner::Trace(const CandidateInfo& candidate, const char* decision) {
+  TRACE(
+      "  [function %d: considering candidate {@%d, index=%d, count=%d, "
+      "size=%d}: %s]\n",
+      function_index_, candidate.node->id(), candidate.inlinee_index,
+      candidate.call_count, candidate.wire_byte_size, decision);
+}
+
 void WasmInliner::Finalize() {
-  TRACE("function %d: going though inlining candidates...\n", function_index_);
+  TRACE("function %d %s: going though inlining candidates...\n",
+        function_index_, debug_name_);
+  if (inlining_candidates_.empty()) return;
   while (!inlining_candidates_.empty()) {
     CandidateInfo candidate = inlining_candidates_.top();
     inlining_candidates_.pop();
     Node* call = candidate.node;
-    TRACE(
-        "  [function %d: considering candidate {@%d, index=%d, type=%s, "
-        "count=%d, size=%d}... ",
-        function_index_, call->id(), candidate.inlinee_index,
-        candidate.is_speculative_call_ref ? "ref" : "direct",
-        candidate.call_count, candidate.wire_byte_size);
     if (call->IsDead()) {
-      TRACE("dead node]\n");
+      Trace(candidate, "dead node");
+      continue;
+    }
+    // We could build the candidate's graph first and consider its node count,
+    // but it turns out that wire byte size and node count are quite strongly
+    // correlated, at about 1.16 nodes per wire byte (measured for J2Wasm).
+    if (!SmallEnoughToInline(current_graph_size_, candidate.wire_byte_size)) {
+      Trace(candidate, "not enough inlining budget");
       continue;
     }
     const wasm::WasmFunction* inlinee =
         &module()->functions[candidate.inlinee_index];
-    base::Vector<const byte> function_bytes =
-        wire_bytes_->GetCode(inlinee->code);
-    // We use the signature based on the real argument types stored in the call
-    // node. This is more specific than the callee's formal signature and might
-    // enable some optimizations.
-    const wasm::FunctionSig* real_sig =
-        CallDescriptorOf(call->op())->wasm_sig();
 
+    const wasm::FunctionSig* lowered_sig =
+        mcgraph_->machine()->Is64() ? inlinee->sig
+                                    : GetI32Sig(zone(), inlinee->sig);
+
+    DCHECK_EQ(lowered_sig->parameter_count(),
+              call->op()->ValueInputCount() - 2);
 #if DEBUG
-    // Check that the real signature is a subtype of the formal one.
-    const wasm::FunctionSig* formal_sig =
-        WasmGraphBuilder::Int64LoweredSig(zone(), inlinee->sig);
-    CHECK_EQ(real_sig->parameter_count(), formal_sig->parameter_count());
-    CHECK_EQ(real_sig->return_count(), formal_sig->return_count());
-    for (size_t i = 0; i < real_sig->parameter_count(); i++) {
-      CHECK(wasm::IsSubtypeOf(real_sig->GetParam(i), formal_sig->GetParam(i),
-                              module()));
-    }
-    for (size_t i = 0; i < real_sig->return_count(); i++) {
-      CHECK(wasm::IsSubtypeOf(formal_sig->GetReturn(i), real_sig->GetReturn(i),
-                              module()));
+    // The two first parameters in the call are the function and instance, and
+    // then come the wasm function parameters.
+    for (uint32_t i = 0; i < lowered_sig->parameter_count(); i++) {
+      if (!NodeProperties::IsTyped(call->InputAt(i + 2))) continue;
+      wasm::TypeInModule param_type =
+          NodeProperties::GetType(call->InputAt(i + 2)).AsWasm();
+      CHECK(IsSubtypeOf(param_type.type, lowered_sig->GetParam(i),
+                        param_type.module, module()));
     }
 #endif
 
-    const wasm::FunctionBody inlinee_body(real_sig, inlinee->code.offset(),
-                                          function_bytes.begin(),
-                                          function_bytes.end());
+    base::Vector<const byte> function_bytes =
+        wire_bytes_->GetCode(inlinee->code);
+
     wasm::WasmFeatures detected;
-    WasmGraphBuilder builder(env_, zone(), mcgraph_, inlinee_body.sig,
-                             source_positions_);
     std::vector<WasmLoopInfo> inlinee_loop_infos;
 
     size_t subgraph_min_node_id = graph()->NodeCount();
     Node* inlinee_start;
     Node* inlinee_end;
+    const wasm::FunctionBody inlinee_body(inlinee->sig, inlinee->code.offset(),
+                                          function_bytes.begin(),
+                                          function_bytes.end());
+    WasmGraphBuilder builder(env_, zone(), mcgraph_, inlinee_body.sig,
+                             source_positions_);
     {
       Graph::SubgraphScope scope(graph());
       wasm::DecodeResult result = wasm::BuildTFGraph(
@@ -165,32 +193,25 @@ void WasmInliner::Finalize() {
           NodeProperties::IsExceptionalCall(call)
               ? wasm::kInlinedHandledCall
               : wasm::kInlinedNonHandledCall);
-      if (result.failed()) {
-        // This can happen if the inlinee has never been compiled before and is
-        // invalid. Return, as there is no point to keep optimizing.
-        TRACE("failed to compile]\n")
+      if (result.ok()) {
+        builder.LowerInt64(WasmGraphBuilder::kCalledFromWasm);
+        inlinee_start = graph()->start();
+        inlinee_end = graph()->end();
+      } else {
+        // Otherwise report failure.
+        Trace(candidate, "failed to compile");
         return;
       }
-
-      builder.LowerInt64(WasmGraphBuilder::kCalledFromWasm);
-      inlinee_start = graph()->start();
-      inlinee_end = graph()->end();
     }
 
     size_t additional_nodes = graph()->NodeCount() - subgraph_min_node_id;
-    if (current_graph_size_ + additional_nodes >
-        size_limit(initial_graph_size_)) {
-      // This is not based on the accurate graph size, as it may have been
-      // shrunk by other optimizations. We could recompute the accurate size
-      // with a traversal, but it is most probably not worth the time.
-      TRACE("not enough inlining budget]\n");
-      continue;
-    }
-    TRACE("inlining!]\n");
+    Trace(candidate, "inlining!");
     current_graph_size_ += additional_nodes;
+    DCHECK_GE(function_inlining_count_[candidate.inlinee_index], 0);
+    function_inlining_count_[candidate.inlinee_index]++;
 
     if (call->opcode() == IrOpcode::kCall) {
-      InlineCall(call, inlinee_start, inlinee_end, inlinee->sig,
+      InlineCall(call, inlinee_start, inlinee_end, lowered_sig,
                  subgraph_min_node_id);
     } else {
       InlineTailCall(call, inlinee_start, inlinee_end);
@@ -433,6 +454,12 @@ void WasmInliner::InlineCall(Node* call, Node* callee_start, Node* callee_end,
         Int32Matcher(NodeProperties::GetValueInput(return_nodes[0], 0)).Is(0));
     int const return_arity = return_nodes[0]->op()->ValueInputCount() - 1;
     NodeVector values(zone());
+#if DEBUG
+    for (Node* const return_node : return_nodes) {
+      // 3 = effect, control, first 0 return value.
+      CHECK_EQ(return_arity, return_node->InputCount() - 3);
+    }
+#endif
     for (int i = 0; i < return_arity; i++) {
       NodeVector ith_values(zone());
       for (Node* const return_node : return_nodes) {
@@ -463,8 +490,12 @@ void WasmInliner::InlineCall(Node* call, Node* callee_start, Node* callee_end,
       for (Edge use_edge : call->use_edges()) {
         if (NodeProperties::IsValueEdge(use_edge)) {
           Node* use = use_edge.from();
-          DCHECK_EQ(use->opcode(), IrOpcode::kProjection);
-          ReplaceWithValue(use, values[ProjectionIndexOf(use->op())]);
+          // Other nodes are unreachable leftovers from Int32Lowering.
+          if (use->opcode() == IrOpcode::kProjection) {
+            ReplaceWithValue(use, values[ProjectionIndexOf(use->op())]);
+          } else {
+            DCHECK(mcgraph()->machine()->Is32());
+          }
         }
       }
       // All value inputs are replaced by the above loop, so it is ok to use

@@ -12,11 +12,14 @@
 #include 'src/objects/call-site-info.h'
 #include 'src/objects/elements-kind.h'
 #include 'src/objects/free-space.h'
+#include 'src/objects/js-atomics-synchronization.h'
 #include 'src/objects/js-function.h'
 #include 'src/objects/js-generator.h'
 #include 'src/objects/js-promise.h'
 #include 'src/objects/js-regexp-string-iterator.h'
-#include 'src/objects/js-shadow-realms.h'
+#include 'src/objects/js-shadow-realm.h'
+#include 'src/objects/js-shared-array.h'
+#include 'src/objects/js-struct.h'
 #include 'src/objects/js-weak-refs.h'
 #include 'src/objects/objects.h'
 #include 'src/objects/source-text-module.h'
@@ -213,6 +216,7 @@ extern class OrderedHashMap extends HashTable;
 extern class OrderedHashSet extends HashTable;
 extern class OrderedNameDictionary extends HashTable;
 extern class NameToIndexHashTable extends HashTable;
+extern class RegisteredSymbolTable extends HashTable;
 extern class NameDictionary extends HashTable;
 extern class GlobalDictionary extends HashTable;
 extern class SimpleNumberDictionary extends HashTable;
@@ -256,7 +260,8 @@ type CallableApiObject extends JSObject;
 // A JSProxy with the callable bit set.
 type CallableJSProxy extends JSProxy;
 
-type Callable = JSFunction|JSBoundFunction|CallableJSProxy|CallableApiObject;
+type Callable = JSFunction|JSBoundFunction|JSWrappedFunction|CallableJSProxy|
+    CallableApiObject;
 
 type WriteBarrierMode
     generates 'TNode<Int32T>' constexpr 'WriteBarrierMode';
@@ -353,20 +358,15 @@ constexpr 'CodeStubAssembler::ExtractFixedArrayFlag' {
   ...
 }
 
-extern enum InitializationMode
-constexpr 'CodeStubAssembler::InitializationMode' {
-  kUninitialized,
-  kInitializeToZero,
-  kInitializeToNull
-}
-
 const kBigIntMaxLength: constexpr intptr generates 'BigInt::kMaxLength';
 
 extern enum MessageTemplate {
   kAllPromisesRejected,
+  kInvalid,
   kInvalidArrayBufferLength,
   kInvalidArrayLength,
   kInvalidIndex,
+  kInvalidTypedArrayIndex,
   kNotConstructor,
   kNotGeneric,
   kCalledNonCallable,
@@ -375,7 +375,7 @@ extern enum MessageTemplate {
   kProtoObjectOrNull,
   kInvalidOffset,
   kInvalidTypedArrayLength,
-  kIteratorSymbolNonCallable,
+  kFirstArgumentIteratorSymbolNonCallable,
   kIteratorValueNotAnObject,
   kNotIterable,
   kReduceNoInitial,
@@ -386,8 +386,10 @@ extern enum MessageTemplate {
   kInvalidCountValue,
   kConstructorNotFunction,
   kSymbolToString,
+  kSymbolIteratorInvalid,
   kPropertyNotFunction,
   kBigIntTooBig,
+  kBigIntDivZero,
   kNotTypedArray,
   kDetachedOperation,
   kBadSortComparisonFunction,
@@ -399,7 +401,7 @@ extern enum MessageTemplate {
   kRegExpNonRegExp,
   kRegExpNonObject,
   kPromiseNonCallable,
-  kNotAPromise,
+  kPromiseNewTargetUndefined,
   kResolverNotAFunction,
   kTooManyElementsInPromiseCombinator,
   kToRadixFormatRange,
@@ -427,13 +429,14 @@ extern enum MessageTemplate {
   kWasmTrapFloatUnrepresentable,
   kWasmTrapFuncSigMismatch,
   kWasmTrapDataSegmentOutOfBounds,
-  kWasmTrapElemSegmentDropped,
+  kWasmTrapElementSegmentOutOfBounds,
   kWasmTrapTableOutOfBounds,
   kWasmTrapRethrowNull,
   kWasmTrapNullDereference,
   kWasmTrapIllegalCast,
   kWasmTrapArrayOutOfBounds,
   kWasmTrapArrayTooLarge,
+  kWasmTrapStringOffsetOutOfBounds,
   kWeakRefsRegisterTargetAndHoldingsMustNotBeSame,
   kWeakRefsRegisterTargetMustBeObject,
   kWeakRefsUnregisterTokenMustBeObject,
@@ -478,6 +481,8 @@ const kObjectAlignmentMask: constexpr intptr
     generates 'kObjectAlignmentMask';
 const kMinAddedElementsCapacity:
     constexpr int31 generates 'JSObject::kMinAddedElementsCapacity';
+const kMaxFastArrayLength:
+    constexpr int31 generates 'JSArray::kMaxFastArrayLength';
 const kMaxCopyElements:
     constexpr int31 generates 'JSArray::kMaxCopyElements';
 const kMaxRegularHeapObjectSize: constexpr int31
@@ -572,7 +577,8 @@ extern class Filler extends HeapObject generates 'TNode<HeapObject>';
 // Like JSObject, but created from API function.
 @apiExposedInstanceTypeValue(0x422)
 @doNotGenerateCast
-extern class JSApiObject extends JSObject generates 'TNode<JSObject>';
+extern class JSApiObject extends JSObjectWithEmbedderSlots
+    generates 'TNode<JSObject>';
 
 // TODO(gsathya): This only exists to make JSApiObject instance type into a
 // range.
@@ -646,6 +652,8 @@ transitioning macro ToInteger_Inline(implicit context: Context)(input: JSAny):
   }
 }
 
+extern macro ToBigInt(Context, JSAny): BigInt;
+
 extern enum BigIntHandling extends int32
 constexpr 'CodeStubAssembler::BigIntHandling' { kConvertToNumber, kThrow }
 
@@ -668,7 +676,7 @@ extern transitioning builtin SetProperty(implicit context: Context)(
     JSAny, JSAny, JSAny): JSAny;
 extern transitioning builtin SetPropertyIgnoreAttributes(
     implicit context: Context)(JSObject, String, JSAny, Smi): JSAny;
-extern transitioning builtin SetPropertyInLiteral(implicit context: Context)(
+extern transitioning builtin CreateDataProperty(implicit context: Context)(
     JSAny, JSAny, JSAny): JSAny;
 extern transitioning builtin DeleteProperty(implicit context: Context)(
     JSAny, JSAny | PrivateSymbol, LanguageModeSmi): Boolean;
@@ -685,6 +693,8 @@ extern macro ThrowRangeError(implicit context: Context)(
     constexpr MessageTemplate): never;
 extern macro ThrowRangeError(implicit context: Context)(
     constexpr MessageTemplate, Object): never;
+extern macro ThrowRangeError(implicit context: Context)(
+    constexpr MessageTemplate, Object, Object): never;
 extern macro ThrowTypeError(implicit context: Context)(
     constexpr MessageTemplate): never;
 extern macro ThrowTypeError(implicit context: Context)(
@@ -704,6 +714,8 @@ extern transitioning runtime ThrowCalledNonCallable(implicit context: Context)(
 
 extern transitioning macro ThrowIfNotJSReceiver(implicit context: Context)(
     JSAny, constexpr MessageTemplate, constexpr string): void;
+
+extern macro TerminateExecution(implicit context: Context)(): never;
 
 extern macro ArraySpeciesCreate(Context, JSAny, Number): JSReceiver;
 extern macro ArrayCreate(implicit context: Context)(Number): JSArray;
@@ -830,7 +842,10 @@ extern macro IsElementsKindInRange(
     ElementsKind, constexpr ElementsKind, constexpr ElementsKind): bool;
 
 extern macro IsFastElementsKind(constexpr ElementsKind): constexpr bool;
+extern macro IsFastPackedElementsKind(constexpr ElementsKind): constexpr bool;
 extern macro IsDoubleElementsKind(constexpr ElementsKind): constexpr bool;
+
+extern macro GetNonRabGsabElementsKind(ElementsKind): ElementsKind;
 
 extern macro IsFastAliasedArgumentsMap(implicit context: Context)(Map): bool;
 extern macro IsSlowAliasedArgumentsMap(implicit context: Context)(Map): bool;
@@ -1306,6 +1321,7 @@ extern macro BasicLoadNumberDictionaryElement(NumberDictionary, intptr): JSAny
     labels NotData, IfHole;
 
 extern macro IsFastElementsKind(ElementsKind): bool;
+extern macro IsFastPackedElementsKind(ElementsKind): bool;
 extern macro IsDoubleElementsKind(ElementsKind): bool;
 extern macro IsFastSmiOrTaggedElementsKind(ElementsKind): bool;
 extern macro IsFastSmiElementsKind(ElementsKind): bool;
@@ -1643,44 +1659,65 @@ extern macro IsOneByteStringInstanceType(InstanceType): bool;
 // After converting an index to an integer, calculate a relative index:
 // return index < 0 ? max(length + index, 0) : min(index, length)
 @export
-transitioning macro ConvertToRelativeIndex(implicit context: Context)(
+transitioning macro ConvertAndClampRelativeIndex(implicit context: Context)(
     index: JSAny, length: uintptr): uintptr {
   const indexNumber: Number = ToInteger_Inline(index);
-  return ConvertToRelativeIndex(indexNumber, length);
+  return ConvertAndClampRelativeIndex(indexNumber, length);
 }
 
 // Calculate a relative index:
 // return index < 0 ? max(length + index, 0) : min(index, length)
 @export
-macro ConvertToRelativeIndex(indexNumber: Number, length: uintptr): uintptr {
+macro ConvertAndClampRelativeIndex(indexNumber: Number, length: uintptr):
+    uintptr {
+  try {
+    return ConvertRelativeIndex(indexNumber, length) otherwise OutOfBoundsLow,
+           OutOfBoundsHigh;
+  } label OutOfBoundsLow {
+    return 0;
+  } label OutOfBoundsHigh {
+    return length;
+  }
+}
+
+// Calculate a relative index with explicit out-of-bounds labels.
+macro ConvertRelativeIndex(indexNumber: Number, length: uintptr):
+    uintptr labels OutOfBoundsLow, OutOfBoundsHigh {
   typeswitch (indexNumber) {
     case (indexSmi: Smi): {
       const indexIntPtr: intptr = Convert<intptr>(indexSmi);
       // The logic is implemented using unsigned types.
       if (indexIntPtr < 0) {
         const relativeIndex: uintptr = Unsigned(indexIntPtr) + length;
-        return relativeIndex < length ? relativeIndex : 0;
+        if (relativeIndex < length) return relativeIndex;
+        goto OutOfBoundsLow;
 
       } else {
         const relativeIndex: uintptr = Unsigned(indexIntPtr);
-        return relativeIndex < length ? relativeIndex : length;
+        if (relativeIndex < length) return relativeIndex;
+        goto OutOfBoundsHigh;
       }
     }
     case (indexHeapNumber: HeapNumber): {
       dcheck(IsNumberNormalized(indexHeapNumber));
       const indexDouble: float64 = Convert<float64>(indexHeapNumber);
-      // NaNs must already be handled by ConvertToRelativeIndex() version
+      // NaNs must already be handled by ConvertAndClampRelativeIndex() version
       // above accepting JSAny indices.
       dcheck(!Float64IsNaN(indexDouble));
       const lengthDouble: float64 = Convert<float64>(length);
       dcheck(lengthDouble <= kMaxSafeInteger);
       if (indexDouble < 0) {
         const relativeIndex: float64 = lengthDouble + indexDouble;
-        return relativeIndex > 0 ? ChangeFloat64ToUintPtr(relativeIndex) : 0;
+        if (relativeIndex > 0) {
+          return ChangeFloat64ToUintPtr(relativeIndex);
+        }
+        goto OutOfBoundsLow;
 
       } else {
-        return ChangeFloat64ToUintPtr(
-            indexDouble < lengthDouble ? indexDouble : lengthDouble);
+        if (indexDouble < lengthDouble) {
+          return ChangeFloat64ToUintPtr(indexDouble);
+        }
+        goto OutOfBoundsHigh;
       }
     }
   }

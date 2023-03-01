@@ -377,7 +377,7 @@ void CoverageInfo::ResetBlockCount(int slot_index) {
 
 void CoverageInfo::CoverageInfoPrint(std::ostream& os,
                                      std::unique_ptr<char[]> function_name) {
-  DCHECK(FLAG_trace_block_coverage);
+  DCHECK(v8_flags.trace_block_coverage);
   DisallowGarbageCollection no_gc;
 
   os << "Coverage info (";
@@ -406,7 +406,7 @@ int StackFrameInfo::GetSourcePosition(Handle<StackFrameInfo> info) {
       SharedFunctionInfo::cast(info->shared_or_script()), isolate);
   SharedFunctionInfo::EnsureSourcePositionsAvailable(isolate, shared);
   int source_position = shared->abstract_code(isolate).SourcePosition(
-      info->bytecode_offset_or_source_position());
+      isolate, info->bytecode_offset_or_source_position());
   info->set_shared_or_script(shared->script());
   info->set_bytecode_offset_or_source_position(source_position);
   return source_position;
@@ -455,6 +455,17 @@ void ErrorStackData::EnsureStackFrameInfos(Isolate* isolate,
     error_stack->set_call_site_infos(*call_site_infos);
   }
   error_stack->set_limit_or_stack_frame_infos(*stack_frame_infos);
+}
+
+// static
+MaybeHandle<JSObject> PromiseOnStack::GetPromise(
+    Handle<PromiseOnStack> promise_on_stack) {
+  HeapObject promise;
+  Isolate* isolate = promise_on_stack->GetIsolate();
+  if (promise_on_stack->promise()->GetHeapObjectIfWeak(isolate, &promise)) {
+    return handle(JSObject::cast(promise), isolate);
+  }
+  return {};
 }
 
 }  // namespace internal

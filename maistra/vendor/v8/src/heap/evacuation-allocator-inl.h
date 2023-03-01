@@ -55,8 +55,7 @@ void EvacuationAllocator::FreeLastInNewSpace(HeapObject object,
                                              int object_size) {
   if (!new_space_lab_.TryFreeLast(object, object_size)) {
     // We couldn't free the last object so we have to write a proper filler.
-    heap_->CreateFillerObjectAt(object.address(), object_size,
-                                ClearRecordedSlots::kNo);
+    heap_->CreateFillerObjectAt(object.address(), object_size);
   }
 }
 
@@ -65,8 +64,7 @@ void EvacuationAllocator::FreeLastInOldSpace(HeapObject object,
   if (!compaction_spaces_.Get(OLD_SPACE)->TryFreeLast(object.address(),
                                                       object_size)) {
     // We couldn't free the last object so we have to write a proper filler.
-    heap_->CreateFillerObjectAt(object.address(), object_size,
-                                ClearRecordedSlots::kNo);
+    heap_->CreateFillerObjectAt(object.address(), object_size);
   }
 }
 
@@ -75,8 +73,7 @@ void EvacuationAllocator::FreeLastInMapSpace(HeapObject object,
   if (!compaction_spaces_.Get(MAP_SPACE)->TryFreeLast(object.address(),
                                                       object_size)) {
     // We couldn't free the last object so we have to write a proper filler.
-    heap_->CreateFillerObjectAt(object.address(), object_size,
-                                ClearRecordedSlots::kNo);
+    heap_->CreateFillerObjectAt(object.address(), object_size);
   }
 }
 
@@ -84,12 +81,12 @@ AllocationResult EvacuationAllocator::AllocateInLAB(
     int object_size, AllocationAlignment alignment) {
   AllocationResult allocation;
   if (!new_space_lab_.IsValid() && !NewLocalAllocationBuffer()) {
-    return AllocationResult::Failure(OLD_SPACE);
+    return AllocationResult::Failure();
   }
   allocation = new_space_lab_.AllocateRawAligned(object_size, alignment);
   if (allocation.IsFailure()) {
     if (!NewLocalAllocationBuffer()) {
-      return AllocationResult::Failure(OLD_SPACE);
+      return AllocationResult::Failure();
     } else {
       allocation = new_space_lab_.AllocateRawAligned(object_size, alignment);
       CHECK(!allocation.IsFailure());

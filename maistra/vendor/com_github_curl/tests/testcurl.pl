@@ -19,6 +19,8 @@
 # This software is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY
 # KIND, either express or implied.
 #
+# SPDX-License-Identifier: curl
+#
 ###########################################################################
 
 ###########################
@@ -466,8 +468,8 @@ if ($git) {
     unlink "autom4te.cache";
 
     # generate the build files
-    logit "invoke buildconf";
-    open(F, "./buildconf 2>&1 |") or die;
+    logit "invoke autoreconf";
+    open(F, "autoreconf -fi 2>&1 |") or die;
     open(LOG, ">$buildlog") or die;
     while (<F>) {
       my $ll = $_;

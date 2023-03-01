@@ -5,7 +5,6 @@
 #include "src/debug/debug-coverage.h"
 
 #include "src/ast/ast-source-ranges.h"
-#include "src/ast/ast.h"
 #include "src/base/hashmap.h"
 #include "src/common/assert-scope.h"
 #include "src/common/globals.h"
@@ -13,7 +12,6 @@
 #include "src/deoptimizer/deoptimizer.h"
 #include "src/execution/frames-inl.h"
 #include "src/execution/isolate.h"
-#include "src/objects/debug-objects-inl.h"
 #include "src/objects/objects.h"
 
 namespace v8 {
@@ -811,7 +809,7 @@ void Coverage::SelectMode(Isolate* isolate, debug::CoverageMode mode) {
         IsCompiledScope is_compiled_scope(
             func->shared().is_compiled_scope(isolate));
         CHECK(is_compiled_scope.is_compiled());
-        JSFunction::EnsureFeedbackVector(func, &is_compiled_scope);
+        JSFunction::EnsureFeedbackVector(isolate, func, &is_compiled_scope);
       }
 
       // Root all feedback vectors to avoid early collection.

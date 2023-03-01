@@ -19,6 +19,7 @@
 namespace v8 {
 
 static const char* kHeader =
+    "#!/usr/bin/env python3\n"
     "# Copyright 2019 the V8 project authors. All rights reserved.\n"
     "# Use of this source code is governed by a BSD-style license that can\n"
     "# be found in the LICENSE file.\n"
@@ -116,11 +117,6 @@ static int DumpHeapConstants(FILE* out, const char* argv0) {
   // Start up V8.
   std::unique_ptr<v8::Platform> platform = v8::platform::NewDefaultPlatform();
   v8::V8::InitializePlatform(platform.get());
-#ifdef V8_SANDBOX
-  if (!v8::V8::InitializeSandbox()) {
-    FATAL("Could not initialize the sandbox");
-  }
-#endif
   v8::V8::Initialize();
   v8::V8::InitializeExternalStartupData(argv0);
   Isolate::CreateParams create_params;
@@ -151,12 +147,13 @@ static int DumpHeapConstants(FILE* out, const char* argv0) {
         DumpKnownMap(out, heap, i::BaseSpace::GetSpaceName(i::RO_SPACE),
                      object);
       }
-      i::PagedSpaceObjectIterator iterator(heap, heap->map_space());
+
+      i::PagedSpace* space_for_maps = heap->space_for_maps();
+      i::PagedSpaceObjectIterator iterator(heap, space_for_maps);
       for (i::HeapObject object = iterator.Next(); !object.is_null();
            object = iterator.Next()) {
         if (!object.IsMap()) continue;
-        DumpKnownMap(out, heap, i::BaseSpace::GetSpaceName(i::MAP_SPACE),
-                     object);
+        DumpKnownMap(out, heap, space_for_maps->name(), object);
       }
       i::PrintF(out, "}\n");
     }

@@ -16,16 +16,16 @@
 
 ## Examples
 
-- [Hello World](./examples/hello_world.rs)
-- [HTTP Auth random](./examples/http_auth_random.rs)
-- [HTTP Headers](./examples/http_headers.rs)
-- [HTTP Response body](./examples/http_body.rs)
-- [HTTP Configuration](./examples/http_config.rs)
+- [Hello World](./examples/hello_world/)
+- [HTTP Auth (random)](./examples/http_auth_random/)
+- [HTTP Headers](./examples/http_headers/)
+- [HTTP Response body](./examples/http_body/)
+- [HTTP Configuration](./examples/http_config/)
 
 ## Articles & blog posts from the community
 
 - [Extending Envoy with WASM and Rust](https://antweiss.com/blog/extending-envoy-with-wasm-and-rust/)
-- [Extending Istio with Rust and WebAssembly](https://blog.red-badger.com/extending-istio-with-rust-and-webassembly)
+- [Writing Envoy filters in Rust with WebAssembly](https://content.red-badger.com/resources/extending-istio-with-rust-and-webassembly)
 
 ## Updating dependencies
 

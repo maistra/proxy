@@ -10,7 +10,7 @@
 #include "src/common/globals.h"
 #include "src/execution/isolate-data.h"
 #include "src/execution/isolate-inl.h"
-#include "src/snapshot/embedded/embedded-data.h"
+#include "src/snapshot/embedded/embedded-data-inl.h"
 
 namespace v8 {
 namespace internal {
@@ -29,8 +29,7 @@ TurboAssemblerBase::TurboAssemblerBase(Isolate* isolate,
 Address TurboAssemblerBase::BuiltinEntry(Builtin builtin) {
   DCHECK(Builtins::IsBuiltinId(builtin));
   if (isolate_ != nullptr) {
-    Address entry =
-        isolate_->builtin_entry_table()[static_cast<int32_t>(builtin)];
+    Address entry = isolate_->builtin_entry_table()[Builtins::ToInt(builtin)];
     DCHECK_EQ(entry, EmbeddedData::FromBlob(isolate_).InstructionStartOfBuiltin(
                          builtin));
     return entry;

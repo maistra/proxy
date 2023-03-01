@@ -140,6 +140,10 @@ export class SVG {
     return this.element('rect', classes);
   }
 
+  static path(classes) {
+    return this.element('path', classes);
+  }
+
   static g(classes) {
     return this.element('g', classes);
   }
@@ -171,7 +175,6 @@ export class CollapsableElement extends V8CustomElement {
       this._closer.checked = true;
       this._requestUpdateIfVisible();
     }
-    this.scrollIntoView();
   }
 
   show() {
@@ -179,7 +182,7 @@ export class CollapsableElement extends V8CustomElement {
       this._closer.checked = false;
       this._requestUpdateIfVisible();
     }
-    this.scrollIntoView();
+    this.scrollIntoView({behavior: 'smooth', block: 'center'});
   }
 
   requestUpdate(useAnimation = false) {

@@ -167,8 +167,16 @@ bool SetPermissionsInternal(const zx::vmar& vmar, size_t page_size,
   DCHECK_EQ(0, reinterpret_cast<uintptr_t>(address) % page_size);
   DCHECK_EQ(0, size % page_size);
   uint32_t prot = GetProtectionFromMemoryPermission(access);
-  return vmar.protect(prot, reinterpret_cast<uintptr_t>(address), size) ==
-         ZX_OK;
+  zx_status_t status =
+      vmar.protect(prot, reinterpret_cast<uintptr_t>(address), size);
+
+  // Any failure that's not OOM likely indicates a bug in the caller (e.g.
+  // using an invalid mapping) so attempt to catch that here to facilitate
+  // debugging of these failures. According to the documentation,
+  // zx_vmar_protect cannot return ZX_ERR_NO_MEMORY, so any error here is
+  // unexpected.
+  CHECK_EQ(status, ZX_OK);
+  return status == ZX_OK;
 }
 
 bool DiscardSystemPagesInternal(const zx::vmar& vmar, size_t page_size,
@@ -254,8 +262,8 @@ void* OS::Allocate(void* address, size_t size, size_t alignment,
 }
 
 // static
-bool OS::Free(void* address, size_t size) {
-  return UnmapVmo(*zx::vmar::root_self(), AllocatePageSize(), address, size);
+void OS::Free(void* address, size_t size) {
+  CHECK(UnmapVmo(*zx::vmar::root_self(), AllocatePageSize(), address, size));
 }
 
 // static
@@ -271,17 +279,28 @@ void* OS::AllocateShared(void* address, size_t size,
 }
 
 // static
-bool OS::FreeShared(void* address, size_t size) {
-  return UnmapVmo(*zx::vmar::root_self(), AllocatePageSize(), address, size);
+void OS::FreeShared(void* address, size_t size) {
+  CHECK(UnmapVmo(*zx::vmar::root_self(), AllocatePageSize(), address, size));
 }
 
 // static
-bool OS::Release(void* address, size_t size) { return Free(address, size); }
+void OS::Release(void* address, size_t size) { Free(address, size); }
 
 // static
 bool OS::SetPermissions(void* address, size_t size, MemoryPermission access) {
   return SetPermissionsInternal(*zx::vmar::root_self(), CommitPageSize(),
                                 address, size, access);
+}
+
+void OS::SetDataReadOnly(void* address, size_t size) {
+  // TODO(v8:13194): Figure out which API to use on fuchsia. {vmar.protect}
+  // fails.
+  // CHECK(OS::SetPermissions(address, size, MemoryPermission::kRead));
+}
+
+// static
+bool OS::RecommitPages(void* address, size_t size, MemoryPermission access) {
+  return SetPermissions(address, size, access);
 }
 
 // static
@@ -320,10 +339,10 @@ Optional<AddressSpaceReservation> OS::CreateAddressSpaceReservation(
 }
 
 // static
-bool OS::FreeAddressSpaceReservation(AddressSpaceReservation reservation) {
+void OS::FreeAddressSpaceReservation(AddressSpaceReservation reservation) {
   // Destroy the vmar and release the handle.
   zx::vmar vmar(reservation.vmar_);
-  return vmar.destroy() == ZX_OK;
+  CHECK_EQ(ZX_OK, vmar.destroy());
 }
 
 // static
@@ -399,7 +418,8 @@ Optional<AddressSpaceReservation> AddressSpaceReservation::CreateSubReservation(
 
 bool AddressSpaceReservation::FreeSubReservation(
     AddressSpaceReservation reservation) {
-  return OS::FreeAddressSpaceReservation(reservation);
+  OS::FreeAddressSpaceReservation(reservation);
+  return true;
 }
 
 bool AddressSpaceReservation::Allocate(void* address, size_t size,
@@ -440,6 +460,11 @@ bool AddressSpaceReservation::SetPermissions(void* address, size_t size,
   DCHECK(Contains(address, size));
   return SetPermissionsInternal(*zx::unowned_vmar(vmar_), OS::CommitPageSize(),
                                 address, size, access);
+}
+
+bool AddressSpaceReservation::RecommitPages(void* address, size_t size,
+                                            OS::MemoryPermission access) {
+  return SetPermissions(address, size, access);
 }
 
 bool AddressSpaceReservation::DiscardSystemPages(void* address, size_t size) {

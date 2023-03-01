@@ -14,7 +14,7 @@ namespace internal {
 
 constexpr auto CallInterfaceDescriptor::DefaultRegisterArray() {
   auto registers = RegisterArray(rax, rbx, rcx, rdx, rdi);
-  STATIC_ASSERT(registers.size() == kMaxBuiltinRegisterParams);
+  static_assert(registers.size() == kMaxBuiltinRegisterParams);
   return registers;
 }
 
@@ -24,17 +24,17 @@ void StaticCallInterfaceDescriptor<DerivedDescriptor>::
     VerifyArgumentRegisterCount(CallInterfaceDescriptorData* data,
                                 int nof_expected_args) {
   RegList allocatable_regs = data->allocatable_registers();
-  if (nof_expected_args >= 1) DCHECK(allocatable_regs | arg_reg_1.bit());
-  if (nof_expected_args >= 2) DCHECK(allocatable_regs | arg_reg_2.bit());
-  if (nof_expected_args >= 3) DCHECK(allocatable_regs | arg_reg_3.bit());
-  if (nof_expected_args >= 4) DCHECK(allocatable_regs | arg_reg_4.bit());
+  if (nof_expected_args >= 1) DCHECK(allocatable_regs.has(arg_reg_1));
+  if (nof_expected_args >= 2) DCHECK(allocatable_regs.has(arg_reg_2));
+  if (nof_expected_args >= 3) DCHECK(allocatable_regs.has(arg_reg_3));
+  if (nof_expected_args >= 4) DCHECK(allocatable_regs.has(arg_reg_4));
   // Additional arguments are passed on the stack.
 }
 #endif  // DEBUG
 
 // static
 constexpr auto WriteBarrierDescriptor::registers() {
-#if V8_TARGET_OS_WIN
+#ifdef V8_TARGET_OS_WIN
   return RegisterArray(rdi, r8, rcx, rax, r9, rdx, rsi);
 #else
   return RegisterArray(rdi, rbx, rdx, rcx, rax, rsi);
@@ -52,30 +52,6 @@ constexpr auto TSANLoadDescriptor::registers() {
   return RegisterArray(arg_reg_1, kReturnRegister0);
 }
 #endif  // V8_IS_TSAN
-
-// static
-constexpr auto DynamicCheckMapsDescriptor::registers() {
-#if V8_TARGET_OS_WIN
-  return RegisterArray(kReturnRegister0, arg_reg_1, arg_reg_2, arg_reg_3,
-                       kRuntimeCallFunctionRegister, kContextRegister);
-#else
-  STATIC_ASSERT(kContextRegister == arg_reg_2);
-  return RegisterArray(kReturnRegister0, arg_reg_1, arg_reg_2, arg_reg_3,
-                       kRuntimeCallFunctionRegister);
-#endif  // V8_TARGET_OS_WIN
-}
-
-// static
-constexpr auto DynamicCheckMapsWithFeedbackVectorDescriptor::registers() {
-#if V8_TARGET_OS_WIN
-  return RegisterArray(kReturnRegister0, arg_reg_1, arg_reg_2, arg_reg_3,
-                       kRuntimeCallFunctionRegister, kContextRegister);
-#else
-  STATIC_ASSERT(kContextRegister == arg_reg_2);
-  return RegisterArray(kReturnRegister0, arg_reg_1, arg_reg_2, arg_reg_3,
-                       kRuntimeCallFunctionRegister);
-#endif  // V8_TARGET_OS_WIN
-}
 
 // static
 constexpr Register LoadDescriptor::ReceiverRegister() { return rdx; }
@@ -169,6 +145,21 @@ constexpr auto CallTrampolineDescriptor::registers() {
   // rdi : the target to call
   return RegisterArray(rdi, rax);
 }
+// static
+constexpr auto CopyDataPropertiesWithExcludedPropertiesDescriptor::registers() {
+  // rdi : the source
+  // rax : the excluded property count
+  return RegisterArray(rdi, rax);
+}
+
+// static
+constexpr auto
+CopyDataPropertiesWithExcludedPropertiesOnStackDescriptor::registers() {
+  // rdi : the source
+  // rax : the excluded property count
+  // rcx : the excluded property base
+  return RegisterArray(rdi, rax, rcx);
+}
 
 // static
 constexpr auto CallVarargsDescriptor::registers() {
@@ -250,8 +241,7 @@ constexpr auto ConstructStubDescriptor::registers() {
   // rax : number of arguments
   // rdx : the new target
   // rdi : the target to call
-  // rbx : allocation site or undefined
-  return RegisterArray(rdi, rdx, rax, rbx);
+  return RegisterArray(rdi, rdx, rax);
 }
 
 // static

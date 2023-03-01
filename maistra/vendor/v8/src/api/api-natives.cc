@@ -4,15 +4,12 @@
 
 #include "src/api/api-natives.h"
 
-#include "src/api/api-inl.h"
 #include "src/common/message-template.h"
 #include "src/execution/isolate-inl.h"
 #include "src/heap/heap-inl.h"
 #include "src/logging/runtime-call-stats-scope.h"
 #include "src/objects/api-callbacks.h"
-#include "src/objects/hash-table-inl.h"
 #include "src/objects/lookup.h"
-#include "src/objects/property-cell.h"
 #include "src/objects/templates.h"
 
 namespace v8 {
@@ -386,7 +383,7 @@ bool IsSimpleInstantiation(Isolate* isolate, ObjectTemplateInfo info,
   if (fun.shared().function_data(kAcquireLoad) != info.constructor())
     return false;
   if (info.immutable_proto()) return false;
-  return fun.context().native_context() == isolate->raw_native_context();
+  return fun.native_context() == isolate->raw_native_context();
 }
 
 MaybeHandle<JSObject> InstantiateObject(Isolate* isolate,

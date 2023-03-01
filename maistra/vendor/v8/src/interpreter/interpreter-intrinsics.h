@@ -29,6 +29,8 @@ namespace interpreter {
   V(GeneratorClose, generator_close, 1)                             \
   V(GetImportMetaObject, get_import_meta_object, 0)                 \
   V(CopyDataProperties, copy_data_properties, 2)                    \
+  V(CopyDataPropertiesWithExcludedPropertiesOnStack,                \
+    copy_data_properties_with_excluded_properties_on_stack, -1)     \
   V(CreateIterResultObject, create_iter_result_object, 2)           \
   V(CreateAsyncFromSyncIterator, create_async_from_sync_iterator, 1)
 
@@ -40,7 +42,7 @@ class IntrinsicsHelper {
 #undef DECLARE_INTRINSIC_ID
         kIdCount
   };
-  STATIC_ASSERT(static_cast<uint32_t>(IntrinsicId::kIdCount) <= kMaxUInt8);
+  static_assert(static_cast<uint32_t>(IntrinsicId::kIdCount) <= kMaxUInt8);
 
   V8_EXPORT_PRIVATE static bool IsSupported(Runtime::FunctionId function_id);
   static IntrinsicId FromRuntimeId(Runtime::FunctionId function_id);

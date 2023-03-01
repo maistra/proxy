@@ -94,7 +94,7 @@ class IsolateSafepoint final {
   void WaitUntilRunningThreadsInSafepoint(
       const PerClientSafepointData* client_data);
 
-  IncludeMainThread IncludeMainThreadUnlessInitiator(Isolate* initiator);
+  IncludeMainThread ShouldIncludeMainThread(Isolate* initiator);
 
   void LockMutex(LocalHeap* local_heap);
 
@@ -147,6 +147,7 @@ class IsolateSafepoint final {
 
   friend class GlobalSafepoint;
   friend class GlobalSafepointScope;
+  friend class Isolate;
   friend class LocalHeap;
   friend class SafepointScope;
 };
@@ -177,7 +178,7 @@ class GlobalSafepoint final {
     }
   }
 
-  void AssertNoClients();
+  void AssertNoClientsOnTearDown();
 
   void AssertActive() { clients_mutex_.AssertHeld(); }
 
