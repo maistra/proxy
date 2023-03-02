@@ -18,6 +18,8 @@
 # This software is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY
 # KIND, either express or implied.
 #
+# SPDX-License-Identifier: curl
+#
 ###########################################################################
 
 AUTOMAKE_OPTIONS = foreign nostdinc
@@ -67,4 +69,4 @@ CS_1 =
 CS_ = $(CS_0)
 
 checksrc:
-	$(CHECKSRC)(@PERL@ $(top_srcdir)/lib/checksrc.pl -D$(srcdir) $(srcdir)/*.c)
+	$(CHECKSRC)(@PERL@ $(top_srcdir)/scripts/checksrc.pl -D$(srcdir) $(srcdir)/*.c)

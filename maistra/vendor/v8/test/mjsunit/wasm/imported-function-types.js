@@ -12,14 +12,14 @@ var exporting_module = (function() {
   var binaryType = builder.addType(kSig_i_ii);
   var unaryType = builder.addType(kSig_i_i);
 
-  builder.addFunction("func1", makeSig([wasmRefType(binaryType)], [kWasmI32])).
-    addBody([kExprI32Const, 42, kExprI32Const, 12, kExprLocalGet, 0,
-             kExprCallRef]).
-    exportFunc();
+  builder.addFunction("func1", makeSig([wasmRefType(binaryType)], [kWasmI32]))
+    .addBody([kExprI32Const, 42, kExprI32Const, 12, kExprLocalGet, 0,
+              kExprCallRef, binaryType])
+    .exportFunc();
 
-  builder.addFunction("func2", makeSig([wasmRefType(unaryType)], [kWasmI32])).
-    addBody([kExprI32Const, 42, kExprLocalGet, 0, kExprCallRef]).
-    exportFunc();
+  builder.addFunction("func2", makeSig([wasmRefType(unaryType)], [kWasmI32]))
+    .addBody([kExprI32Const, 42, kExprLocalGet, 0, kExprCallRef, unaryType])
+    .exportFunc();
 
   return builder.instantiate({});
 })();
@@ -35,9 +35,8 @@ var importing_module = function(imported_function) {
   return builder.instantiate({other: {func: imported_function}});
 };
 
-// TODO(7748): Implement cross-module subtyping.
 // Same form/different index should be fine.
-// importing_module(exporting_module.exports.func2);
+importing_module(exporting_module.exports.func2);
 // Same index/different form should throw.
 assertThrows(
     () => importing_module(exporting_module.exports.func1),

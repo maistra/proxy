@@ -20,17 +20,13 @@
  * This software is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY
  * KIND, either express or implied.
  *
+ * SPDX-License-Identifier: curl
+ *
  ***************************************************************************/
 #include "tool_setup.h"
 #include "tool_sdecls.h"
 #include "tool_urlglob.h"
 #include "tool_formparse.h"
-
-typedef enum {
-  ERR_NONE,
-  ERR_BINARY_TERMINAL = 1, /* binary to terminal detected */
-  ERR_LAST
-} curl_error;
 
 struct GlobalConfig;
 
@@ -50,8 +46,6 @@ struct State {
 
 struct OperationConfig {
   bool remote_time;
-  char *random_file;
-  char *egd_file;
   char *useragent;
   struct curl_slist *cookies;  /* cookies to serialize into a single line */
   char *cookiejar;          /* write to this file */
@@ -67,9 +61,9 @@ struct OperationConfig {
   bool disable_epsv;
   bool disable_eprt;
   bool ftp_pret;
-  long proto;
+  char *proto_str;
   bool proto_present;
-  long proto_redir;
+  char *proto_redir_str;
   bool proto_redir_present;
   char *proto_default;
   curl_off_t resume_from;
@@ -110,7 +104,7 @@ struct OperationConfig {
   struct curl_slist *mail_rcpt;
   char *mail_auth;
   bool mail_rcpt_allowfails; /* --mail-rcpt-allowfails */
-  char *sasl_authzid;       /* Authorisation identity (identity to use) */
+  char *sasl_authzid;       /* Authorization identity (identity to use) */
   bool sasl_ir;             /* Enable/disable SASL initial response */
   bool proxytunnel;
   bool ftp_append;          /* APPE on ftp */
@@ -273,7 +267,6 @@ struct OperationConfig {
                                   certificate for authentication (Schannel) */
   bool proxy_ssl_auto_client_cert; /* proxy version of ssl_auto_client_cert */
   char *oauth_bearer;             /* OAuth 2.0 bearer token */
-  bool nonpn;                     /* enable/disable TLS NPN extension */
   bool noalpn;                    /* enable/disable TLS ALPN extension */
   char *unix_socket_path;         /* path to Unix domain socket */
   bool abstract_unix_socket;      /* path to an abstract Unix domain socket */
@@ -282,18 +275,28 @@ struct OperationConfig {
   double expect100timeout;
   bool suppress_connect_headers;  /* suppress proxy CONNECT response headers
                                      from user callbacks */
-  curl_error synthetic_error;     /* if non-zero, it overrides any libcurl
-                                     error */
+  bool synthetic_error;           /* if TRUE, this is tool-internal error */
   bool ssh_compression;           /* enable/disable SSH compression */
   long happy_eyeballs_timeout_ms; /* happy eyeballs timeout in milliseconds.
                                      0 is valid. default: CURL_HET_DEFAULT. */
   bool haproxy_protocol;          /* whether to send HAProxy protocol v1 */
   bool disallow_username_in_url;  /* disallow usernames in URLs */
   char *aws_sigv4;
+  enum {
+    CLOBBER_DEFAULT, /* Provides compatibility with previous versions of curl,
+                        by using the default behavior for -o, -O, and -J.
+                        If those options would have overwritten files, like
+                        -o and -O would, then overwrite them. In the case of
+                        -J, this will not overwrite any files. */
+    CLOBBER_NEVER, /* If the file exists, always fail */
+    CLOBBER_ALWAYS /* If the file exists, always overwrite it */
+  } file_clobber_mode;
   struct GlobalConfig *global;
   struct OperationConfig *prev;
   struct OperationConfig *next;   /* Always last in the struct */
   struct State state;             /* for create_transfer() */
+  bool rm_partial;                /* on error, remove partially written output
+                                     files */
 };
 
 struct GlobalConfig {
@@ -314,6 +317,8 @@ struct GlobalConfig {
   char *libcurl;                  /* Output libcurl code to this file name */
   bool fail_early;                /* exit on first transfer error */
   bool styled_output;             /* enable fancy output style detection */
+  long ms_per_transfer;           /* start next transfer after (at least) this
+                                     many milliseconds */
 #ifdef CURLDEBUG
   bool test_event_based;
 #endif

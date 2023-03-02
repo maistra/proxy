@@ -165,9 +165,12 @@ class EXPORT_TEMPLATE_DECLARE(V8_EXPORT_PRIVATE) HashTable
   inline Object KeyAt(PtrComprCageBase cage_base, InternalIndex entry,
                       RelaxedLoadTag tag);
 
+  inline void SetKeyAt(InternalIndex entry, Object value,
+                       WriteBarrierMode mode = UPDATE_WRITE_BARRIER);
+
   static const int kElementsStartIndex = kPrefixStartIndex + Shape::kPrefixSize;
   static const int kEntrySize = Shape::kEntrySize;
-  STATIC_ASSERT(kEntrySize > 0);
+  static_assert(kEntrySize > 0);
   static const int kEntryKeyIndex = 0;
   static const int kElementsStartOffset =
       kHeaderSize + kElementsStartIndex * kTaggedSize;
@@ -247,13 +250,13 @@ class EXPORT_TEMPLATE_DECLARE(V8_EXPORT_PRIVATE) HashTable
 
  private:
   // Ensure that kMaxRegularCapacity yields a non-large object dictionary.
-  STATIC_ASSERT(EntryToIndex(InternalIndex(kMaxRegularCapacity)) <
+  static_assert(EntryToIndex(InternalIndex(kMaxRegularCapacity)) <
                 kMaxRegularLength);
-  STATIC_ASSERT(v8::base::bits::IsPowerOfTwo(kMaxRegularCapacity));
+  static_assert(v8::base::bits::IsPowerOfTwo(kMaxRegularCapacity));
   static const int kMaxRegularEntry = kMaxRegularCapacity / kEntrySize;
   static const int kMaxRegularIndex =
       EntryToIndex(InternalIndex(kMaxRegularEntry));
-  STATIC_ASSERT(OffsetOfElementAt(kMaxRegularIndex) <
+  static_assert(OffsetOfElementAt(kMaxRegularIndex) <
                 kMaxRegularHeapObjectSize);
 
   // Sets the capacity of the hash table.
@@ -476,6 +479,43 @@ class V8_EXPORT_PRIVATE NameToIndexHashTable
  private:
   static inline int EntryToValueIndex(InternalIndex entry) {
     return EntryToIndex(entry) + NameToIndexShape::kEntryValueIndex;
+  }
+};
+
+class RegisteredSymbolTableShape : public BaseShape<Handle<String>> {
+ public:
+  static inline bool IsMatch(Handle<String> key, Object other);
+  static inline uint32_t Hash(ReadOnlyRoots roots, Handle<String> key);
+  static inline uint32_t HashForObject(ReadOnlyRoots roots, Object object);
+  static const int kPrefixSize = 0;
+  static const int kEntryValueIndex = 1;
+  static const int kEntrySize = 2;
+  static const bool kMatchNeedsHoleCheck = false;
+};
+
+class RegisteredSymbolTable
+    : public HashTable<RegisteredSymbolTable, RegisteredSymbolTableShape> {
+ public:
+  Object SlowReverseLookup(Object value);
+
+  // Returns the value at entry.
+  Object ValueAt(InternalIndex entry);
+
+  inline static Handle<Map> GetMap(ReadOnlyRoots roots);
+
+  static Handle<RegisteredSymbolTable> Add(Isolate* isolate,
+                                           Handle<RegisteredSymbolTable> table,
+                                           Handle<String> key, Handle<Symbol>);
+
+  DECL_CAST(RegisteredSymbolTable)
+  DECL_PRINTER(RegisteredSymbolTable)
+  OBJECT_CONSTRUCTORS(
+      RegisteredSymbolTable,
+      HashTable<RegisteredSymbolTable, RegisteredSymbolTableShape>);
+
+ private:
+  static inline int EntryToValueIndex(InternalIndex entry) {
+    return EntryToIndex(entry) + RegisteredSymbolTableShape::kEntryValueIndex;
   }
 };
 

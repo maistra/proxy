@@ -116,6 +116,7 @@ def _default_args():
         }) + select({
             "@v8//bazel/config:is_clang": [
                 "-Wno-invalid-offsetof",
+                "-Wno-unneeded-internal-declaration",
                 "-std=c++17",
             ],
             "@v8//bazel/config:is_gcc": [
@@ -388,13 +389,13 @@ def _v8_target_cpu_transition_impl(settings, attr):
         "k8": "x64",
         "x86_64": "x64",
         "darwin": "x64",
-        "darwin_arm64": "arm64",
         "darwin_x86_64": "x64",
         "x64_windows": "x64",
         "x86": "ia32",
         "aarch64": "arm64",
         "arm64-v8a": "arm64",
         "arm": "arm64",
+        "darwin_arm64": "arm64",
         "armeabi-v7a": "arm32",
         "s390x": "s390x",
         "riscv64": "riscv64",
@@ -498,7 +499,6 @@ def build_config_content(cpu, icu):
         ("target_cpu", cpu),
         ("v8_current_cpu", cpu),
         ("v8_dict_property_const_tracking", "false"),
-        ("v8_enable_atomic_marking_state", "false"),
         ("v8_enable_atomic_object_field_writes", "false"),
         ("v8_enable_concurrent_marking", "false"),
         ("v8_enable_i18n_support", icu),

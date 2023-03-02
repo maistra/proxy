@@ -254,7 +254,7 @@ Handle<Map> MapUpdater::ReconfigureElementsKind(ElementsKind elements_kind) {
 Handle<Map> MapUpdater::UpdateMapNoLock(Isolate* isolate, Handle<Map> map) {
   if (!map->is_deprecated()) return map;
   // TODO(ishell): support fast map updating if we enable it.
-  CHECK(!FLAG_fast_map_update);
+  CHECK(!v8_flags.fast_map_update);
   MapUpdater mu(isolate, map);
   // Update map without locking the Isolate::map_updater_access mutex.
   return mu.UpdateImpl();
@@ -276,7 +276,7 @@ Handle<Map> MapUpdater::UpdateImpl() {
     ConstructNewMapWithIntegrityLevelTransition();
   }
   DCHECK_EQ(kEnd, state_);
-  if (FLAG_fast_map_update) {
+  if (v8_flags.fast_map_update) {
     TransitionsAccessor::SetMigrationTarget(isolate_, old_map_, *result_map_);
   }
   return result_map_;
@@ -297,14 +297,13 @@ struct IntegrityLevelTransitionInfo {
 IntegrityLevelTransitionInfo DetectIntegrityLevelTransitions(
     Map map, Isolate* isolate, DisallowGarbageCollection* no_gc,
     ConcurrencyMode cmode) {
-  const bool is_concurrent = cmode == ConcurrencyMode::kConcurrent;
   IntegrityLevelTransitionInfo info(map);
 
   // Figure out the most restrictive integrity level transition (it should
   // be the last one in the transition tree).
   DCHECK(!map.is_extensible());
   Map previous = Map::cast(map.GetBackPointer(isolate));
-  TransitionsAccessor last_transitions(isolate, previous, is_concurrent);
+  TransitionsAccessor last_transitions(isolate, previous, IsConcurrent(cmode));
   if (!last_transitions.HasIntegrityLevelTransitionTo(
           map, &info.integrity_level_symbol, &info.integrity_level)) {
     // The last transition was not integrity level transition - just bail out.
@@ -322,7 +321,7 @@ IntegrityLevelTransitionInfo DetectIntegrityLevelTransitions(
   // with integrity level transitions, just bail out.
   while (!source_map.is_extensible()) {
     previous = Map::cast(source_map.GetBackPointer(isolate));
-    TransitionsAccessor transitions(isolate, previous, is_concurrent);
+    TransitionsAccessor transitions(isolate, previous, IsConcurrent(cmode));
     if (!transitions.HasIntegrityLevelTransitionTo(source_map)) {
       return info;
     }
@@ -367,12 +366,12 @@ base::Optional<Map> MapUpdater::TryUpdateNoLock(Isolate* isolate, Map old_map,
     info = DetectIntegrityLevelTransitions(old_map, isolate, &no_gc, cmode);
     // Bail out if there were some private symbol transitions mixed up
     // with the integrity level transitions.
-    if (!info.has_integrity_level_transition) return Map();
+    if (!info.has_integrity_level_transition) return {};
     // Make sure to replay the original elements kind transitions, before
     // the integrity level transition sets the elements to dictionary mode.
     DCHECK(to_kind == DICTIONARY_ELEMENTS ||
            to_kind == SLOW_STRING_WRAPPER_ELEMENTS ||
-           IsTypedArrayElementsKind(to_kind) ||
+           IsTypedArrayOrRabGsabTypedArrayElementsKind(to_kind) ||
            IsAnyHoleyNonextensibleElementsKind(to_kind));
     to_kind = info.integrity_level_source_map.elements_kind();
   }
@@ -390,8 +389,7 @@ base::Optional<Map> MapUpdater::TryUpdateNoLock(Isolate* isolate, Map old_map,
 
   if (info.has_integrity_level_transition) {
     // Now replay the integrity level transition.
-    result = TransitionsAccessor(isolate, result,
-                                 cmode == ConcurrencyMode::kConcurrent)
+    result = TransitionsAccessor(isolate, result, IsConcurrent(cmode))
                  .SearchSpecial(info.integrity_level_symbol);
   }
   if (result.is_null()) return {};
@@ -489,7 +487,7 @@ MapUpdater::State MapUpdater::TryReconfigureToDataFieldInplace() {
   DCHECK_EQ(new_kind_, old_details.kind());
   DCHECK_EQ(new_attributes_, old_details.attributes());
   DCHECK_EQ(PropertyLocation::kField, old_details.location());
-  if (FLAG_trace_generalization) {
+  if (v8_flags.trace_generalization) {
     PrintGeneralization(
         isolate_, old_map_, stdout, "uninitialized field", modified_descriptor_,
         old_nof_, old_nof_, false, old_representation, new_representation_,
@@ -571,7 +569,7 @@ MapUpdater::State MapUpdater::FindRootMap() {
   }
 
   if (!old_map_->EquivalentToForTransition(*root_map_,
-                                           ConcurrencyMode::kNotConcurrent)) {
+                                           ConcurrencyMode::kSynchronous)) {
     return Normalize("Normalize_NotEquivalent");
   } else if (old_map_->is_extensible() != root_map_->is_extensible()) {
     DCHECK(!old_map_->is_extensible());
@@ -586,7 +584,7 @@ MapUpdater::State MapUpdater::FindRootMap() {
     // the seal transitions), so change {to_kind} accordingly.
     DCHECK(to_kind == DICTIONARY_ELEMENTS ||
            to_kind == SLOW_STRING_WRAPPER_ELEMENTS ||
-           IsTypedArrayElementsKind(to_kind) ||
+           IsTypedArrayOrRabGsabTypedArrayElementsKind(to_kind) ||
            IsAnyNonextensibleElementsKind(to_kind));
     to_kind = integrity_source_map_->elements_kind();
   }
@@ -995,7 +993,7 @@ MapUpdater::State MapUpdater::ConstructNewMap() {
 
   old_map_->NotifyLeafMapLayoutChange(isolate_);
 
-  if (FLAG_trace_generalization && modified_descriptor_.is_found()) {
+  if (v8_flags.trace_generalization && modified_descriptor_.is_found()) {
     PropertyDetails old_details =
         old_descriptors_->GetDetails(modified_descriptor_);
     PropertyDetails new_details =
@@ -1103,7 +1101,7 @@ Handle<Map> MapUpdater::ReconfigureExistingProperty(
                           "Normalize_AttributesMismatchProtoMap");
   }
 
-  if (FLAG_trace_generalization) {
+  if (v8_flags.trace_generalization) {
     PrintReconfiguration(isolate, map, stdout, descriptor, kind, attributes);
   }
 
@@ -1224,10 +1222,9 @@ void MapUpdater::GeneralizeField(Isolate* isolate, Handle<Map> map,
     dep_groups |= DependentCode::kFieldRepresentationGroup;
   }
 
-  field_owner->dependent_code().DeoptimizeDependentCodeGroup(isolate,
-                                                             dep_groups);
+  DependentCode::DeoptimizeDependencyGroups(isolate, *field_owner, dep_groups);
 
-  if (FLAG_trace_generalization) {
+  if (v8_flags.trace_generalization) {
     PrintGeneralization(
         isolate, map, stdout, "field type generalization", modify_index,
         map->NumberOfOwnDescriptors(), map->NumberOfOwnDescriptors(), false,

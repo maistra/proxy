@@ -2,7 +2,10 @@
 
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 load("//rust/private:common.bzl", "rust_common")
+load("//rust/private:rust_analyzer.bzl", _rust_analyzer_toolchain = "rust_analyzer_toolchain")
 load("//rust/private:utils.bzl", "dedent", "find_cc_toolchain", "make_static_lib_symlink")
+
+rust_analyzer_toolchain = _rust_analyzer_toolchain
 
 def _rust_stdlib_filegroup_impl(ctx):
     rust_std = ctx.files.srcs
@@ -11,6 +14,7 @@ def _rust_stdlib_filegroup_impl(ctx):
     core_files = []
     between_core_and_std_files = []
     std_files = []
+    memchr_files = []
     alloc_files = []
     self_contained_files = [
         file
@@ -35,13 +39,14 @@ def _rust_stdlib_filegroup_impl(ctx):
         between_core_and_std_files = [
             f
             for f in dot_a_files
-            if "alloc" not in f.basename and "compiler_builtins" not in f.basename and "core" not in f.basename and "adler" not in f.basename and "std" not in f.basename
+            if "alloc" not in f.basename and "compiler_builtins" not in f.basename and "core" not in f.basename and "adler" not in f.basename and "std" not in f.basename and "memchr" not in f.basename
         ]
+        memchr_files = [f for f in dot_a_files if "memchr" in f.basename]
         std_files = [f for f in dot_a_files if "std" in f.basename]
 
-        partitioned_files_len = len(alloc_files) + len(between_alloc_and_core_files) + len(core_files) + len(between_core_and_std_files) + len(std_files)
+        partitioned_files_len = len(alloc_files) + len(between_alloc_and_core_files) + len(core_files) + len(between_core_and_std_files) + len(memchr_files) + len(std_files)
         if partitioned_files_len != len(dot_a_files):
-            partitioned = alloc_files + between_alloc_and_core_files + core_files + between_core_and_std_files + std_files
+            partitioned = alloc_files + between_alloc_and_core_files + core_files + between_core_and_std_files + memchr_files + std_files
             for f in sorted(partitioned):
                 # buildifier: disable=print
                 print("File partitioned: {}".format(f.basename))
@@ -58,6 +63,7 @@ def _rust_stdlib_filegroup_impl(ctx):
             core_files = core_files,
             between_core_and_std_files = between_core_and_std_files,
             std_files = std_files,
+            memchr_files = memchr_files,
             alloc_files = alloc_files,
             self_contained_files = self_contained_files,
             srcs = ctx.attr.srcs,
@@ -168,12 +174,20 @@ def _make_libstd_and_allocator_ccinfo(ctx, rust_std, allocator_library):
                 for f in filtered_between_core_and_std_files
                 if "panic_abort" not in f.basename
             ]
+        memchr_inputs = depset(
+            [
+                _ltl(f, ctx, cc_toolchain, feature_configuration)
+                for f in rust_stdlib_info.memchr_files
+            ],
+            transitive = [core_inputs],
+            order = "topological",
+        )
         between_core_and_std_inputs = depset(
             [
                 _ltl(f, ctx, cc_toolchain, feature_configuration)
                 for f in filtered_between_core_and_std_files
             ],
-            transitive = [core_inputs],
+            transitive = [memchr_inputs],
             order = "topological",
         )
         std_inputs = depset(
@@ -454,6 +468,26 @@ def _rust_toolchain_impl(ctx):
     sysroot_path = sysroot.sysroot_anchor.dirname
     sysroot_short_path, _, _ = sysroot.sysroot_anchor.short_path.rpartition("/")
 
+    # Variables for make variable expansion
+    make_variables = {
+        "RUSTC": sysroot.rustc.path,
+        "RUSTDOC": sysroot.rustdoc.path,
+        "RUST_DEFAULT_EDITION": ctx.attr.default_edition or "",
+        "RUST_SYSROOT": sysroot_path,
+    }
+
+    if sysroot.cargo:
+        make_variables.update({
+            "CARGO": sysroot.cargo.path,
+        })
+
+    if sysroot.rustfmt:
+        make_variables.update({
+            "RUSTFMT": sysroot.rustfmt.path,
+        })
+
+    make_variable_info = platform_common.TemplateVariableInfo(make_variables)
+
     toolchain = platform_common.ToolchainInfo(
         all_files = sysroot.all_files,
         binary_ext = ctx.attr.binary_ext,
@@ -463,8 +497,12 @@ def _rust_toolchain_impl(ctx):
         crosstool_files = ctx.files._cc_toolchain,
         default_edition = ctx.attr.default_edition,
         dylib_ext = ctx.attr.dylib_ext,
+        env = ctx.attr.env,
         exec_triple = ctx.attr.exec_triple,
         libstd_and_allocator_ccinfo = _make_libstd_and_allocator_ccinfo(ctx, rust_std, ctx.attr.allocator_library),
+        llvm_cov = ctx.file.llvm_cov,
+        llvm_profdata = ctx.file.llvm_profdata,
+        make_variables = make_variable_info,
         os = ctx.attr.os,
         rust_doc = sysroot.rustdoc,
         rust_lib = sysroot.rust_std,  # `rust_lib` is deprecated and only exists for legacy support.
@@ -487,7 +525,10 @@ def _rust_toolchain_impl(ctx):
         _rename_first_party_crates = rename_first_party_crates,
         _third_party_dir = third_party_dir,
     )
-    return [toolchain]
+    return [
+        toolchain,
+        make_variable_info,
+    ]
 
 rust_toolchain = rule(
     implementation = _rust_toolchain_impl,
@@ -519,12 +560,17 @@ rust_toolchain = rule(
             },
         ),
         "default_edition": attr.string(
-            doc = "The edition to use for rust_* rules that don't specify an edition.",
-            default = rust_common.default_edition,
+            doc = (
+                "The edition to use for rust_* rules that don't specify an edition. " +
+                "If absent, every rule is required to specify its `edition` attribute."
+            ),
         ),
         "dylib_ext": attr.string(
             doc = "The extension for dynamic libraries created from rustc.",
             mandatory = True,
+        ),
+        "env": attr.string_dict(
+            doc = "Environment variables to set in actions.",
         ),
         "exec_triple": attr.string(
             doc = (
@@ -532,6 +578,16 @@ rust_toolchain = rule(
                 "For more details see: https://docs.bazel.build/versions/master/skylark/rules.html#configurations"
             ),
             mandatory = True,
+        ),
+        "llvm_cov": attr.label(
+            doc = "The location of the `llvm-cov` binary. Can be a direct source or a filegroup containing one item. If None, rust code is not instrumented for coverage.",
+            allow_single_file = True,
+            cfg = "exec",
+        ),
+        "llvm_profdata": attr.label(
+            doc = "The location of the `llvm-profdata` binary. Can be a direct source or a filegroup containing one item. If `llvm_cov` is None, this can be None as well and rust code is not instrumented for coverage.",
+            allow_single_file = True,
+            cfg = "exec",
         ),
         "llvm_tools": attr.label(
             doc = "LLVM tools that are shipped with the Rust toolchain.",
@@ -603,13 +659,13 @@ rust_toolchain = rule(
             ),
         ),
         "_cc_toolchain": attr.label(
-            default = "@bazel_tools//tools/cpp:current_cc_toolchain",
+            default = Label("@bazel_tools//tools/cpp:current_cc_toolchain"),
         ),
         "_rename_first_party_crates": attr.label(
-            default = "@rules_rust//rust/settings:rename_first_party_crates",
+            default = Label("//rust/settings:rename_first_party_crates"),
         ),
         "_third_party_dir": attr.label(
-            default = "@rules_rust//rust/settings:third_party_dir",
+            default = Label("//rust/settings:third_party_dir"),
         ),
     },
     toolchains = [

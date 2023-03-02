@@ -19,7 +19,6 @@
 #include "src/compiler/operation-typer.h"
 #include "src/compiler/simplified-operator.h"
 #include "src/compiler/type-cache.h"
-#include "src/init/bootstrapper.h"
 #include "src/objects/objects-inl.h"
 
 namespace v8 {
@@ -115,7 +114,6 @@ class Typer::Visitor : public Reducer {
       DECLARE_IMPOSSIBLE_CASE(Deoptimize)
       DECLARE_IMPOSSIBLE_CASE(DeoptimizeIf)
       DECLARE_IMPOSSIBLE_CASE(DeoptimizeUnless)
-      DECLARE_IMPOSSIBLE_CASE(DynamicCheckMapsWithDeoptUnless)
       DECLARE_IMPOSSIBLE_CASE(TrapIf)
       DECLARE_IMPOSSIBLE_CASE(TrapUnless)
       DECLARE_IMPOSSIBLE_CASE(Return)
@@ -125,6 +123,7 @@ class Typer::Visitor : public Reducer {
       DECLARE_IMPOSSIBLE_CASE(End)
       SIMPLIFIED_CHANGE_OP_LIST(DECLARE_IMPOSSIBLE_CASE)
       SIMPLIFIED_CHECKED_OP_LIST(DECLARE_IMPOSSIBLE_CASE)
+      IF_WASM(SIMPLIFIED_WASM_OP_LIST, DECLARE_IMPOSSIBLE_CASE)
       MACHINE_SIMD_OP_LIST(DECLARE_IMPOSSIBLE_CASE)
       MACHINE_OP_LIST(DECLARE_IMPOSSIBLE_CASE)
 #undef DECLARE_IMPOSSIBLE_CASE
@@ -1032,6 +1031,7 @@ Type Typer::Visitor::TypeUnreachable(Node* node) { return Type::None(); }
 
 Type Typer::Visitor::TypePlug(Node* node) { UNREACHABLE(); }
 Type Typer::Visitor::TypeStaticAssert(Node* node) { UNREACHABLE(); }
+Type Typer::Visitor::TypeSLVerifierHint(Node* node) { UNREACHABLE(); }
 
 // JS comparison operators.
 
@@ -1371,7 +1371,7 @@ Type Typer::Visitor::Weaken(Node* node, Type current_type, Type previous_type) {
       4398046511103.0, 8796093022207.0, 17592186044415.0, 35184372088831.0,
       70368744177663.0, 140737488355327.0, 281474976710655.0,
       562949953421311.0};
-  STATIC_ASSERT(arraysize(kWeakenMinLimits) == arraysize(kWeakenMaxLimits));
+  static_assert(arraysize(kWeakenMinLimits) == arraysize(kWeakenMaxLimits));
 
   // If the types have nothing to do with integers, return the types.
   Type const integer = typer_->cache_->kInteger;
@@ -1430,17 +1430,17 @@ Type Typer::Visitor::Weaken(Node* node, Type current_type, Type previous_type) {
                      typer_->zone());
 }
 
-Type Typer::Visitor::TypeJSStoreProperty(Node* node) { UNREACHABLE(); }
+Type Typer::Visitor::TypeJSSetKeyedProperty(Node* node) { UNREACHABLE(); }
 
-Type Typer::Visitor::TypeJSDefineProperty(Node* node) { UNREACHABLE(); }
+Type Typer::Visitor::TypeJSDefineKeyedOwnProperty(Node* node) { UNREACHABLE(); }
 
-Type Typer::Visitor::TypeJSStoreNamed(Node* node) { UNREACHABLE(); }
+Type Typer::Visitor::TypeJSSetNamedProperty(Node* node) { UNREACHABLE(); }
 
 Type Typer::Visitor::TypeJSStoreGlobal(Node* node) { UNREACHABLE(); }
 
-Type Typer::Visitor::TypeJSStoreNamedOwn(Node* node) { UNREACHABLE(); }
+Type Typer::Visitor::TypeJSDefineNamedOwnProperty(Node* node) { UNREACHABLE(); }
 
-Type Typer::Visitor::TypeJSStoreDataPropertyInLiteral(Node* node) {
+Type Typer::Visitor::TypeJSDefineKeyedOwnPropertyInLiteral(Node* node) {
   UNREACHABLE();
 }
 
@@ -1523,6 +1523,11 @@ Type Typer::Visitor::TypeJSConstructWithSpread(Node* node) {
 Type Typer::Visitor::TypeJSObjectIsArray(Node* node) { return Type::Boolean(); }
 
 Type Typer::Visitor::TypeDateNow(Node* node) { return Type::Number(); }
+
+Type Typer::Visitor::TypeUnsigned32Divide(Node* node) {
+  Type lhs = Operand(node, 0);
+  return Type::Range(0, lhs.Max(), zone());
+}
 
 Type Typer::Visitor::JSCallTyper(Type fun, Typer* t) {
   if (!fun.IsHeapConstant() || !fun.AsHeapConstant()->Ref().IsJSFunction()) {
@@ -1863,7 +1868,7 @@ Type Typer::Visitor::TypeJSForInNext(Node* node) {
 }
 
 Type Typer::Visitor::TypeJSForInPrepare(Node* node) {
-  STATIC_ASSERT(Map::Bits3::EnumLengthBits::kMax <= FixedArray::kMaxLength);
+  static_assert(Map::Bits3::EnumLengthBits::kMax <= FixedArray::kMaxLength);
   Type const cache_type =
       Type::Union(Type::SignedSmall(), Type::OtherInternal(), zone());
   Type const cache_array = Type::OtherInternal();
@@ -2102,7 +2107,6 @@ Type Typer::Visitor::TypeCheckInternalizedString(Node* node) {
 }
 
 Type Typer::Visitor::TypeCheckMaps(Node* node) { UNREACHABLE(); }
-Type Typer::Visitor::TypeDynamicCheckMaps(Node* node) { UNREACHABLE(); }
 
 Type Typer::Visitor::TypeCompareMaps(Node* node) { return Type::Boolean(); }
 
@@ -2357,15 +2361,15 @@ Type Typer::Visitor::TypeNewArgumentsElements(Node* node) {
 
 Type Typer::Visitor::TypeNewConsString(Node* node) { return Type::String(); }
 
-Type Typer::Visitor::TypeDelayedStringConstant(Node* node) {
-  return Type::String();
-}
-
 Type Typer::Visitor::TypeFindOrderedHashMapEntry(Node* node) {
   return Type::Range(-1.0, FixedArray::kMaxLength, zone());
 }
 
 Type Typer::Visitor::TypeFindOrderedHashMapEntryForInt32Key(Node* node) {
+  return Type::Range(-1.0, FixedArray::kMaxLength, zone());
+}
+
+Type Typer::Visitor::TypeFindOrderedHashSetEntry(Node* node) {
   return Type::Range(-1.0, FixedArray::kMaxLength, zone());
 }
 

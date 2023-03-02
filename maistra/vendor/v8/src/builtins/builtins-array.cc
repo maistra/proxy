@@ -753,9 +753,13 @@ class ArrayConcatVisitor {
         isolate_->factory()->NewNumber(static_cast<double>(index_offset_));
     Handle<Map> map = JSObject::GetElementsTransitionMap(
         array, fast_elements() ? HOLEY_ELEMENTS : DICTIONARY_ELEMENTS);
-    array->set_length(*length);
-    array->set_elements(*storage_fixed_array());
-    array->set_map(*map, kReleaseStore);
+    {
+      DisallowGarbageCollection no_gc;
+      auto raw = *array;
+      raw.set_length(*length);
+      raw.set_elements(*storage_fixed_array());
+      raw.set_map(*map, kReleaseStore);
+    }
     return array;
   }
 
@@ -905,6 +909,7 @@ uint32_t EstimateElementCount(Isolate* isolate, Handle<JSArray> array) {
     case FAST_STRING_WRAPPER_ELEMENTS:
     case SLOW_STRING_WRAPPER_ELEMENTS:
     case WASM_ARRAY_ELEMENTS:
+    case SHARED_ARRAY_ELEMENTS:
       UNREACHABLE();
   }
   // As an estimate, we assume that the prototype doesn't contain any
@@ -972,8 +977,8 @@ void CollectElementIndices(Isolate* isolate, Handle<JSObject> object,
     }
 #define TYPED_ARRAY_CASE(Type, type, TYPE, ctype) case TYPE##_ELEMENTS:
 
-      TYPED_ARRAYS(TYPED_ARRAY_CASE) {
-        size_t length = Handle<JSTypedArray>::cast(object)->length();
+      TYPED_ARRAYS(TYPED_ARRAY_CASE) RAB_GSAB_TYPED_ARRAYS(TYPED_ARRAY_CASE) {
+        size_t length = Handle<JSTypedArray>::cast(object)->GetLength();
         if (range <= length) {
           length = range;
           // We will add all indices, so we might as well clear it first
@@ -988,9 +993,6 @@ void CollectElementIndices(Isolate* isolate, Handle<JSObject> object,
         if (length == range) return;  // All indices accounted for already.
         break;
       }
-      RAB_GSAB_TYPED_ARRAYS(TYPED_ARRAY_CASE)
-      // TODO(v8:11111): Support RAB / GSAB.
-      UNREACHABLE();
 
 #undef TYPED_ARRAY_CASE
     case FAST_SLOPPY_ARGUMENTS_ELEMENTS:
@@ -1031,6 +1033,8 @@ void CollectElementIndices(Isolate* isolate, Handle<JSObject> object,
     case WASM_ARRAY_ELEMENTS:
       // TODO(ishell): implement
       UNIMPLEMENTED();
+    case SHARED_ARRAY_ELEMENTS:
+      UNREACHABLE();
     case NO_ELEMENTS:
       break;
   }
@@ -1231,6 +1235,7 @@ bool IterateElements(Isolate* isolate, Handle<JSReceiver> receiver,
 #undef TYPED_ARRAY_CASE
     case FAST_STRING_WRAPPER_ELEMENTS:
     case SLOW_STRING_WRAPPER_ELEMENTS:
+    case SHARED_ARRAY_ELEMENTS:
       // |array| is guaranteed to be an array or typed array.
       UNREACHABLE();
   }
@@ -1464,8 +1469,8 @@ MaybeHandle<JSArray> Fast_ArrayConcat(Isolate* isolate,
   }
   // We shouldn't overflow when adding another len.
   const int kHalfOfMaxInt = 1 << (kBitsPerInt - 2);
-  STATIC_ASSERT(FixedArray::kMaxLength < kHalfOfMaxInt);
-  STATIC_ASSERT(FixedDoubleArray::kMaxLength < kHalfOfMaxInt);
+  static_assert(FixedArray::kMaxLength < kHalfOfMaxInt);
+  static_assert(FixedDoubleArray::kMaxLength < kHalfOfMaxInt);
   USE(kHalfOfMaxInt);
 
   int n_arguments = args->length();
@@ -1515,7 +1520,8 @@ BUILTIN(ArrayConcat) {
   ASSIGN_RETURN_FAILURE_ON_EXCEPTION(
       isolate, receiver,
       Object::ToObject(isolate, args.receiver(), "Array.prototype.concat"));
-  args.set_at(0, *receiver);
+  BuiltinArguments::ChangeValueScope set_receiver_value_scope(
+      isolate, &args, BuiltinArguments::kReceiverOffset, *receiver);
 
   Handle<JSArray> result_array;
 
@@ -1564,22 +1570,6 @@ inline Handle<OrderedHashMap> AddValueToKeyedGroup(
   return groups;
 }
 
-inline ElementsKind DeduceKeyedGroupElementsKind(ElementsKind kind) {
-  // The keyed groups are array lists with fast elements.
-  // Double elements are stored as HeapNumbers in the keyed group elements
-  // so that we don't need to cast all the keyed groups when switching from
-  // fast path to the generic path.
-  // TODO(v8:12499) add unboxed double elements support
-  switch (kind) {
-    case ElementsKind::PACKED_SMI_ELEMENTS: {
-      return ElementsKind::PACKED_SMI_ELEMENTS;
-    }
-    default: {
-      return ElementsKind::PACKED_ELEMENTS;
-    }
-  }
-}
-
 inline bool IsFastArray(Handle<JSReceiver> object) {
   Isolate* isolate = object->GetIsolate();
   if (isolate->force_slow_path()) return false;
@@ -1604,10 +1594,10 @@ inline bool CheckArrayMapNotModified(Handle<JSArray> array,
   return Protectors::IsNoElementsIntact(array->GetIsolate());
 }
 
-enum class GroupByMode { kToObject, kToMap };
+enum class ArrayGroupMode { kToObject, kToMap };
 
-template <GroupByMode mode>
-inline MaybeHandle<OrderedHashMap> GenericArrayGroupBy(
+template <ArrayGroupMode mode>
+inline MaybeHandle<OrderedHashMap> GenericArrayGroup(
     Isolate* isolate, Handle<JSReceiver> O, Handle<Object> callbackfn,
     Handle<OrderedHashMap> groups, double initialK, double len) {
   // 6. Repeat, while k < len
@@ -1623,7 +1613,7 @@ inline MaybeHandle<OrderedHashMap> GenericArrayGroupBy(
                                Object::GetPropertyOrElement(isolate, O, Pk),
                                OrderedHashMap);
 
-    // Common steps for ArrayPrototypeGroupBy and ArrayPrototypeGroupByToMap
+    // Common steps for ArrayPrototypeGroup and ArrayPrototypeGroupToMap
     // 6c. Let key be ? Call(callbackfn, thisArg, « kValue, 𝔽(k), O »).
     Handle<Object> propertyKey;
     Handle<Object> argv[] = {kValue, isolate->factory()->NewNumber(k), O};
@@ -1631,7 +1621,7 @@ inline MaybeHandle<OrderedHashMap> GenericArrayGroupBy(
                                Execution::Call(isolate, callbackfn, O, 3, argv),
                                OrderedHashMap);
 
-    if (mode == GroupByMode::kToMap) {
+    if (mode == ArrayGroupMode::kToMap) {
       // 6d. If key is -0𝔽, set key to +0𝔽.
       if (propertyKey->IsMinusZero()) {
         propertyKey = Handle<Smi>(Smi::FromInt(0), isolate);
@@ -1656,10 +1646,13 @@ inline MaybeHandle<OrderedHashMap> GenericArrayGroupBy(
   return groups;
 }
 
-template <GroupByMode mode>
-inline MaybeHandle<OrderedHashMap> FastArrayGroupBy(
+template <ArrayGroupMode mode>
+inline MaybeHandle<OrderedHashMap> FastArrayGroup(
     Isolate* isolate, Handle<JSArray> array, Handle<Object> callbackfn,
-    Handle<OrderedHashMap> groups, double len) {
+    Handle<OrderedHashMap> groups, double len,
+    ElementsKind* result_elements_kind) {
+  DCHECK_NOT_NULL(result_elements_kind);
+
   Handle<Map> original_map = Handle<Map>(array->map(), isolate);
   uint32_t uint_len = static_cast<uint32_t>(len);
   ElementsAccessor* accessor = array->GetElementsAccessor();
@@ -1667,18 +1660,19 @@ inline MaybeHandle<OrderedHashMap> FastArrayGroupBy(
   // 4. Let k be 0.
   // 6. Repeat, while k < len
   for (InternalIndex k : InternalIndex::Range(uint_len)) {
-    if (!CheckArrayMapNotModified(array, original_map)) {
-      return GenericArrayGroupBy<mode>(isolate, array, callbackfn, groups,
-                                       k.as_uint32(), len);
+    if (!CheckArrayMapNotModified(array, original_map) ||
+        k.as_uint32() >= static_cast<uint32_t>(array->length().Number())) {
+      return GenericArrayGroup<mode>(isolate, array, callbackfn, groups,
+                                     k.as_uint32(), len);
     }
     // 6a. Let Pk be ! ToString(𝔽(k)).
     // 6b. Let kValue be ? Get(O, Pk).
-    Handle<Object> kValue = accessor->Get(array, k);
+    Handle<Object> kValue = accessor->Get(isolate, array, k);
     if (kValue->IsTheHole()) {
       kValue = isolate->factory()->undefined_value();
     }
 
-    // Common steps for ArrayPrototypeGroupBy and ArrayPrototypeGroupByToMap
+    // Common steps for ArrayPrototypeGroup and ArrayPrototypeGroupToMap
     // 6c. Let key be ? Call(callbackfn, thisArg, « kValue, 𝔽(k), O »).
     Handle<Object> propertyKey;
     Handle<Object> argv[] = {
@@ -1687,7 +1681,7 @@ inline MaybeHandle<OrderedHashMap> FastArrayGroupBy(
         isolate, propertyKey,
         Execution::Call(isolate, callbackfn, array, 3, argv), OrderedHashMap);
 
-    if (mode == GroupByMode::kToMap) {
+    if (mode == ArrayGroupMode::kToMap) {
       // 6d. If key is -0𝔽, set key to +0𝔽.
       if (propertyKey->IsMinusZero()) {
         propertyKey = Handle<Smi>(Smi::FromInt(0), isolate);
@@ -1709,14 +1703,25 @@ inline MaybeHandle<OrderedHashMap> FastArrayGroupBy(
     // done by the loop.
   }
 
+  // When staying on the fast path, we can deduce a more specific results
+  // ElementsKind for the keyed groups based on the input ElementsKind.
+  //
+  // Double elements are stored as HeapNumbers in the keyed group elements
+  // so that we don't need to cast all the keyed groups when switching from
+  // fast path to the generic path.
+  // TODO(v8:12499) add unboxed double elements support
+  if (array->GetElementsKind() == ElementsKind::PACKED_SMI_ELEMENTS) {
+    *result_elements_kind = ElementsKind::PACKED_SMI_ELEMENTS;
+  }
+
   return groups;
 }
 
 }  // namespace
 
 // https://tc39.es/proposal-array-grouping/#sec-array.prototype.groupby
-BUILTIN(ArrayPrototypeGroupBy) {
-  const char* const kMethodName = "Array.prototype.groupBy";
+BUILTIN(ArrayPrototypeGroup) {
+  const char* const kMethodName = "Array.prototype.group";
   HandleScope scope(isolate);
 
   Handle<JSReceiver> O;
@@ -1738,28 +1743,24 @@ BUILTIN(ArrayPrototypeGroupBy) {
 
   // 5. Let groups be a new empty List.
   Handle<OrderedHashMap> groups = isolate->factory()->NewOrderedHashMap();
-  // Elements kind of the array for grouped elements kind deduction.
-  ElementsKind elements_kind = ElementsKind::NO_ELEMENTS;
+  ElementsKind result_elements_kind = ElementsKind::PACKED_ELEMENTS;
   if (IsFastArray(O)) {
     Handle<JSArray> array = Handle<JSArray>::cast(O);
     ASSIGN_RETURN_FAILURE_ON_EXCEPTION(
         isolate, groups,
-        FastArrayGroupBy<GroupByMode::kToObject>(isolate, array, callbackfn,
-                                                 groups, len));
-    // Get array's elements kind after called into javascript.
-    elements_kind = array->GetElementsKind();
+        FastArrayGroup<ArrayGroupMode::kToObject>(
+            isolate, array, callbackfn, groups, len, &result_elements_kind));
   } else {
     // 4. Let k be 0.
     ASSIGN_RETURN_FAILURE_ON_EXCEPTION(
         isolate, groups,
-        GenericArrayGroupBy<GroupByMode::kToObject>(isolate, O, callbackfn,
-                                                    groups, 0, len));
+        GenericArrayGroup<ArrayGroupMode::kToObject>(isolate, O, callbackfn,
+                                                     groups, 0, len));
   }
 
   // 7. Let obj be ! OrdinaryObjectCreate(null).
   Handle<JSObject> obj = isolate->factory()->NewJSObjectWithNullProto();
-  ElementsKind result_elements_kind =
-      DeduceKeyedGroupElementsKind(elements_kind);
+
   // 8. For each Record { [[Key]], [[Elements]] } g of groups, do
   for (InternalIndex entry : groups->IterateEntries()) {
     Handle<Name> key = Handle<Name>(Name::cast(groups->KeyAt(entry)), isolate);
@@ -1781,8 +1782,8 @@ BUILTIN(ArrayPrototypeGroupBy) {
 }
 
 // https://tc39.es/proposal-array-grouping/#sec-array.prototype.groupbymap
-BUILTIN(ArrayPrototypeGroupByToMap) {
-  const char* const kMethodName = "Array.prototype.groupByToMap";
+BUILTIN(ArrayPrototypeGroupToMap) {
+  const char* const kMethodName = "Array.prototype.groupToMap";
   HandleScope scope(isolate);
 
   Handle<JSReceiver> O;
@@ -1804,29 +1805,24 @@ BUILTIN(ArrayPrototypeGroupByToMap) {
 
   // 5. Let groups be a new empty List.
   Handle<OrderedHashMap> groups = isolate->factory()->NewOrderedHashMap();
-  // Elements kind of the array for grouped elements kind deduction.
-  ElementsKind elements_kind = ElementsKind::NO_ELEMENTS;
+  ElementsKind result_elements_kind = ElementsKind::PACKED_ELEMENTS;
   if (IsFastArray(O)) {
     Handle<JSArray> array = Handle<JSArray>::cast(O);
     ASSIGN_RETURN_FAILURE_ON_EXCEPTION(
         isolate, groups,
-        FastArrayGroupBy<GroupByMode::kToMap>(isolate, array, callbackfn,
-                                              groups, len));
-    // Get array's elements kind after called into javascript.
-    elements_kind = array->GetElementsKind();
+        FastArrayGroup<ArrayGroupMode::kToMap>(
+            isolate, array, callbackfn, groups, len, &result_elements_kind));
   } else {
     // 4. Let k be 0.
     ASSIGN_RETURN_FAILURE_ON_EXCEPTION(
         isolate, groups,
-        GenericArrayGroupBy<GroupByMode::kToMap>(isolate, O, callbackfn, groups,
-                                                 0, len));
+        GenericArrayGroup<ArrayGroupMode::kToMap>(isolate, O, callbackfn,
+                                                  groups, 0, len));
   }
 
   // 7. Let map be ! Construct(%Map%).
   Handle<JSMap> map = isolate->factory()->NewJSMap();
   Handle<OrderedHashMap> map_table = isolate->factory()->NewOrderedHashMap();
-  ElementsKind result_elements_kind =
-      DeduceKeyedGroupElementsKind(elements_kind);
   // 8. For each Record { [[Key]], [[Elements]] } g of groups, do
   for (InternalIndex entry : groups->IterateEntries()) {
     Handle<Object> key = Handle<Object>(groups->KeyAt(entry), isolate);
