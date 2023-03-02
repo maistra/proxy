@@ -40,6 +40,7 @@ new_local_repository(
 # 2. Update .bazelversion, envoy.bazelrc and .bazelrc if needed.
 #
 # Note: this is needed by release builder to resolve envoy dep sha to tag.
+
 # Commit date: 2022-12-07
 ENVOY_SHA = "f1a60f41296831252eef880e7a1ae7ae8d8da3f5"
 
