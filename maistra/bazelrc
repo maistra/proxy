@@ -23,11 +23,6 @@ build:s390x --@envoy//source/extensions/filters/common/lua:luajit2=1 --cxxopt='-
 build:ppc --linkopt=-fuse-ld=lld --@envoy//source/extensions/filters/common/lua:luajit2=1
 build:aarch64 --linkopt=-fuse-ld=lld
 
-# Throttle resources to work for our CI environemt
-build:ci-config --local_ram_resources=12288
-build:ci-config --local_cpu_resources=6
-build:ci-config --jobs=3
-
 # Colored ouput messes with some of the logging systems in CI, so we disable that.
 build:ci-config --color=no
 build:ci-config --show_progress_rate_limit=10
