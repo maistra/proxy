@@ -18,11 +18,6 @@ build:s390x --//source/extensions/filters/common/lua:luajit2=1 --copt="-Wno-depr
 build:ppc --//source/extensions/filters/common/lua:luajit2=1 --linkopt=-fuse-ld=lld
 build:aarch64 --linkopt=-fuse-ld=lld
 
-# Throttle resources to work for our CI environemt
-build:ci-config --local_ram_resources=12288
-build:ci-config --local_cpu_resources=6
-build:ci-config --jobs=3
-
 # Colored ouput messes with some of the logging systems in CI, so we disable that.
 build:ci-config --color=no
 
