@@ -18,9 +18,9 @@ COMMON_FLAGS="\
     --config=release \
     --config=${ARCH} \
     --config=clang \
-    --local_ram_resources=12288 \
-    --local_cpu_resources=6 \
-    --jobs=3 \
+    --local_ram_resources=${LOCAL_RAM_RESOURCES:-12288} \
+    --local_cpu_resources=${LOCAL_CPU_RESOURCES:-6} \
+    --jobs=${LOCAL_JOBS:-3} \
     --@envoy//bazel:http3=false \
     --deleted_packages=@envoy//test/common/quic,@envoy//test/common/quic/platform \
     --verbose_failures \
