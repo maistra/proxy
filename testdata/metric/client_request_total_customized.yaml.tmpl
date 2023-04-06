@@ -2,7 +2,7 @@ name: istio_requests_total
 type: COUNTER
 metric:
 - counter:
-    value: {{ .Vars.RequestCount }}0
+    value: {{ .Vars.RequestCount }}
   label:
   - name: reporter
     value: source
@@ -51,4 +51,4 @@ metric:
   - name: configurable_metric_a
     value: gateway
   - name: route_name
-    value: client_route
+    value: client_route,server-outbound-cluster,server

@@ -1,8 +1,5 @@
 field_separator: ";.;"
 definitions:
-- name: requests_total
-  value: "10"
-  type: COUNTER
 - name: custom
   value: "1"
   type: COUNTER
@@ -27,7 +24,7 @@ metrics:
       destination_service_namespace: "'_' + upstream_peer.labels['app'].value"
       destination_app: "cannot _ parse | {{ .N }}"
       destination_workload: "cannot_evaluate"
-      route_name: route_name
+      route_name: xds.route_name + "," + xds.cluster_name + "," + xds.cluster_metadata.filter_metadata.istio.services[0].name
     tags_to_remove:
     - grpc_response_status
   - name: request_bytes
