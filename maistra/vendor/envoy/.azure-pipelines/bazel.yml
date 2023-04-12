@@ -19,9 +19,27 @@ parameters:
   default: "--flaky_test_attempts=2"
 
 steps:
+# Set up tmpfs directories for self-hosted agents which have a surplus of mem.
+#
+# NB: Do not add any directory that grow larger than spare memory capacity!
+- bash: |
+    TMPDIRS=(
+        # This is used as the final delivery directory for the binaries
+        "$(Build.StagingDirectory)/envoy"
+        # Bazel repository_cache which is cached by AZP (this speeds up cache load/save)
+        "$(Build.StagingDirectory)/repository_cache")
+    for tmpdir in "${TMPDIRS[@]}"; do
+        echo "Mount(tmpfs): ${tmpdir}"
+        sudo mkdir -p "$tmpdir"
+        sudo mount -t tmpfs none "$tmpdir"
+        sudo chown azure-pipelines "$tmpdir"
+    done
+  displayName: "Mount/tmpfs directories"
+  condition: and(succeeded(), eq('${{ parameters.managedAgent }}', false))
+
 - task: Cache@2
   inputs:
-    key: '"${{ parameters.ciTarget }}" | ./WORKSPACE | **/*.bzl'
+    key: '"${{ parameters.ciTarget }}" | "${{ parameters.artifactSuffix }}" | ./WORKSPACE | **/*.bzl'
     path: $(Build.StagingDirectory)/repository_cache
   continueOnError: true
 
@@ -55,8 +73,12 @@ steps:
       GCP_SERVICE_ACCOUNT_KEY: $(GcpServiceAccountKey)
     ${{ if eq(parameters.rbe, false) }}:
       BAZEL_BUILD_EXTRA_OPTIONS: "${{ parameters.bazelBuildExtraOptions }}"
-
-  displayName: "Run CI script"
+      BAZEL_REMOTE_CACHE: $(LocalBuildCache)
+      ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
+        BAZEL_REMOTE_INSTANCE: "instances/$(System.PullRequest.TargetBranch)"
+      ${{ if ne(variables['Build.Reason'], 'PullRequest') }}:
+        BAZEL_REMOTE_INSTANCE: "instances/$(Build.SourceBranchName)"
+  displayName: "Run CI script ${{ parameters.ciTarget }}"
 
 - bash: |
     echo "disk space at end of build:"

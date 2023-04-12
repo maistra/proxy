@@ -12,12 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# buildifier: disable=module-docstring
+"""Rust rule implementations"""
+
+load("@bazel_skylib//lib:paths.bzl", "paths")
 load("//rust/private:common.bzl", "rust_common")
 load("//rust/private:rustc.bzl", "rustc_compile_action")
 load(
     "//rust/private:utils.bzl",
+    "can_build_metadata",
     "compute_crate_name",
+    "crate_root_src",
     "dedent",
     "determine_output_hash",
     "expand_dict_value_locations",
@@ -25,7 +29,6 @@ load(
     "get_import_macro_deps",
     "transform_deps",
 )
-
 # TODO(marco): Separate each rule into its own file.
 
 def _assert_no_deprecated_attributes(_ctx):
@@ -93,7 +96,7 @@ def _determine_lib_name(name, crate_type, toolchain, lib_hash = None):
               "please file an issue!").format(crate_type))
 
     prefix = "lib"
-    if (toolchain.target_triple.find("windows") != -1) and crate_type not in ("lib", "rlib"):
+    if toolchain.target_triple and toolchain.target_triple.system == "windows" and crate_type not in ("lib", "rlib"):
         prefix = ""
     if toolchain.target_arch == "wasm32" and crate_type == "cdylib":
         prefix = ""
@@ -150,9 +153,10 @@ def _transform_sources(ctx, srcs, crate_root):
     generated_sources = []
 
     generated_root = crate_root
+    package_root = paths.dirname(ctx.build_file_path)
 
     if crate_root and (crate_root.is_source or crate_root.root.path != ctx.bin_dir.path):
-        generated_root = ctx.actions.declare_file(crate_root.basename)
+        generated_root = ctx.actions.declare_file(paths.relativize(crate_root.short_path, package_root))
         ctx.actions.symlink(
             output = generated_root,
             target_file = crate_root,
@@ -166,7 +170,7 @@ def _transform_sources(ctx, srcs, crate_root):
         if src == crate_root:
             continue
         if src.is_source or src.root.path != ctx.bin_dir.path:
-            src_symlink = ctx.actions.declare_file(src.basename)
+            src_symlink = ctx.actions.declare_file(paths.relativize(src.short_path, package_root))
             ctx.actions.symlink(
                 output = src_symlink,
                 target_file = src,
@@ -177,48 +181,6 @@ def _transform_sources(ctx, srcs, crate_root):
             generated_sources.append(src)
 
     return generated_sources, generated_root
-
-def crate_root_src(name, srcs, crate_type):
-    """Determines the source file for the crate root, should it not be specified in `attr.crate_root`.
-
-    Args:
-        name (str): The name of the target.
-        srcs (list): A list of all sources for the target Crate.
-        crate_type (str): The type of this crate ("bin", "lib", "rlib", "cdylib", etc).
-
-    Returns:
-        File: The root File object for a given crate. See the following links for more details:
-            - https://doc.rust-lang.org/cargo/reference/cargo-targets.html#library
-            - https://doc.rust-lang.org/cargo/reference/cargo-targets.html#binaries
-    """
-    default_crate_root_filename = "main.rs" if crate_type == "bin" else "lib.rs"
-
-    crate_root = (
-        (srcs[0] if len(srcs) == 1 else None) or
-        _shortest_src_with_basename(srcs, default_crate_root_filename) or
-        _shortest_src_with_basename(srcs, name + ".rs")
-    )
-    if not crate_root:
-        file_names = [default_crate_root_filename, name + ".rs"]
-        fail("No {} source file found.".format(" or ".join(file_names)), "srcs")
-    return crate_root
-
-def _shortest_src_with_basename(srcs, basename):
-    """Finds the shortest among the paths in srcs that match the desired basename.
-
-    Args:
-        srcs (list): A list of File objects
-        basename (str): The target basename to match against.
-
-    Returns:
-        File: The File object with the shortest path that matches `basename`
-    """
-    shortest = None
-    for f in srcs:
-        if f.basename == basename:
-            if not shortest or len(f.dirname) < len(shortest.dirname):
-                shortest = f
-    return shortest
 
 def _rust_library_impl(ctx):
     """The implementation of the `rust_library` rule.
@@ -316,6 +278,13 @@ def _rust_library_common(ctx, crate_type):
     )
     rust_lib = ctx.actions.declare_file(rust_lib_name)
 
+    rust_metadata = None
+    if can_build_metadata(toolchain, ctx, crate_type) and not ctx.attr.disable_pipelining:
+        rust_metadata = ctx.actions.declare_file(
+            paths.replace_extension(rust_lib_name, ".rmeta"),
+            sibling = rust_lib,
+        )
+
     deps = transform_deps(ctx.attr.deps)
     proc_macro_deps = transform_deps(ctx.attr.proc_macro_deps + get_import_macro_deps(ctx))
 
@@ -332,10 +301,13 @@ def _rust_library_common(ctx, crate_type):
             proc_macro_deps = depset(proc_macro_deps),
             aliases = ctx.attr.aliases,
             output = rust_lib,
+            metadata = rust_metadata,
             edition = get_edition(ctx.attr, toolchain, ctx.label),
             rustc_env = ctx.attr.rustc_env,
+            rustc_env_files = ctx.files.rustc_env_files,
             is_test = False,
             compile_data = depset(ctx.files.compile_data),
+            compile_data_targets = depset(ctx.attr.compile_data),
             owner = ctx.label,
         ),
         output_hash = output_hash,
@@ -378,8 +350,10 @@ def _rust_binary_impl(ctx):
             output = output,
             edition = get_edition(ctx.attr, toolchain, ctx.label),
             rustc_env = ctx.attr.rustc_env,
+            rustc_env_files = ctx.files.rustc_env_files,
             is_test = False,
             compile_data = depset(ctx.files.compile_data),
+            compile_data_targets = depset(ctx.attr.compile_data),
             owner = ctx.label,
         ),
     )
@@ -422,6 +396,13 @@ def _rust_test_impl(ctx):
             compile_data = depset(ctx.files.compile_data, transitive = [crate.compile_data])
         else:
             compile_data = depset(ctx.files.compile_data)
+        if crate.compile_data_targets:
+            compile_data_targets = depset(ctx.attr.compile_data, transitive = [crate.compile_data_targets])
+        else:
+            compile_data_targets = depset(ctx.attr.compile_data)
+        rustc_env_files = ctx.files.rustc_env_files + crate.rustc_env_files
+        rustc_env = dict(crate.rustc_env)
+        rustc_env.update(**ctx.attr.rustc_env)
 
         # Build the test binary using the dependency's srcs.
         crate_info = rust_common.create_crate_info(
@@ -434,15 +415,18 @@ def _rust_test_impl(ctx):
             aliases = ctx.attr.aliases,
             output = output,
             edition = crate.edition,
-            rustc_env = ctx.attr.rustc_env,
+            rustc_env = rustc_env,
+            rustc_env_files = rustc_env_files,
             is_test = True,
             compile_data = compile_data,
+            compile_data_targets = compile_data_targets,
             wrapped_crate_type = crate.type,
             owner = ctx.label,
         )
     else:
         if not crate_root:
-            crate_root = crate_root_src(ctx.attr.name, ctx.files.srcs, "lib")
+            crate_root_type = "lib" if ctx.attr.use_libtest_harness else "bin"
+            crate_root = crate_root_src(ctx.attr.name, ctx.files.srcs, crate_root_type)
 
         output_hash = determine_output_hash(crate_root, ctx.label)
         output = ctx.actions.declare_file(
@@ -465,8 +449,10 @@ def _rust_test_impl(ctx):
             output = output,
             edition = get_edition(ctx.attr, toolchain, ctx.label),
             rustc_env = ctx.attr.rustc_env,
+            rustc_env_files = ctx.files.rustc_env_files,
             is_test = True,
             compile_data = depset(ctx.files.compile_data),
+            compile_data_targets = depset(ctx.attr.compile_data),
             owner = ctx.label,
         )
 
@@ -490,6 +476,8 @@ def _rust_test_impl(ctx):
 
         env["RUST_LLVM_COV"] = toolchain.llvm_cov.path
         env["RUST_LLVM_PROFDATA"] = toolchain.llvm_profdata.path
+    components = "{}/{}".format(ctx.label.workspace_root, ctx.label.package).split("/")
+    env["CARGO_MANIFEST_DIR"] = "/".join([c for c in components if c])
     providers.append(testing.TestEnvironment(env))
 
     return providers
@@ -707,7 +695,22 @@ _common_attrs = {
     ),
 }
 
-_rust_test_attrs = {
+_experimental_use_cc_common_link_attrs = {
+    "experimental_use_cc_common_link": attr.int(
+        doc = (
+            "Whether to use cc_common.link to link rust binaries. " +
+            "Possible values: [-1, 0, 1]. " +
+            "-1 means use the value of the toolchain.experimental_use_cc_common_link " +
+            "boolean build setting to determine. " +
+            "0 means do not use cc_common.link (use rustc instead). " +
+            "1 means use cc_common.link."
+        ),
+        values = [-1, 0, 1],
+        default = -1,
+    ),
+}
+
+_rust_test_attrs = dict({
     "crate": attr.label(
         mandatory = False,
         doc = dedent("""\
@@ -723,10 +726,6 @@ _rust_test_attrs = {
             Specifies additional environment variables to set when the test is executed by bazel test.
             Values are subject to `$(rootpath)`, `$(execpath)`, location, and
             ["Make variable"](https://docs.bazel.build/versions/master/be/make-variables.html) substitution.
-
-            Execpath returns absolute path, and in order to be able to construct the absolute path we
-            need to wrap the test binary in a launcher. Using a launcher comes with complications, such as
-            more complicated debugger attachment.
         """),
     ),
     "use_libtest_harness": attr.bool(
@@ -744,7 +743,7 @@ _rust_test_attrs = {
         default = Label("@bazel_tools//tools/cpp:grep-includes"),
         executable = True,
     ),
-}
+}.items() + _experimental_use_cc_common_link_attrs.items())
 
 _common_providers = [
     rust_common.crate_info,
@@ -755,11 +754,20 @@ _common_providers = [
 rust_library = rule(
     implementation = _rust_library_impl,
     provides = _common_providers,
-    attrs = dict(_common_attrs.items()),
+    attrs = dict(_common_attrs.items() + {
+        "disable_pipelining": attr.bool(
+            default = False,
+            doc = dedent("""\
+                Disables pipelining for this rule if it is globally enabled.
+                This will cause this rule to not produce a `.rmeta` file and all the dependent
+                crates will instead use the `.rlib` file.
+            """),
+        ),
+    }.items()),
     fragments = ["cpp"],
     host_fragments = ["cpp"],
     toolchains = [
-        str(Label("//rust:toolchain")),
+        str(Label("//rust:toolchain_type")),
         "@bazel_tools//tools/cpp:toolchain_type",
     ],
     incompatible_use_toolchain_transition = True,
@@ -835,7 +843,7 @@ rust_static_library = rule(
     fragments = ["cpp"],
     host_fragments = ["cpp"],
     toolchains = [
-        str(Label("//rust:toolchain")),
+        str(Label("//rust:toolchain_type")),
         "@bazel_tools//tools/cpp:toolchain_type",
     ],
     incompatible_use_toolchain_transition = True,
@@ -854,11 +862,20 @@ rust_static_library = rule(
 
 rust_shared_library = rule(
     implementation = _rust_shared_library_impl,
-    attrs = dict(_common_attrs.items()),
+    attrs = dict(
+        _common_attrs.items() + _experimental_use_cc_common_link_attrs.items() + {
+            "_grep_includes": attr.label(
+                allow_single_file = True,
+                cfg = "exec",
+                default = Label("@bazel_tools//tools/cpp:grep-includes"),
+                executable = True,
+            ),
+        }.items(),
+    ),
     fragments = ["cpp"],
     host_fragments = ["cpp"],
     toolchains = [
-        str(Label("//rust:toolchain")),
+        str(Label("//rust:toolchain_type")),
         "@bazel_tools//tools/cpp:toolchain_type",
     ],
     incompatible_use_toolchain_transition = True,
@@ -910,7 +927,7 @@ rust_proc_macro = rule(
     fragments = ["cpp"],
     host_fragments = ["cpp"],
     toolchains = [
-        str(Label("//rust:toolchain")),
+        str(Label("//rust:toolchain_type")),
         "@bazel_tools//tools/cpp:toolchain_type",
     ],
     incompatible_use_toolchain_transition = True,
@@ -919,7 +936,7 @@ rust_proc_macro = rule(
         """),
 )
 
-_rust_binary_attrs = {
+_rust_binary_attrs = dict({
     "crate_type": attr.string(
         doc = dedent("""\
             Crate type that will be passed to `rustc` to be used for building this crate.
@@ -951,7 +968,7 @@ _rust_binary_attrs = {
         default = Label("@bazel_tools//tools/cpp:grep-includes"),
         executable = True,
     ),
-}
+}.items() + _experimental_use_cc_common_link_attrs.items())
 
 rust_binary = rule(
     implementation = _rust_binary_impl,
@@ -961,7 +978,7 @@ rust_binary = rule(
     fragments = ["cpp"],
     host_fragments = ["cpp"],
     toolchains = [
-        str(Label("//rust:toolchain")),
+        str(Label("//rust:toolchain_type")),
         "@bazel_tools//tools/cpp:toolchain_type",
     ],
     incompatible_use_toolchain_transition = True,
@@ -1089,7 +1106,7 @@ rust_binary_without_process_wrapper = rule(
     fragments = ["cpp"],
     host_fragments = ["cpp"],
     toolchains = [
-        str(Label("//rust:toolchain")),
+        str(Label("//rust:toolchain_type")),
         "@bazel_tools//tools/cpp:toolchain_type",
     ],
     incompatible_use_toolchain_transition = True,
@@ -1102,7 +1119,7 @@ rust_library_without_process_wrapper = rule(
     fragments = ["cpp"],
     host_fragments = ["cpp"],
     toolchains = [
-        str(Label("//rust:toolchain")),
+        str(Label("//rust:toolchain_type")),
         "@bazel_tools//tools/cpp:toolchain_type",
     ],
     incompatible_use_toolchain_transition = True,
@@ -1118,7 +1135,7 @@ rust_test = rule(
     host_fragments = ["cpp"],
     test = True,
     toolchains = [
-        str(Label("//rust:toolchain")),
+        str(Label("//rust:toolchain_type")),
         "@bazel_tools//tools/cpp:toolchain_type",
     ],
     incompatible_use_toolchain_transition = True,
