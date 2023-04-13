@@ -6,28 +6,9 @@ exports_files(["LICENSE"])
 bzl_library(
     name = "bzl_lib",
     srcs = [
-        ":workspace.bzl",
+        ":version.bzl",
     ],
     visibility = ["//visibility:public"],
-)
-
-filegroup(
-    name = "distro",
-    srcs = glob(["*.bzl"]) + [
-        "//bindgen:distro",
-        "//cargo:distro",
-        "//crate_universe:distro",
-        "//proto:distro",
-        "//rust:distro",
-        "//tools:distro",
-        "//util:distro",
-        "//wasm_bindgen:distro",
-        "BUILD.bazel",
-        "README.md",
-        "LICENSE.txt",
-        "WORKSPACE.bazel",
-    ],
-    visibility = ["//:__subpackages__"],
 )
 
 # This setting may be changed from the command line to generate machine readable errors.

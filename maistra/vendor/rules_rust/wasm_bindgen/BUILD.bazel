@@ -3,7 +3,16 @@ load("//wasm_bindgen:wasm_bindgen.bzl", "rust_wasm_bindgen_toolchain")
 
 package(default_visibility = ["//visibility:public"])
 
-toolchain_type(name = "wasm_bindgen_toolchain")
+toolchain_type(
+    name = "toolchain_type",
+)
+
+alias(
+    name = "wasm_bindgen_toolchain",
+    actual = "toolchain_type",
+    deprecation = "instead use `@rules_rust//wasm_bindgen:toolchain_type`",
+    tags = ["manual"],
+)
 
 bzl_library(
     name = "bzl_lib",
@@ -11,17 +20,8 @@ bzl_library(
     deps = [
         "//rust:bzl_lib",
         "//wasm_bindgen/3rdparty:bzl_lib",
+        "//wasm_bindgen/private:bzl_lib",
     ],
-)
-
-filegroup(
-    name = "distro",
-    srcs = glob(["*.bzl"]) + [
-        "BUILD.bazel",
-        "//wasm_bindgen/3rdparty:distro",
-        "//wasm_bindgen/raze:distro",
-    ],
-    visibility = ["//:__subpackages__"],
 )
 
 rust_wasm_bindgen_toolchain(
@@ -32,5 +32,5 @@ rust_wasm_bindgen_toolchain(
 toolchain(
     name = "default_wasm_bindgen_toolchain",
     toolchain = "default_wasm_bindgen_toolchain_impl",
-    toolchain_type = "//wasm_bindgen:wasm_bindgen_toolchain",
+    toolchain_type = "//wasm_bindgen:toolchain_type",
 )
