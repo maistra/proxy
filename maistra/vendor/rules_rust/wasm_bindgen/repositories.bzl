@@ -12,12 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# buildifier: disable=module-docstring
+"""Dependency definitions for wasm-bindgen rules"""
+
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("@bazel_tools//tools/build_defs/repo:utils.bzl", "maybe")
 load("//wasm_bindgen/3rdparty/crates:defs.bzl", "crate_repositories")
 
-WASM_BINDGEN_VERSION = "0.2.81"
+WASM_BINDGEN_VERSION = "0.2.83"
 
 # buildifier: disable=unnamed-macro
 def rust_wasm_bindgen_dependencies():
@@ -29,7 +30,7 @@ def rust_wasm_bindgen_dependencies():
     maybe(
         http_archive,
         name = "rules_rust_wasm_bindgen_cli",
-        sha256 = "b255b6ab0d645af253319a990ad1f62e9efe2e72d353155f30834c10ecdb0af3",
+        sha256 = "5a0e951a61574d4ba2d9d2705cc6b7cd8d67aefeb982bf2a60a9c7b05bef5682",
         urls = ["https://crates.io/api/v1/crates/wasm-bindgen-cli/{}/download".format(WASM_BINDGEN_VERSION)],
         type = "tar.gz",
         strip_prefix = "wasm-bindgen-cli-{}".format(WASM_BINDGEN_VERSION),

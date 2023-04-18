@@ -981,19 +981,27 @@ OcspStapleAction ServerContextImpl::ocspStapleAction(const CertContext& cert_con
 
 int ServerContextImpl::handleOcspStapling(SSL* ssl, void*) {
   const bool client_ocsp_capable = isClientOcspCapable(ssl);
-  // returns server cert selected for this connection
-  // see https://www.openssl.org/docs/man1.1.1/man3/SSL_set_tlsext_status_ocsp_resp.html
-  // for details
-  auto* selected_cert = SSL_get_certificate(ssl);
-  const auto& cert_context = certificateContext(selected_cert);
-  auto ocsp_staple_action = ocspStapleAction(cert_context, client_ocsp_capable);
+  
+  // Loop on all certificates to find at least a good one
+  const CertContext* selected_cert_context = nullptr;
+  auto  ocsp_staple_action = OcspStapleAction::Fail;
+  for(const auto& cert_context : tls_context_.cert_contexts_) {
+    RELEASE_ASSERT(SSL_select_current_cert(ssl,cert_context.cert_chain_.get()),
+		  "SSL_select_current_cert() failure");
+    ocsp_staple_action = ocspStapleAction(cert_context, client_ocsp_capable);
+    if (ocsp_staple_action == OcspStapleAction::Fail) {
+      continue;
+    }
+    selected_cert_context = &cert_context;
+    break;
+  }
 
   switch (ocsp_staple_action) {
   case OcspStapleAction::Staple: {
     // We avoid setting the OCSP response if the client didn't request it, but doing so is safe.
-    RELEASE_ASSERT(cert_context.ocsp_response_,
+    RELEASE_ASSERT(selected_cert_context->ocsp_response_,
                    "OCSP response must be present under OcspStapleAction::Staple");
-    const std::vector<uint8_t>& raw_bytes = cert_context.ocsp_response_->rawBytes();
+    const std::vector<uint8_t>& raw_bytes = selected_cert_context->ocsp_response_->rawBytes();
     const std::size_t raw_bytes_size = raw_bytes.size();
     unsigned char* raw_bytes_copy = static_cast<unsigned char *>(OPENSSL_memdup(raw_bytes.data(), raw_bytes_size));
     if (raw_bytes_copy == nullptr) { 
@@ -1015,7 +1023,6 @@ int ServerContextImpl::handleOcspStapling(SSL* ssl, void*) {
   case OcspStapleAction::ClientNotCapable:
     return SSL_TLSEXT_ERR_NOACK;
   }
-
   return SSL_TLSEXT_ERR_OK;
 }
 

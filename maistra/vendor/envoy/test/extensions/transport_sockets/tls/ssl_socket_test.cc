@@ -6262,15 +6262,7 @@ TEST_P(SslSocketTest, TestConnectionFailsWhenCertIsMustStapleAndResponseExpired)
   testUtil(test_options.setExpectedServerStats("ssl.ocsp_staple_failed").enableOcspStapling());
 }
 
-// TODO (dmitri-d) we currently rely on OpenSSL to setup server-side certificate chain to use.
-// OpenSSL selection process doesn't take into account presence and status of an OCSP response.
-// This test failure under OpenSSL as only one of the configured certificate chains has a valid
-// OSCP response, which is expected to be used.
-// A possible approach is to use a cert_cb (see
-// https://www.openssl.org/docs/man1.1.1/man3/SSL_CTX_set_cert_cb.html) and check OCSP response
-// validity then. Using this callback raises a question of cert chain compatibility with the client
-// side and how to handle it.
-TEST_P(SslSocketTest, DISABLED_TestFilterMultipleCertsFilterByOcspPolicyFallbackOnFirst) {
+TEST_P(SslSocketTest, TestFilterMultipleCertsFilterByOcspPolicyFallbackOnFirst) {
   const std::string server_ctx_yaml = R"EOF(
   common_tls_context:
     tls_certificates:
