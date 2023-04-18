@@ -3,7 +3,16 @@ load("//bindgen:bindgen.bzl", "rust_bindgen_toolchain")
 
 package(default_visibility = ["//visibility:public"])
 
-toolchain_type(name = "bindgen_toolchain")
+toolchain_type(
+    name = "toolchain_type",
+)
+
+alias(
+    name = "bindgen_toolchain",
+    actual = "toolchain_type",
+    deprecation = "instead use `@rules_rust//bindgen:toolchain_type`",
+    tags = ["manual"],
+)
 
 bzl_library(
     name = "bzl_lib",
@@ -12,15 +21,6 @@ bzl_library(
         "//bindgen/3rdparty:bzl_lib",
         "//rust:bzl_lib",
     ],
-)
-
-filegroup(
-    name = "distro",
-    srcs = glob(["*.bzl"]) + [
-        "//bindgen/3rdparty:distro",
-        "BUILD.bazel",
-    ],
-    visibility = ["//:__subpackages__"],
 )
 
 rust_bindgen_toolchain(
@@ -43,5 +43,5 @@ rust_bindgen_toolchain(
 toolchain(
     name = "default_bindgen_toolchain",
     toolchain = "default_bindgen_toolchain_impl",
-    toolchain_type = "//bindgen:bindgen_toolchain",
+    toolchain_type = "//bindgen:toolchain_type",
 )

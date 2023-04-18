@@ -31,7 +31,9 @@ load(":providers.bzl", "CrateInfo", "DepInfo", "StdLibInfo", "TestCrateInfo")
 #
 # Note: Code in `.github/workflows/crate_universe.yaml` looks for this line, if
 # you remove it or change its format, you will also need to update that code.
-DEFAULT_RUST_VERSION = "1.62.1"
+DEFAULT_RUST_VERSION = "1.67.0"
+
+DEFAULT_NIGHTLY_ISO_DATE = "2023-01-26"
 
 def _create_crate_info(**kwargs):
     """A constructor for a `CrateInfo` provider
@@ -47,6 +49,10 @@ def _create_crate_info(**kwargs):
     """
     if not "wrapped_crate_type" in kwargs:
         kwargs.update({"wrapped_crate_type": None})
+    if not "metadata" in kwargs:
+        kwargs.update({"metadata": None})
+    if not "rustc_env_files" in kwargs:
+        kwargs.update({"rustc_env_files": []})
     return CrateInfo(**kwargs)
 
 rust_common = struct(

@@ -75,21 +75,9 @@ alias(
 
 bzl_library(
     name = "bzl_lib",
-    srcs = glob(["**/*.bzl"]) + [
-        "//wasm_bindgen/3rdparty/crates:defs.bzl",
+    srcs = [
         "//wasm_bindgen/3rdparty/crates:crates.bzl",
-    ],
-    visibility = ["//wasm_bindgen:__pkg__"],
-)
-
-filegroup(
-    name = "distro",
-    srcs = glob([
-        "*.bzl",
-        "*.bazel",
-    ]) + [
-        "//wasm_bindgen/3rdparty/crates:srcs",
-        "Cargo.Bazel.lock",
+        "//wasm_bindgen/3rdparty/crates:defs.bzl",
     ],
     visibility = ["//wasm_bindgen:__pkg__"],
 )

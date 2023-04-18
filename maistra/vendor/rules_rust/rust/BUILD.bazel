@@ -10,7 +10,14 @@ exports_files([
 ])
 
 toolchain_type(
+    name = "toolchain_type",
+)
+
+alias(
     name = "toolchain",
+    actual = "toolchain_type",
+    deprecation = "instead use `@rules_rust//rust:toolchain_type`",
+    tags = ["manual"],
 )
 
 bzl_library(
@@ -21,17 +28,4 @@ bzl_library(
         "//rust/private:bzl_lib",
         "//rust/settings:bzl_lib",
     ],
-)
-
-filegroup(
-    name = "distro",
-    srcs = glob(["*.bzl"]) + [
-        "//rust/platform:distro",
-        "//rust/private:distro",
-        "//rust/settings:distro",
-        "//rust/rust_analyzer:distro",
-        "//rust/toolchain:distro",
-        "BUILD.bazel",
-    ],
-    visibility = ["//:__subpackages__"],
 )
