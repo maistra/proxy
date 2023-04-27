@@ -19,15 +19,16 @@
 #ifndef GRPCPP_IMPL_CODEGEN_BYTE_BUFFER_H
 #define GRPCPP_IMPL_CODEGEN_BYTE_BUFFER_H
 
-#include <grpc/impl/codegen/byte_buffer.h>
+// IWYU pragma: private, include <grpcpp/support/byte_buffer.h>
 
+#include <vector>
+
+#include <grpc/impl/codegen/byte_buffer.h>
 #include <grpcpp/impl/codegen/config.h>
 #include <grpcpp/impl/codegen/core_codegen_interface.h>
 #include <grpcpp/impl/codegen/serialization_traits.h>
 #include <grpcpp/impl/codegen/slice.h>
 #include <grpcpp/impl/codegen/status.h>
-
-#include <vector>
 
 namespace grpc {
 
@@ -41,10 +42,10 @@ class CallbackUnaryHandler;
 template <class RequestType, class ResponseType>
 class CallbackServerStreamingHandler;
 template <class RequestType>
-void* UnaryDeserializeHelper(grpc_byte_buffer*, ::grpc::Status*, RequestType*);
+void* UnaryDeserializeHelper(grpc_byte_buffer*, grpc::Status*, RequestType*);
 template <class ServiceType, class RequestType, class ResponseType>
 class ServerStreamingHandler;
-template <::grpc::StatusCode code>
+template <grpc::StatusCode code>
 class ErrorMethodHandler;
 class CallOpSendMessage;
 template <class R>
@@ -171,7 +172,7 @@ class ByteBuffer final {
   friend class internal::CallOpGenericRecvMessage;
   template <class RequestType>
   friend void* internal::UnaryDeserializeHelper(grpc_byte_buffer*,
-                                                ::grpc::Status*, RequestType*);
+                                                grpc::Status*, RequestType*);
   template <class ServiceType, class RequestType, class ResponseType>
   friend class internal::ServerStreamingHandler;
   template <class RequestType, class ResponseType>

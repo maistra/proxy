@@ -18,6 +18,7 @@
 #include "quiche/quic/core/crypto/crypto_handshake_message.h"
 #include "quiche/quic/core/crypto/crypto_protocol.h"
 #include "quiche/quic/core/crypto/quic_crypter.h"
+#include "quiche/quic/core/crypto/quic_random.h"
 #include "quiche/quic/core/quic_connection_id.h"
 #include "quiche/quic/core/quic_packets.h"
 #include "quiche/quic/core/quic_time.h"
@@ -25,8 +26,6 @@
 #include "quiche/quic/platform/api/quic_export.h"
 
 namespace quic {
-
-class QuicRandom;
 
 class QUIC_EXPORT_PRIVATE CryptoUtils {
  public:
@@ -91,13 +90,13 @@ class QUIC_EXPORT_PRIVATE CryptoUtils {
   // protection key. GenerateHeaderProtectionKey/SetHeaderProtectionKey must be
   // called before using |crypter|.
   static void SetKeyAndIV(const EVP_MD* prf,
-                          const std::vector<uint8_t>& pp_secret,
+                          absl::Span<const uint8_t> pp_secret,
                           const ParsedQuicVersion& version,
                           QuicCrypter* crypter);
 
   // Derives the header protection key from the packet protection secret.
   static std::vector<uint8_t> GenerateHeaderProtectionKey(
-      const EVP_MD* prf, const std::vector<uint8_t>& pp_secret,
+      const EVP_MD* prf, absl::Span<const uint8_t> pp_secret,
       const ParsedQuicVersion& version, size_t out_len);
 
   // Given a secret for key phase n, return the secret for phase n+1.
@@ -248,6 +247,11 @@ class QUIC_EXPORT_PRIVATE CryptoUtils {
   static bool GetSSLCapabilities(const SSL* ssl,
                                  bssl::UniquePtr<uint8_t>* capabilities,
                                  size_t* capabilities_len);
+
+  // Computes the contents of a binary message that is signed inside QUIC Crypto
+  // protocol using the certificate key.
+  static absl::optional<std::string> GenerateProofPayloadToBeSigned(
+      absl::string_view chlo_hash, absl::string_view server_config);
 };
 
 }  // namespace quic

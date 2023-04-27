@@ -68,8 +68,8 @@ func Rewrite(f *File) {
 // Each rewrite function can be either applied for BUILD files, other files (such as .bzl),
 // or all files.
 const (
-	scopeDefault = TypeDefault | TypeBzl     // .bzl and generic Starlark files
-	scopeBuild   = TypeBuild | TypeWorkspace // BUILD and WORKSPACE files
+	scopeDefault = TypeDefault | TypeBzl                  // .bzl and generic Starlark files
+	scopeBuild   = TypeBuild | TypeWorkspace | TypeModule // BUILD, WORKSPACE, and MODULE files
 	scopeBoth    = scopeDefault | scopeBuild
 )
 
@@ -109,6 +109,9 @@ func leaveAlone(stk []Expr, final Expr) bool {
 // hasComment reports whether x is marked with a comment that
 // after being converted to lower case, contains the specified text.
 func hasComment(x Expr, text string) bool {
+	if x == nil {
+		return false
+	}
 	for _, com := range x.Comment().Before {
 		if strings.Contains(strings.ToLower(com.Token), text) {
 			return true
@@ -954,6 +957,11 @@ func reorderArguments(f *File) {
 			return
 		}
 		compare := func(i, j int) bool {
+			// Keep nil nodes at their place. They are no-op for the formatter but can
+			// be useful for the linter which expects them to not move.
+			if call.List[i] == nil || call.List[j] == nil {
+				return false
+			}
 			return argumentType(call.List[i]) < argumentType(call.List[j])
 		}
 		if !sort.SliceIsSorted(call.List, compare) {

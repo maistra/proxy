@@ -24,15 +24,12 @@ namespace {
 
 class MockDelegate : public QuicStreamIdManager::DelegateInterface {
  public:
-  MOCK_METHOD(void,
-              SendMaxStreams,
-              (QuicStreamCount stream_count, bool unidirectional),
-              (override));
+  MOCK_METHOD(void, SendMaxStreams,
+              (QuicStreamCount stream_count, bool unidirectional), (override));
 };
 
 struct TestParams {
-  TestParams(ParsedQuicVersion version,
-             Perspective perspective,
+  TestParams(ParsedQuicVersion version, Perspective perspective,
              bool is_unidirectional)
       : version(version),
         perspective(perspective),
@@ -70,11 +67,8 @@ std::vector<TestParams> GetTestParams() {
 class QuicStreamIdManagerTest : public QuicTestWithParam<TestParams> {
  protected:
   QuicStreamIdManagerTest()
-      : stream_id_manager_(&delegate_,
-                           IsUnidirectional(),
-                           perspective(),
-                           GetParam().version,
-                           0,
+      : stream_id_manager_(&delegate_, IsUnidirectional(), perspective(),
+                           GetParam().version, 0,
                            kDefaultMaxStreamsPerConnection) {
     QUICHE_DCHECK(VersionHasIetfQuicFrames(transport_version()));
   }
@@ -103,8 +97,7 @@ class QuicStreamIdManagerTest : public QuicTestWithParam<TestParams> {
   QuicStreamIdManager stream_id_manager_;
 };
 
-INSTANTIATE_TEST_SUITE_P(Tests,
-                         QuicStreamIdManagerTest,
+INSTANTIATE_TEST_SUITE_P(Tests, QuicStreamIdManagerTest,
                          ::testing::ValuesIn(GetTestParams()),
                          ::testing::PrintToStringParamName());
 
@@ -325,7 +318,7 @@ TEST_P(QuicStreamIdManagerTest, MaxStreamsWindow) {
   // Open and then close a number of streams to get close to the threshold of
   // sending a MAX_STREAM_FRAME.
   int stream_count = stream_id_manager_.incoming_initial_max_open_streams() /
-                         GetQuicFlag(FLAGS_quic_max_streams_window_divisor) -
+                         GetQuicFlag(quic_max_streams_window_divisor) -
                      1;
 
   // Should not get a control-frame transmission since the peer should have
@@ -418,7 +411,7 @@ TEST_P(QuicStreamIdManagerTest, MaxStreamsSlidingWindow) {
   // cause a MAX STREAMS frame to be generated.
   int i =
       static_cast<int>(stream_id_manager_.incoming_initial_max_open_streams() /
-                       GetQuicFlag(FLAGS_quic_max_streams_window_divisor));
+                       GetQuicFlag(quic_max_streams_window_divisor));
   QuicStreamId id =
       QuicStreamIdManagerPeer::GetFirstIncomingStreamId(&stream_id_manager_);
   EXPECT_CALL(delegate_, SendMaxStreams(first_advert + i, IsUnidirectional()));

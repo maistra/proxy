@@ -199,7 +199,7 @@ def get_versioned_shared_lib_extension(path):
     # something like 1.2.3, or so.1.2, or dylib.1.2, or foo.1.2
     return ""
 
-MINIMUM_BAZEL_VERSION = "4.2.1"
+MINIMUM_BAZEL_VERSION = "5.1.0"
 
 def as_list(v):
     """Returns a list, tuple, or depset as a list."""
@@ -240,3 +240,36 @@ def as_set(v):
     if type(v) == "tuple":
         return depset(v)
     fail("as_tuple failed on {}".format(v))
+
+_STRUCT_TYPE = type(struct())
+
+def is_struct(v):
+    """Returns true if v is a struct."""
+    return type(v) == _STRUCT_TYPE
+
+def count_group_matches(v, prefix, suffix):
+    """Counts reluctant substring matches between prefix and suffix.
+
+    Equivalent to the number of regular expression matches "prefix.+?suffix"
+    in the string v.
+    """
+
+    count = 0
+    idx = 0
+    for i in range(0, len(v)):
+        if idx > i:
+            continue
+
+        idx = v.find(prefix, idx)
+        if idx == -1:
+            break
+
+        # If there is another prefix before the next suffix, the previous prefix is discarded.
+        # This is OK; it does not affect our count.
+        idx = v.find(suffix, idx)
+        if idx == -1:
+            break
+
+        count = count + 1
+
+    return count

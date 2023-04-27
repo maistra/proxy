@@ -19,9 +19,13 @@
 #include <inttypes.h>
 #include <unistd.h>
 
+#include <string>
+
 #include "absl/strings/str_format.h"
 
-#include <grpc/support/string_util.h>
+#include <grpc/grpc.h>
+#include <grpc/grpc_security_constants.h>
+#include <grpc/support/time.h>
 
 #include "test/core/end2end/end2end_tests.h"
 #include "test/core/end2end/fixtures/local_util.h"
@@ -30,7 +34,8 @@
 static int unique = 1;
 
 static grpc_end2end_test_fixture chttp2_create_fixture_fullstack_uds(
-    grpc_channel_args* /*client_args*/, grpc_channel_args* /*server_args*/) {
+    const grpc_channel_args* /*client_args*/,
+    const grpc_channel_args* /*server_args*/) {
   grpc_end2end_test_fixture f =
       grpc_end2end_local_chttp2_create_fixture_fullstack();
   gpr_timespec now = gpr_now(GPR_CLOCK_REALTIME);
@@ -41,13 +46,13 @@ static grpc_end2end_test_fixture chttp2_create_fixture_fullstack_uds(
   return f;
 }
 
-static void chttp2_init_client_fullstack_uds(grpc_end2end_test_fixture* f,
-                                             grpc_channel_args* client_args) {
+static void chttp2_init_client_fullstack_uds(
+    grpc_end2end_test_fixture* f, const grpc_channel_args* client_args) {
   grpc_end2end_local_chttp2_init_client_fullstack(f, client_args, UDS);
 }
 
-static void chttp2_init_server_fullstack_uds(grpc_end2end_test_fixture* f,
-                                             grpc_channel_args* client_args) {
+static void chttp2_init_server_fullstack_uds(
+    grpc_end2end_test_fixture* f, const grpc_channel_args* client_args) {
   grpc_end2end_local_chttp2_init_server_fullstack(f, client_args, UDS);
 }
 
@@ -64,7 +69,7 @@ static grpc_end2end_test_config configs[] = {
 
 int main(int argc, char** argv) {
   size_t i;
-  grpc::testing::TestEnvironment env(argc, argv);
+  grpc::testing::TestEnvironment env(&argc, argv);
   grpc_end2end_tests_pre_init();
   grpc_init();
   for (i = 0; i < sizeof(configs) / sizeof(*configs); i++) {

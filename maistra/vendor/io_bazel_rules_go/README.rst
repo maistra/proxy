@@ -8,10 +8,11 @@ Go rules for Bazel_
 .. _Bazel: https://bazel.build/
 .. _Build modes: go/modes.rst
 .. _Core rules: docs/go/core/rules.md
+.. _Coverage: https://bazel.google.cn/docs/coverage
 .. _Dependencies: go/dependencies.rst
 .. _Deprecation schedule: https://github.com/bazelbuild/rules_go/wiki/Deprecation-schedule
-.. _Editor and tool integration: https://github.com/bazelbuild/rules_go/wiki/Editor-and-tool-integration
 .. _Gopher Slack: https://invite.slack.golangbridge.org/
+.. _gopls integration: https://github.com/bazelbuild/rules_go/wiki/Editor-setup
 .. _Overriding dependencies: go/dependencies.rst#overriding-dependencies
 .. _Proto dependencies: go/dependencies.rst#proto-dependencies
 .. _Proto rules: proto/core.rst
@@ -71,6 +72,28 @@ Slack: `#go on Bazel Slack`_, `#bazel on Go Slack`_
 
 Announcements
 -------------
+2022-07-19
+  Release
+  `v0.34.0 <https://github.com/bazelbuild/rules_go/releases/tag/v0.34.0>`_
+  is now available. This release brings very experimental support for bzlmod,
+  several improvements to nogo and gopackagesdriver.
+
+2022-06-06
+  Release
+  `v0.33.0 <https://github.com/bazelbuild/rules_go/releases/tag/v0.33.0>`_
+  is now available. This release consists mostly of bug fixes and deprecates
+  the `asm`, `compile`, `cover`, and `pack` actions on `go_context`.
+2022-05-11
+  Release
+  `v0.32.0 <https://github.com/bazelbuild/rules_go/releases/tag/v0.32.0>`_
+  is now available. This adds `gomock` to rules_go and supports lcov format
+  for code coverage report, as well as a long list of other changes listed
+  in the release notes.
+2022-03-21
+  Release
+  `v0.31.0 <https://github.com/bazelbuild/rules_go/releases/tag/v0.31.0>`_
+  is now available. This adds support for bazel 5.0.0.
+  Thanks to all who contributed!
 
 2022-01-24
   Release
@@ -85,20 +108,6 @@ Announcements
   is now available. This enables `nogo` analyzers to depend on `go_library` rules,
   removes the `rules_cc` dependency, adds automatic target detection to gopackagesdriver,
   and fixes some cgo-related bugs. See the release notes for details.
-2021-07-07
-  Release
-  `v0.28.0 <https://github.com/bazelbuild/rules_go/releases/tag/v0.28.0>`_
-  is now available. This adds experimental editor support, plus a few other
-  changes. See the release notes for details. Thanks to all who contributed!
-2021-03-18
-  Release
-  `v0.27.0 <https://github.com/bazelbuild/rules_go/releases/tag/v0.27.0>`_
-  is now available. This updates ``org_golang_x_tools`` and adds
-  ``org_golang_x_sys``. This should have been done in ``v0.26.0``. Additionally,
-  `v0.24.14 <https://github.com/bazelbuild/rules_go/releases/tag/v0.24.14>`_
-  is now available with support for Go 1.16.2, 1.16.1, 1.15.10, and 1.15.9.
-  This will be the last release on the 0.24 branch. 0.27 and 0.25 are now
-  the two supported branches.
 
 Contents
 --------
@@ -167,12 +176,12 @@ The rules are in the beta stage of development. They support:
 * Build-time code analysis via nogo_
 * `Protocol buffers`_
 * Remote execution
+* `Coverage`_
+* `gopls integration`_ for editor support
+* Debugging
 
 They currently do not support or have limited support for:
 
-* `Editor and tool integration`_
-* Coverage
-* Debugging
 * C/C++ integration other than cgo (SWIG)
 
 The Go rules are tested and supported on the following host platforms:
@@ -183,7 +192,7 @@ The Go rules are tested and supported on the following host platforms:
 Users have reported success on several other platforms, but the rules are
 only tested on those listed above.
 
-Note: The latest version of these rules (v0.28.0) requires Bazel ≥ 4.0.0 to work.
+Note: Since version v0.30.0, rules_go requires Bazel ≥ 4.2.1 to work.
 
 The ``master`` branch is only guaranteed to work with the latest version of Bazel.
 
@@ -220,10 +229,10 @@ Go toolchain and register it for use.
 
     http_archive(
         name = "io_bazel_rules_go",
-        sha256 = "d6b2513456fe2229811da7eb67a444be7785f5323c6708b38d851d2b51e54d83",
+        sha256 = "16e9fca53ed6bd4ff4ad76facc9b7b651a89db1689a2877d6fd7b82aa824e366",
         urls = [
-            "https://mirror.bazel.build/github.com/bazelbuild/rules_go/releases/download/v0.30.0/rules_go-v0.30.0.zip",
-            "https://github.com/bazelbuild/rules_go/releases/download/v0.30.0/rules_go-v0.30.0.zip",
+            "https://mirror.bazel.build/github.com/bazelbuild/rules_go/releases/download/v0.34.0/rules_go-v0.34.0.zip",
+            "https://github.com/bazelbuild/rules_go/releases/download/v0.34.0/rules_go-v0.34.0.zip",
         ],
     )
 
@@ -231,7 +240,7 @@ Go toolchain and register it for use.
 
     go_rules_dependencies()
 
-    go_register_toolchains(version = "1.17.6")
+    go_register_toolchains(version = "1.18.3")
 
 You can use rules_go at ``master`` by using `git_repository`_ instead of
 `http_archive`_ and pointing to a recent commit.
@@ -267,19 +276,19 @@ Add the ``bazel_gazelle`` repository and its dependencies to your
 
     http_archive(
         name = "io_bazel_rules_go",
-        sha256 = "d6b2513456fe2229811da7eb67a444be7785f5323c6708b38d851d2b51e54d83",
+        sha256 = "ab21448cef298740765f33a7f5acee0607203e4ea321219f2a4c85a6e0fb0a27",
         urls = [
-            "https://mirror.bazel.build/github.com/bazelbuild/rules_go/releases/download/v0.30.0/rules_go-v0.30.0.zip",
-            "https://github.com/bazelbuild/rules_go/releases/download/v0.30.0/rules_go-v0.30.0.zip",
+            "https://mirror.bazel.build/github.com/bazelbuild/rules_go/archive/refs/tags/v0.32.0.zip",
+            "https://github.com/bazelbuild/rules_go/archive/refs/tags/v0.32.0.zip",
         ],
     )
 
     http_archive(
         name = "bazel_gazelle",
-        sha256 = "de69a09dc70417580aabf20a28619bb3ef60d038470c7cf8442fafcf627c21cb",
+        sha256 = "5982e5463f171da99e3bdaeff8c0f48283a7a5f396ec5282910b9e8a49c0dd7e",
         urls = [
-            "https://mirror.bazel.build/github.com/bazelbuild/bazel-gazelle/releases/download/v0.24.0/bazel-gazelle-v0.24.0.tar.gz",
-            "https://github.com/bazelbuild/bazel-gazelle/releases/download/v0.24.0/bazel-gazelle-v0.24.0.tar.gz",
+            "https://mirror.bazel.build/github.com/bazelbuild/bazel-gazelle/releases/download/v0.25.0/bazel-gazelle-v0.25.0.tar.gz",
+            "https://github.com/bazelbuild/bazel-gazelle/releases/download/v0.25.0/bazel-gazelle-v0.25.0.tar.gz",
         ],
     )
 
@@ -288,7 +297,7 @@ Add the ``bazel_gazelle`` repository and its dependencies to your
 
     go_rules_dependencies()
 
-    go_register_toolchains(version = "1.17.6")
+    go_register_toolchains(version = "1.18.2")
 
     gazelle_dependencies()
 
@@ -393,20 +402,20 @@ automatically from a go.mod or Gopkg.lock file.
     # Download the Go rules.
     http_archive(
         name = "io_bazel_rules_go",
-        sha256 = "d6b2513456fe2229811da7eb67a444be7785f5323c6708b38d851d2b51e54d83",
+        sha256 = "16e9fca53ed6bd4ff4ad76facc9b7b651a89db1689a2877d6fd7b82aa824e366",
         urls = [
-            "https://mirror.bazel.build/github.com/bazelbuild/rules_go/releases/download/v0.30.0/rules_go-v0.30.0.zip",
-            "https://github.com/bazelbuild/rules_go/releases/download/v0.30.0/rules_go-v0.30.0.zip",
+            "https://mirror.bazel.build/github.com/bazelbuild/rules_go/releases/download/v0.34.0/rules_go-v0.34.0.zip",
+            "https://github.com/bazelbuild/rules_go/releases/download/v0.34.0/rules_go-v0.34.0.zip",
         ],
     )
 
     # Download Gazelle.
     http_archive(
         name = "bazel_gazelle",
-        sha256 = "de69a09dc70417580aabf20a28619bb3ef60d038470c7cf8442fafcf627c21cb",
+        sha256 = "501deb3d5695ab658e82f6f6f549ba681ea3ca2a5fb7911154b5aa45596183fa",
         urls = [
-            "https://mirror.bazel.build/github.com/bazelbuild/bazel-gazelle/releases/download/v0.24.0/bazel-gazelle-v0.24.0.tar.gz",
-            "https://github.com/bazelbuild/bazel-gazelle/releases/download/v0.24.0/bazel-gazelle-v0.24.0.tar.gz",
+            "https://mirror.bazel.build/github.com/bazelbuild/bazel-gazelle/releases/download/v0.26.0/bazel-gazelle-v0.26.0.tar.gz",
+            "https://github.com/bazelbuild/bazel-gazelle/releases/download/v0.26.0/bazel-gazelle-v0.26.0.tar.gz",
         ],
     )
 
@@ -425,7 +434,7 @@ automatically from a go.mod or Gopkg.lock file.
     # Declare indirect dependencies and register toolchains.
     go_rules_dependencies()
 
-    go_register_toolchains(version = "1.17.6")
+    go_register_toolchains(version = "1.18.2")
 
     gazelle_dependencies()
 

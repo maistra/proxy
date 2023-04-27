@@ -27,6 +27,9 @@
 #include <unordered_map>
 #include <vector>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/match.h"
+
 #include <grpc/support/log.h>
 #include <grpc/support/time.h>
 #include <grpcpp/channel.h>
@@ -34,14 +37,10 @@
 #include <grpcpp/support/channel_arguments.h>
 #include <grpcpp/support/slice.h>
 
-#include "absl/memory/memory.h"
-#include "absl/strings/match.h"
-
-#include "src/proto/grpc/testing/benchmark_service.grpc.pb.h"
-#include "src/proto/grpc/testing/payloads.pb.h"
-
 #include "src/core/lib/gpr/env.h"
 #include "src/cpp/util/core_stats.h"
+#include "src/proto/grpc/testing/benchmark_service.grpc.pb.h"
+#include "src/proto/grpc/testing/payloads.pb.h"
 #include "test/cpp/qps/histogram.h"
 #include "test/cpp/qps/interarrival.h"
 #include "test/cpp/qps/qps_worker.h"
@@ -72,6 +71,9 @@ class ClientRequestCreator<SimpleRequest> {
   ClientRequestCreator(SimpleRequest* req,
                        const PayloadConfig& payload_config) {
     if (payload_config.has_bytebuf_params()) {
+      gpr_log(GPR_ERROR,
+              "Invalid PayloadConfig, config cannot have bytebuf_params: %s",
+              payload_config.DebugString().c_str());
       GPR_ASSERT(false);  // not appropriate for this specialization
     } else if (payload_config.has_simple_params()) {
       req->set_response_type(grpc::testing::PayloadType::COMPRESSABLE);
@@ -82,6 +84,9 @@ class ClientRequestCreator<SimpleRequest> {
       std::unique_ptr<char[]> body(new char[size]);
       req->mutable_payload()->set_body(body.get(), size);
     } else if (payload_config.has_complex_params()) {
+      gpr_log(GPR_ERROR,
+              "Invalid PayloadConfig, cannot have complex_params: %s",
+              payload_config.DebugString().c_str());
       GPR_ASSERT(false);  // not appropriate for this specialization
     } else {
       // default should be simple proto without payloads
@@ -105,6 +110,8 @@ class ClientRequestCreator<ByteBuffer> {
       Slice slice(buf.get(), req_sz);
       *req = ByteBuffer(&slice, 1);
     } else {
+      gpr_log(GPR_ERROR, "Invalid PayloadConfig, missing bytebug_params: %s",
+              payload_config.DebugString().c_str());
       GPR_ASSERT(false);  // not appropriate for this specialization
     }
   }
@@ -192,8 +199,8 @@ class Client {
     if (median_latency_collection_interval_seconds_ > 0) {
       std::vector<double> medians_per_interval =
           threads_[0]->GetMedianPerIntervalList();
-      gpr_log(GPR_INFO, "Num threads: %ld", threads_.size());
-      gpr_log(GPR_INFO, "Number of medians: %ld", medians_per_interval.size());
+      gpr_log(GPR_INFO, "Num threads: %zu", threads_.size());
+      gpr_log(GPR_INFO, "Number of medians: %zu", medians_per_interval.size());
       for (size_t j = 0; j < medians_per_interval.size(); j++) {
         gpr_log(GPR_INFO, "%f", medians_per_interval[j]);
       }

@@ -156,8 +156,8 @@ struct ResponseCodeDetailValues {
   const std::string MaintenanceMode = "maintenance_mode";
   // The request was rejected by the router filter because there was no healthy upstream found.
   const std::string NoHealthyUpstream = "no_healthy_upstream";
-  // The upstream response timed out.
-  const std::string UpstreamTimeout = "upstream_response_timeout";
+  // The request was forwarded upstream but the response timed out.
+  const std::string ResponseTimeout = "response_timeout";
   // The final upstream try timed out.
   const std::string UpstreamPerTryTimeout = "upstream_per_try_timeout";
   // The final upstream try idle timed out.
@@ -282,6 +282,9 @@ public:
   absl::optional<MonotonicTime> lastDownstreamTxByteSent() const {
     return last_downstream_tx_byte_sent_;
   }
+  absl::optional<MonotonicTime> downstreamHandshakeComplete() const {
+    return downstream_handshake_complete_;
+  }
 
   void onLastDownstreamRxByteReceived(TimeSource& time_source) {
     ASSERT(!last_downstream_rx_byte_received_);
@@ -295,6 +298,10 @@ public:
     ASSERT(!last_downstream_tx_byte_sent_);
     last_downstream_tx_byte_sent_ = time_source.monotonicTime();
   }
+  void onDownstreamHandshakeComplete(TimeSource& time_source) {
+    // An existing value can be overwritten, e.g. in resumption case.
+    downstream_handshake_complete_ = time_source.monotonicTime();
+  }
 
 private:
   absl::flat_hash_map<std::string, MonotonicTime> timings_;
@@ -304,6 +311,8 @@ private:
   absl::optional<MonotonicTime> first_downstream_tx_byte_sent_;
   // The time when the last byte of the response was sent downstream.
   absl::optional<MonotonicTime> last_downstream_tx_byte_sent_;
+  // The time the TLS handshake completed. Set at connection level.
+  absl::optional<MonotonicTime> downstream_handshake_complete_;
 };
 
 // Measure the number of bytes sent and received for a stream.
@@ -326,8 +335,6 @@ private:
 
 using BytesMeterSharedPtr = std::shared_ptr<BytesMeter>;
 
-// TODO(alyssawilk) after landing this, remove all the duplicate getters and
-// setters from StreamInfo.
 class UpstreamInfo {
 public:
   virtual ~UpstreamInfo() = default;
@@ -394,6 +401,17 @@ public:
   virtual const Network::Address::InstanceConstSharedPtr& upstreamLocalAddress() const PURE;
 
   /**
+   * @param upstream_remote_address sets the remote address of the upstream connection.
+   */
+  virtual void setUpstreamRemoteAddress(
+      const Network::Address::InstanceConstSharedPtr& upstream_remote_address) PURE;
+
+  /**
+   * @return the upstream remote address.
+   */
+  virtual const Network::Address::InstanceConstSharedPtr& upstreamRemoteAddress() const PURE;
+
+  /**
    * @param failure_reason the upstream transport failure reason.
    */
   virtual void setUpstreamTransportFailureReason(absl::string_view failure_reason) PURE;
@@ -430,6 +448,9 @@ public:
    */
   virtual void setUpstreamNumStreams(uint64_t num_streams) PURE;
   virtual uint64_t upstreamNumStreams() const PURE;
+
+  virtual void setUpstreamProtocol(Http::Protocol protocol) PURE;
+  virtual absl::optional<Http::Protocol> upstreamProtocol() const PURE;
 };
 
 /**
@@ -720,11 +741,23 @@ public:
    */
   virtual void setDownstreamBytesMeter(const BytesMeterSharedPtr& downstream_bytes_meter) PURE;
 
+  virtual bool isShadow() const PURE;
+
   static void syncUpstreamAndDownstreamBytesMeter(StreamInfo& downstream_info,
                                                   StreamInfo& upstream_info) {
     downstream_info.setUpstreamBytesMeter(upstream_info.getUpstreamBytesMeter());
     upstream_info.setDownstreamBytesMeter(downstream_info.getDownstreamBytesMeter());
   }
+
+  /**
+   * Dump the info to the specified ostream.
+   *
+   * @param os the ostream to dump state to
+   * @param indent_level the depth, for pretty-printing.
+   *
+   * This function is called on Envoy fatal errors so should avoid memory allocation.
+   */
+  virtual void dumpState(std::ostream& os, int indent_level = 0) const PURE;
 };
 
 // An enum representation of the Proxy-Status error space.

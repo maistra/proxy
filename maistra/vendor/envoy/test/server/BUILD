@@ -88,6 +88,8 @@ envoy_cc_test(
         "//test/test_common:network_utility_lib",
         "//test/test_common:test_runtime_lib",
         "//test/test_common:threadsafe_singleton_injector_lib",
+        "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+        "@envoy_api//envoy/config/listener/v3:pkg_cc_proto",
     ],
 )
 
@@ -104,21 +106,6 @@ envoy_cc_test(
         "//test/mocks/network:io_handle_mocks",
         "//test/mocks/network:network_mocks",
         "//test/test_common:network_utility_lib",
-    ],
-)
-
-envoy_cc_test(
-    name = "active_internal_listener_test",
-    srcs = ["active_internal_listener_test.cc"],
-    deps = [
-        ":utility_lib",
-        "//source/common/network:address_lib",
-        "//source/common/network:listen_socket_lib",
-        "//source/common/network:utility_lib",
-        "//source/common/stats:stats_lib",
-        "//source/extensions/transport_sockets/raw_buffer:config",
-        "//source/server:connection_handler_lib",
-        "//test/mocks/network:network_mocks",
     ],
 )
 
@@ -211,7 +198,6 @@ envoy_cc_test(
         "//test/mocks/stats:stats_mocks",
         "//test/test_common:registry_lib",
         "//test/test_common:simulated_time_system_lib",
-        "//test/test_common:test_runtime_lib",
         "//test/test_common:utility_lib",
     ],
 )
@@ -342,24 +328,24 @@ envoy_cc_test(
 )
 
 # Stand-alone quic test because of FIPS.
-# NOT AVAIBLE IN MAISTRA AT THE MOMENT
-#envoy_cc_test(
-#    name = "listener_manager_impl_quic_only_test",
-#    srcs = ["listener_manager_impl_quic_only_test.cc"],
-#    tags = ["nofips"],
-#    deps = [
-#        ":listener_manager_impl_test_lib",
-#        ":utility_lib",
-#        "//source/common/quic:quic_transport_socket_factory_lib",
-#        "//source/extensions/filters/http/router:config",
-#        "//source/extensions/request_id/uuid:config",
-#        "//source/extensions/transport_sockets/raw_buffer:config",
-#        "//source/extensions/transport_sockets/tls:config",
-#        "//test/test_common:threadsafe_singleton_injector_lib",
-#        "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
-#        "@envoy_api//envoy/config/listener/v3:pkg_cc_proto",
-#    ],
-#)
+envoy_cc_test(
+    name = "listener_manager_impl_quic_only_test",
+    srcs = ["listener_manager_impl_quic_only_test.cc"],
+    tags = ["nofips"],
+    deps = [
+        ":listener_manager_impl_test_lib",
+        ":utility_lib",
+        "//source/extensions/filters/http/router:config",
+        "//source/extensions/filters/network/rbac:config",
+        "//source/extensions/request_id/uuid:config",
+        "//source/extensions/transport_sockets/raw_buffer:config",
+        "//source/extensions/transport_sockets/tls:config",
+        "//test/integration/filters:test_network_filter_lib",
+        "//test/test_common:threadsafe_singleton_injector_lib",
+        "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+        "@envoy_api//envoy/config/listener/v3:pkg_cc_proto",
+    ],
+)
 
 envoy_cc_test(
     name = "filter_chain_manager_impl_test",

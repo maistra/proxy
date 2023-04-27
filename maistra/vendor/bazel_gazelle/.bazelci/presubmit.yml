@@ -3,6 +3,10 @@ platforms:
   ubuntu1804:
     build_targets:
     - "..."
+    run_targets:
+    # Run Gazelle on repo to verify BUILD files are up-to-date. The output shouldn't differ
+    # between platforms, so we only run it from one.
+    - "//:gazelle_ci"
     test_targets:
     - "..."
   ubuntu1604:
@@ -26,5 +30,12 @@ platforms:
     # autogazelle is only supported on UNIX-like platforms.
     # It requires UNIX domain sockets.
     - "-//cmd/autogazelle/..."
+    # Stardoc produces different line-endings on windows,
+    # so the documentation it generates doesn't match the checked in files
+    - "-//docs:all"
     # Fails to execute, apparently due to command-line length limit.
     - "-//internal:bazel_test"
+    # gazelle prints file paths with backward slashes on windows,
+    # which doesn't match the golden files generated on *nix.
+    - "-//tests:fix_mode_print0"
+    - "-//tests:fix_mode_strict"

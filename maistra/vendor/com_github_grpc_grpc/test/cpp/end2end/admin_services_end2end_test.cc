@@ -21,14 +21,13 @@
 
 #include "absl/strings/str_cat.h"
 
+#include <grpcpp/ext/admin_services.h>
 #include <grpcpp/ext/proto_server_reflection_plugin.h>
 #include <grpcpp/grpcpp.h>
 
 #include "src/proto/grpc/reflection/v1alpha/reflection.grpc.pb.h"
 #include "test/core/util/port.h"
 #include "test/core/util/test_config.h"
-
-#include <grpcpp/ext/admin_services.h>
 
 namespace grpc {
 namespace testing {
@@ -42,7 +41,7 @@ class AdminServicesTest : public ::testing::Test {
     grpc::reflection::InitProtoReflectionServerBuilderPlugin();
     ServerBuilder builder;
     builder.AddListeningPort(address, InsecureServerCredentials());
-    ::grpc::AddAdminServices(&builder);
+    grpc::AddAdminServices(&builder);
     server_ = builder.BuildAndStart();
     // Create channel
     auto reflection_stub = reflection::v1alpha::ServerReflection::NewStub(
@@ -95,7 +94,7 @@ TEST_F(AdminServicesTest, ValidateRegisteredServices) {
 }  // namespace grpc
 
 int main(int argc, char** argv) {
-  grpc::testing::TestEnvironment env(argc, argv);
+  grpc::testing::TestEnvironment env(&argc, argv);
   ::testing::InitGoogleTest(&argc, argv);
   int ret = RUN_ALL_TESTS();
   return ret;

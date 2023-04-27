@@ -22,10 +22,8 @@
 namespace quic {
 
 TlsClientHandshaker::TlsClientHandshaker(
-    const QuicServerId& server_id,
-    QuicCryptoStream* stream,
-    QuicSession* session,
-    std::unique_ptr<ProofVerifyContext> verify_context,
+    const QuicServerId& server_id, QuicCryptoStream* stream,
+    QuicSession* session, std::unique_ptr<ProofVerifyContext> verify_context,
     QuicCryptoClientConfig* crypto_config,
     QuicCryptoClientStream::ProofHandler* proof_handler,
     bool has_application_state)
@@ -77,13 +75,9 @@ bool TlsClientHandshaker::CryptoConnect() {
 
   // TODO(b/193650832) Add SetFromConfig to QUIC handshakers and remove reliance
   // on session pointer.
-  const bool permutes_tls_extensions = session()->permutes_tls_extensions();
-  if (!permutes_tls_extensions) {
-    QUIC_DLOG(INFO) << "Disabling TLS extension permutation";
-  }
 #if BORINGSSL_API_VERSION >= 16
   // Ask BoringSSL to randomize the order of TLS extensions.
-  SSL_set_permute_extensions(ssl(), permutes_tls_extensions);
+  SSL_set_permute_extensions(ssl(), true);
 #endif  // BORINGSSL_API_VERSION
 
   // Set the SNI to send, if any.
@@ -238,8 +232,7 @@ bool TlsClientHandshaker::SetTransportParameters() {
   session()->connection()->OnTransportParametersSent(params);
 
   std::vector<uint8_t> param_bytes;
-  return SerializeTransportParameters(session()->connection()->version(),
-                                      params, &param_bytes) &&
+  return SerializeTransportParameters(params, &param_bytes) &&
          SSL_set_quic_transport_params(ssl(), param_bytes.data(),
                                        param_bytes.size()) == 1;
 }
@@ -319,9 +312,7 @@ bool TlsClientHandshaker::ProcessTransportParameters(
   return true;
 }
 
-int TlsClientHandshaker::num_sent_client_hellos() const {
-  return 0;
-}
+int TlsClientHandshaker::num_sent_client_hellos() const { return 0; }
 
 bool TlsClientHandshaker::IsResumption() const {
   QUIC_BUG_IF(quic_bug_12736_1, !one_rtt_keys_available());
@@ -348,9 +339,7 @@ int TlsClientHandshaker::num_scup_messages_received() const {
   return 0;
 }
 
-std::string TlsClientHandshaker::chlo_hash() const {
-  return "";
-}
+std::string TlsClientHandshaker::chlo_hash() const { return ""; }
 
 bool TlsClientHandshaker::ExportKeyingMaterial(absl::string_view label,
                                                absl::string_view context,
@@ -361,6 +350,24 @@ bool TlsClientHandshaker::ExportKeyingMaterial(absl::string_view label,
 
 bool TlsClientHandshaker::encryption_established() const {
   return encryption_established_;
+}
+
+bool TlsClientHandshaker::IsCryptoFrameExpectedForEncryptionLevel(
+    EncryptionLevel level) const {
+  return level != ENCRYPTION_ZERO_RTT;
+}
+
+EncryptionLevel TlsClientHandshaker::GetEncryptionLevelToSendCryptoDataOfSpace(
+    PacketNumberSpace space) const {
+  switch (space) {
+    case INITIAL_DATA:
+      return ENCRYPTION_INITIAL;
+    case HANDSHAKE_DATA:
+      return ENCRYPTION_HANDSHAKE;
+    default:
+      QUICHE_DCHECK(false);
+      return NUM_ENCRYPTION_LEVELS;
+  }
 }
 
 bool TlsClientHandshaker::one_rtt_keys_available() const {
@@ -376,9 +383,7 @@ CryptoMessageParser* TlsClientHandshaker::crypto_message_parser() {
   return TlsHandshaker::crypto_message_parser();
 }
 
-HandshakeState TlsClientHandshaker::GetHandshakeState() const {
-  return state_;
-}
+HandshakeState TlsClientHandshaker::GetHandshakeState() const { return state_; }
 
 size_t TlsClientHandshaker::BufferSizeLimitForLevel(
     EncryptionLevel level) const {
@@ -432,9 +437,8 @@ void TlsClientHandshaker::OnNewTokenReceived(absl::string_view token) {
 }
 
 void TlsClientHandshaker::SetWriteSecret(
-    EncryptionLevel level,
-    const SSL_CIPHER* cipher,
-    const std::vector<uint8_t>& write_secret) {
+    EncryptionLevel level, const SSL_CIPHER* cipher,
+    absl::Span<const uint8_t> write_secret) {
   if (is_connection_closed()) {
     return;
   }
@@ -458,10 +462,8 @@ void TlsClientHandshaker::OnHandshakeConfirmed() {
 }
 
 QuicAsyncStatus TlsClientHandshaker::VerifyCertChain(
-    const std::vector<std::string>& certs,
-    std::string* error_details,
-    std::unique_ptr<ProofVerifyDetails>* details,
-    uint8_t* out_alert,
+    const std::vector<std::string>& certs, std::string* error_details,
+    std::unique_ptr<ProofVerifyDetails>* details, uint8_t* out_alert,
     std::unique_ptr<ProofVerifierCallback> callback) {
   const uint8_t* ocsp_response_raw;
   size_t ocsp_response_len;

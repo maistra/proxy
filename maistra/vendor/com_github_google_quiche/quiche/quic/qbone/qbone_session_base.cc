@@ -18,6 +18,7 @@
 #include "quiche/quic/qbone/platform/icmp_packet.h"
 #include "quiche/quic/qbone/qbone_constants.h"
 #include "quiche/common/platform/api/quiche_command_line_flags.h"
+#include "quiche/common/platform/api/quiche_logging.h"
 #include "quiche/common/platform/api/quiche_mem_slice.h"
 #include "quiche/common/quiche_buffer_allocator.h"
 
@@ -31,15 +32,10 @@ namespace quic {
   (perspective() == Perspective::IS_SERVER ? "Server: " : "Client: ")
 
 QboneSessionBase::QboneSessionBase(
-    QuicConnection* connection,
-    Visitor* owner,
-    const QuicConfig& config,
+    QuicConnection* connection, Visitor* owner, const QuicConfig& config,
     const ParsedQuicVersionVector& supported_versions,
     QbonePacketWriter* writer)
-    : QuicSession(connection,
-                  owner,
-                  config,
-                  supported_versions,
+    : QuicSession(connection, owner, config, supported_versions,
                   /*num_expected_unidirectional_static_streams = */ 0) {
   set_writer(writer);
   const uint32_t max_streams =
@@ -79,7 +75,7 @@ void QboneSessionBase::OnStreamFrame(const QuicStreamFrame& frame) {
     flow_controller()->AddBytesConsumed(frame.data_length);
     // TODO(b/147817422): Add a counter for how many streams were actually
     // closed here.
-    if (GetQuicFlag(FLAGS_qbone_close_ephemeral_frames)) {
+    if (quiche::GetQuicheCommandLineFlag(FLAGS_qbone_close_ephemeral_frames)) {
       ResetStream(frame.stream_id, QUIC_STREAM_CANCELLED);
     }
     return;
@@ -97,7 +93,7 @@ QuicStream* QboneSessionBase::CreateIncomingStream(QuicStreamId id) {
 }
 
 QuicStream* QboneSessionBase::CreateIncomingStream(PendingStream* /*pending*/) {
-  QUIC_NOTREACHED();
+  QUICHE_NOTREACHED();
   return nullptr;
 }
 

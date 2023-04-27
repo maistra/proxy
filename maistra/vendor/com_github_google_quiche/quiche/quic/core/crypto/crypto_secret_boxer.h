@@ -11,12 +11,11 @@
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "quiche/quic/core/crypto/quic_random.h"
 #include "quiche/quic/platform/api/quic_export.h"
 #include "quiche/quic/platform/api/quic_mutex.h"
 
 namespace quic {
-
-class QuicRandom;
 
 // CryptoSecretBoxer encrypts small chunks of plaintext (called 'boxing') and
 // then, later, can authenticate+decrypt the resulting boxes. This object is
@@ -50,8 +49,7 @@ class QUIC_EXPORT_PRIVATE CryptoSecretBoxer {
   // the supplied keys, the function returns false. Otherwise, |out_storage| is
   // used to store the result and |out| is set to point into |out_storage| and
   // contains the original plaintext.
-  bool Unbox(absl::string_view ciphertext,
-             std::string* out_storage,
+  bool Unbox(absl::string_view ciphertext, std::string* out_storage,
              absl::string_view* out) const;
 
  private:

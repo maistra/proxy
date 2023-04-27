@@ -1,107 +1,100 @@
 #ifndef THIRD_PARTY_CEL_CPP_EVAL_PUBLIC_CEL_ATTRIBUTE_PATTERN_H_
 #define THIRD_PARTY_CEL_CPP_EVAL_PUBLIC_CEL_ATTRIBUTE_PATTERN_H_
 
+#include <sys/types.h>
+
 #include <algorithm>
 #include <cstddef>
 #include <initializer_list>
+#include <optional>
+#include <string>
+#include <utility>
+#include <variant>
+#include <vector>
 
 #include "google/api/expr/v1alpha1/syntax.pb.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "absl/types/optional.h"
 #include "absl/types/variant.h"
 #include "eval/public/cel_value.h"
 #include "eval/public/cel_value_internal.h"
+#include "internal/status_macros.h"
 
-namespace google {
-namespace api {
-namespace expr {
-namespace runtime {
+namespace google::api::expr::runtime {
 
 // CelAttributeQualifier represents a segment in
 // attribute resolutuion path. A segment can be qualified by values of
 // following types: string/int64_t/uint64/bool.
 class CelAttributeQualifier {
- private:
-  // Helper class, used to implement CelAttributeQualifier::operator==.
-  class EqualVisitor {
-   public:
-    template <class T>
-    class NestedEqualVisitor {
-     public:
-      explicit NestedEqualVisitor(const T& arg) : arg_(arg) {}
-
-      template <class U>
-      bool operator()(const U&) const {
-        return false;
-      }
-
-      bool operator()(const T& other) const { return other == arg_; }
-
-     private:
-      const T& arg_;
-    };
-
-    explicit EqualVisitor(const CelValue& other) : other_(other) {}
-
-    template <class Type>
-    bool operator()(const Type& arg) {
-      return other_.template Visit<bool>(NestedEqualVisitor<Type>(arg));
-    }
-
-   private:
-    const CelValue& other_;
-  };
-
-  CelValue value_;
-
-  explicit CelAttributeQualifier(CelValue value) : value_(value) {}
-
  public:
   // Factory method.
-  static CelAttributeQualifier Create(CelValue value) {
-    return CelAttributeQualifier(value);
-  }
+  static CelAttributeQualifier Create(CelValue value);
 
-  template <typename T, typename Op>
-  T Visit(Op&& operation) const {
-    return value_.Visit<T>(operation);
-  }
+  CelAttributeQualifier(const CelAttributeQualifier&) = default;
+  CelAttributeQualifier(CelAttributeQualifier&&) = default;
+
+  CelAttributeQualifier& operator=(const CelAttributeQualifier&) = default;
+  CelAttributeQualifier& operator=(CelAttributeQualifier&&) = default;
+
+  CelValue::Type type() const;
 
   // Family of Get... methods. Return values if requested type matches the
   // stored one.
-  absl::optional<int64_t> GetInt64Key() const {
-    return (value_.IsInt64()) ? absl::optional<int64_t>(value_.Int64OrDie())
-                              : absl::nullopt;
+  std::optional<int64_t> GetInt64Key() const {
+    return std::holds_alternative<int64_t>(value_)
+               ? std::optional<int64_t>(std::get<1>(value_))
+               : std::nullopt;
   }
 
-  absl::optional<uint64_t> GetUint64Key() const {
-    return (value_.IsUint64()) ? absl::optional<uint64_t>(value_.Uint64OrDie())
-                               : absl::nullopt;
+  std::optional<uint64_t> GetUint64Key() const {
+    return std::holds_alternative<uint64_t>(value_)
+               ? std::optional<uint64_t>(std::get<2>(value_))
+               : std::nullopt;
   }
 
-  absl::optional<absl::string_view> GetStringKey() const {
-    return (value_.IsString())
-               ? absl::optional<absl::string_view>(value_.StringOrDie().value())
-               : absl::nullopt;
+  std::optional<absl::string_view> GetStringKey() const {
+    return std::holds_alternative<std::string>(value_)
+               ? std::optional<absl::string_view>(std::get<3>(value_))
+               : std::nullopt;
   }
 
-  absl::optional<bool> GetBoolKey() const {
-    return (value_.IsBool()) ? absl::optional<bool>(value_.BoolOrDie())
-                             : absl::nullopt;
+  std::optional<bool> GetBoolKey() const {
+    return std::holds_alternative<bool>(value_)
+               ? std::optional<bool>(std::get<4>(value_))
+               : std::nullopt;
   }
 
   bool operator==(const CelAttributeQualifier& other) const {
-    return IsMatch(other.value_);
+    return IsMatch(other);
   }
 
-  bool IsMatch(const CelValue& cel_value) const {
-    return value_.template Visit<bool>(EqualVisitor(cel_value));
-  }
+  bool IsMatch(const CelValue& cel_value) const;
 
   bool IsMatch(absl::string_view other_key) const {
-    absl::optional<absl::string_view> key = GetStringKey();
+    std::optional<absl::string_view> key = GetStringKey();
     return (key.has_value() && key.value() == other_key);
   }
+
+ private:
+  friend class CelAttribute;
+
+  CelAttributeQualifier() = default;
+
+  template <typename T>
+  CelAttributeQualifier(std::in_place_type_t<T> in_place_type, T&& value)
+      : value_(in_place_type, std::forward<T>(value)) {}
+
+  bool IsMatch(const CelAttributeQualifier& other) const;
+
+  // The previous implementation of CelAttribute preserved all CelValue
+  // instances, regardless of whether they are supported in this context or not.
+  // We represented unsupported types by using the first alternative and thus
+  // preserve backwards compatibility with the result of `type()` above.
+  std::variant<CelValue::Type, int64_t, uint64_t, std::string, bool> value_;
 };
 
 // CelAttributeQualifierPattern matches a segment in
@@ -110,10 +103,11 @@ class CelAttributeQualifier {
 class CelAttributeQualifierPattern {
  private:
   // Qualifier value. If not set, treated as wildcard.
-  absl::optional<CelAttributeQualifier> value_;
+  std::optional<CelAttributeQualifier> value_;
 
-  CelAttributeQualifierPattern(absl::optional<CelAttributeQualifier> value)
-      : value_(value) {}
+  explicit CelAttributeQualifierPattern(
+      std::optional<CelAttributeQualifier> value)
+      : value_(std::move(value)) {}
 
  public:
   // Factory method.
@@ -122,7 +116,7 @@ class CelAttributeQualifierPattern {
   }
 
   static CelAttributeQualifierPattern CreateWildcard() {
-    return CelAttributeQualifierPattern(absl::nullopt);
+    return CelAttributeQualifierPattern(std::nullopt);
   }
 
   bool IsWildcard() const { return !value_.has_value(); }
@@ -158,43 +152,29 @@ class CelAttributeQualifierPattern {
 // CelAttribute represents resolved attribute path.
 class CelAttribute {
  public:
-  CelAttribute(google::api::expr::v1alpha1::Expr variable,
+  CelAttribute(std::string variable_name,
                std::vector<CelAttributeQualifier> qualifier_path)
-      : variable_(std::move(variable)),
+      : variable_name_(std::move(variable_name)),
         qualifier_path_(std::move(qualifier_path)) {}
 
-  const google::api::expr::v1alpha1::Expr& variable() const { return variable_; }
+  CelAttribute(const google::api::expr::v1alpha1::Expr& variable,
+               std::vector<CelAttributeQualifier> qualifier_path)
+      : CelAttribute(variable.ident_expr().name(), std::move(qualifier_path)) {}
+
+  absl::string_view variable_name() const { return variable_name_; }
+
+  bool has_variable_name() const { return !variable_name_.empty(); }
 
   const std::vector<CelAttributeQualifier>& qualifier_path() const {
     return qualifier_path_;
   }
 
-  bool operator==(const CelAttribute& other) const {
-    // TODO(issues/41) we only support Ident-rooted attributes at the moment.
-    if (!variable().has_ident_expr() || !other.variable().has_ident_expr()) {
-      return false;
-    }
+  bool operator==(const CelAttribute& other) const;
 
-    if (variable().ident_expr().name() !=
-        other.variable().ident_expr().name()) {
-      return false;
-    }
-
-    if (qualifier_path().size() != other.qualifier_path().size()) {
-      return false;
-    }
-
-    for (size_t i = 0; i < qualifier_path().size(); i++) {
-      if (!(qualifier_path()[i] == other.qualifier_path()[i])) {
-        return false;
-      }
-    }
-
-    return true;
-  }
+  const absl::StatusOr<std::string> AsString() const;
 
  private:
-  google::api::expr::v1alpha1::Expr variable_;
+  std::string variable_name_;
   std::vector<CelAttributeQualifier> qualifier_path_;
 };
 
@@ -227,7 +207,7 @@ class CelAttributePattern {
   // Distinguishes between no-match, partial match and full match cases.
   MatchType IsMatch(const CelAttribute& attribute) const {
     MatchType result = MatchType::NONE;
-    if (attribute.variable().ident_expr().name() != variable_) {
+    if (attribute.variable_name() != variable_) {
       return result;
     }
 
@@ -255,13 +235,10 @@ class CelAttributePattern {
 // must outlive the returned pattern.
 CelAttributePattern CreateCelAttributePattern(
     absl::string_view variable,
-    std::initializer_list<absl::variant<absl::string_view, int64_t, uint64_t, bool,
-                                        CelAttributeQualifierPattern>>
+    std::initializer_list<std::variant<absl::string_view, int64_t, uint64_t, bool,
+                                       CelAttributeQualifierPattern>>
         path_spec = {});
 
-}  // namespace runtime
-}  // namespace expr
-}  // namespace api
-}  // namespace google
+}  // namespace google::api::expr::runtime
 
 #endif  // THIRD_PARTY_CEL_CPP_EVAL_PUBLIC_CEL_ATTRIBUTE_PATTERN_H_

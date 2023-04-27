@@ -20,7 +20,7 @@ public class ATNConfig: Hashable, CustomStringConvertible {
     /// _#isPrecedenceFilterSuppressed_ property as a bit within the
     /// existing _#reachesIntoOuterContext_ field.
     /// 
-    private final let SUPPRESS_PRECEDENCE_FILTER: Int = 0x40000000
+    private static let SUPPRESS_PRECEDENCE_FILTER: Int = 0x40000000
 
     /// 
     /// The ATN state associated with this configuration
@@ -111,35 +111,26 @@ public class ATNConfig: Hashable, CustomStringConvertible {
     /// _#isPrecedenceFilterSuppressed_ method.
     /// 
     public final func getOuterContextDepth() -> Int {
-        return reachesIntoOuterContext & ~SUPPRESS_PRECEDENCE_FILTER
+        return reachesIntoOuterContext & ~Self.SUPPRESS_PRECEDENCE_FILTER
     }
 
     public final func isPrecedenceFilterSuppressed() -> Bool {
-        return (reachesIntoOuterContext & SUPPRESS_PRECEDENCE_FILTER) != 0
+        return (reachesIntoOuterContext & Self.SUPPRESS_PRECEDENCE_FILTER) != 0
     }
 
     public final func setPrecedenceFilterSuppressed(_ value: Bool) {
         if value {
-            self.reachesIntoOuterContext |= 0x40000000
+            self.reachesIntoOuterContext |= Self.SUPPRESS_PRECEDENCE_FILTER
         } else {
-            self.reachesIntoOuterContext &= ~SUPPRESS_PRECEDENCE_FILTER
+            self.reachesIntoOuterContext &= ~Self.SUPPRESS_PRECEDENCE_FILTER
         }
     }
 
-    /// 
-    /// An ATN configuration is equal to another if both have
-    /// the same state, they predict the same alternative, and
-    /// syntactic/semantic contexts are the same.
-    /// 
-
-    public var hashValue: Int {
-        var hashCode = MurmurHash.initialize(7)
-        hashCode = MurmurHash.update(hashCode, state.stateNumber)
-        hashCode = MurmurHash.update(hashCode, alt)
-        hashCode = MurmurHash.update(hashCode, context)
-        hashCode = MurmurHash.update(hashCode, semanticContext)
-        return MurmurHash.finish(hashCode, 4)
-
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(state.stateNumber)
+        hasher.combine(alt)
+        hasher.combine(context)
+        hasher.combine(semanticContext)
     }
 
     public var description: String {
@@ -166,14 +157,19 @@ public class ATNConfig: Hashable, CustomStringConvertible {
     }
 }
 
+///
+/// An ATN configuration is equal to another if both have
+/// the same state, they predict the same alternative, and
+/// syntactic/semantic contexts are the same.
+///
 public func ==(lhs: ATNConfig, rhs: ATNConfig) -> Bool {
 
     if lhs === rhs {
         return true
     }
     
-    if (lhs is LexerATNConfig) && (rhs is LexerATNConfig) {
-        return (lhs as! LexerATNConfig) == (rhs as! LexerATNConfig)
+    if let l = lhs as? LexerATNConfig, let r = rhs as? LexerATNConfig {
+        return l == r
 
 
     }
@@ -189,19 +185,7 @@ public func ==(lhs: ATNConfig, rhs: ATNConfig) -> Bool {
         return false
     }
 
-    var contextCompare = false
-
-    if lhs.context == nil && rhs.context == nil {
-        contextCompare = true
-    } else if lhs.context == nil && rhs.context != nil {
-        contextCompare = false
-    } else if lhs.context != nil && rhs.context == nil {
-        contextCompare = false
-    } else {
-        contextCompare = (lhs.context! == rhs.context!)
-    }
-
-    if !contextCompare {
+    if lhs.context != rhs.context {
         return false
     }
 

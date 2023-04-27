@@ -175,6 +175,11 @@ class TracingSpan {
   virtual void setComponentId(int32_t component_id) = 0;
 
   /**
+   * Set operation name.
+   */
+  virtual void setOperationName(std::string_view operation_name) = 0;
+
+  /**
    * This span had finished or not.
    */
   virtual bool finished() const = 0;
@@ -234,14 +239,9 @@ class TracingContext {
 
   /**
    * Generate sw8 value to send SegmentRef.
-   * @param parent Parent span that belongs to current segment.
    * @param target_address Target address to send request. For more detail:
    * https://github.com/apache/skywalking-data-collect-protocol/blob/master/language-agent/Tracing.proto#L97-L101
    */
-  virtual std::optional<std::string> createSW8HeaderValue(
-      TracingSpanPtr parent, const std::string_view target_address) = 0;
-  // If you don't specify parent span, stored to current segment, it will be
-  // selected newest span as parent span.
   virtual std::optional<std::string> createSW8HeaderValue(
       const std::string_view target_address) = 0;
 

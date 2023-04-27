@@ -66,6 +66,7 @@ absl_cc_library(
     absl::atomic_hook
     absl::config
     absl::core_headers
+    absl::errno_saver
     absl::log_severity
   COPTS
     ${ABSL_DEFAULT_COPTS}
@@ -180,6 +181,7 @@ absl_cc_library(
     "call_once.h"
     "casts.h"
     "internal/cycleclock.h"
+    "internal/cycleclock_config.h"
     "internal/low_level_scheduling.h"
     "internal/per_thread_tls.h"
     "internal/spinlock.h"
@@ -187,6 +189,7 @@ absl_cc_library(
     "internal/thread_identity.h"
     "internal/tsan_mutex_interface.h"
     "internal/unscaledcycleclock.h"
+    "internal/unscaledcycleclock_config.h"
   SRCS
     "internal/cycleclock.cc"
     "internal/spinlock.cc"
@@ -639,6 +642,32 @@ absl_cc_test(
     ${ABSL_TEST_COPTS}
   DEPS
     absl::fast_type_id
+    GTest::gtest_main
+)
+
+# Internal-only target, do not depend on directly.
+absl_cc_library(
+  NAME
+    prefetch
+  HDRS
+    "internal/prefetch.h"
+  COPTS
+    ${ABSL_DEFAULT_COPTS}
+  LINKOPTS
+    ${ABSL_DEFAULT_LINKOPTS}
+  DEPS
+    absl::config
+)
+
+absl_cc_test(
+  NAME
+    prefetch_test
+  SRCS
+    "internal/prefetch_test.cc"
+  COPTS
+    ${ABSL_TEST_COPTS}
+  DEPS
+    absl::prefetch
     GTest::gtest_main
 )
 

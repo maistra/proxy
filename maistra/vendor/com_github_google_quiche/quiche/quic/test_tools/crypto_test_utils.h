@@ -14,6 +14,7 @@
 #include "absl/strings/string_view.h"
 #include "openssl/evp.h"
 #include "quiche/quic/core/crypto/crypto_framer.h"
+#include "quiche/quic/core/crypto/quic_random.h"
 #include "quiche/quic/core/quic_framer.h"
 #include "quiche/quic/core/quic_packets.h"
 #include "quiche/quic/test_tools/quic_test_utils.h"
@@ -29,7 +30,6 @@ class QuicCryptoClientStream;
 class QuicCryptoServerConfig;
 class QuicCryptoServerStreamBase;
 class QuicCryptoStream;
-class QuicRandom;
 class QuicServerId;
 
 namespace test {
@@ -86,13 +86,11 @@ int HandshakeWithFakeClient(MockQuicConnectionHelper* helper,
                             PacketSavingConnection* server_conn,
                             QuicCryptoServerStreamBase* server,
                             const QuicServerId& server_id,
-                            const FakeClientOptions& options,
-                            std::string alpn);
+                            const FakeClientOptions& options, std::string alpn);
 
 // SetupCryptoServerConfigForTest configures |crypto_config|
 // with sensible defaults for testing.
-void SetupCryptoServerConfigForTest(const QuicClock* clock,
-                                    QuicRandom* rand,
+void SetupCryptoServerConfigForTest(const QuicClock* clock, QuicRandom* rand,
                                     QuicCryptoServerConfig* crypto_config);
 
 // Sends the handshake message |message| to stream |stream| with the perspective
@@ -111,15 +109,18 @@ void CommunicateHandshakeMessages(PacketSavingConnection* client_conn,
 // CommunicateHandshakeMessagesUntil:
 // 1) Moves messages from |client| to |server| until |server_condition| is met.
 // 2) Moves messages from |server| to |client| until |client_condition| is met.
-// 3) Returns true if both conditions are met.
-// 4) Returns false if either connection is closed or there is no more packet to
+// 3)  For IETF QUIC, if `process_stream_data` is true, STREAM_FRAME within the
+// packet containing crypto messages is also processed.
+// 4) Returns true if both conditions are met.
+// 5) Returns false if either connection is closed or there is no more packet to
 // deliver before both conditions are met.
 bool CommunicateHandshakeMessagesUntil(PacketSavingConnection* client_conn,
                                        QuicCryptoStream* client,
                                        std::function<bool()> client_condition,
                                        PacketSavingConnection* server_conn,
                                        QuicCryptoStream* server,
-                                       std::function<bool()> server_condition);
+                                       std::function<bool()> server_condition,
+                                       bool process_stream_data);
 
 // AdvanceHandshake attempts to moves messages from |client| to |server| and
 // |server| to |client|. Returns the number of messages moved.
@@ -138,6 +139,9 @@ std::unique_ptr<ProofSource> ProofSourceForTesting();
 
 // Returns a new |ProofVerifier| that uses the QUIC testing root CA.
 std::unique_ptr<ProofVerifier> ProofVerifierForTesting();
+
+// Returns the hostname used by the proof source and the proof verifier above.
+std::string CertificateHostnameForTesting();
 
 // Returns a hash of the leaf test certificate.
 uint64_t LeafCertHashForTesting();
@@ -175,17 +179,17 @@ CryptoHandshakeMessage CreateCHLO(
 // MovePackets parses crypto handshake messages from packet number
 // |*inout_packet_index| through to the last packet (or until a packet fails
 // to decrypt) and has |dest_stream| process them. |*inout_packet_index| is
-// updated with an index one greater than the last packet processed.
+// updated with an index one greater than the last packet processed. For IETF
+// QUIC, if `process_stream_data` is true, STREAM_FRAME within the packet
+// containing crypto messages is also processed.
 void MovePackets(PacketSavingConnection* source_conn,
-                 size_t* inout_packet_index,
-                 QuicCryptoStream* dest_stream,
+                 size_t* inout_packet_index, QuicCryptoStream* dest_stream,
                  PacketSavingConnection* dest_conn,
-                 Perspective dest_perspective);
+                 Perspective dest_perspective, bool process_stream_data);
 
 // Return an inchoate CHLO with some basic tag value pairs.
 CryptoHandshakeMessage GenerateDefaultInchoateCHLO(
-    const QuicClock* clock,
-    QuicTransportVersion version,
+    const QuicClock* clock, QuicTransportVersion version,
     QuicCryptoServerConfig* crypto_config);
 
 // Takes a inchoate CHLO, returns a full CHLO in |out| which can pass

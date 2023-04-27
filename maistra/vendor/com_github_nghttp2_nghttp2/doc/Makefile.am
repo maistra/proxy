@@ -30,6 +30,7 @@ APIDOCS= \
 	nghttp2_check_authority.rst \
 	nghttp2_check_header_name.rst \
 	nghttp2_check_header_value.rst \
+	nghttp2_check_header_value_rfc9113.rst \
 	nghttp2_check_method.rst \
 	nghttp2_check_path.rst \
 	nghttp2_hd_deflate_bound.rst \
@@ -68,7 +69,9 @@ APIDOCS= \
 	nghttp2_option_set_no_closed_streams.rst \
 	nghttp2_option_set_no_http_messaging.rst \
 	nghttp2_option_set_no_recv_client_magic.rst \
+	nghttp2_option_set_no_rfc9113_leading_and_trailing_ws_validation.rst \
 	nghttp2_option_set_peer_max_concurrent_streams.rst \
+	nghttp2_option_set_server_fallback_rfc7540_priorities.rst \
 	nghttp2_option_set_user_recv_extension_type.rst \
 	nghttp2_option_set_max_outbound_ack.rst \
 	nghttp2_option_set_max_settings.rst \
@@ -106,6 +109,7 @@ APIDOCS= \
 	nghttp2_session_callbacks_set_send_callback.rst \
 	nghttp2_session_callbacks_set_send_data_callback.rst \
 	nghttp2_session_callbacks_set_unpack_extension_callback.rst \
+	nghttp2_session_change_extpri_stream_priority.rst \
 	nghttp2_session_change_stream_priority.rst \
 	nghttp2_session_check_request_allowed.rst \
 	nghttp2_session_check_server_session.rst \
@@ -172,6 +176,7 @@ APIDOCS= \
 	nghttp2_submit_origin.rst \
 	nghttp2_submit_ping.rst \
 	nghttp2_submit_priority.rst \
+	nghttp2_submit_priority_update.rst \
 	nghttp2_submit_push_promise.rst \
 	nghttp2_submit_request.rst \
 	nghttp2_submit_response.rst \

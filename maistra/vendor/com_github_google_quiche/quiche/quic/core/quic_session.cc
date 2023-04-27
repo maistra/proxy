@@ -134,9 +134,6 @@ void QuicSession::Initialize() {
       connection_->set_can_receive_ack_frequency_frame();
       config_.SetMinAckDelayMs(kDefaultMinAckDelayTimeMs);
     }
-    if (config_.HasClientRequestedIndependentOption(kNBPE, perspective_)) {
-      permutes_tls_extensions_ = false;
-    }
   }
 
   connection_->CreateConnectionIdManager();
@@ -491,7 +488,7 @@ void QuicSession::OnPacketReceived(const QuicSocketAddress& /*self_address*/,
   if (is_connectivity_probe && perspective() == Perspective::IS_SERVER) {
     // Server only sends back a connectivity probe after received a
     // connectivity probe from a new peer address.
-      connection_->SendConnectivityProbingPacket(nullptr, peer_address);
+    connection_->SendConnectivityProbingPacket(nullptr, peer_address);
   }
 }
 
@@ -543,7 +540,7 @@ void QuicSession::OnBlockedFrame(const QuicBlockedFrame& frame) {
   //                streams: if we have a large window then maybe something
   //                had gone wrong with the flow control accounting.
   QUIC_DLOG(INFO) << ENDPOINT << "Received BLOCKED frame with stream id: "
-                  << frame.stream_id;
+                  << frame.stream_id << ", offset: " << frame.offset;
 }
 
 bool QuicSession::CheckStreamNotBusyLooping(QuicStream* stream,
@@ -630,9 +627,12 @@ void QuicSession::OnCanWrite() {
     if (crypto_stream->HasBufferedCryptoFrames()) {
       crypto_stream->WriteBufferedCryptoFrames();
     }
-    if (crypto_stream->HasBufferedCryptoFrames()) {
-      // Cannot finish writing buffered crypto frames, connection is write
-      // blocked.
+    if ((GetQuicReloadableFlag(
+             quic_no_write_control_frame_upon_connection_close) &&
+         !connection_->connected()) ||
+        crypto_stream->HasBufferedCryptoFrames()) {
+      // Cannot finish writing buffered crypto frames, connection is either
+      // write blocked or closed.
       return;
     }
   }
@@ -690,14 +690,6 @@ void QuicSession::OnCanWrite() {
     }
     currently_writing_stream_id_ = 0;
   }
-}
-
-bool QuicSession::SendProbingData() {
-  if (connection()->sent_packet_manager().MaybeRetransmitOldestPacket(
-          PROBING_RETRANSMISSION)) {
-    return true;
-  }
-  return false;
 }
 
 bool QuicSession::WillingAndAbleToWrite() const {
@@ -857,7 +849,7 @@ void QuicSession::OnControlFrameManagerError(QuicErrorCode error_code,
 
 bool QuicSession::WriteControlFrame(const QuicFrame& frame,
                                     TransmissionType type) {
-  QUICHE_DCHECK(connection()->connected())
+  QUIC_BUG_IF(quic_bug_12435_11, !connection()->connected())
       << ENDPOINT << "Try to write control frames when connection is closed.";
   if (!IsEncryptionEstablished()) {
     // Suppress the write before encryption gets established.
@@ -939,8 +931,8 @@ void QuicSession::SendGoAway(QuicErrorCode error_code,
       reason);
 }
 
-void QuicSession::SendBlocked(QuicStreamId id) {
-  control_frame_manager_.WriteOrBufferBlocked(id);
+void QuicSession::SendBlocked(QuicStreamId id, QuicStreamOffset byte_offset) {
+  control_frame_manager_.WriteOrBufferBlocked(id, byte_offset);
 }
 
 void QuicSession::SendWindowUpdate(QuicStreamId id,
@@ -1002,11 +994,7 @@ void QuicSession::OnStreamClosed(QuicStreamId stream_id) {
       closed_streams_clean_up_alarm_->Set(
           connection_->clock()->ApproximateNow());
     }
-    QUIC_BUG_IF(
-        364846171_1,
-        connection_->packet_creator().HasPendingStreamFramesOfStream(stream_id))
-        << "Stream " << stream_id
-        << " gets closed while there are pending frames.";
+    connection_->QuicBugIfHasPendingFrames(stream_id);
   }
 
   if (!stream->HasReceivedFinalOffset()) {
@@ -1562,7 +1550,7 @@ bool QuicSession::OnNewDecryptionKeyAvailable(
     bool set_alternative_decrypter, bool latch_once_used) {
   if (connection_->version().handshake_protocol == PROTOCOL_TLS1_3 &&
       !connection()->framer().HasEncrypterOfEncryptionLevel(
-          QuicUtils::GetEncryptionLevel(
+          QuicUtils::GetEncryptionLevelToSendAckofSpace(
               QuicUtils::GetPacketNumberSpace(level)))) {
     // This should never happen because connection should never decrypt a packet
     // while an ACK for it cannot be encrypted.
@@ -2110,12 +2098,13 @@ void QuicSession::SendRetireConnectionId(uint64_t sequence_number) {
   control_frame_manager_.WriteOrBufferRetireConnectionId(sequence_number);
 }
 
-void QuicSession::OnServerConnectionIdIssued(
+bool QuicSession::MaybeReserveConnectionId(
     const QuicConnectionId& server_connection_id) {
   if (visitor_) {
-    visitor_->OnNewConnectionIdSent(
+    return visitor_->TryAddNewConnectionId(
         connection_->GetOneActiveServerConnectionId(), server_connection_id);
   }
+  return true;
 }
 
 void QuicSession::OnServerConnectionIdRetired(
@@ -2177,9 +2166,7 @@ void QuicSession::MaybeCloseZombieStream(QuicStreamId id) {
   }
   // Do not retransmit data of a closed stream.
   streams_with_pending_retransmission_.erase(id);
-  QUIC_BUG_IF(364846171_2,
-              connection_->packet_creator().HasPendingStreamFramesOfStream(id))
-      << "Stream " << id << " gets closed while there are pending frames.";
+  connection_->QuicBugIfHasPendingFrames(id);
 }
 
 QuicStream* QuicSession::GetStream(QuicStreamId id) const {
@@ -2285,10 +2272,7 @@ bool QuicSession::RetransmitFrames(const QuicFrames& frames,
       continue;
     }
     if (frame.type == CRYPTO_FRAME) {
-      const bool data_retransmitted =
-          GetMutableCryptoStream()->RetransmitData(frame.crypto_frame, type);
-      if (GetQuicRestartFlag(quic_set_packet_state_if_all_data_retransmitted) &&
-          !data_retransmitted) {
+      if (!GetMutableCryptoStream()->RetransmitData(frame.crypto_frame, type)) {
         return false;
       }
       continue;
@@ -2645,7 +2629,7 @@ bool QuicSession::MigratePath(const QuicSocketAddress& self_address,
 
 bool QuicSession::ValidateToken(absl::string_view token) {
   QUICHE_DCHECK_EQ(perspective_, Perspective::IS_SERVER);
-  if (GetQuicFlag(FLAGS_quic_reject_retry_token_in_initial_packet)) {
+  if (GetQuicFlag(quic_reject_retry_token_in_initial_packet)) {
     return false;
   }
   if (token.empty() || token[0] != kAddressTokenPrefix) {

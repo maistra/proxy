@@ -76,7 +76,7 @@ assert('Kernel.raise', '15.3.1.2.12') do
 end
 
 assert('Kernel#__id__', '15.3.1.3.3') do
-  assert_equal Fixnum, __id__.class
+  assert_equal Integer, __id__.class
 end
 
 assert('Kernel#__send__', '15.3.1.3.4') do
@@ -346,7 +346,7 @@ assert('Kernel#method_missing', '15.3.1.3.30') do
     end
   end
   no_super_test = NoSuperMethodTestClass.new
-  msg = "undefined method 'no_super_method_named_this'"
+  msg = "no superclass method 'no_super_method_named_this'"
   assert_raise_with_message(NoMethodError, msg) do
     no_super_test.no_super_method_named_this
   end

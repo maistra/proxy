@@ -13,27 +13,21 @@
 # limitations under the License.
 """Provides distutils command classes for the GRPC Python setup process."""
 
-from __future__ import print_function
+# NOTE(https://github.com/grpc/grpc/issues/24028): allow setuptools to monkey
+# patch distutils
+import setuptools  # isort:skip
 
-import distutils
 import glob
 import os
 import os.path
-import platform
-import re
 import shutil
 import subprocess
 import sys
 import sysconfig
 import traceback
 
-import setuptools
 from setuptools.command import build_ext
 from setuptools.command import build_py
-from setuptools.command import easy_install
-from setuptools.command import install
-from setuptools.command import test
-
 import support
 
 PYTHON_STEM = os.path.dirname(os.path.abspath(__file__))
@@ -234,7 +228,7 @@ class BuildExt(build_ext.build_ext):
             """
             try:
                 # TODO(lidiz) Remove the generated a.out for success tests.
-                cc_test = subprocess.Popen(['cc', '-x', 'c', '-std=c++11', '-'],
+                cc_test = subprocess.Popen(['cc', '-x', 'c', '-std=c++14', '-'],
                                            stdin=subprocess.PIPE,
                                            stdout=subprocess.PIPE,
                                            stderr=subprocess.PIPE)

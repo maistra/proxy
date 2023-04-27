@@ -43,6 +43,7 @@
 #include <vector>
 #include <memory>
 #include <set>
+#include <unordered_map>
 
 #include <openssl/ssl.h>
 
@@ -401,6 +402,9 @@ constexpr auto SHRPX_OPT_WORKER_PROCESS_GRACE_SHUTDOWN_PERIOD =
     StringRef::from_lit("worker-process-grace-shutdown-period");
 constexpr auto SHRPX_OPT_FRONTEND_QUIC_INITIAL_RTT =
     StringRef::from_lit("frontend-quic-initial-rtt");
+constexpr auto SHRPX_OPT_REQUIRE_HTTP_SCHEME =
+    StringRef::from_lit("require-http-scheme");
+constexpr auto SHRPX_OPT_TLS_KTLS = StringRef::from_lit("tls-ktls");
 
 constexpr size_t SHRPX_OBFUSCATED_NODE_LENGTH = 8;
 
@@ -434,6 +438,16 @@ enum class SessionAffinityCookieSecure {
   NO,
 };
 
+enum class SessionAffinityCookieStickiness {
+  // Backend server might be changed when an existing backend server
+  // is removed, or new backend server is added.
+  LOOSE,
+  // Backend server might be changed when a designated backend server
+  // is removed, but adding new backend server does not cause
+  // breakage.
+  STRICT,
+};
+
 struct AffinityConfig {
   // Type of session affinity.
   SessionAffinity type;
@@ -444,6 +458,8 @@ struct AffinityConfig {
     StringRef path;
     // Secure attribute
     SessionAffinityCookieSecure secure;
+    // Affinity Stickiness
+    SessionAffinityCookieStickiness stickiness;
   } cookie;
 };
 
@@ -526,6 +542,9 @@ struct DownstreamAddrConfig {
   uint32_t weight;
   // weight of the weight group.  Its range is [1, 256], inclusive.
   uint32_t group_weight;
+  // affinity hash for this address.  It is assigned when strict
+  // stickiness is enabled.
+  uint32_t affinity_hash;
   // Application protocol used in this group
   Proto proto;
   // backend port.  0 if |host_unix| is true.
@@ -566,6 +585,9 @@ struct DownstreamAddrGroupConfig {
   // Bunch of session affinity hash.  Only used if affinity ==
   // SessionAffinity::IP.
   std::vector<AffinityHash> affinity_hash;
+  // Maps affinity hash of each DownstreamAddrConfig to its index in
+  // addrs.  It is only assigned when strict stickiness is enabled.
+  std::unordered_map<uint32_t, size_t> affinity_hash_map;
   // Cookie based session affinity configuration.
   AffinityConfig affinity;
   // true if this group requires that client connection must be TLS,
@@ -691,7 +713,7 @@ struct TLSConfig {
     ev_tstamp idle_timeout;
   } dyn_rec;
 
-  // OCSP realted configurations
+  // OCSP related configurations
   struct {
     ev_tstamp update_interval;
     StringRef fetch_ocsp_response_file;
@@ -762,6 +784,7 @@ struct TLSConfig {
   // true if forwarding requests included in TLS early data should not
   // be postponed until TLS handshake finishes.
   bool no_postpone_early_data;
+  bool ktls;
 };
 
 #ifdef ENABLE_HTTP3
@@ -857,6 +880,7 @@ struct HttpConfig {
   bool no_location_rewrite;
   bool no_host_rewrite;
   bool no_server_rewrite;
+  bool require_http_scheme;
 };
 
 struct Http2Config {
@@ -1295,6 +1319,7 @@ enum {
   SHRPX_OPTID_READ_RATE,
   SHRPX_OPTID_REDIRECT_HTTPS_PORT,
   SHRPX_OPTID_REQUEST_HEADER_FIELD_BUFFER,
+  SHRPX_OPTID_REQUIRE_HTTP_SCHEME,
   SHRPX_OPTID_RESPONSE_HEADER_FIELD_BUFFER,
   SHRPX_OPTID_RLIMIT_MEMLOCK,
   SHRPX_OPTID_RLIMIT_NOFILE,
@@ -1309,6 +1334,7 @@ enum {
   SHRPX_OPTID_SYSLOG_FACILITY,
   SHRPX_OPTID_TLS_DYN_REC_IDLE_TIMEOUT,
   SHRPX_OPTID_TLS_DYN_REC_WARMUP_THRESHOLD,
+  SHRPX_OPTID_TLS_KTLS,
   SHRPX_OPTID_TLS_MAX_EARLY_DATA,
   SHRPX_OPTID_TLS_MAX_PROTO_VERSION,
   SHRPX_OPTID_TLS_MIN_PROTO_VERSION,

@@ -61,7 +61,7 @@ bool TestDataFrameSource::Send(absl::string_view frame_header,
   } else if (result == 0) {
     // Write blocked.
     return false;
-  } else if (static_cast<const size_t>(result) < concatenated.size()) {
+  } else if (static_cast<size_t>(result) < concatenated.size()) {
     // Probably need to handle this better within this test class.
     QUICHE_LOG(DFATAL)
         << "DATA frame not fully flushed. Connection will be corrupt!";
@@ -82,13 +82,13 @@ bool TestDataFrameSource::Send(absl::string_view frame_header,
   return true;
 }
 
-std::string EncodeHeaders(const spdy::SpdyHeaderBlock& entries) {
+std::string EncodeHeaders(const spdy::Http2HeaderBlock& entries) {
   spdy::HpackEncoder encoder;
   encoder.DisableCompression();
   return encoder.EncodeHeaderBlock(entries);
 }
 
-TestMetadataSource::TestMetadataSource(const spdy::SpdyHeaderBlock& entries)
+TestMetadataSource::TestMetadataSource(const spdy::Http2HeaderBlock& entries)
     : encoded_entries_(EncodeHeaders(entries)) {
   remaining_ = encoded_entries_;
 }

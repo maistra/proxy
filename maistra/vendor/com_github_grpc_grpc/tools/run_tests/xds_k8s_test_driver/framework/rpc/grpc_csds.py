@@ -16,20 +16,21 @@ This contains helpers for gRPC services defined in
 https://github.com/envoyproxy/envoy/blob/main/api/envoy/service/status/v3/csds.proto
 """
 
-import queue
 import logging
-from typing import Optional, Callable
-
-import grpc
-from envoy.service.status.v3 import csds_pb2
-from envoy.service.status.v3 import csds_pb2_grpc
+from typing import Optional
 
 # Envoy protos provided by PyPI package xds-protos
 # Needs to import the generated Python file to load descriptors
-from envoy.extensions.filters.network.http_connection_manager.v3 import http_connection_manager_pb2
-from envoy.extensions.filters.common.fault.v3 import fault_pb2
-from envoy.extensions.filters.http.fault.v3 import fault_pb2
-from envoy.extensions.filters.http.router.v3 import router_pb2
+# pylint: disable=unused-import
+from envoy.extensions.filters.common.fault.v3 import fault_pb2 as _
+from envoy.extensions.filters.http.fault.v3 import fault_pb2 as _
+from envoy.extensions.filters.http.router.v3 import router_pb2 as _
+from envoy.extensions.filters.network.http_connection_manager.v3 import \
+    http_connection_manager_pb2 as _
+# pylint: enable=unused-import
+from envoy.service.status.v3 import csds_pb2
+from envoy.service.status.v3 import csds_pb2_grpc
+import grpc
 
 import framework.rpc
 

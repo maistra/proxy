@@ -54,9 +54,23 @@ class QUICHE_EXPORT_PRIVATE QuicheEndian {
       char bytes[sizeof(T)];
     } value;
     value.number = input;
-    std::reverse(std::begin(value.bytes), std::end(value.bytes));
+    std::reverse(&value.bytes[0], &value.bytes[sizeof(T)]);
     return value.number;
   }
+};
+
+enum QuicheVariableLengthIntegerLength : uint8_t {
+  // Length zero means the variable length integer is not present.
+  VARIABLE_LENGTH_INTEGER_LENGTH_0 = 0,
+  VARIABLE_LENGTH_INTEGER_LENGTH_1 = 1,
+  VARIABLE_LENGTH_INTEGER_LENGTH_2 = 2,
+  VARIABLE_LENGTH_INTEGER_LENGTH_4 = 4,
+  VARIABLE_LENGTH_INTEGER_LENGTH_8 = 8,
+
+  // By default we write the IETF long header length using the 2-byte encoding
+  // of variable length integers, even when the length is below 64, which allows
+  // us to fill in the length before knowing what the length actually is.
+  kQuicheDefaultLongHeaderLengthLength = VARIABLE_LENGTH_INTEGER_LENGTH_2,
 };
 
 }  // namespace quiche

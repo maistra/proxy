@@ -168,11 +168,7 @@ public:
       stream->runHighWatermarkCallbacks();
     }
   }
-  void onUnderlyingConnectionBelowWriteBufferLowWatermark() override {
-    for (auto& stream : active_streams_) {
-      stream->runLowWatermarkCallbacks();
-    }
-  }
+  void onUnderlyingConnectionBelowWriteBufferLowWatermark() override;
 
   void setVisitor(std::unique_ptr<http2::adapter::Http2VisitorInterface> visitor) {
     visitor_ = std::move(visitor);
@@ -270,10 +266,11 @@ protected:
     void resetStream(StreamResetReason reason) override;
     void readDisable(bool disable) override;
     uint32_t bufferLimit() const override { return pending_recv_data_->highWatermark(); }
-    const Network::Address::InstanceConstSharedPtr& connectionLocalAddress() override {
-      return parent_.connection_.connectionInfoProvider().localAddress();
+    const Network::ConnectionInfoProvider& connectionInfoProvider() override {
+      return parent_.connection_.connectionInfoProvider();
     }
     absl::string_view responseDetails() override { return details_; }
+    Buffer::BufferMemoryAccountSharedPtr account() const override { return buffer_memory_account_; }
     void setAccount(Buffer::BufferMemoryAccountSharedPtr account) override;
 
     // ScopeTrackedObject
@@ -383,6 +380,12 @@ protected:
       // as the stream had pending data to process and the stream was not reset.
       bool buffered_on_stream_close_{false};
 
+      // Segment size for processing body data. Defaults to the value of high
+      // watermark of the *pending_recv_data_* buffer.
+      // If 0, we will process all buffered data.
+      uint32_t defer_processing_segment_size_{0};
+
+      bool decodeAsChunks() const { return defer_processing_segment_size_ > 0; }
       bool hasBufferedBodyOrTrailers() const { return body_buffered_ || trailers_buffered_; }
     };
 
@@ -411,8 +414,9 @@ protected:
              !stream_manager_.body_buffered_;
     }
 
-    // Schedules a callback to process buffered data.
-    void scheduleProcessingOfBufferedData();
+    // Schedules a callback either in the current or next iteration to process
+    // buffered data.
+    void scheduleProcessingOfBufferedData(bool schedule_next_iteration);
 
     // Marks data consumed by the stream, granting the peer additional stream
     // window.
@@ -535,6 +539,8 @@ protected:
   // edge cases (such as for METADATA frames) where nghttp2 will issue a callback for a stream_id
   // that is not associated with an existing stream.
   const StreamImpl* getStream(int32_t stream_id) const;
+  // Same as getStream, but without the ASSERT.
+  StreamImpl* getStreamUnchecked(int32_t stream_id);
   StreamImpl* getStream(int32_t stream_id);
   int saveHeader(const nghttp2_frame* frame, HeaderString&& name, HeaderString&& value);
 
@@ -605,7 +611,12 @@ protected:
   // use_new_codec_wrapper_.
   Http2Callbacks http2_callbacks_;
 
+  // If deferred processing, the streams will be in LRU order based on when the
+  // stream encoded to the http2 connection. The LRU property is used when
+  // raising low watermark on the http2 connection to prioritize how streams get
+  // notified, prefering those that haven't recently written.
   std::list<StreamImplPtr> active_streams_;
+
   // Tracks the stream id of the current stream we're processing.
   // This should only be set while we're in the context of dispatching to nghttp2.
   absl::optional<int32_t> current_stream_id_;
@@ -641,7 +652,13 @@ protected:
   // nghttp2 library will keep calling this callback to write the rest of the frame.
   ssize_t onSend(const uint8_t* data, size_t length);
 
-  const bool skip_dispatching_frames_for_closed_connection_;
+  // Called when a stream encodes to the http2 connection which enables us to
+  // keep the active_streams list in LRU if deferred processing.
+  void updateActiveStreamsOnEncode(StreamImpl& stream) {
+    if (stream.defer_processing_backedup_streams_) {
+      LinkedList::moveIntoList(stream.removeFromList(active_streams_), active_streams_);
+    }
+  }
 
   // dumpState helper method.
   virtual void dumpStreams(std::ostream& os, int indent_level) const;
@@ -691,6 +708,7 @@ private:
   std::map<int32_t, StreamImpl*> pending_deferred_reset_streams_;
   bool dispatching_ : 1;
   bool raised_goaway_ : 1;
+  const bool delay_keepalive_timeout_ : 1;
   Event::SchedulableCallbackPtr protocol_constraint_violation_callback_;
   Random::RandomGenerator& random_;
   MonotonicTime last_received_data_time_{};

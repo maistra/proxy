@@ -172,6 +172,40 @@ types {
     name: "theme"
     json_name: "theme"
   }
+  fields {
+    kind: TYPE_ENUM
+    cardinality: CARDINALITY_OPTIONAL
+    number: 3
+    name: "type"
+    type_url: "type.googleapis.com/Type"
+    json_name: "type"
+  }
+  source_context {
+  }
+}
+types {
+  name: "SearchShelf"
+  fields {
+    kind: TYPE_INT64
+    cardinality: CARDINALITY_OPTIONAL
+    number: 1
+    name: "shelf"
+    json_name: "shelf"
+  }
+  fields {
+    kind: TYPE_STRING
+    cardinality: CARDINALITY_OPTIONAL
+    number: 2
+    name: "search_encoded"
+    json_name: "search%5Bencoded%5D"
+  }
+  fields {
+    kind: TYPE_STRING
+    cardinality: CARDINALITY_OPTIONAL
+    number: 3
+    name: "search_decoded"
+    json_name: "search[decoded]"
+  }
   source_context {
   }
 }
@@ -340,6 +374,13 @@ types {
     type_url: "type.googleapis.com/google.protobuf.Value"
     json_name: "value"
   }
+  options {
+    name: "map_entry"
+    value {
+      type_url: "type.googleapis.com/google.protobuf.BoolValue"
+      value: ""
+    }
+  }
   source_context {
     file_name: "struct.proto"
   }
@@ -401,6 +442,19 @@ types {
     file_name: "struct.proto"
   }
 }
+types {
+  name: "google.protobuf.BoolValue"
+  fields {
+    kind: TYPE_BOOL
+    cardinality: CARDINALITY_REQUIRED
+    number: 1
+    name: "value"
+    json_name: "value"
+  }
+  source_context {
+    file_name: "wrappers.proto"
+  }
+}
 enums {
   name: "google.protobuf.NullValue"
   enumvalue {
@@ -408,6 +462,27 @@ enums {
   }
   source_context {
     file_name: "struct.proto"
+  }
+}
+enums {
+  name: "Type"
+  enumvalue {
+    name: "CLASSIC"
+    number: 0
+  }
+  enumvalue {
+    name: "COMIC"
+    number: 1
+  }
+  enumvalue {
+    name: "HORROR"
+    number: 2
+  }
+  enumvalue {
+    name: "OTHER"
+    number: 3
+  }
+  source_context {
   }
 }
 http {

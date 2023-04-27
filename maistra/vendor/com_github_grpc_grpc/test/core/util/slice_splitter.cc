@@ -18,11 +18,13 @@
 
 #include "test/core/util/slice_splitter.h"
 
+#include <stdint.h>
 #include <string.h>
 
-#include <grpc/support/alloc.h>
+#include <algorithm>
 
-#include "src/core/lib/gpr/useful.h"
+#include <grpc/slice_buffer.h>
+#include <grpc/support/alloc.h>
 
 const char* grpc_slice_split_mode_name(grpc_slice_split_mode mode) {
   switch (mode) {
@@ -114,7 +116,7 @@ grpc_slice grpc_slice_merge(grpc_slice* slices, size_t nslices) {
 
   for (i = 0; i < nslices; i++) {
     if (GRPC_SLICE_LENGTH(slices[i]) + length > capacity) {
-      capacity = GPR_MAX(capacity * 2, GRPC_SLICE_LENGTH(slices[i]) + length);
+      capacity = std::max(capacity * 2, GRPC_SLICE_LENGTH(slices[i]) + length);
       out = static_cast<uint8_t*>(gpr_realloc(out, capacity));
     }
     memcpy(out + length, GRPC_SLICE_START_PTR(slices[i]),

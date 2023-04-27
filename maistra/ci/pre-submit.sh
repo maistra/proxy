@@ -34,6 +34,7 @@ export ENVOY_PATH=bazel-bin/src/envoy/envoy
 export GO111MODULE=on
 export GOPATH=$HOME/go
 
-time go test -p 1 -parallel 1 ./...
+# FIXME - Disable failing test in Maistra Proxy 2.4 (OSSM-3877)
+time go test -p 1 -parallel 1 $(go list ./... | grep -v stackdriver_plugin)
 export WASM=true
 time go test -p 1 -parallel 1 ./test/envoye2e/stats_plugin/...

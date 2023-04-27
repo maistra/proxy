@@ -1,0 +1,2 @@
+# DO NOT EDIT: automatically generated WORKSPACE file for jq_toolchains_repo rule
+workspace(name = "jq_toolchains")

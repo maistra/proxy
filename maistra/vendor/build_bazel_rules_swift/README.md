@@ -18,12 +18,6 @@ If you run into any problems with these rules, please
 for the reference documentation for the rules and other definitions in this
 repository.
 
-## Compatibility
-
-Please refer to the
-[release notes](https://github.com/bazelbuild/rules_swift/releases) for a given
-release to see which version of Bazel it is compatible with.
-
 ## Quick Setup
 
 ### 1. Install Swift
@@ -51,8 +45,8 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 http_archive(
     name = "build_bazel_rules_swift",
-    sha256 = "3e52a508cdc47a7adbad36a3d2b712e282cc39cc211b0d63efcaf608961eb36b",
-    url = "https://github.com/bazelbuild/rules_swift/releases/download/0.26.0/rules_swift.0.26.0.tar.gz",
+    sha256 = "043897b483781cfd6cbd521569bfee339c8fbb2ad0f0bdcd1b3749523a262cf4",
+    url = "https://github.com/bazelbuild/rules_swift/releases/download/1.1.1/rules_swift.1.1.1.tar.gz",
 )
 
 load(
@@ -129,6 +123,26 @@ rules.
   macOS.
 - Automatically download a Linux toolchain from [swift.org](https://swift.org)
   if one is not already installed.
+
+## Supported bazel versions
+
+rules_apple and rules_swift are often affected by changes in bazel
+itself. This means you generally need to update these rules as you
+update bazel.
+
+You can also see the supported bazel versions in the notes for each
+release on the [releases
+page](https://github.com/bazelbuild/rules_swift/releases).
+
+Besides these constraint this repo follows [semver](https://semver.org/)
+as best as we can since the 1.0.0 release.
+
+| Bazel release | Minimum supported rules version | Final supported rules version|
+|:-------------------:|:-------------------:|:-------------------------:|
+| 6.x (most recent rolling) | 0.27.0 | current |
+| 5.x | 0.25.0 | current |
+| 4.x | 0.19.0 | 0.24.0 |
+| 3.x | 0.14.0 | 0.18.0 |
 
 ## Acknowledgments
 

@@ -4,7 +4,7 @@
 
 The proto files can be consumed as GIT submodules or copied and built directly in the consumer project.
 
-The compiled files are published to central repositories (Maven, NPM...) from OpenTelemetry client libraries.
+The compiled files are published to central repositories (Maven, ...) from OpenTelemetry client libraries.
 
 See [contribution guidelines](CONTRIBUTING.md) if you would like to make any changes.
 
@@ -27,28 +27,47 @@ To generate the raw gRPC client libraries, use `make gen-${LANGUAGE}`. Currently
 Component                            | Maturity |
 -------------------------------------|----------|
 **Binary Protobuf Encoding**         |          |
-collector/metrics/*                  | Stable   |
-collector/trace/*                    | Stable   |
-collector/logs/*                     | Beta     |
 common/*                             | Stable   |
-metrics/*                            | Stable   |
+metrics/\*<br>collector/metrics/*    | Stable   |
 resource/*                           | Stable   |
-trace/trace.proto                    | Stable   |
+trace/trace.proto<br>collector/trace/* | Stable   |
 trace/trace_config.proto             | Alpha    |
-logs/*                               | Beta     |
+logs/\*<br>collector/logs/*          | Stable   |
 **JSON encoding**                    |          |
 All messages                         | Alpha    |
 
 (See [maturity-matrix.yaml](https://github.com/open-telemetry/community/blob/47813530864b9fe5a5146f466a58bd2bb94edc72/maturity-matrix.yaml#L57)
 for definition of maturity levels).
 
-Note that maturity guarantees apply only to wire-level compatibility for the binary
-Protobuf serialization. Neither message, field, nor enum names of Protobuf messages
-are visible on the wire and are not considered part of the guarantees. We are free
-to make a change to the names.
+## Stability Definition
 
-In the future when OTLP/JSON is declared stable, field names will also become part of
-the maturity guarantees, since field names are visible on the wire for JSON encoding.
+Components marked `Stable` provide the following guarantees:
+
+- Field types will not change.
+- Field numbers will not change.
+- Numbers assigned to enum choices will not change.
+- Service names and service package names will not change.
+- Service operation names, parameter and return types will not change.
+
+The following changes are allowed:
+
+- Message names may change.
+- Field names may change.
+- Enum names may change.
+- Enum choice names may change.
+- The location of messages and enums, i.e. whether they are declared at the top
+  lexical scope or nested inside another message may change.
+- Package names may change.
+- Directory structure, location and the name of the files may change.
+
+Note that none of the above allowed changes affects the binary wire representation.
+
+No guarantees are provided whatsoever about the stability of the code that
+is generated from the .proto files by any particular code generator.
+
+In the future when OTLP/JSON is declared stable, several of the changes that
+are currently allowed will become disallowed since they are visible on the wire
+for JSON encoding.
 
 ## Experiments
 

@@ -108,7 +108,7 @@ envoy_wasm_cc_binary(
 envoy_wasm_cc_binary(
     name = "speed_cpp.wasm",
     srcs = ["speed_cpp.cc"],
-    # protobuf = "full",
+    protobuf = "full",
 )
 
 envoy_wasm_cc_binary(

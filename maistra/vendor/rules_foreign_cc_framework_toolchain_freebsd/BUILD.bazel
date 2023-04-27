@@ -1,0 +1,17 @@
+load("//:defs.bzl", "foreign_cc_framework_toolchain")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["defs.bzl"])
+
+foreign_cc_framework_toolchain(
+    name = "commands"
+)
+
+toolchain(
+    name = "toolchain",
+    toolchain_type = "@rules_foreign_cc//foreign_cc/private/framework:shell_toolchain",
+    toolchain = ":commands",
+    exec_compatible_with = ["@platforms//os:freebsd"],
+    target_compatible_with = [],
+)

@@ -186,6 +186,21 @@ TEST(SubstitutionFormatterTest, plainStringFormatter) {
               ProtoEq(ValueUtil::stringValue("plain")));
 }
 
+TEST(SubstitutionFormatterTest, plainNumberFormatter) {
+  PlainNumberFormatter formatter(400);
+  Http::TestRequestHeaderMapImpl request_headers{{":method", "GET"}, {":path", "/"}};
+  Http::TestResponseHeaderMapImpl response_headers;
+  Http::TestResponseTrailerMapImpl response_trailers;
+  StreamInfo::MockStreamInfo stream_info;
+  std::string body;
+
+  EXPECT_EQ("400", formatter.format(request_headers, response_headers, response_trailers,
+                                    stream_info, body));
+  EXPECT_THAT(formatter.formatValue(request_headers, response_headers, response_trailers,
+                                    stream_info, body),
+              ProtoEq(ValueUtil::numberValue(400)));
+}
+
 TEST(SubstitutionFormatterTest, streamInfoFormatter) {
   EXPECT_THROW(StreamInfoFormatter formatter("unknown_field"), EnvoyException);
 
@@ -286,6 +301,31 @@ TEST(SubstitutionFormatterTest, streamInfoFormatter) {
   }
 
   {
+    StreamInfoFormatter handshake_duration_format("DOWNSTREAM_HANDSHAKE_DURATION");
+
+    EXPECT_EQ(absl::nullopt,
+              handshake_duration_format.format(request_headers, response_headers, response_trailers,
+                                               stream_info, body));
+    EXPECT_THAT(handshake_duration_format.formatValue(request_headers, response_headers,
+                                                      response_trailers, stream_info, body),
+                ProtoEq(ValueUtil::nullValue()));
+  }
+
+  {
+    StreamInfoFormatter handshake_duration_format("DOWNSTREAM_HANDSHAKE_DURATION");
+
+    EXPECT_CALL(time_system, monotonicTime)
+        .WillOnce(Return(MonotonicTime(std::chrono::nanoseconds(25000000))));
+    stream_info.downstream_timing_.onDownstreamHandshakeComplete(time_system);
+
+    EXPECT_EQ("25", handshake_duration_format.format(request_headers, response_headers,
+                                                     response_trailers, stream_info, body));
+    EXPECT_THAT(handshake_duration_format.formatValue(request_headers, response_headers,
+                                                      response_trailers, stream_info, body),
+                ProtoEq(ValueUtil::numberValue(25.0)));
+  }
+
+  {
     StreamInfoFormatter bytes_received_format("BYTES_RECEIVED");
     EXPECT_CALL(stream_info, bytesReceived()).WillRepeatedly(Return(1));
     EXPECT_EQ("1", bytes_received_format.format(request_headers, response_headers,
@@ -340,6 +380,37 @@ TEST(SubstitutionFormatterTest, streamInfoFormatter) {
     EXPECT_THAT(protocol_format.formatValue(request_headers, response_headers, response_trailers,
                                             stream_info, body),
                 ProtoEq(ValueUtil::stringValue("HTTP/1.1")));
+  }
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    StreamInfoFormatter protocol_format("UPSTREAM_PROTOCOL");
+    EXPECT_CALL(stream_info, upstreamInfo()).WillRepeatedly(Return(nullptr));
+
+    EXPECT_EQ(absl::nullopt, protocol_format.format(request_headers, response_headers,
+                                                    response_trailers, stream_info, body));
+    EXPECT_THAT(protocol_format.formatValue(request_headers, response_headers, response_trailers,
+                                            stream_info, body),
+                ProtoEq(ValueUtil::nullValue()));
+  }
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    StreamInfoFormatter protocol_format("UPSTREAM_PROTOCOL");
+    EXPECT_EQ(absl::nullopt, protocol_format.format(request_headers, response_headers,
+                                                    response_trailers, stream_info, body));
+    EXPECT_THAT(protocol_format.formatValue(request_headers, response_headers, response_trailers,
+                                            stream_info, body),
+                ProtoEq(ValueUtil::nullValue()));
+  }
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    StreamInfoFormatter protocol_format("UPSTREAM_PROTOCOL");
+    Http::Protocol protocol = Http::Protocol::Http2;
+    stream_info.upstreamInfo()->setUpstreamProtocol(protocol);
+    EXPECT_EQ("HTTP/2", protocol_format.format(request_headers, response_headers, response_trailers,
+                                               stream_info, body));
+    EXPECT_THAT(protocol_format.formatValue(request_headers, response_headers, response_trailers,
+                                            stream_info, body),
+                ProtoEq(ValueUtil::stringValue("HTTP/2")));
   }
 
   {
@@ -779,11 +850,11 @@ TEST(SubstitutionFormatterTest, streamInfoFormatter) {
     std::string upstream_transport_failure_reason = "SSL error";
     stream_info.upstreamInfo()->setUpstreamTransportFailureReason(
         upstream_transport_failure_reason);
-    EXPECT_EQ("SSL error", upstream_format.format(request_headers, response_headers,
+    EXPECT_EQ("SSL_error", upstream_format.format(request_headers, response_headers,
                                                   response_trailers, stream_info, body));
     EXPECT_THAT(upstream_format.formatValue(request_headers, response_headers, response_trailers,
                                             stream_info, body),
-                ProtoEq(ValueUtil::stringValue("SSL error")));
+                ProtoEq(ValueUtil::stringValue("SSL_error")));
   }
   {
     StreamInfoFormatter upstream_format("UPSTREAM_TRANSPORT_FAILURE_REASON");
@@ -1310,6 +1381,282 @@ TEST(SubstitutionFormatterTest, streamInfoFormatterWithSsl) {
     EXPECT_THAT(upstream_format.formatValue(request_headers, response_headers, response_trailers,
                                             stream_info, body),
                 ProtoEq(ValueUtil::nullValue()));
+  }
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    StreamInfoFormatter upstream_format("UPSTREAM_TLS_SESSION_ID");
+    EXPECT_CALL(stream_info, upstreamInfo()).WillRepeatedly(Return(nullptr));
+
+    EXPECT_EQ(absl::nullopt, upstream_format.format(request_headers, response_headers,
+                                                    response_trailers, stream_info, body));
+    EXPECT_THAT(upstream_format.formatValue(request_headers, response_headers, response_trailers,
+                                            stream_info, body),
+                ProtoEq(ValueUtil::nullValue()));
+  }
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    stream_info.upstreamInfo()->setUpstreamSslConnection(nullptr);
+    StreamInfoFormatter upstream_format("UPSTREAM_TLS_SESSION_ID");
+    EXPECT_EQ(absl::nullopt, upstream_format.format(request_headers, response_headers,
+                                                    response_trailers, stream_info, body));
+    EXPECT_THAT(upstream_format.formatValue(request_headers, response_headers, response_trailers,
+                                            stream_info, body),
+                ProtoEq(ValueUtil::nullValue()));
+  }
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    StreamInfoFormatter upstream_format("UPSTREAM_TLS_SESSION_ID");
+    auto connection_info = std::make_shared<Ssl::MockConnectionInfo>();
+    const std::string session_id = "deadbeef";
+    EXPECT_CALL(*connection_info, sessionId()).WillRepeatedly(ReturnRef(session_id));
+    stream_info.upstreamInfo()->setUpstreamSslConnection(connection_info);
+    EXPECT_EQ("deadbeef", upstream_format.format(request_headers, response_headers,
+                                                 response_trailers, stream_info, body));
+    EXPECT_THAT(upstream_format.formatValue(request_headers, response_headers, response_trailers,
+                                            stream_info, body),
+                ProtoEq(ValueUtil::stringValue("deadbeef")));
+  }
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    StreamInfoFormatter upstream_format("UPSTREAM_TLS_SESSION_ID");
+    auto connection_info = std::make_shared<Ssl::MockConnectionInfo>();
+    EXPECT_CALL(*connection_info, sessionId()).WillRepeatedly(ReturnRef(EMPTY_STRING));
+    stream_info.upstreamInfo()->setUpstreamSslConnection(connection_info);
+    EXPECT_EQ(absl::nullopt, upstream_format.format(request_headers, response_headers,
+                                                    response_trailers, stream_info, body));
+    EXPECT_THAT(upstream_format.formatValue(request_headers, response_headers, response_trailers,
+                                            stream_info, body),
+                ProtoEq(ValueUtil::nullValue()));
+  }
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    StreamInfoFormatter upstream_format("UPSTREAM_TLS_CIPHER");
+    EXPECT_CALL(stream_info, upstreamInfo()).WillRepeatedly(Return(nullptr));
+
+    EXPECT_EQ(absl::nullopt, upstream_format.format(request_headers, response_headers,
+                                                    response_trailers, stream_info, body));
+    EXPECT_THAT(upstream_format.formatValue(request_headers, response_headers, response_trailers,
+                                            stream_info, body),
+                ProtoEq(ValueUtil::nullValue()));
+  }
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    stream_info.upstreamInfo()->setUpstreamSslConnection(nullptr);
+    StreamInfoFormatter upstream_format("UPSTREAM_TLS_CIPHER");
+    EXPECT_EQ(absl::nullopt, upstream_format.format(request_headers, response_headers,
+                                                    response_trailers, stream_info, body));
+    EXPECT_THAT(upstream_format.formatValue(request_headers, response_headers, response_trailers,
+                                            stream_info, body),
+                ProtoEq(ValueUtil::nullValue()));
+  }
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    StreamInfoFormatter upstream_format("UPSTREAM_TLS_CIPHER");
+    auto connection_info = std::make_shared<Ssl::MockConnectionInfo>();
+    EXPECT_CALL(*connection_info, ciphersuiteString())
+        .WillRepeatedly(Return("TLS_DHE_RSA_WITH_AES_256_GCM_SHA384"));
+    stream_info.upstreamInfo()->setUpstreamSslConnection(connection_info);
+    EXPECT_EQ("TLS_DHE_RSA_WITH_AES_256_GCM_SHA384",
+              upstream_format.format(request_headers, response_headers, response_trailers,
+                                     stream_info, body));
+  }
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    StreamInfoFormatter upstream_format("UPSTREAM_TLS_CIPHER");
+    auto connection_info = std::make_shared<Ssl::MockConnectionInfo>();
+    EXPECT_CALL(*connection_info, ciphersuiteString()).WillRepeatedly(Return(""));
+    stream_info.upstreamInfo()->setUpstreamSslConnection(connection_info);
+    EXPECT_EQ(absl::nullopt, upstream_format.format(request_headers, response_headers,
+                                                    response_trailers, stream_info, body));
+    EXPECT_THAT(upstream_format.formatValue(request_headers, response_headers, response_trailers,
+                                            stream_info, body),
+                ProtoEq(ValueUtil::nullValue()));
+  }
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    StreamInfoFormatter upstream_format("UPSTREAM_TLS_VERSION");
+    EXPECT_CALL(stream_info, upstreamInfo()).WillRepeatedly(Return(nullptr));
+
+    EXPECT_EQ(absl::nullopt, upstream_format.format(request_headers, response_headers,
+                                                    response_trailers, stream_info, body));
+    EXPECT_THAT(upstream_format.formatValue(request_headers, response_headers, response_trailers,
+                                            stream_info, body),
+                ProtoEq(ValueUtil::nullValue()));
+  }
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    stream_info.upstreamInfo()->setUpstreamSslConnection(nullptr);
+    StreamInfoFormatter upstream_format("UPSTREAM_TLS_VERSION");
+    EXPECT_EQ(absl::nullopt, upstream_format.format(request_headers, response_headers,
+                                                    response_trailers, stream_info, body));
+    EXPECT_THAT(upstream_format.formatValue(request_headers, response_headers, response_trailers,
+                                            stream_info, body),
+                ProtoEq(ValueUtil::nullValue()));
+  }
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    StreamInfoFormatter upstream_format("UPSTREAM_TLS_VERSION");
+    auto connection_info = std::make_shared<Ssl::MockConnectionInfo>();
+    std::string tlsVersion = "TLSv1.2";
+    EXPECT_CALL(*connection_info, tlsVersion()).WillRepeatedly(ReturnRef(tlsVersion));
+    stream_info.upstreamInfo()->setUpstreamSslConnection(connection_info);
+    EXPECT_EQ("TLSv1.2", upstream_format.format(request_headers, response_headers,
+                                                response_trailers, stream_info, body));
+    EXPECT_THAT(upstream_format.formatValue(request_headers, response_headers, response_trailers,
+                                            stream_info, body),
+                ProtoEq(ValueUtil::stringValue("TLSv1.2")));
+  }
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    StreamInfoFormatter upstream_format("UPSTREAM_TLS_VERSION");
+    auto connection_info = std::make_shared<Ssl::MockConnectionInfo>();
+    EXPECT_CALL(*connection_info, tlsVersion()).WillRepeatedly(ReturnRef(EMPTY_STRING));
+    stream_info.upstreamInfo()->setUpstreamSslConnection(connection_info);
+    EXPECT_EQ(absl::nullopt, upstream_format.format(request_headers, response_headers,
+                                                    response_trailers, stream_info, body));
+    EXPECT_THAT(upstream_format.formatValue(request_headers, response_headers, response_trailers,
+                                            stream_info, body),
+                ProtoEq(ValueUtil::nullValue()));
+  }
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    StreamInfoFormatter upstream_format("UPSTREAM_PEER_ISSUER");
+    EXPECT_CALL(stream_info, upstreamInfo()).WillRepeatedly(Return(nullptr));
+
+    EXPECT_EQ(absl::nullopt, upstream_format.format(request_headers, response_headers,
+                                                    response_trailers, stream_info, body));
+    EXPECT_THAT(upstream_format.formatValue(request_headers, response_headers, response_trailers,
+                                            stream_info, body),
+                ProtoEq(ValueUtil::nullValue()));
+  }
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    stream_info.upstreamInfo()->setUpstreamSslConnection(nullptr);
+    StreamInfoFormatter upstream_format("UPSTREAM_PEER_ISSUER");
+    EXPECT_EQ(absl::nullopt, upstream_format.format(request_headers, response_headers,
+                                                    response_trailers, stream_info, body));
+    EXPECT_THAT(upstream_format.formatValue(request_headers, response_headers, response_trailers,
+                                            stream_info, body),
+                ProtoEq(ValueUtil::nullValue()));
+  }
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    StreamInfoFormatter upstream_format("UPSTREAM_PEER_ISSUER");
+    auto connection_info = std::make_shared<Ssl::MockConnectionInfo>();
+    EXPECT_CALL(*connection_info, issuerPeerCertificate()).WillRepeatedly(ReturnRef(EMPTY_STRING));
+    stream_info.upstreamInfo()->setUpstreamSslConnection(connection_info);
+    EXPECT_EQ(absl::nullopt, upstream_format.format(request_headers, response_headers,
+                                                    response_trailers, stream_info, body));
+    EXPECT_THAT(upstream_format.formatValue(request_headers, response_headers, response_trailers,
+                                            stream_info, body),
+                ProtoEq(ValueUtil::nullValue()));
+  }
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    StreamInfoFormatter upstream_format("UPSTREAM_PEER_ISSUER");
+    auto connection_info = std::make_shared<Ssl::MockConnectionInfo>();
+    const std::string issuer_peer =
+        "CN=Test CA,OU=Lyft Engineering,O=Lyft,L=San Francisco,ST=California,C=US";
+    EXPECT_CALL(*connection_info, issuerPeerCertificate()).WillRepeatedly(ReturnRef(issuer_peer));
+    stream_info.upstreamInfo()->setUpstreamSslConnection(connection_info);
+    EXPECT_EQ(issuer_peer, upstream_format.format(request_headers, response_headers,
+                                                  response_trailers, stream_info, body));
+    EXPECT_THAT(upstream_format.formatValue(request_headers, response_headers, response_trailers,
+                                            stream_info, body),
+                ProtoEq(ValueUtil::stringValue(issuer_peer)));
+  }
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    StreamInfoFormatter upstream_format("UPSTREAM_PEER_CERT");
+    EXPECT_CALL(stream_info, upstreamInfo()).WillRepeatedly(Return(nullptr));
+    EXPECT_EQ(absl::nullopt, upstream_format.format(request_headers, response_headers,
+                                                    response_trailers, stream_info, body));
+    EXPECT_THAT(upstream_format.formatValue(request_headers, response_headers, response_trailers,
+                                            stream_info, body),
+                ProtoEq(ValueUtil::nullValue()));
+  }
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    stream_info.upstreamInfo()->setUpstreamSslConnection(nullptr);
+    StreamInfoFormatter upstream_format("UPSTREAM_PEER_CERT");
+    EXPECT_EQ(absl::nullopt, upstream_format.format(request_headers, response_headers,
+                                                    response_trailers, stream_info, body));
+    EXPECT_THAT(upstream_format.formatValue(request_headers, response_headers, response_trailers,
+                                            stream_info, body),
+                ProtoEq(ValueUtil::nullValue()));
+  }
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    StreamInfoFormatter upstream_format("UPSTREAM_PEER_CERT");
+    auto connection_info = std::make_shared<Ssl::MockConnectionInfo>();
+    EXPECT_CALL(*connection_info, urlEncodedPemEncodedPeerCertificate())
+        .WillRepeatedly(ReturnRef(EMPTY_STRING));
+    stream_info.upstreamInfo()->setUpstreamSslConnection(connection_info);
+    EXPECT_EQ(absl::nullopt, upstream_format.format(request_headers, response_headers,
+                                                    response_trailers, stream_info, body));
+    EXPECT_THAT(upstream_format.formatValue(request_headers, response_headers, response_trailers,
+                                            stream_info, body),
+                ProtoEq(ValueUtil::nullValue()));
+  }
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    StreamInfoFormatter upstream_format("UPSTREAM_PEER_CERT");
+    auto connection_info = std::make_shared<Ssl::MockConnectionInfo>();
+    std::string expected_cert = "<some cert>";
+    EXPECT_CALL(*connection_info, urlEncodedPemEncodedPeerCertificate())
+        .WillRepeatedly(ReturnRef(expected_cert));
+    stream_info.upstreamInfo()->setUpstreamSslConnection(connection_info);
+    EXPECT_EQ(expected_cert, upstream_format.format(request_headers, response_headers,
+                                                    response_trailers, stream_info, body));
+    EXPECT_THAT(upstream_format.formatValue(request_headers, response_headers, response_trailers,
+                                            stream_info, body),
+                ProtoEq(ValueUtil::stringValue(expected_cert)));
+  }
+
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    StreamInfoFormatter upstream_format("UPSTREAM_PEER_SUBJECT");
+    EXPECT_CALL(stream_info, upstreamInfo()).WillRepeatedly(Return(nullptr));
+    EXPECT_EQ(absl::nullopt, upstream_format.format(request_headers, response_headers,
+                                                    response_trailers, stream_info, body));
+    EXPECT_THAT(upstream_format.formatValue(request_headers, response_headers, response_trailers,
+                                            stream_info, body),
+                ProtoEq(ValueUtil::nullValue()));
+  }
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    stream_info.upstreamInfo()->setUpstreamSslConnection(nullptr);
+    StreamInfoFormatter upstream_format("UPSTREAM_PEER_SUBJECT");
+    EXPECT_EQ(absl::nullopt, upstream_format.format(request_headers, response_headers,
+                                                    response_trailers, stream_info, body));
+    EXPECT_THAT(upstream_format.formatValue(request_headers, response_headers, response_trailers,
+                                            stream_info, body),
+                ProtoEq(ValueUtil::nullValue()));
+  }
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    StreamInfoFormatter upstream_format("UPSTREAM_PEER_SUBJECT");
+    auto connection_info = std::make_shared<Ssl::MockConnectionInfo>();
+    EXPECT_CALL(*connection_info, subjectPeerCertificate()).WillRepeatedly(ReturnRef(EMPTY_STRING));
+    stream_info.upstreamInfo()->setUpstreamSslConnection(connection_info);
+    EXPECT_EQ(absl::nullopt, upstream_format.format(request_headers, response_headers,
+                                                    response_trailers, stream_info, body));
+    EXPECT_THAT(upstream_format.formatValue(request_headers, response_headers, response_trailers,
+                                            stream_info, body),
+                ProtoEq(ValueUtil::nullValue()));
+  }
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    StreamInfoFormatter upstream_format("UPSTREAM_PEER_SUBJECT");
+    auto connection_info = std::make_shared<Ssl::MockConnectionInfo>();
+    std::string subject = "subject";
+    EXPECT_CALL(*connection_info, subjectPeerCertificate()).WillRepeatedly(ReturnRef(subject));
+    stream_info.upstreamInfo()->setUpstreamSslConnection(connection_info);
+    EXPECT_EQ(subject, upstream_format.format(request_headers, response_headers, response_trailers,
+                                              stream_info, body));
+    EXPECT_THAT(upstream_format.formatValue(request_headers, response_headers, response_trailers,
+                                            stream_info, body),
+                ProtoEq(ValueUtil::stringValue(subject)));
   }
 }
 
@@ -1862,6 +2209,145 @@ TEST(SubstitutionFormatterTest, DownstreamPeerCertVEndFormatter) {
   }
 }
 
+TEST(SubstitutionFormatterTest, UpstreamPeerCertVStartFormatter) {
+  Http::TestRequestHeaderMapImpl request_headers{{":method", "GET"}, {":path", "/"}};
+  Http::TestResponseHeaderMapImpl response_headers;
+  Http::TestResponseTrailerMapImpl response_trailers;
+  std::string body;
+
+  // No upstream connection
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    EXPECT_CALL(stream_info, upstreamInfo()).WillRepeatedly(Return(nullptr));
+    UpstreamPeerCertVStartFormatter cert_start_format("%Y/%m/%d");
+    EXPECT_EQ(absl::nullopt, cert_start_format.format(request_headers, response_headers,
+                                                      response_trailers, stream_info, body));
+    EXPECT_THAT(cert_start_format.formatValue(request_headers, response_headers, response_trailers,
+                                              stream_info, body),
+                ProtoEq(ValueUtil::nullValue()));
+  }
+  // No upstreamSslConnection
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    stream_info.upstreamInfo()->setUpstreamSslConnection(nullptr);
+    DownstreamPeerCertVStartFormatter cert_start_format("UPSTREAM_PEER_CERT_V_START(%Y/%m/%d)");
+    EXPECT_EQ(absl::nullopt, cert_start_format.format(request_headers, response_headers,
+                                                      response_trailers, stream_info, body));
+    EXPECT_THAT(cert_start_format.formatValue(request_headers, response_headers, response_trailers,
+                                              stream_info, body),
+                ProtoEq(ValueUtil::nullValue()));
+  }
+  // No validFromPeerCertificate
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    DownstreamPeerCertVStartFormatter cert_start_format("UPSTREAM_PEER_CERT_V_START(%Y/%m/%d)");
+    auto connection_info = std::make_shared<Ssl::MockConnectionInfo>();
+    EXPECT_CALL(*connection_info, validFromPeerCertificate()).WillRepeatedly(Return(absl::nullopt));
+    stream_info.upstreamInfo()->setUpstreamSslConnection(connection_info);
+    EXPECT_EQ(absl::nullopt, cert_start_format.format(request_headers, response_headers,
+                                                      response_trailers, stream_info, body));
+    EXPECT_THAT(cert_start_format.formatValue(request_headers, response_headers, response_trailers,
+                                              stream_info, body),
+                ProtoEq(ValueUtil::nullValue()));
+  }
+  // Default format string
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    UpstreamPeerCertVStartFormatter cert_start_format("");
+    auto connection_info = std::make_shared<Ssl::MockConnectionInfo>();
+    time_t test_epoch = 1522280158;
+    SystemTime time = std::chrono::system_clock::from_time_t(test_epoch);
+    EXPECT_CALL(*connection_info, validFromPeerCertificate()).WillRepeatedly(Return(time));
+    stream_info.upstreamInfo()->setUpstreamSslConnection(connection_info);
+    EXPECT_EQ(AccessLogDateTimeFormatter::fromTime(time),
+              cert_start_format.format(request_headers, response_headers, response_trailers,
+                                       stream_info, body));
+  }
+  // Custom format string
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    UpstreamPeerCertVStartFormatter cert_start_format("%b %e %H:%M:%S %Y %Z");
+    auto connection_info = std::make_shared<Ssl::MockConnectionInfo>();
+    time_t test_epoch = 1522280158;
+    SystemTime time = std::chrono::system_clock::from_time_t(test_epoch);
+    EXPECT_CALL(*connection_info, validFromPeerCertificate()).WillRepeatedly(Return(time));
+    stream_info.upstreamInfo()->setUpstreamSslConnection(connection_info);
+    EXPECT_EQ("Mar 28 23:35:58 2018 UTC",
+              cert_start_format.format(request_headers, response_headers, response_trailers,
+                                       stream_info, body));
+  }
+}
+
+TEST(SubstitutionFormatterTest, UpstreamPeerCertVEndFormatter) {
+  Http::TestRequestHeaderMapImpl request_headers{{":method", "GET"}, {":path", "/"}};
+  Http::TestResponseHeaderMapImpl response_headers;
+  Http::TestResponseTrailerMapImpl response_trailers;
+  std::string body;
+
+  // No upstream connection
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    EXPECT_CALL(stream_info, upstreamInfo()).WillRepeatedly(Return(nullptr));
+    UpstreamPeerCertVEndFormatter cert_end_format("%Y/%m/%d");
+    EXPECT_EQ(absl::nullopt, cert_end_format.format(request_headers, response_headers,
+                                                    response_trailers, stream_info, body));
+    EXPECT_THAT(cert_end_format.formatValue(request_headers, response_headers, response_trailers,
+                                            stream_info, body),
+                ProtoEq(ValueUtil::nullValue()));
+  }
+  // No upstreamSslConnection
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    stream_info.upstreamInfo()->setUpstreamSslConnection(nullptr);
+    UpstreamPeerCertVEndFormatter cert_end_format("%Y/%m/%d");
+    EXPECT_EQ(absl::nullopt, cert_end_format.format(request_headers, response_headers,
+                                                    response_trailers, stream_info, body));
+    EXPECT_THAT(cert_end_format.formatValue(request_headers, response_headers, response_trailers,
+                                            stream_info, body),
+                ProtoEq(ValueUtil::nullValue()));
+  }
+  // No expirationPeerCertificate
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    UpstreamPeerCertVEndFormatter cert_end_format("%Y/%m/%d");
+    auto connection_info = std::make_shared<Ssl::MockConnectionInfo>();
+    EXPECT_CALL(*connection_info, expirationPeerCertificate())
+        .WillRepeatedly(Return(absl::nullopt));
+    stream_info.upstreamInfo()->setUpstreamSslConnection(connection_info);
+    EXPECT_EQ(absl::nullopt, cert_end_format.format(request_headers, response_headers,
+                                                    response_trailers, stream_info, body));
+    EXPECT_THAT(cert_end_format.formatValue(request_headers, response_headers, response_trailers,
+                                            stream_info, body),
+                ProtoEq(ValueUtil::nullValue()));
+  }
+  // Default format string
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    UpstreamPeerCertVEndFormatter cert_end_format("");
+    auto connection_info = std::make_shared<Ssl::MockConnectionInfo>();
+    time_t test_epoch = 1522280158;
+    SystemTime time = std::chrono::system_clock::from_time_t(test_epoch);
+    EXPECT_CALL(*connection_info, expirationPeerCertificate()).WillRepeatedly(Return(time));
+    stream_info.upstreamInfo()->setUpstreamSslConnection(connection_info);
+    EXPECT_EQ(AccessLogDateTimeFormatter::fromTime(time),
+              cert_end_format.format(request_headers, response_headers, response_trailers,
+                                     stream_info, body));
+  }
+  // Custom format string
+  {
+    NiceMock<StreamInfo::MockStreamInfo> stream_info;
+    UpstreamPeerCertVEndFormatter cert_end_format("%b %e %H:%M:%S %Y %Z");
+    auto connection_info = std::make_shared<Ssl::MockConnectionInfo>();
+    time_t test_epoch = 1522280158;
+    SystemTime time = std::chrono::system_clock::from_time_t(test_epoch);
+    EXPECT_CALL(*connection_info, expirationPeerCertificate()).WillRepeatedly(Return(time));
+    stream_info.upstreamInfo()->setUpstreamSslConnection(connection_info);
+    EXPECT_EQ("Mar 28 23:35:58 2018 UTC",
+              cert_end_format.format(request_headers, response_headers, response_trailers,
+                                     stream_info, body));
+  }
+}
+
 TEST(SubstitutionFormatterTest, StartTimeFormatter) {
   NiceMock<StreamInfo::MockStreamInfo> stream_info;
   Http::TestRequestHeaderMapImpl request_headers{{":method", "GET"}, {":path", "/"}};
@@ -1894,15 +2380,16 @@ TEST(SubstitutionFormatterTest, StartTimeFormatter) {
   }
 }
 
-TEST(SubstitutionFormatterTest, GrpcStatusFormatterTest) {
-  GrpcStatusFormatter formatter("grpc-status", "", absl::optional<size_t>());
+TEST(SubstitutionFormatterTest, GrpcStatusFormatterCamelStringTest) {
+  GrpcStatusFormatter formatter("grpc-status", "", absl::optional<size_t>(),
+                                GrpcStatusFormatter::Format::CamelString);
   NiceMock<StreamInfo::MockStreamInfo> stream_info;
   Http::TestRequestHeaderMapImpl request_header;
   Http::TestResponseHeaderMapImpl response_header;
   Http::TestResponseTrailerMapImpl response_trailer;
   std::string body;
 
-  std::array<std::string, 17> grpc_statuses{
+  std::vector<std::string> grpc_statuses{
       "OK",       "Canceled",       "Unknown",          "InvalidArgument",   "DeadlineExceeded",
       "NotFound", "AlreadyExists",  "PermissionDenied", "ResourceExhausted", "FailedPrecondition",
       "Aborted",  "OutOfRange",     "Unimplemented",    "Internal",          "Unavailable",
@@ -1955,8 +2442,83 @@ TEST(SubstitutionFormatterTest, GrpcStatusFormatterTest) {
   }
 }
 
-TEST(SubstitutionFormatterTest, GrpcStatusNumberFormatterTest) {
-  GrpcStatusFormatter formatter("grpc-status", "", absl::optional<size_t>(), true);
+TEST(SubstitutionFormatterTest, GrpcStatusFormatterSnakeStringTest) {
+  GrpcStatusFormatter formatter("grpc-status", "", absl::optional<size_t>(),
+                                GrpcStatusFormatter::Format::SnakeString);
+  NiceMock<StreamInfo::MockStreamInfo> stream_info;
+  Http::TestRequestHeaderMapImpl request_header;
+  Http::TestResponseHeaderMapImpl response_header;
+  Http::TestResponseTrailerMapImpl response_trailer;
+  std::string body;
+
+  std::vector<std::string> grpc_statuses{"OK",
+                                         "CANCELLED",
+                                         "UNKNOWN",
+                                         "INVALID_ARGUMENT",
+                                         "DEADLINE_EXCEEDED",
+                                         "NOT_FOUND",
+                                         "ALREADY_EXISTS",
+                                         "PERMISSION_DENIED",
+                                         "RESOURCE_EXHAUSTED",
+                                         "FAILED_PRECONDITION",
+                                         "ABORTED",
+                                         "OUT_OF_RANGE",
+                                         "UNIMPLEMENTED",
+                                         "INTERNAL",
+                                         "UNAVAILABLE",
+                                         "DATA_LOSS",
+                                         "UNAUTHENTICATED"};
+  for (size_t i = 0; i < grpc_statuses.size(); ++i) {
+    response_trailer = Http::TestResponseTrailerMapImpl{{"grpc-status", std::to_string(i)}};
+    EXPECT_EQ(grpc_statuses[i], formatter.format(request_header, response_header, response_trailer,
+                                                 stream_info, body));
+    EXPECT_THAT(
+        formatter.formatValue(request_header, response_header, response_trailer, stream_info, body),
+        ProtoEq(ValueUtil::stringValue(grpc_statuses[i])));
+  }
+  {
+    response_trailer = Http::TestResponseTrailerMapImpl{{"not-a-grpc-status", "13"}};
+    EXPECT_EQ(absl::nullopt, formatter.format(request_header, response_header, response_trailer,
+                                              stream_info, body));
+    EXPECT_THAT(
+        formatter.formatValue(request_header, response_header, response_trailer, stream_info, body),
+        ProtoEq(ValueUtil::nullValue()));
+  }
+  {
+    response_trailer = Http::TestResponseTrailerMapImpl{{"grpc-status", "-1"}};
+    EXPECT_EQ("-1", formatter.format(request_header, response_header, response_trailer, stream_info,
+                                     body));
+    EXPECT_THAT(
+        formatter.formatValue(request_header, response_header, response_trailer, stream_info, body),
+        ProtoEq(ValueUtil::stringValue("-1")));
+    response_trailer = Http::TestResponseTrailerMapImpl{{"grpc-status", "42738"}};
+    EXPECT_EQ("42738", formatter.format(request_header, response_header, response_trailer,
+                                        stream_info, body));
+    EXPECT_THAT(
+        formatter.formatValue(request_header, response_header, response_trailer, stream_info, body),
+        ProtoEq(ValueUtil::stringValue("42738")));
+    response_trailer.clear();
+  }
+  {
+    response_header = Http::TestResponseHeaderMapImpl{{"grpc-status", "-1"}};
+    EXPECT_EQ("-1", formatter.format(request_header, response_header, response_trailer, stream_info,
+                                     body));
+    EXPECT_THAT(
+        formatter.formatValue(request_header, response_header, response_trailer, stream_info, body),
+        ProtoEq(ValueUtil::stringValue("-1")));
+    response_header = Http::TestResponseHeaderMapImpl{{"grpc-status", "42738"}};
+    EXPECT_EQ("42738", formatter.format(request_header, response_header, response_trailer,
+                                        stream_info, body));
+    EXPECT_THAT(
+        formatter.formatValue(request_header, response_header, response_trailer, stream_info, body),
+        ProtoEq(ValueUtil::stringValue("42738")));
+    response_header.clear();
+  }
+}
+
+TEST(SubstitutionFormatterTest, GrpcStatusFormatterNumberTest) {
+  GrpcStatusFormatter formatter("grpc-status", "", absl::optional<size_t>(),
+                                GrpcStatusFormatter::Format::Number);
   NiceMock<StreamInfo::MockStreamInfo> stream_info;
   Http::TestRequestHeaderMapImpl request_header;
   Http::TestResponseHeaderMapImpl response_header;
@@ -2038,6 +2600,32 @@ TEST(SubstitutionFormatterTest, StructFormatterPlainStringTest) {
   ProtobufWkt::Struct key_mapping;
   TestUtility::loadFromYaml(R"EOF(
     plain_string: plain_string_value
+  )EOF",
+                            key_mapping);
+  StructFormatter formatter(key_mapping, false, false);
+
+  verifyStructOutput(
+      formatter.format(request_header, response_header, response_trailer, stream_info, body),
+      expected_json_map);
+}
+
+TEST(SubstitutionFormatterTest, StructFormatterPlainNumberTest) {
+  StreamInfo::MockStreamInfo stream_info;
+  Http::TestRequestHeaderMapImpl request_header;
+  Http::TestResponseHeaderMapImpl response_header;
+  Http::TestResponseTrailerMapImpl response_trailer;
+  std::string body;
+
+  envoy::config::core::v3::Metadata metadata;
+  populateMetadataTestData(metadata);
+  absl::optional<Http::Protocol> protocol = Http::Protocol::Http11;
+  EXPECT_CALL(stream_info, protocol()).WillRepeatedly(Return(protocol));
+
+  absl::node_hash_map<std::string, std::string> expected_json_map = {{"plain_number", "400"}};
+
+  ProtobufWkt::Struct key_mapping;
+  TestUtility::loadFromYaml(R"EOF(
+    plain_number: 400
   )EOF",
                             key_mapping);
   StructFormatter formatter(key_mapping, false, false);
@@ -2491,6 +3079,80 @@ TEST(SubstitutionFormatterTest, StructFormatterClusterMetadataNoClusterInfoTest)
   // Empty cluster info (nullptr)
   {
     EXPECT_CALL(Const(stream_info), upstreamClusterInfo()).WillOnce(Return(nullptr));
+    verifyStructOutput(
+        formatter.format(request_header, response_header, response_trailer, stream_info, body),
+        expected_json_map);
+  }
+}
+
+TEST(SubstitutionFormatterTest, StructFormatterUpstreamHostMetadataTest) {
+  NiceMock<StreamInfo::MockStreamInfo> stream_info;
+  Http::TestRequestHeaderMapImpl request_header{{"first", "GET"}, {":path", "/"}};
+  Http::TestResponseHeaderMapImpl response_header{{"second", "PUT"}, {"test", "test"}};
+  Http::TestResponseTrailerMapImpl response_trailer{{"third", "POST"}, {"test-2", "test-2"}};
+  std::string body;
+
+  const auto metadata = std::make_shared<envoy::config::core::v3::Metadata>();
+  populateMetadataTestData(*metadata);
+  // Get pointers to MockUpstreamInfo  and MockHostDescription.
+  std::shared_ptr<StreamInfo::MockUpstreamInfo> mock_upstream_info =
+      std::dynamic_pointer_cast<StreamInfo::MockUpstreamInfo>(stream_info.upstreamInfo());
+  std::shared_ptr<const Upstream::MockHostDescription> mock_host_description =
+      std::dynamic_pointer_cast<const Upstream::MockHostDescription>(
+          mock_upstream_info->upstreamHost());
+  EXPECT_CALL(*mock_host_description, metadata()).WillRepeatedly(Return(metadata));
+
+  absl::node_hash_map<std::string, std::string> expected_json_map = {
+      {"test_key", "test_value"},
+      {"test_obj", "{\"inner_key\":\"inner_value\"}"},
+      {"test_obj.inner_key", "inner_value"},
+      {"test_obj.non_existing_key", "-"},
+  };
+
+  ProtobufWkt::Struct key_mapping;
+  TestUtility::loadFromYaml(R"EOF(
+    test_key: '%UPSTREAM_METADATA(com.test:test_key)%'
+    test_obj: '%UPSTREAM_METADATA(com.test:test_obj)%'
+    test_obj.inner_key: '%UPSTREAM_METADATA(com.test:test_obj:inner_key)%'
+    test_obj.non_existing_key: '%UPSTREAM_METADATA(com.test:test_obj:non_existing_key)%'
+  )EOF",
+                            key_mapping);
+  StructFormatter formatter(key_mapping, false, false);
+
+  verifyStructOutput(
+      formatter.format(request_header, response_header, response_trailer, stream_info, body),
+      expected_json_map);
+}
+
+TEST(SubstitutionFormatterTest, StructFormatterUpstreamHostMetadataNullPtrs) {
+  testing::NiceMock<StreamInfo::MockStreamInfo> stream_info;
+  Http::TestRequestHeaderMapImpl request_header{{"first", "GET"}, {":path", "/"}};
+  Http::TestResponseHeaderMapImpl response_header{{"second", "PUT"}, {"test", "test"}};
+  Http::TestResponseTrailerMapImpl response_trailer{{"third", "POST"}, {"test-2", "test-2"}};
+  std::string body;
+
+  absl::node_hash_map<std::string, std::string> expected_json_map = {{"test_key", "-"}};
+
+  ProtobufWkt::Struct key_mapping;
+  TestUtility::loadFromYaml(R"EOF(
+    test_key: '%UPSTREAM_METADATA(com.test:test_key)%'
+  )EOF",
+                            key_mapping);
+  StructFormatter formatter(key_mapping, false, false);
+
+  // Empty optional (absl::nullopt)
+  {
+    EXPECT_CALL(Const(stream_info), upstreamInfo()).WillOnce(Return(absl::nullopt));
+    verifyStructOutput(
+        formatter.format(request_header, response_header, response_trailer, stream_info, body),
+        expected_json_map);
+    testing::Mock::VerifyAndClearExpectations(&stream_info);
+  }
+  // Empty host description info (nullptr)
+  {
+    std::shared_ptr<StreamInfo::MockUpstreamInfo> mock_upstream_info =
+        std::dynamic_pointer_cast<StreamInfo::MockUpstreamInfo>(stream_info.upstreamInfo());
+    EXPECT_CALL(*mock_upstream_info, upstreamHost()).WillOnce(Return(nullptr));
     verifyStructOutput(
         formatter.format(request_header, response_header, response_trailer, stream_info, body),
         expected_json_map);

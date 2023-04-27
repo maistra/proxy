@@ -1,0 +1,32 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "legacy",
+    srcs = ["copy.go"],
+    importpath = "github.com/google/go-containerregistry/internal/legacy",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//pkg/name",
+        "//pkg/v1/remote",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":legacy",
+    visibility = ["//:__subpackages__"],
+)
+
+go_test(
+    name = "legacy_test",
+    srcs = ["copy_test.go"],
+    embed = [":legacy"],
+    deps = [
+        "//pkg/name",
+        "//pkg/registry",
+        "//pkg/v1:pkg",
+        "//pkg/v1/random",
+        "//pkg/v1/remote",
+        "//pkg/v1/types",
+    ],
+)

@@ -36,6 +36,11 @@ Synopsis
     found, we use default priority instead of given *pri_spec*.  That
     is make stream depend on root stream with weight 16.
     
+    If
+    :macro:`nghttp2_settings_id.NGHTTP2_SETTINGS_NO_RFC7540_PRIORITIES`
+    of value of 1 is submitted via `nghttp2_submit_settings()`, this
+    function does nothing and returns 0.
+    
     This function returns 0 if it succeeds, or one of the following
     negative error codes:
     

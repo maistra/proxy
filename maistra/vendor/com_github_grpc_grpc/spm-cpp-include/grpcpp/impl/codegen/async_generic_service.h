@@ -19,6 +19,8 @@
 #ifndef GRPCPP_IMPL_CODEGEN_ASYNC_GENERIC_SERVICE_H
 #define GRPCPP_IMPL_CODEGEN_ASYNC_GENERIC_SERVICE_H
 
+// IWYU pragma: private, include <grpcpp/generic/async_generic_service.h>
+
 #include <grpc/impl/codegen/port_platform.h>
 
 #include <grpcpp/impl/codegen/async_stream.h>
@@ -71,17 +73,13 @@ class AsyncGenericService final {
 
   void RequestCall(GenericServerContext* ctx,
                    GenericServerAsyncReaderWriter* reader_writer,
-                   ::grpc::CompletionQueue* call_cq,
-                   ::grpc::ServerCompletionQueue* notification_cq, void* tag);
+                   grpc::CompletionQueue* call_cq,
+                   grpc::ServerCompletionQueue* notification_cq, void* tag);
 
  private:
   friend class grpc::Server;
   grpc::Server* server_;
 };
-
-#ifndef GRPC_CALLBACK_API_NONEXPERIMENTAL
-namespace experimental {
-#endif
 
 /// \a ServerGenericBidiReactor is the reactor class for bidi streaming RPCs
 /// invoked on a CallbackGenericService. It is just a ServerBidi reactor with
@@ -94,7 +92,7 @@ class GenericCallbackServerContext final : public grpc::CallbackServerContext {
   const std::string& host() const { return host_; }
 
  private:
-  friend class ::grpc::Server;
+  friend class grpc::Server;
 
   std::string method_;
   std::string host_;
@@ -126,7 +124,7 @@ class CallbackGenericService {
 
   internal::CallbackBidiHandler<ByteBuffer, ByteBuffer>* Handler() {
     return new internal::CallbackBidiHandler<ByteBuffer, ByteBuffer>(
-        [this](::grpc::CallbackServerContext* ctx) {
+        [this](grpc::CallbackServerContext* ctx) {
           return CreateReactor(static_cast<GenericCallbackServerContext*>(ctx));
         });
   }
@@ -134,9 +132,6 @@ class CallbackGenericService {
   grpc::Server* server_{nullptr};
 };
 
-#ifndef GRPC_CALLBACK_API_NONEXPERIMENTAL
-}  // namespace experimental
-#endif
 }  // namespace grpc
 
 #endif  // GRPCPP_IMPL_CODEGEN_ASYNC_GENERIC_SERVICE_H

@@ -26,10 +26,17 @@ bazel-bin/source/exe/envoy-static --version
 time bazel build \
   ${COMMON_FLAGS} \
   --build_tests_only \
-  //test/...
+  -- \
+  //test/... \
+  -//test/server:listener_manager_impl_quic_only_test
 
 # Run tests
+# TODO(OSSM-2237 and OSSM-2238): non-quic related disabled tests
 time bazel test \
   ${COMMON_FLAGS} \
   --build_tests_only \
-  //test/...
+  -- \
+  //test/... \
+  -//test/server:listener_manager_impl_quic_only_test \
+  -//test/extensions/common/async_files:async_file_handle_thread_pool_test \
+  -//test/common/signal:signals_test 

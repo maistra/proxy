@@ -1,0 +1,25 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "verify",
+    srcs = ["verify.go"],
+    importpath = "github.com/google/go-containerregistry/internal/verify",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//internal/and",
+        "//pkg/v1:pkg",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":verify",
+    visibility = ["//:__subpackages__"],
+)
+
+go_test(
+    name = "verify_test",
+    srcs = ["verify_test.go"],
+    embed = [":verify"],
+    deps = ["//pkg/v1:pkg"],
+)

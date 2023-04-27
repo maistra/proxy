@@ -18,10 +18,11 @@
 
 #include "src/core/lib/surface/init.h"
 
+#include <gtest/gtest.h>
+
 #include <grpc/grpc.h>
 #include <grpc/support/log.h>
 #include <grpc/support/time.h>
-#include <gtest/gtest.h>
 
 #include "src/core/lib/iomgr/exec_ctx.h"
 #include "test/core/util/test_config.h"
@@ -137,7 +138,7 @@ TEST(Init, repeatedly_blocking) {
 }
 
 int main(int argc, char** argv) {
-  grpc::testing::TestEnvironment env(argc, argv);
+  grpc::testing::TestEnvironment env(&argc, argv);
   ::testing::InitGoogleTest(&argc, argv);
   grpc_register_plugin(plugin_init, plugin_destroy);
   return RUN_ALL_TESTS();

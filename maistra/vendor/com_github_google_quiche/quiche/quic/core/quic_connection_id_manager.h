@@ -14,6 +14,7 @@
 #include <memory>
 
 #include "absl/types/optional.h"
+#include "quiche/quic/core/connection_id_generator.h"
 #include "quiche/quic/core/frames/quic_new_connection_id_frame.h"
 #include "quiche/quic/core/frames/quic_retire_connection_id_frame.h"
 #include "quiche/quic/core/quic_alarm.h"
@@ -47,7 +48,7 @@ class QUIC_EXPORT_PRIVATE QuicConnectionIdManagerVisitorInterface {
   virtual ~QuicConnectionIdManagerVisitorInterface() = default;
   virtual void OnPeerIssuedConnectionIdRetired() = 0;
   virtual bool SendNewConnectionId(const QuicNewConnectionIdFrame& frame) = 0;
-  virtual void OnNewConnectionIdIssued(
+  virtual bool MaybeReserveConnectionId(
       const QuicConnectionId& connection_id) = 0;
   virtual void OnSelfIssuedConnectionIdRetired(
       const QuicConnectionId& connection_id) = 0;
@@ -126,15 +127,16 @@ class QUIC_EXPORT_PRIVATE QuicSelfIssuedConnectionIdManager {
       const QuicConnectionId& initial_connection_id, const QuicClock* clock,
       QuicAlarmFactory* alarm_factory,
       QuicConnectionIdManagerVisitorInterface* visitor,
-      QuicConnectionContext* context);
+      QuicConnectionContext* context,
+      ConnectionIdGeneratorInterface& generator);
 
   virtual ~QuicSelfIssuedConnectionIdManager();
 
-  QuicNewConnectionIdFrame IssueNewConnectionIdForPreferredAddress();
+  absl::optional<QuicNewConnectionIdFrame>
+  MaybeIssueNewConnectionIdForPreferredAddress();
 
   QuicErrorCode OnRetireConnectionIdFrame(
-      const QuicRetireConnectionIdFrame& frame,
-      QuicTime::Delta pto_delay,
+      const QuicRetireConnectionIdFrame& frame, QuicTime::Delta pto_delay,
       std::string* error_detail);
 
   std::vector<QuicConnectionId> GetUnretiredConnectionIds() const;
@@ -159,13 +161,17 @@ class QUIC_EXPORT_PRIVATE QuicSelfIssuedConnectionIdManager {
   // tell if a received packet has a valid connection ID.
   bool IsConnectionIdInUse(const QuicConnectionId& cid) const;
 
+  // TODO(martinduke): This class will be eliminated when
+  // FLAGS_gfe2_reloadable_flag_quic_connection_uses_abstract_connection_id_generator
+  // goes away.
   virtual QuicConnectionId GenerateNewConnectionId(
       const QuicConnectionId& old_connection_id) const;
 
  private:
   friend class test::QuicConnectionIdManagerPeer;
 
-  QuicNewConnectionIdFrame IssueNewConnectionId();
+  // Issue a new connection ID. Can return nullopt.
+  absl::optional<QuicNewConnectionIdFrame> MaybeIssueNewConnectionId();
 
   // This should be set to the min of:
   // (1) # of active connection IDs that peer can maintain.
@@ -188,6 +194,8 @@ class QUIC_EXPORT_PRIVATE QuicSelfIssuedConnectionIdManager {
   uint64_t next_connection_id_sequence_number_;
   // The sequence number of last connection ID consumed.
   uint64_t last_connection_id_consumed_by_self_sequence_number_;
+
+  ConnectionIdGeneratorInterface& connection_id_generator_;
 };
 
 }  // namespace quic

@@ -1,5 +1,6 @@
 #include "envoy/stats/stats_macros.h"
 
+#include "source/common/network/transport_socket_options_impl.h"
 #include "source/common/quic/codec_impl.h"
 #include "source/common/quic/envoy_quic_alarm_factory.h"
 #include "source/common/quic/envoy_quic_client_connection.h"
@@ -20,6 +21,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "quiche/quic/core/crypto/null_encrypter.h"
+#include "quiche/quic/core/deterministic_connection_id_generator.h"
 #include "quiche/quic/test_tools/crypto_test_utils.h"
 #include "quiche/quic/test_tools/quic_session_peer.h"
 #include "quiche/quic/test_tools/quic_test_utils.h"
@@ -39,9 +41,11 @@ public:
                                 quic::QuicPacketWriter& writer,
                                 const quic::ParsedQuicVersionVector& supported_versions,
                                 Event::Dispatcher& dispatcher,
-                                Network::ConnectionSocketPtr&& connection_socket)
+                                Network::ConnectionSocketPtr&& connection_socket,
+                                quic::ConnectionIdGeneratorInterface& generator)
       : EnvoyQuicClientConnection(server_connection_id, helper, alarm_factory, &writer, false,
-                                  supported_versions, dispatcher, std::move(connection_socket)) {
+                                  supported_versions, dispatcher, std::move(connection_socket),
+                                  generator) {
     SetEncrypter(quic::ENCRYPTION_FORWARD_SECURE,
                  std::make_unique<quic::NullEncrypter>(quic::Perspective::IS_CLIENT));
     SetDefaultEncryptionLevel(quic::ENCRYPTION_FORWARD_SECURE);
@@ -67,16 +71,18 @@ public:
                                                         54321)),
         quic_connection_(new TestEnvoyQuicClientConnection(
             quic::test::TestConnectionId(), connection_helper_, alarm_factory_, writer_,
-            quic_version_, *dispatcher_, createConnectionSocket(peer_addr_, self_addr_, nullptr))),
+            quic_version_, *dispatcher_, createConnectionSocket(peer_addr_, self_addr_, nullptr),
+            connection_id_generator_)),
         crypto_config_(std::make_shared<quic::QuicCryptoClientConfig>(
             quic::test::crypto_test_utils::ProofVerifierForTesting())),
         quic_stat_names_(store_.symbolTable()),
+        transport_socket_options_(std::make_shared<Network::TransportSocketOptionsImpl>()),
         envoy_quic_session_(quic_config_, quic_version_,
                             std::unique_ptr<TestEnvoyQuicClientConnection>(quic_connection_),
                             quic::QuicServerId("example.com", 443, false), crypto_config_, nullptr,
                             *dispatcher_,
                             /*send_buffer_limit*/ 1024 * 1024, crypto_stream_factory_,
-                            quic_stat_names_, {}, store_),
+                            quic_stat_names_, {}, store_, transport_socket_options_),
         stats_({ALL_HTTP3_CODEC_STATS(POOL_COUNTER_PREFIX(store_, "http3."),
                                       POOL_GAUGE_PREFIX(store_, "http3."))}),
         http_connection_(envoy_quic_session_, http_connection_callbacks_, stats_, http3_options_,
@@ -133,12 +139,15 @@ protected:
   testing::NiceMock<quic::test::MockPacketWriter> writer_;
   Network::Address::InstanceConstSharedPtr peer_addr_;
   Network::Address::InstanceConstSharedPtr self_addr_;
+  quic::DeterministicConnectionIdGenerator connection_id_generator_{
+      quic::kQuicDefaultConnectionIdLength};
   TestEnvoyQuicClientConnection* quic_connection_;
   quic::QuicConfig quic_config_;
   std::shared_ptr<quic::QuicCryptoClientConfig> crypto_config_;
   TestQuicCryptoClientStreamFactory crypto_stream_factory_;
   Stats::IsolatedStoreImpl store_;
   QuicStatNames quic_stat_names_;
+  Network::TransportSocketOptionsConstSharedPtr transport_socket_options_;
   EnvoyQuicClientSession envoy_quic_session_;
   Network::MockConnectionCallbacks network_connection_callbacks_;
   Http::MockServerConnectionCallbacks http_connection_callbacks_;
@@ -357,6 +366,14 @@ TEST_P(EnvoyQuicClientSessionTest, GetRttAndCwnd) {
   envoy_quic_session_.configureInitialCongestionWindow(8000000, std::chrono::microseconds(1000000));
   EXPECT_GT(envoy_quic_session_.congestionWindowInBytes().value(),
             quic::kInitialCongestionWindow * quic::kDefaultTCPMSS);
+}
+
+TEST_P(EnvoyQuicClientSessionTest, VerifyContext) {
+  auto& verify_context =
+      dynamic_cast<EnvoyQuicProofVerifyContext&>(crypto_stream_factory_.lastVerifyContext().ref());
+  EXPECT_FALSE(verify_context.isServer());
+  EXPECT_EQ(transport_socket_options_.get(), verify_context.transportSocketOptions().get());
+  EXPECT_EQ(dispatcher_.get(), &verify_context.dispatcher());
 }
 
 } // namespace Quic

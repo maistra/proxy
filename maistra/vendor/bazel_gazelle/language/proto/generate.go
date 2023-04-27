@@ -18,15 +18,17 @@ package proto
 import (
 	"fmt"
 	"log"
+	"path"
 	"sort"
 	"strings"
 
 	"github.com/bazelbuild/bazel-gazelle/config"
 	"github.com/bazelbuild/bazel-gazelle/language"
+	"github.com/bazelbuild/bazel-gazelle/pathtools"
 	"github.com/bazelbuild/bazel-gazelle/rule"
 )
 
-func (_ *protoLang) GenerateRules(args language.GenerateArgs) language.GenerateResult {
+func (*protoLang) GenerateRules(args language.GenerateArgs) language.GenerateResult {
 	c := args.Config
 	pc := GetProtoConfig(c)
 	if !pc.Mode.ShouldGenerateRules() {
@@ -119,7 +121,10 @@ func buildPackages(pc *ProtoConfig, dir, rel string, protoFiles, genFiles []stri
 	for _, name := range protoFiles {
 		info := protoFileInfo(dir, name)
 		key := info.PackageName
-		if pc.groupOption != "" {
+
+		if pc.Mode == FileMode {
+			key = strings.TrimSuffix(name, ".proto")
+		} else if pc.groupOption != "" { // implicitly PackageMode
 			for _, opt := range info.Options {
 				if opt.Key == pc.groupOption {
 					key = opt.Value
@@ -127,10 +132,14 @@ func buildPackages(pc *ProtoConfig, dir, rel string, protoFiles, genFiles []stri
 				}
 			}
 		}
+
 		if packageMap[key] == nil {
 			packageMap[key] = newPackage(info.PackageName)
 		}
 		packageMap[key].addFile(info)
+		if key != info.PackageName {
+			packageMap[key].RuleName = key
+		}
 	}
 
 	switch pc.Mode {
@@ -147,7 +156,7 @@ func buildPackages(pc *ProtoConfig, dir, rel string, protoFiles, genFiles []stri
 		}
 		return []*Package{pkg}
 
-	case PackageMode:
+	case PackageMode, FileMode:
 		pkgs := make([]*Package, 0, len(packageMap))
 		for _, pkg := range packageMap {
 			pkgs = append(pkgs, pkg)
@@ -212,7 +221,7 @@ func generateProto(pc *ProtoConfig, rel string, pkg *Package, shouldSetVisibilit
 	if pc.Mode == DefaultMode {
 		name = RuleName(goPackageName(pkg), pc.GoPrefix, rel)
 	} else {
-		name = RuleName(pkg.Options[pc.groupOption], pkg.Name, rel)
+		name = RuleName(pkg.RuleName, pkg.Name, rel)
 	}
 	r := rule.NewRule("proto_library", name)
 	srcs := make([]string, 0, len(pkg.Files))
@@ -226,6 +235,11 @@ func generateProto(pc *ProtoConfig, rel string, pkg *Package, shouldSetVisibilit
 	r.SetPrivateAttr(PackageKey, *pkg)
 	imports := make([]string, 0, len(pkg.Imports))
 	for i := range pkg.Imports {
+		// If the proto import is a self import (an import between the same package), skip it
+		if _, ok := pkg.Files[path.Base(i)]; ok && getPrefix(pc, path.Dir(i)) == getPrefix(pc, rel) {
+			delete(pkg.Imports, i)
+			continue
+		}
 		imports = append(imports, i)
 	}
 	sort.Strings(imports)
@@ -246,6 +260,19 @@ func generateProto(pc *ProtoConfig, rel string, pkg *Package, shouldSetVisibilit
 		r.SetAttr("import_prefix", pc.ImportPrefix)
 	}
 	return r
+}
+
+func getPrefix(pc *ProtoConfig, rel string) string {
+	prefix := rel
+	if strings.HasPrefix(pc.StripImportPrefix, "/") {
+		prefix = pathtools.TrimPrefix(rel, pc.StripImportPrefix[len("/"):])
+	} else if pc.StripImportPrefix != "" {
+		prefix = pathtools.TrimPrefix(rel, path.Join(rel, pc.StripImportPrefix))
+	}
+	if pc.ImportPrefix != "" {
+		return path.Join(pc.ImportPrefix, prefix)
+	}
+	return prefix
 }
 
 // generateEmpty generates a list of proto_library rules that may be deleted.

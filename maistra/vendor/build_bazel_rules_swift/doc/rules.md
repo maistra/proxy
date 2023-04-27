@@ -74,7 +74,7 @@ please use one of the platform-specific application rules in
 ## swift_c_module
 
 <pre>
-swift_c_module(<a href="#swift_c_module-name">name</a>, <a href="#swift_c_module-deps">deps</a>, <a href="#swift_c_module-module_map">module_map</a>, <a href="#swift_c_module-module_name">module_name</a>)
+swift_c_module(<a href="#swift_c_module-name">name</a>, <a href="#swift_c_module-deps">deps</a>, <a href="#swift_c_module-module_map">module_map</a>, <a href="#swift_c_module-module_name">module_name</a>, <a href="#swift_c_module-system_module_map">system_module_map</a>)
 </pre>
 
 Wraps one or more C targets in a new module map that allows it to be imported
@@ -114,9 +114,10 @@ any C++ declarations.
 | Name  | Description | Type | Mandatory | Default |
 | :------------- | :------------- | :------------- | :------------- | :------------- |
 | <a id="swift_c_module-name"></a>name |  A unique name for this target.   | <a href="https://bazel.build/docs/build-ref.html#name">Name</a> | required |  |
-| <a id="swift_c_module-deps"></a>deps |  A list of C targets (or anything propagating <code>CcInfo</code>) that are dependencies of this target and whose headers may be referenced by the module map.   | <a href="https://bazel.build/docs/build-ref.html#labels">List of labels</a> | required |  |
-| <a id="swift_c_module-module_map"></a>module_map |  The module map file that should be loaded to import the C library dependency into Swift.   | <a href="https://bazel.build/docs/build-ref.html#labels">Label</a> | required |  |
+| <a id="swift_c_module-deps"></a>deps |  A list of C targets (or anything propagating <code>CcInfo</code>) that are dependencies of this target and whose headers may be referenced by the module map.   | <a href="https://bazel.build/docs/build-ref.html#labels">List of labels</a> | optional | [] |
+| <a id="swift_c_module-module_map"></a>module_map |  The module map file that should be loaded to import the C library dependency into Swift. This is mutally exclusive with <code>system_module_map</code>.   | <a href="https://bazel.build/docs/build-ref.html#labels">Label</a> | optional | None |
 | <a id="swift_c_module-module_name"></a>module_name |  The name of the top-level module in the module map that this target represents.<br><br>A single <code>module.modulemap</code> file can define multiple top-level modules. When building with implicit modules, the presence of that module map allows any of the modules defined in it to be imported. When building explicit modules, however, there is a one-to-one correspondence between top-level modules and BUILD targets and the module name must be known without reading the module map file, so it must be provided directly. Therefore, one may have multiple <code>swift_c_module</code> targets that reference the same <code>module.modulemap</code> file but with different module names and headers.   | String | required |  |
+| <a id="swift_c_module-system_module_map"></a>system_module_map |  The path to a system framework module map. This is mutually exclusive with <code>module_map</code>.<br><br>Variables <code>__BAZEL_XCODE_SDKROOT__</code> and <code>__BAZEL_XCODE_DEVELOPER_DIR__</code> will be substitued appropriately for, i.e.   <code>/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk</code> and <code>/Applications/Xcode.app/Contents/Developer</code> respectively.   | String | optional | "" |
 
 
 <a id="#swift_feature_allowlist"></a>
@@ -267,7 +268,7 @@ Allows for the use of precompiled Swift modules as dependencies in other
 
 <pre>
 swift_library(<a href="#swift_library-name">name</a>, <a href="#swift_library-alwayslink">alwayslink</a>, <a href="#swift_library-copts">copts</a>, <a href="#swift_library-data">data</a>, <a href="#swift_library-defines">defines</a>, <a href="#swift_library-deps">deps</a>, <a href="#swift_library-generated_header_name">generated_header_name</a>, <a href="#swift_library-generates_header">generates_header</a>,
-              <a href="#swift_library-linkopts">linkopts</a>, <a href="#swift_library-module_name">module_name</a>, <a href="#swift_library-private_deps">private_deps</a>, <a href="#swift_library-srcs">srcs</a>, <a href="#swift_library-swiftc_inputs">swiftc_inputs</a>)
+              <a href="#swift_library-linkopts">linkopts</a>, <a href="#swift_library-linkstatic">linkstatic</a>, <a href="#swift_library-module_name">module_name</a>, <a href="#swift_library-private_deps">private_deps</a>, <a href="#swift_library-srcs">srcs</a>, <a href="#swift_library-swiftc_inputs">swiftc_inputs</a>)
 </pre>
 
 Compiles and links Swift code into a static library and Swift module.
@@ -287,6 +288,7 @@ Compiles and links Swift code into a static library and Swift module.
 | <a id="swift_library-generated_header_name"></a>generated_header_name |  The name of the generated Objective-C interface header. This name must end with a <code>.h</code> extension and cannot contain any path separators.<br><br>If this attribute is not specified, then the default behavior is to name the header <code>${target_name}-Swift.h</code>.<br><br>This attribute is ignored if the toolchain does not support generating headers.   | String | optional | "" |
 | <a id="swift_library-generates_header"></a>generates_header |  If True, an Objective-C header will be generated for this target, in the same build package where the target is defined. By default, the name of the header is <code>${target_name}-Swift.h</code>; this can be changed using the <code>generated_header_name</code> attribute.<br><br>Targets should only set this attribute to True if they export Objective-C APIs. A header generated for a target that does not export Objective-C APIs will be effectively empty (except for a large amount of prologue and epilogue code) and this is generally wasteful because the extra file needs to be propagated in the build graph and, when explicit modules are enabled, extra actions must be executed to compile the Objective-C module for the generated header.   | Boolean | optional | False |
 | <a id="swift_library-linkopts"></a>linkopts |  Additional linker options that should be passed to the linker for the binary that depends on this target. These strings are subject to <code>$(location ...)</code> and ["Make" variable](https://docs.bazel.build/versions/master/be/make-variables.html) expansion.   | List of strings | optional | [] |
+| <a id="swift_library-linkstatic"></a>linkstatic |  If True, the Swift module will be built for static linking.  This will make all interfaces internal to the module that is being linked against and will inform the consuming module that the objects will be locally available (which may potentially avoid a PLT relocation).  Set to <code>False</code> to build a <code>.so</code> or <code>.dll</code>.   | Boolean | optional | True |
 | <a id="swift_library-module_name"></a>module_name |  The name of the Swift module being built.<br><br>If left unspecified, the module name will be computed based on the target's build label, by stripping the leading <code>//</code> and replacing <code>/</code>, <code>:</code>, and other non-identifier characters with underscores.   | String | optional | "" |
 | <a id="swift_library-private_deps"></a>private_deps |  A list of targets that are implementation-only dependencies of the target being built. Libraries/linker flags from these dependencies will be propagated to dependent for linking, but artifacts/flags required for compilation (such as .swiftmodule files, C headers, and search paths) will not be propagated.<br><br>Allowed kinds of dependencies are:<br><br>*   <code>swift_c_module</code>, <code>swift_import</code> and <code>swift_library</code> (or anything     propagating <code>SwiftInfo</code>)<br><br>*   <code>cc_library</code> (or anything propagating <code>CcInfo</code>)<br><br>Additionally, on platforms that support Objective-C interop, <code>objc_library</code> targets (or anything propagating the <code>apple_common.Objc</code> provider) are allowed as dependencies. On platforms that do not support Objective-C interop (such as Linux), those dependencies will be **ignored.**   | <a href="https://bazel.build/docs/build-ref.html#labels">List of labels</a> | optional | [] |
 | <a id="swift_library-srcs"></a>srcs |  A list of <code>.swift</code> source files that will be compiled into the library.   | <a href="https://bazel.build/docs/build-ref.html#labels">List of labels</a> | required |  |
@@ -489,6 +491,13 @@ swift_test(
 
 You can also disable this feature for all the tests in a package by applying it
 to your BUILD file's `package()` declaration instead of the individual targets.
+
+If integrating with Xcode, the relative paths in test binaries can prevent the
+Issue navigator from working for test failures. To work around this, you can
+have the paths made absolute via swizzling by enabling the
+`"apple.swizzle_absolute_xcttestsourcelocation"` feature. You'll also need to
+set the `BUILD_WORKSPACE_DIRECTORY` environment variable in your scheme to the
+root of your workspace (i.e. `$(SRCROOT)`).
 
 
 **ATTRIBUTES**

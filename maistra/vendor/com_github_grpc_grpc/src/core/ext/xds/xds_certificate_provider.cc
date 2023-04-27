@@ -20,10 +20,17 @@
 
 #include "src/core/ext/xds/xds_certificate_provider.h"
 
-#include "absl/functional/bind_front.h"
-#include "absl/strings/str_cat.h"
+#include <utility>
 
-#include "src/core/lib/gpr/useful.h"
+#include "absl/functional/bind_front.h"
+#include "absl/memory/memory.h"
+#include "absl/types/optional.h"
+
+#include <grpc/support/log.h>
+
+#include "src/core/lib/channel/channel_args.h"
+#include "src/core/lib/iomgr/error.h"
+#include "src/core/lib/security/security_connector/ssl_utils.h"
 
 namespace grpc_core {
 
@@ -53,7 +60,7 @@ class RootCertificatesWatcher
 
   void OnError(grpc_error_handle root_cert_error,
                grpc_error_handle identity_cert_error) override {
-    if (root_cert_error != GRPC_ERROR_NONE) {
+    if (!GRPC_ERROR_IS_NONE(root_cert_error)) {
       parent_->SetErrorForCert(cert_name_, root_cert_error /* pass the ref */,
                                absl::nullopt);
     }
@@ -88,7 +95,7 @@ class IdentityCertificatesWatcher
 
   void OnError(grpc_error_handle root_cert_error,
                grpc_error_handle identity_cert_error) override {
-    if (identity_cert_error != GRPC_ERROR_NONE) {
+    if (!GRPC_ERROR_IS_NONE(identity_cert_error)) {
       parent_->SetErrorForCert(cert_name_, absl::nullopt,
                                identity_cert_error /* pass the ref */);
     }
@@ -265,6 +272,11 @@ XdsCertificateProvider::~XdsCertificateProvider() {
   distributor_->SetWatchStatusCallback(nullptr);
 }
 
+UniqueTypeName XdsCertificateProvider::type() const {
+  static UniqueTypeName::Factory kFactory("Xds");
+  return kFactory.Create();
+}
+
 bool XdsCertificateProvider::ProvidesRootCerts(const std::string& cert_name) {
   MutexLock lock(&mu_);
   auto it = certificate_state_map_.find(cert_name);
@@ -379,7 +391,9 @@ void XdsCertificateProviderArgDestroy(void* p) {
   xds_certificate_provider->Unref();
 }
 
-int XdsCertificateProviderArgCmp(void* p, void* q) { return GPR_ICMP(p, q); }
+int XdsCertificateProviderArgCmp(void* p, void* q) {
+  return QsortCompare(p, q);
+}
 
 const grpc_arg_pointer_vtable kChannelArgVtable = {
     XdsCertificateProviderArgCopy, XdsCertificateProviderArgDestroy,

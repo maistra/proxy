@@ -281,6 +281,7 @@ absl_cc_test(
     ${ABSL_TEST_COPTS}
   DEPS
     absl::strings
+    absl::str_format
     absl::core_headers
     GTest::gmock_main
 )
@@ -414,6 +415,7 @@ absl_cc_library(
     absl::core_headers
     absl::numeric_representation
     absl::type_traits
+    absl::utility
     absl::int128
     absl::span
 )
@@ -494,6 +496,7 @@ absl_cc_test(
   DEPS
     absl::strings
     absl::str_format_internal
+    absl::core_headers
     absl::raw_logging_internal
     absl::int128
     GTest::gmock_main
@@ -843,10 +846,12 @@ absl_cc_library(
     cord
   HDRS
     "cord.h"
+    "cord_buffer.h"
   SRCS
     "cord.cc"
     "cord_analysis.cc"
     "cord_analysis.h"
+    "cord_buffer.cc"
   COPTS
     ${ABSL_DEFAULT_COPTS}
   DEPS
@@ -899,6 +904,7 @@ absl_cc_library(
     absl::cord_internal
     absl::strings
   TESTONLY
+  PUBLIC
 )
 
 # Internal-only target, do not depend on directly.

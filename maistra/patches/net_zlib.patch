@@ -1,6 +1,6 @@
 diff -ruN a/CMakeLists.txt b/CMakeLists.txt
---- a/CMakeLists.txt	2022-10-07 10:36:19.430150961 +0200
-+++ b/CMakeLists.txt	2022-10-07 10:36:19.484151434 +0200
+--- a/CMakeLists.txt	2023-04-26 12:28:42.851178235 +0200
++++ b/CMakeLists.txt	2023-04-26 12:28:42.863178376 +0200
 @@ -24,6 +24,9 @@
  check_include_file(stdint.h    HAVE_STDINT_H)
  check_include_file(stddef.h    HAVE_STDDEF_H)

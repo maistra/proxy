@@ -14,9 +14,14 @@
  * limitations under the License.
  */
 
+#if !os(WASI)
 import Foundation
+#else
+import SwiftOverlayShims
+#endif
 
-public final class FlatBuffersUtils {
+/// FlatBuffersUtils hosts some utility functions that might be useful
+public enum FlatBuffersUtils {
 
   /// Gets the size of the prefix
   /// - Parameter bb: Flatbuffer object
@@ -24,8 +29,12 @@ public final class FlatBuffersUtils {
     bb.read(def: Int32.self, position: bb.reader)
   }
 
-  /// Removes the prefix by duplicating the Flatbuffer
+  /// Removes the prefix by duplicating the Flatbuffer this call is expensive since its
+  /// creates a new buffer use `readPrefixedSizeCheckedRoot` instead
+  /// unless a completely new buffer is required
   /// - Parameter bb: Flatbuffer object
+  ///
+  ///
   public static func removeSizePrefix(bb: ByteBuffer) -> ByteBuffer {
     bb.duplicate(removing: MemoryLayout<Int32>.size)
   }

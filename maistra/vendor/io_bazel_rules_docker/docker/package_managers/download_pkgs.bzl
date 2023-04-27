@@ -18,6 +18,11 @@ load(
     "//skylib:path.bzl",
     "runfile",
 )
+load(
+    "//skylib:docker.bzl",
+    "docker_path",
+)
+load("@bazel_skylib//lib:types.bzl", "types")
 
 def _generate_add_additional_repo_commands(ctx, additional_repos):
     return """printf "{repos}" >> /etc/apt/sources.list.d/{name}_repos.list""".format(
@@ -81,6 +86,8 @@ def _impl(ctx, image_tar = None, packages = None, additional_repos = None, outpu
         output_script: File, overrides ctx.outputs.build_script
         output_metadata: File, overrides ctx.outputs.metadata_csv
     """
+    if types.is_depset(packages):
+        packages = packages.to_list()
     image_tar = image_tar or ctx.file.image_tar
     packages = depset(packages or ctx.attr.packages)
     additional_repos = depset(additional_repos or ctx.attr.additional_repos)
@@ -101,7 +108,7 @@ def _impl(ctx, image_tar = None, packages = None, additional_repos = None, outpu
         output = output_script,
         substitutions = {
             "%{docker_flags}": " ".join(toolchain_info.docker_flags),
-            "%{docker_tool_path}": toolchain_info.tool_path,
+            "%{docker_tool_path}": docker_path(toolchain_info),
             "%{download_commands}": _generate_download_commands(ctx, packages, additional_repos),
             "%{image_id_extractor_path}": ctx.executable._extract_image_id.path,
             "%{image_tar}": image_tar.path,
@@ -127,7 +134,7 @@ def _impl(ctx, image_tar = None, packages = None, additional_repos = None, outpu
         output = output_executable,
         substitutions = {
             "%{docker_flags}": " ".join(toolchain_info.docker_flags),
-            "%{docker_tool_path}": toolchain_info.tool_path,
+            "%{docker_tool_path}": docker_path(toolchain_info),
             "%{download_commands}": _generate_download_commands(ctx, packages, additional_repos),
             "%{image_id_extractor_path}": "${RUNFILES}/%s" % runfile(ctx, ctx.executable._extract_image_id),
             "%{image_tar}": image_tar.short_path,

@@ -70,6 +70,7 @@ go_test(
         "//internal/filedesc",
         "//internal/flags",
         "//internal/impl",
+        "//internal/pragma",
         "//internal/protobuild",
         "//internal/testprotos/legacy",
         "//internal/testprotos/legacy/proto2_20160225_2fc053c5",

@@ -26,6 +26,10 @@ load(
     "split_srcs",
 )
 load(
+    "//go/private:go_toolchain.bzl",
+    "GO_TOOLCHAIN",
+)
+load(
     "//go/private/rules:binary.bzl",
     "gc_linkopts",
 )
@@ -39,7 +43,7 @@ load(
 )
 load(
     "//go/private/rules:transition.bzl",
-    "go_transition_rule",
+    "go_transition",
 )
 load(
     "//go/private:mode.bzl",
@@ -49,9 +53,6 @@ load(
     "@bazel_skylib//lib:structs.bzl",
     "structs",
 )
-
-def _testmain_library_to_source(go, attr, source, merge):
-    source["deps"] = source["deps"] + [attr.library]
 
 def _go_test_impl(ctx):
     """go_test_impl implements go testing.
@@ -101,6 +102,7 @@ def _go_test_impl(ctx):
             arguments.add("-cover_mode", "atomic")
         else:
             arguments.add("-cover_mode", "set")
+        arguments.add("-cover_format", go.cover_format)
     arguments.add(
         # the l is the alias for the package under test, the l_test must be the
         # same with the test suffix
@@ -212,6 +214,7 @@ _go_test_kwargs = {
             doc = """List of Go libraries this test imports directly.
             These may be go_library rules or compatible rules with the [GoLibrary] provider.
             """,
+            cfg = go_transition,
         ),
         "embed": attr.label_list(
             providers = [GoLibrary],
@@ -223,6 +226,7 @@ _go_test_kwargs = {
             and the embedding library may not also have `cgo = True`. See [Embedding]
             for more information.
             """,
+            cfg = go_transition,
         ),
         "embedsrcs": attr.label_list(
             allow_files = True,
@@ -392,21 +396,35 @@ _go_test_kwargs = {
             See [Cross compilation] for more information.
             """,
         ),
-        "_go_context_data": attr.label(default = "//:go_context_data"),
+        "_go_context_data": attr.label(default = "//:go_context_data", cfg = go_transition),
         "_testmain_additional_deps": attr.label_list(
             providers = [GoLibrary],
             default = ["//go/tools/bzltestutil"],
+            cfg = go_transition,
         ),
-        # Workaround for bazelbuild/bazel#6293. See comment in lcov_merger.sh.
+        # Required for Bazel to collect coverage of instrumented C/C++ binaries
+        # executed by go_test.
+        # This is just a shell script and thus cheap enough to depend on
+        # unconditionally.
+        "_collect_cc_coverage": attr.label(
+            default = "@bazel_tools//tools/test:collect_cc_coverage",
+            cfg = "exec",
+        ),
+        # Required for Bazel to merge coverage reports for Go and other
+        # languages into a single report per test.
+        # Using configuration_field ensures that the tool is only built when
+        # run with bazel coverage, not with bazel test.
         "_lcov_merger": attr.label(
-            executable = True,
-            default = "//go/tools/builders:lcov_merger",
-            cfg = "target",
+            default = configuration_field(fragment = "coverage", name = "output_generator"),
+            cfg = "exec",
+        ),
+        "_allowlist_function_transition": attr.label(
+            default = "@bazel_tools//tools/allowlists/function_transition_allowlist",
         ),
     },
     "executable": True,
     "test": True,
-    "toolchains": ["@io_bazel_rules_go//go:toolchain"],
+    "toolchains": [GO_TOOLCHAIN],
     "doc": """This builds a set of tests that can be run with `bazel test`.<br><br>
     To run all tests in the workspace, and print output on failure (the
     equivalent of `go test ./...`), run<br>
@@ -440,7 +458,6 @@ _go_test_kwargs = {
 }
 
 go_test = rule(**_go_test_kwargs)
-go_transition_test = go_transition_rule(**_go_test_kwargs)
 
 def _recompile_external_deps(go, external_source, internal_archive, library_labels):
     """Recompiles some archives in order to split internal and external tests.
@@ -579,8 +596,11 @@ def _recompile_external_deps(go, external_source, internal_archive, library_labe
     # can't import anything that imports itself.
     internal_source = internal_archive.source
     internal_deps = [dep for dep in internal_source.deps if not need_recompile[get_archive(dep).data.label]]
+    x_defs = dict(internal_source.x_defs)
+    x_defs.update(internal_archive.x_defs)
     attrs = structs.to_dict(internal_source)
     attrs["deps"] = internal_deps
+    attrs["x_defs"] = x_defs
     internal_source = GoSource(**attrs)
     internal_archive = go.archive(go, internal_source, _recompile_suffix = ".recompileinternal")
 

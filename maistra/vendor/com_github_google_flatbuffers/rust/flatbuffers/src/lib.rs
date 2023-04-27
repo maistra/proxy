@@ -28,6 +28,11 @@
 //! At this time, to generate Rust code, you will need the latest `master` version of `flatc`, available from here: <https://github.com/google/flatbuffers>
 //! (On OSX, you can install FlatBuffers from `HEAD` with the Homebrew package manager.)
 
+#![cfg_attr(feature = "no_std", no_std)]
+
+#[cfg(feature = "no_std")]
+extern crate alloc;
+
 mod array;
 mod builder;
 mod endian_scalar;
@@ -43,14 +48,12 @@ mod vtable_writer;
 
 pub use crate::array::{array_init, emplace_scalar_array, Array};
 pub use crate::builder::FlatBufferBuilder;
-pub use crate::endian_scalar::{
-    byte_swap_f32, byte_swap_f64, emplace_scalar, read_scalar, read_scalar_at, EndianScalar,
-};
+pub use crate::endian_scalar::{emplace_scalar, read_scalar, read_scalar_at, EndianScalar};
 pub use crate::follow::{Follow, FollowStart};
 pub use crate::primitives::*;
 pub use crate::push::Push;
 pub use crate::table::{buffer_has_identifier, Table};
-pub use crate::vector::{follow_cast_ref, SafeSliceAccess, Vector, VectorIter};
+pub use crate::vector::{follow_cast_ref, Vector, VectorIter};
 pub use crate::verifier::{
     ErrorTraceDetail, InvalidFlatbuffer, SimpleToVerifyInSlice, Verifiable, Verifier,
     VerifierOptions,
@@ -59,6 +62,4 @@ pub use crate::vtable::field_index_to_field_offset;
 pub use bitflags;
 pub use get_root::*;
 
-// TODO(rw): Unify `create_vector` and `create_vector_direct` by using
-//           `Into<Vector<...>>`.
 // TODO(rw): Split fill ops in builder into fill_small, fill_big like in C++.

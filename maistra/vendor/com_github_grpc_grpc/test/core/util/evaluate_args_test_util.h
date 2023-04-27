@@ -17,33 +17,39 @@
 
 #include <grpc/support/port_platform.h>
 
-#include <list>
+#include <stdlib.h>
 
-#include <gtest/gtest.h>
+#include <memory>
 
+#include "absl/strings/string_view.h"
+
+#include <grpc/event_engine/memory_allocator.h>
+#include <grpc/grpc_security.h>
+
+#include "src/core/lib/gprpp/ref_counted_ptr.h"
+#include "src/core/lib/resource_quota/arena.h"
+#include "src/core/lib/resource_quota/memory_quota.h"
+#include "src/core/lib/resource_quota/resource_quota.h"
 #include "src/core/lib/security/authorization/evaluate_args.h"
+#include "src/core/lib/security/context/security_context.h"
+#include "src/core/lib/slice/slice.h"
+#include "src/core/lib/transport/metadata_batch.h"
 #include "test/core/util/mock_authorization_endpoint.h"
 
 namespace grpc_core {
 
 class EvaluateArgsTestUtil {
  public:
-  EvaluateArgsTestUtil() { grpc_metadata_batch_init(&metadata_); }
+  EvaluateArgsTestUtil() = default;
 
-  ~EvaluateArgsTestUtil() {
-    grpc_metadata_batch_destroy(&metadata_);
-    delete channel_args_;
-  }
+  ~EvaluateArgsTestUtil() { delete channel_args_; }
 
   void AddPairToMetadata(const char* key, const char* value) {
-    metadata_storage_.emplace_back();
-    auto& storage = metadata_storage_.back();
-    ASSERT_EQ(grpc_metadata_batch_add_tail(
-                  &metadata_, &storage,
-                  grpc_mdelem_from_slices(
-                      grpc_slice_intern(grpc_slice_from_static_string(key)),
-                      grpc_slice_intern(grpc_slice_from_static_string(value)))),
-              GRPC_ERROR_NONE);
+    metadata_.Append(key, Slice::FromStaticString(value),
+                     [](absl::string_view, const Slice&) {
+                       // We should never ever see an error here.
+                       abort();
+                     });
   }
 
   void SetLocalEndpoint(absl::string_view local_uri) {
@@ -65,8 +71,11 @@ class EvaluateArgsTestUtil {
   }
 
  private:
-  std::list<grpc_linked_mdelem> metadata_storage_;
-  grpc_metadata_batch metadata_;
+  MemoryAllocator allocator_ =
+      ResourceQuota::Default()->memory_quota()->CreateMemoryAllocator(
+          "EvaluateArgsTestUtil");
+  ScopedArenaPtr arena_ = MakeScopedArena(1024, &allocator_);
+  grpc_metadata_batch metadata_{arena_.get()};
   MockAuthorizationEndpoint endpoint_{/*local_uri=*/"", /*peer_uri=*/""};
   grpc_auth_context auth_context_{nullptr};
   EvaluateArgs::PerChannelArgs* channel_args_ = nullptr;

@@ -70,7 +70,8 @@ public:
                                     const Http::ResponseHeaderMap*) override {}
 
   MOCK_METHOD(void, asyncGetAccessToken,
-              (const std::string&, const std::string&, const std::string&, const std::string&));
+              (const std::string&, const std::string&, const std::string&, const std::string&,
+               Envoy::Extensions::HttpFilters::Oauth2::AuthType));
 };
 
 class OAuth2Test : public testing::Test {
@@ -211,17 +212,17 @@ TEST_F(OAuth2Test, SdsDynamicGenericSecret) {
   EXPECT_CALL(secret_context, api()).WillRepeatedly(ReturnRef(*api));
   EXPECT_CALL(secret_context, mainThreadDispatcher()).WillRepeatedly(ReturnRef(dispatcher));
   EXPECT_CALL(secret_context, stats()).WillRepeatedly(ReturnRef(stats));
-  EXPECT_CALL(secret_context, initManager()).WillRepeatedly(ReturnRef(init_manager));
+  EXPECT_CALL(secret_context, initManager()).Times(0);
   EXPECT_CALL(init_manager, add(_))
       .WillRepeatedly(Invoke([&init_handle](const Init::Target& target) {
         init_handle = target.createHandle("test");
       }));
 
-  auto client_secret_provider =
-      secret_manager.findOrCreateGenericSecretProvider(config_source, "client", secret_context);
+  auto client_secret_provider = secret_manager.findOrCreateGenericSecretProvider(
+      config_source, "client", secret_context, init_manager);
   auto client_callback = secret_context.cluster_manager_.subscription_factory_.callbacks_;
-  auto token_secret_provider =
-      secret_manager.findOrCreateGenericSecretProvider(config_source, "token", secret_context);
+  auto token_secret_provider = secret_manager.findOrCreateGenericSecretProvider(
+      config_source, "token", secret_context, init_manager);
   auto token_callback = secret_context.cluster_manager_.subscription_factory_.callbacks_;
 
   SDSSecretReader secret_reader(client_secret_provider, token_secret_provider, *api);
@@ -553,7 +554,8 @@ TEST_F(OAuth2Test, OAuthCallbackStartsAuthentication) {
   EXPECT_CALL(*validator_, isValid()).WillOnce(Return(false));
 
   EXPECT_CALL(*oauth_client_, asyncGetAccessToken("123", TEST_CLIENT_ID, "asdf_client_secret_fdsa",
-                                                  "https://traffic.example.com" + TEST_CALLBACK));
+                                                  "https://traffic.example.com" + TEST_CALLBACK,
+                                                  AuthType::UrlEncodedBody));
 
   EXPECT_EQ(Http::FilterHeadersStatus::StopAllIterationAndBuffer,
             filter_->decodeHeaders(request_headers, false));
@@ -808,7 +810,8 @@ TEST_F(OAuth2Test, OAuthTestFullFlowPostWithParameters) {
   EXPECT_CALL(*validator_, isValid()).WillOnce(Return(false));
 
   EXPECT_CALL(*oauth_client_, asyncGetAccessToken("123", TEST_CLIENT_ID, "asdf_client_secret_fdsa",
-                                                  "https://traffic.example.com" + TEST_CALLBACK));
+                                                  "https://traffic.example.com" + TEST_CALLBACK,
+                                                  AuthType::UrlEncodedBody));
 
   // Invoke the callback logic. As a side effect, state_ will be populated.
   EXPECT_EQ(Http::FilterHeadersStatus::StopAllIterationAndBuffer,

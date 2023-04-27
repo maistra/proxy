@@ -17,7 +17,14 @@
 
 #include <grpc/support/port_platform.h>
 
+#include <stddef.h>
+
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "src/core/lib/security/authorization/authorization_engine.h"
+#include "src/core/lib/security/authorization/evaluate_args.h"
 #include "src/core/lib/security/authorization/matchers.h"
 #include "src/core/lib/security/authorization/rbac_policy.h"
 
@@ -36,7 +43,13 @@ class GrpcAuthorizationEngine : public AuthorizationEngine {
   // Builds GrpcAuthorizationEngine with allow/deny RBAC policy.
   explicit GrpcAuthorizationEngine(Rbac policy);
 
-  Rbac::Action action() { return action_; }
+  GrpcAuthorizationEngine(GrpcAuthorizationEngine&& other) noexcept;
+  GrpcAuthorizationEngine& operator=(GrpcAuthorizationEngine&& other) noexcept;
+
+  Rbac::Action action() const { return action_; }
+
+  // Required only for testing purpose.
+  size_t num_policies() const { return policies_.size(); }
 
   // Evaluates incoming request against RBAC policy and makes a decision to
   // whether allow/deny this request.
@@ -47,7 +60,6 @@ class GrpcAuthorizationEngine : public AuthorizationEngine {
     std::string name;
     std::unique_ptr<AuthorizationMatcher> matcher;
   };
-
   Rbac::Action action_;
   std::vector<Policy> policies_;
 };

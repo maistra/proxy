@@ -313,7 +313,7 @@ def _impl(ctx):
                 ],
                 flag_groups = [
                     flag_group(
-                        flags = ["-gsplit-dwarf", "-g"],
+                        flags = ["-gsplit-dwarf"],
                         expand_if_available = "per_object_debug_info_file",
                     ),
                 ],

@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -15,76 +16,58 @@
 #include "quiche/quic/core/quic_types.h"
 #include "quiche/common/platform/api/quiche_logging.h"
 #include "quiche/common/quiche_buffer_allocator.h"
+#include "quiche/common/quiche_ip_address.h"
 
 namespace quic {
 
 enum class CapsuleType : uint64_t {
-  // Casing in this enum matches the IETF specification.
-  LEGACY_DATAGRAM = 0xff37a0,  // draft-ietf-masque-h3-datagram-04
-  REGISTER_DATAGRAM_CONTEXT = 0xff37a1,
-  REGISTER_DATAGRAM_NO_CONTEXT = 0xff37a2,
-  CLOSE_DATAGRAM_CONTEXT = 0xff37a3,
-  DATAGRAM_WITH_CONTEXT = 0xff37a4,
-  DATAGRAM_WITHOUT_CONTEXT = 0xff37a5,
+  // Casing in this enum matches the IETF specifications.
+  LEGACY_DATAGRAM = 0xff37a0,  // draft-ietf-masque-h3-datagram-04.
+  DATAGRAM_WITHOUT_CONTEXT =
+      0xff37a5,  // draft-ietf-masque-h3-datagram-05 to -08.
   CLOSE_WEBTRANSPORT_SESSION = 0x2843,
+  // draft-ietf-masque-connect-ip-03.
+  ADDRESS_ASSIGN = 0x1ECA6A00,
+  ADDRESS_REQUEST = 0x1ECA6A01,
+  ROUTE_ADVERTISEMENT = 0x1ECA6A02,
 };
 
 QUIC_EXPORT_PRIVATE std::string CapsuleTypeToString(CapsuleType capsule_type);
 QUIC_EXPORT_PRIVATE std::ostream& operator<<(std::ostream& os,
                                              const CapsuleType& capsule_type);
 
-enum class DatagramFormatType : uint64_t {
-  // Casing in this enum matches the IETF specification.
-  UDP_PAYLOAD = 0xff6f00,
-  WEBTRANSPORT = 0xff7c00,
-};
-
-QUIC_EXPORT_PRIVATE std::string DatagramFormatTypeToString(
-    DatagramFormatType datagram_format_type);
-QUIC_EXPORT_PRIVATE std::ostream& operator<<(
-    std::ostream& os, const DatagramFormatType& datagram_format_type);
-
-enum class ContextCloseCode : uint64_t {
-  // Casing in this enum matches the IETF specification.
-  CLOSE_NO_ERROR = 0xff78a0,  // NO_ERROR already exists in winerror.h.
-  UNKNOWN_FORMAT = 0xff78a1,
-  DENIED = 0xff78a2,
-  RESOURCE_LIMIT = 0xff78a3,
-};
-
-QUIC_EXPORT_PRIVATE std::string ContextCloseCodeToString(
-    ContextCloseCode context_close_code);
-QUIC_EXPORT_PRIVATE std::ostream& operator<<(
-    std::ostream& os, const ContextCloseCode& context_close_code);
-
 struct QUIC_EXPORT_PRIVATE LegacyDatagramCapsule {
-  absl::optional<QuicDatagramContextId> context_id;
-  absl::string_view http_datagram_payload;
-};
-struct QUIC_EXPORT_PRIVATE DatagramWithContextCapsule {
-  QuicDatagramContextId context_id;
   absl::string_view http_datagram_payload;
 };
 struct QUIC_EXPORT_PRIVATE DatagramWithoutContextCapsule {
   absl::string_view http_datagram_payload;
 };
-struct QUIC_EXPORT_PRIVATE RegisterDatagramContextCapsule {
-  QuicDatagramContextId context_id;
-  DatagramFormatType format_type;
-  absl::string_view format_additional_data;
-};
-struct QUIC_EXPORT_PRIVATE RegisterDatagramNoContextCapsule {
-  DatagramFormatType format_type;
-  absl::string_view format_additional_data;
-};
-struct QUIC_EXPORT_PRIVATE CloseDatagramContextCapsule {
-  QuicDatagramContextId context_id;
-  ContextCloseCode close_code;
-  absl::string_view close_details;
-};
 struct QUIC_EXPORT_PRIVATE CloseWebTransportSessionCapsule {
   WebTransportSessionError error_code;
   absl::string_view error_message;
+};
+struct QUIC_EXPORT_PRIVATE PrefixWithId {
+  uint64_t request_id;
+  quiche::QuicheIpPrefix ip_prefix;
+  bool operator==(const PrefixWithId& other) const;
+};
+struct QUIC_EXPORT_PRIVATE IpAddressRange {
+  quiche::QuicheIpAddress start_ip_address;
+  quiche::QuicheIpAddress end_ip_address;
+  uint8_t ip_protocol;
+  bool operator==(const IpAddressRange& other) const;
+};
+struct QUIC_EXPORT_PRIVATE AddressAssignCapsule {
+  std::vector<PrefixWithId> assigned_addresses;
+  bool operator==(const AddressAssignCapsule& other) const;
+};
+struct QUIC_EXPORT_PRIVATE AddressRequestCapsule {
+  std::vector<PrefixWithId> requested_addresses;
+  bool operator==(const AddressRequestCapsule& other) const;
+};
+struct QUIC_EXPORT_PRIVATE RouteAdvertisementCapsule {
+  std::vector<IpAddressRange> ip_address_ranges;
+  bool operator==(const RouteAdvertisementCapsule& other) const;
 };
 
 // Capsule from draft-ietf-masque-h3-datagram.
@@ -95,31 +78,21 @@ struct QUIC_EXPORT_PRIVATE CloseWebTransportSessionCapsule {
 class QUIC_EXPORT_PRIVATE Capsule {
  public:
   static Capsule LegacyDatagram(
-      absl::optional<QuicDatagramContextId> context_id = absl::nullopt,
-      absl::string_view http_datagram_payload = absl::string_view());
-  static Capsule DatagramWithContext(
-      QuicDatagramContextId context_id,
       absl::string_view http_datagram_payload = absl::string_view());
   static Capsule DatagramWithoutContext(
       absl::string_view http_datagram_payload = absl::string_view());
-  static Capsule RegisterDatagramContext(
-      QuicDatagramContextId context_id, DatagramFormatType format_type,
-      absl::string_view format_additional_data = absl::string_view());
-  static Capsule RegisterDatagramNoContext(
-      DatagramFormatType format_type,
-      absl::string_view format_additional_data = absl::string_view());
-  static Capsule CloseDatagramContext(
-      QuicDatagramContextId context_id,
-      ContextCloseCode close_code = ContextCloseCode::CLOSE_NO_ERROR,
-      absl::string_view close_details = absl::string_view());
   static Capsule CloseWebTransportSession(
       WebTransportSessionError error_code = 0,
       absl::string_view error_message = "");
+  static Capsule AddressRequest();
+  static Capsule AddressAssign();
+  static Capsule RouteAdvertisement();
   static Capsule Unknown(
       uint64_t capsule_type,
       absl::string_view unknown_capsule_data = absl::string_view());
 
   explicit Capsule(CapsuleType capsule_type);
+  ~Capsule();
   Capsule(const Capsule& other);
   Capsule& operator=(const Capsule& other);
   bool operator==(const Capsule& other) const;
@@ -138,14 +111,6 @@ class QUIC_EXPORT_PRIVATE Capsule {
     QUICHE_DCHECK_EQ(capsule_type_, CapsuleType::LEGACY_DATAGRAM);
     return legacy_datagram_capsule_;
   }
-  DatagramWithContextCapsule& datagram_with_context_capsule() {
-    QUICHE_DCHECK_EQ(capsule_type_, CapsuleType::DATAGRAM_WITH_CONTEXT);
-    return datagram_with_context_capsule_;
-  }
-  const DatagramWithContextCapsule& datagram_with_context_capsule() const {
-    QUICHE_DCHECK_EQ(capsule_type_, CapsuleType::DATAGRAM_WITH_CONTEXT);
-    return datagram_with_context_capsule_;
-  }
   DatagramWithoutContextCapsule& datagram_without_context_capsule() {
     QUICHE_DCHECK_EQ(capsule_type_, CapsuleType::DATAGRAM_WITHOUT_CONTEXT);
     return datagram_without_context_capsule_;
@@ -154,32 +119,6 @@ class QUIC_EXPORT_PRIVATE Capsule {
       const {
     QUICHE_DCHECK_EQ(capsule_type_, CapsuleType::DATAGRAM_WITHOUT_CONTEXT);
     return datagram_without_context_capsule_;
-  }
-  RegisterDatagramContextCapsule& register_datagram_context_capsule() {
-    QUICHE_DCHECK_EQ(capsule_type_, CapsuleType::REGISTER_DATAGRAM_CONTEXT);
-    return register_datagram_context_capsule_;
-  }
-  const RegisterDatagramContextCapsule& register_datagram_context_capsule()
-      const {
-    QUICHE_DCHECK_EQ(capsule_type_, CapsuleType::REGISTER_DATAGRAM_CONTEXT);
-    return register_datagram_context_capsule_;
-  }
-  RegisterDatagramNoContextCapsule& register_datagram_no_context_capsule() {
-    QUICHE_DCHECK_EQ(capsule_type_, CapsuleType::REGISTER_DATAGRAM_NO_CONTEXT);
-    return register_datagram_no_context_capsule_;
-  }
-  const RegisterDatagramNoContextCapsule& register_datagram_no_context_capsule()
-      const {
-    QUICHE_DCHECK_EQ(capsule_type_, CapsuleType::REGISTER_DATAGRAM_NO_CONTEXT);
-    return register_datagram_no_context_capsule_;
-  }
-  CloseDatagramContextCapsule& close_datagram_context_capsule() {
-    QUICHE_DCHECK_EQ(capsule_type_, CapsuleType::CLOSE_DATAGRAM_CONTEXT);
-    return close_datagram_context_capsule_;
-  }
-  const CloseDatagramContextCapsule& close_datagram_context_capsule() const {
-    QUICHE_DCHECK_EQ(capsule_type_, CapsuleType::CLOSE_DATAGRAM_CONTEXT);
-    return close_datagram_context_capsule_;
   }
   CloseWebTransportSessionCapsule& close_web_transport_session_capsule() {
     QUICHE_DCHECK_EQ(capsule_type_, CapsuleType::CLOSE_WEBTRANSPORT_SESSION);
@@ -190,39 +129,61 @@ class QUIC_EXPORT_PRIVATE Capsule {
     QUICHE_DCHECK_EQ(capsule_type_, CapsuleType::CLOSE_WEBTRANSPORT_SESSION);
     return close_web_transport_session_capsule_;
   }
+  AddressRequestCapsule& address_request_capsule() {
+    QUICHE_DCHECK_EQ(capsule_type_, CapsuleType::ADDRESS_REQUEST);
+    return *address_request_capsule_;
+  }
+  const AddressRequestCapsule& address_request_capsule() const {
+    QUICHE_DCHECK_EQ(capsule_type_, CapsuleType::ADDRESS_REQUEST);
+    return *address_request_capsule_;
+  }
+  AddressAssignCapsule& address_assign_capsule() {
+    QUICHE_DCHECK_EQ(capsule_type_, CapsuleType::ADDRESS_ASSIGN);
+    return *address_assign_capsule_;
+  }
+  const AddressAssignCapsule& address_assign_capsule() const {
+    QUICHE_DCHECK_EQ(capsule_type_, CapsuleType::ADDRESS_ASSIGN);
+    return *address_assign_capsule_;
+  }
+  RouteAdvertisementCapsule& route_advertisement_capsule() {
+    QUICHE_DCHECK_EQ(capsule_type_, CapsuleType::ROUTE_ADVERTISEMENT);
+    return *route_advertisement_capsule_;
+  }
+  const RouteAdvertisementCapsule& route_advertisement_capsule() const {
+    QUICHE_DCHECK_EQ(capsule_type_, CapsuleType::ROUTE_ADVERTISEMENT);
+    return *route_advertisement_capsule_;
+  }
   absl::string_view& unknown_capsule_data() {
     QUICHE_DCHECK(capsule_type_ != CapsuleType::LEGACY_DATAGRAM &&
-                  capsule_type_ != CapsuleType::DATAGRAM_WITH_CONTEXT &&
                   capsule_type_ != CapsuleType::DATAGRAM_WITHOUT_CONTEXT &&
-                  capsule_type_ != CapsuleType::REGISTER_DATAGRAM_CONTEXT &&
-                  capsule_type_ != CapsuleType::REGISTER_DATAGRAM_NO_CONTEXT &&
-                  capsule_type_ != CapsuleType::CLOSE_DATAGRAM_CONTEXT &&
-                  capsule_type_ != CapsuleType::CLOSE_WEBTRANSPORT_SESSION)
+                  capsule_type_ != CapsuleType::CLOSE_WEBTRANSPORT_SESSION &&
+                  capsule_type_ != CapsuleType::ADDRESS_REQUEST &&
+                  capsule_type_ != CapsuleType::ADDRESS_ASSIGN &&
+                  capsule_type_ != CapsuleType::ROUTE_ADVERTISEMENT)
         << capsule_type_;
     return unknown_capsule_data_;
   }
   const absl::string_view& unknown_capsule_data() const {
     QUICHE_DCHECK(capsule_type_ != CapsuleType::LEGACY_DATAGRAM &&
-                  capsule_type_ != CapsuleType::DATAGRAM_WITH_CONTEXT &&
                   capsule_type_ != CapsuleType::DATAGRAM_WITHOUT_CONTEXT &&
-                  capsule_type_ != CapsuleType::REGISTER_DATAGRAM_CONTEXT &&
-                  capsule_type_ != CapsuleType::REGISTER_DATAGRAM_NO_CONTEXT &&
-                  capsule_type_ != CapsuleType::CLOSE_DATAGRAM_CONTEXT &&
-                  capsule_type_ != CapsuleType::CLOSE_WEBTRANSPORT_SESSION)
+                  capsule_type_ != CapsuleType::CLOSE_WEBTRANSPORT_SESSION &&
+                  capsule_type_ != CapsuleType::ADDRESS_REQUEST &&
+                  capsule_type_ != CapsuleType::ADDRESS_ASSIGN &&
+                  capsule_type_ != CapsuleType::ROUTE_ADVERTISEMENT)
         << capsule_type_;
     return unknown_capsule_data_;
   }
 
  private:
+  void Free();
   CapsuleType capsule_type_;
   union {
     LegacyDatagramCapsule legacy_datagram_capsule_;
-    DatagramWithContextCapsule datagram_with_context_capsule_;
     DatagramWithoutContextCapsule datagram_without_context_capsule_;
-    RegisterDatagramContextCapsule register_datagram_context_capsule_;
-    RegisterDatagramNoContextCapsule register_datagram_no_context_capsule_;
-    CloseDatagramContextCapsule close_datagram_context_capsule_;
     CloseWebTransportSessionCapsule close_web_transport_session_capsule_;
+    AddressRequestCapsule* address_request_capsule_;
+    AddressAssignCapsule* address_assign_capsule_;
+    RouteAdvertisementCapsule* route_advertisement_capsule_;
     absl::string_view unknown_capsule_data_;
   };
 };
@@ -252,10 +213,6 @@ class QUIC_EXPORT_PRIVATE CapsuleParser {
   // |visitor| must be non-null, and must outlive CapsuleParser.
   explicit CapsuleParser(Visitor* visitor);
 
-  void set_datagram_context_id_present(bool datagram_context_id_present) {
-    datagram_context_id_present_ = datagram_context_id_present;
-  }
-
   // Ingests a capsule fragment (any fragment of bytes from the capsule data
   // stream) and parses and complete capsules it encounters. Returns false if a
   // parsing error occurred.
@@ -272,8 +229,6 @@ class QUIC_EXPORT_PRIVATE CapsuleParser {
   size_t AttemptParseCapsule();
   void ReportParseFailure(const std::string& error_message);
 
-  // Whether HTTP Datagram Context IDs are present.
-  bool datagram_context_id_present_ = false;
   // Whether a parsing error has occurred.
   bool parsing_error_occurred_ = false;
   // Visitor which will receive callbacks, unowned.

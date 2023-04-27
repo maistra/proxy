@@ -16,10 +16,13 @@
  *
  */
 
+#include <grpc/impl/codegen/port_platform.h>
+
 #include <exception>
 #include <memory>
 
-#include <grpc/impl/codegen/port_platform.h>
+#include <gtest/gtest.h>
+
 #include <grpcpp/channel.h>
 #include <grpcpp/client_context.h>
 #include <grpcpp/server.h>
@@ -29,15 +32,13 @@
 #include "src/proto/grpc/testing/echo.grpc.pb.h"
 #include "test/core/util/test_config.h"
 
-#include <gtest/gtest.h>
-
 namespace grpc {
 namespace testing {
 
 const char* kErrorMessage = "This service caused an exception";
 
 #if GRPC_ALLOW_EXCEPTIONS
-class ExceptingServiceImpl : public ::grpc::testing::EchoTestService::Service {
+class ExceptingServiceImpl : public grpc::testing::EchoTestService::Service {
  public:
   Status Echo(ServerContext* /*server_context*/, const EchoRequest* /*request*/,
               EchoResponse* /*response*/) override {
@@ -117,7 +118,7 @@ TEST_F(ExceptionTest, RequestStream) {
 }  // namespace grpc
 
 int main(int argc, char** argv) {
-  grpc::testing::TestEnvironment env(argc, argv);
+  grpc::testing::TestEnvironment env(&argc, argv);
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

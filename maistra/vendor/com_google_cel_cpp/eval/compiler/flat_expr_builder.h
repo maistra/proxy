@@ -1,3 +1,19 @@
+/*
+ * Copyright 2021 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #ifndef THIRD_PARTY_CEL_CPP_EVAL_COMPILER_FLAT_EXPR_BUILDER_H_
 #define THIRD_PARTY_CEL_CPP_EVAL_COMPILER_FLAT_EXPR_BUILDER_H_
 
@@ -12,17 +28,7 @@ namespace google::api::expr::runtime {
 // Builds instances of CelExpressionFlatImpl.
 class FlatExprBuilder : public CelExpressionBuilder {
  public:
-  FlatExprBuilder()
-      : enable_unknowns_(false),
-        enable_unknown_function_results_(false),
-        enable_missing_attribute_errors_(false),
-        shortcircuiting_(true),
-        constant_folding_(false),
-        constant_arena_(nullptr),
-        enable_comprehension_(true),
-        comprehension_max_iterations_(0),
-        fail_on_warnings_(true),
-        enable_qualified_type_identifiers_(false) {}
+  FlatExprBuilder() : CelExpressionBuilder() {}
 
   // set_enable_unknowns controls support for unknowns in expressions created.
   void set_enable_unknowns(bool enabled) { enable_unknowns_ = enabled; }
@@ -69,6 +75,69 @@ class FlatExprBuilder : public CelExpressionBuilder {
     enable_qualified_type_identifiers_ = enabled;
   }
 
+  // set_enable_comprehension_list_append controls whether the FlatExprBuilder
+  // will attempt to optimize list concatenation within map() and filter()
+  // macro comprehensions as an append of results on the `accu_var` rather than
+  // as a reassignment of the `accu_var` to the concatenation of
+  // `accu_var` + [elem].
+  //
+  // Before enabling, ensure that `#list_append` is not a function declared
+  // within your runtime, and that your CEL expressions retain their integer
+  // identifiers.
+  //
+  // This option is not safe for use with hand-rolled ASTs.
+  void set_enable_comprehension_list_append(bool enabled) {
+    enable_comprehension_list_append_ = enabled;
+  }
+
+  // set_enable_comprehension_vulnerability_check inspects comprehension
+  // sub-expressions for the presence of potential memory exhaustion.
+  //
+  // Note: This flag is not necessary if you are only using Core CEL macros.
+  //
+  // Consider enabling this feature when using custom comprehensions, and
+  // absolutely enable the feature when using hand-written ASTs for
+  // comprehension expressions.
+  void set_enable_comprehension_vulnerability_check(bool enabled) {
+    enable_comprehension_vulnerability_check_ = enabled;
+  }
+
+  // set_enable_null_coercion allows the evaluator to coerce null values into
+  // message types. This is a legacy behavior from implementing null type as a
+  // special case of messages.
+  //
+  // Note: this will be defaulted to disabled once any known dependencies on the
+  // old behavior are removed or explicitly opted-in.
+  void set_enable_null_coercion(bool enabled) {
+    enable_null_coercion_ = enabled;
+  }
+
+  // If set_enable_wrapper_type_null_unboxing is enabled, the evaluator will
+  // return null for well known wrapper type fields if they are unset.
+  // The default is disabled and follows protobuf behavior (returning the
+  // proto default for the wrapped type).
+  void set_enable_wrapper_type_null_unboxing(bool enabled) {
+    enable_wrapper_type_null_unboxing_ = enabled;
+  }
+
+  // If enable_heterogeneous_equality is enabled, the evaluator will use
+  // hetergeneous equality semantics. This includes the == operator and numeric
+  // index lookups in containers.
+  void set_enable_heterogeneous_equality(bool enabled) {
+    enable_heterogeneous_equality_ = enabled;
+  }
+
+  // If enable_qualified_identifier_rewrites is true, the evaluator will attempt
+  // to disambiguate namespace qualified identifiers.
+  //
+  // For functions, this will attempt to determine whether a function call is a
+  // receiver call or a namespace qualified function.
+  void set_enable_qualified_identifier_rewrites(
+      bool enable_qualified_identifier_rewrites) {
+    enable_qualified_identifier_rewrites_ =
+        enable_qualified_identifier_rewrites;
+  }
+
   absl::StatusOr<std::unique_ptr<CelExpression>> CreateExpression(
       const google::api::expr::v1alpha1::Expr* expr,
       const google::api::expr::v1alpha1::SourceInfo* source_info) const override;
@@ -92,17 +161,23 @@ class FlatExprBuilder : public CelExpressionBuilder {
       std::vector<absl::Status>* warnings) const;
 
  private:
-  bool enable_unknowns_;
-  bool enable_unknown_function_results_;
-  bool enable_missing_attribute_errors_;
-  bool shortcircuiting_;
+  bool enable_unknowns_ = false;
+  bool enable_unknown_function_results_ = false;
+  bool enable_missing_attribute_errors_ = false;
+  bool shortcircuiting_ = true;
 
-  bool constant_folding_;
-  google::protobuf::Arena* constant_arena_;
-  bool enable_comprehension_;
-  int comprehension_max_iterations_;
-  bool fail_on_warnings_;
-  bool enable_qualified_type_identifiers_;
+  bool constant_folding_ = false;
+  google::protobuf::Arena* constant_arena_ = nullptr;
+  bool enable_comprehension_ = true;
+  int comprehension_max_iterations_ = 0;
+  bool fail_on_warnings_ = true;
+  bool enable_qualified_type_identifiers_ = false;
+  bool enable_comprehension_list_append_ = false;
+  bool enable_comprehension_vulnerability_check_ = false;
+  bool enable_null_coercion_ = true;
+  bool enable_wrapper_type_null_unboxing_ = false;
+  bool enable_heterogeneous_equality_ = false;
+  bool enable_qualified_identifier_rewrites_ = false;
 };
 
 }  // namespace google::api::expr::runtime

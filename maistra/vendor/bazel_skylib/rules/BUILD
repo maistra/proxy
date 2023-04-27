@@ -22,6 +22,12 @@ bzl_library(
 )
 
 bzl_library(
+    name = "copy_directory",
+    srcs = ["copy_directory.bzl"],
+    deps = ["//rules/private:copy_directory_private"],
+)
+
+bzl_library(
     name = "write_file",
     srcs = ["write_file.bzl"],
     deps = ["//rules/private:write_file_private"],
@@ -30,12 +36,17 @@ bzl_library(
 bzl_library(
     name = "diff_test",
     srcs = ["diff_test.bzl"],
+    deps = ["//lib:shell"],
+)
+
+bzl_library(
+    name = "expand_template",
+    srcs = ["expand_template.bzl"],
 )
 
 bzl_library(
     name = "native_binary",
     srcs = ["native_binary.bzl"],
-    deps = ["//rules/private:copy_file_private"],
 )
 
 bzl_library(

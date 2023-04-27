@@ -16,15 +16,9 @@
  *
  */
 
-#include "test/cpp/util/grpc_tool.h"
-
-#include <grpc/grpc.h>
 #include <grpc/support/port_platform.h>
-#include <grpcpp/channel.h>
-#include <grpcpp/create_channel.h>
-#include <grpcpp/grpcpp.h>
-#include <grpcpp/security/credentials.h>
-#include <grpcpp/support/string_ref.h>
+
+#include "test/cpp/util/grpc_tool.h"
 
 #include <cstdio>
 #include <fstream>
@@ -36,6 +30,14 @@
 
 #include "absl/flags/flag.h"
 #include "absl/memory/memory.h"
+
+#include <grpc/grpc.h>
+#include <grpcpp/channel.h>
+#include <grpcpp/create_channel.h>
+#include <grpcpp/grpcpp.h>
+#include <grpcpp/security/credentials.h>
+#include <grpcpp/support/string_ref.h>
+
 #include "test/cpp/util/cli_call.h"
 #include "test/cpp/util/proto_file_parser.h"
 #include "test/cpp/util/proto_reflection_descriptor_database.h"
@@ -238,8 +240,7 @@ std::shared_ptr<grpc::Channel> CreateCliChannel(
   // See |GRPC_ARG_MAX_METADATA_SIZE| in |grpc_types.h|.
   // Set to large enough size (10M) that should work for most use cases.
   args.SetInt(GRPC_ARG_MAX_METADATA_SIZE, 10 * 1024 * 1024);
-  return ::grpc::CreateCustomChannel(server_address, cred.GetCredentials(),
-                                     args);
+  return grpc::CreateCustomChannel(server_address, cred.GetCredentials(), args);
 }
 
 struct Command {

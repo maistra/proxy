@@ -20,6 +20,8 @@
 #include <memory>
 #include <thread>
 
+#include "absl/memory/memory.h"
+
 #include <grpc/grpc.h>
 #include <grpc/support/alloc.h>
 #include <grpc/support/log.h>
@@ -32,14 +34,13 @@
 #include <grpcpp/server_builder.h>
 #include <grpcpp/server_context.h>
 
-#include "absl/memory/memory.h"
-
 #include "src/core/ext/filters/client_channel/backup_poller.h"
 #include "src/core/lib/gpr/tls.h"
 #include "src/core/lib/iomgr/port.h"
 #include "src/proto/grpc/health/v1/health.grpc.pb.h"
 #include "src/proto/grpc/testing/duplicate/echo_duplicate.grpc.pb.h"
 #include "src/proto/grpc/testing/echo.grpc.pb.h"
+#include "test/core/util/build.h"
 #include "test/core/util/port.h"
 #include "test/core/util/test_config.h"
 #include "test/cpp/util/string_ref_helper.h"
@@ -211,7 +212,7 @@ bool plugin_has_sync_methods(std::unique_ptr<ServerBuilderPlugin>& plugin) {
 // the server. If there are sync services, UnimplementedRpc test will triger
 // the sync unknown rpc routine on the server side, rather than the async one
 // that needs to be tested here.
-class ServerBuilderSyncPluginDisabler : public ::grpc::ServerBuilderOption {
+class ServerBuilderSyncPluginDisabler : public grpc::ServerBuilderOption {
  public:
   void UpdateArguments(ChannelArguments* /*arg*/) override {}
 
@@ -238,8 +239,7 @@ class TestScenario {
   const std::string message_content;
 };
 
-static std::ostream& operator<<(std::ostream& out,
-                                const TestScenario& scenario) {
+std::ostream& operator<<(std::ostream& out, const TestScenario& scenario) {
   return out << "TestScenario{inproc=" << (scenario.inproc ? "true" : "false")
              << ", credentials='" << scenario.credentials_type
              << ", health_check_service="
@@ -268,14 +268,21 @@ class AsyncEnd2endTest : public ::testing::TestWithParam<TestScenario> {
   }
 
   void TearDown() override {
-    server_->Shutdown();
-    void* ignored_tag;
-    bool ignored_ok;
-    cq_->Shutdown();
-    while (cq_->Next(&ignored_tag, &ignored_ok)) {
-    }
     stub_.reset();
+    ServerShutdown();
     grpc_recycle_unused_port(port_);
+  }
+
+  void ServerShutdown() {
+    std::thread t([this]() {
+      void* ignored_tag;
+      bool ignored_ok;
+      while (cq_->Next(&ignored_tag, &ignored_ok)) {
+      }
+    });
+    server_->Shutdown();
+    cq_->Shutdown();
+    t.join();
   }
 
   void BuildAndStartServer() {
@@ -304,8 +311,8 @@ class AsyncEnd2endTest : public ::testing::TestWithParam<TestScenario> {
     auto channel_creds = GetCredentialsProvider()->GetChannelCredentials(
         GetParam().credentials_type, &args);
     std::shared_ptr<Channel> channel =
-        !(GetParam().inproc) ? ::grpc::CreateCustomChannel(
-                                   server_address_.str(), channel_creds, args)
+        !(GetParam().inproc) ? grpc::CreateCustomChannel(server_address_.str(),
+                                                         channel_creds, args)
                              : server_->InProcessChannel(args);
     stub_ = grpc::testing::EchoTestService::NewStub(channel);
   }
@@ -424,12 +431,7 @@ TEST_P(AsyncEnd2endTest, ReconnectChannel) {
 #endif  // GRPC_POSIX_SOCKET_EV
   ResetStub();
   SendRpc(1);
-  server_->Shutdown();
-  void* ignored_tag;
-  bool ignored_ok;
-  cq_->Shutdown();
-  while (cq_->Next(&ignored_tag, &ignored_ok)) {
-  }
+  ServerShutdown();
   BuildAndStartServer();
   // It needs more than GRPC_CLIENT_CHANNEL_BACKUP_POLL_INTERVAL_MS time to
   // reconnect the channel.
@@ -452,7 +454,7 @@ TEST_P(AsyncEnd2endTest, WaitAndShutdownTest) {
   ResetStub();
   SendRpc(1);
   EXPECT_EQ(0, notify);
-  server_->Shutdown();
+  ServerShutdown();
   wait_thread.join();
   EXPECT_EQ(1, notify);
 }
@@ -460,7 +462,7 @@ TEST_P(AsyncEnd2endTest, WaitAndShutdownTest) {
 TEST_P(AsyncEnd2endTest, ShutdownThenWait) {
   ResetStub();
   SendRpc(1);
-  std::thread t([this]() { server_->Shutdown(); });
+  std::thread t([this]() { ServerShutdown(); });
   server_->Wait();
   t.join();
 }
@@ -1312,8 +1314,8 @@ TEST_P(AsyncEnd2endTest, UnimplementedRpc) {
   const auto& channel_creds = GetCredentialsProvider()->GetChannelCredentials(
       GetParam().credentials_type, &args);
   std::shared_ptr<Channel> channel =
-      !(GetParam().inproc) ? ::grpc::CreateCustomChannel(server_address_.str(),
-                                                         channel_creds, args)
+      !(GetParam().inproc) ? grpc::CreateCustomChannel(server_address_.str(),
+                                                       channel_creds, args)
                            : server_->InProcessChannel(args);
   std::unique_ptr<grpc::testing::UnimplementedEchoService::Stub> stub;
   stub = grpc::testing::UnimplementedEchoService::NewStub(channel);
@@ -1492,7 +1494,7 @@ class AsyncEnd2endServerTryCancelTest : public AsyncEnd2endTest {
     cli_stream->Finish(&recv_status, tag(10));
     Verifier().Expect(10, true).Verify(&cli_cq);
     EXPECT_FALSE(recv_status.ok());
-    EXPECT_EQ(::grpc::StatusCode::CANCELLED, recv_status.error_code());
+    EXPECT_EQ(grpc::StatusCode::CANCELLED, recv_status.error_code());
 
     cli_cq.Shutdown();
     void* phony_tag;
@@ -1641,7 +1643,7 @@ class AsyncEnd2endServerTryCancelTest : public AsyncEnd2endTest {
     cli_stream->Finish(&recv_status, tag(10));
     Verifier().Expect(10, true).Verify(&cli_cq);
     EXPECT_FALSE(recv_status.ok());
-    EXPECT_EQ(::grpc::StatusCode::CANCELLED, recv_status.error_code());
+    EXPECT_EQ(grpc::StatusCode::CANCELLED, recv_status.error_code());
 
     cli_cq.Shutdown();
     void* phony_tag;
@@ -1947,7 +1949,7 @@ int main(int argc, char** argv) {
   // Change the backup poll interval from 5s to 100ms to speed up the
   // ReconnectChannel test
   GPR_GLOBAL_CONFIG_SET(grpc_client_channel_backup_poll_interval_ms, 100);
-  grpc::testing::TestEnvironment env(argc, argv);
+  grpc::testing::TestEnvironment env(&argc, argv);
   ::testing::InitGoogleTest(&argc, argv);
   int ret = RUN_ALL_TESTS();
   return ret;

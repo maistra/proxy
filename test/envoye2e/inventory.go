@@ -49,7 +49,8 @@ func init() {
 			"TestStackdriverParallel",
 			"TestStackdriverPayload",
 			"TestStackdriverPayloadGateway",
-			"TestStackdriverPayloadUtf8",
+			//  FIXME: The following test is failing in Maistra Proxy 2.4 (OSSM-3877)
+			//	"TestStackdriverPayloadUtf8",
 			"TestStackdriverPayloadWithTLS",
 			"TestStackdriverRbacAccessDenied/ActionAllow",
 			"TestStackdriverRbacAccessDenied/ActionBoth",

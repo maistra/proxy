@@ -13,8 +13,12 @@
 # limitations under the License.
 
 load(
-    "@io_bazel_rules_go//go/private:context.bzl",  #TODO: This ought to be def
+    "//go/private:context.bzl",  #TODO: This ought to be def
     "go_context",
+)
+load(
+    "//go/private:go_toolchain.bzl",
+    "GO_TOOLCHAIN",
 )
 
 _DOC = """`go_embed_data` generates a .go file that contains data from a file or a
@@ -34,6 +38,8 @@ go_embed_data_dependencies()
 """
 
 def _go_embed_data_impl(ctx):
+    print("Embedding is now better handled by using rules_go's built in https://github.com/bazelbuild/rules_go/blob/master/docs/go/core/embedding.md functionality. The `bindata` rule is deprecated and will be removed in rules_go version 0.35.")
+
     go = go_context(ctx)
     if ctx.attr.src and ctx.attr.srcs:
         fail("%s: src and srcs attributes cannot both be specified" % ctx.label)
@@ -125,7 +131,7 @@ go_embed_data = rule(
             doc = "If `True`, the embedded data will be stored as `string` instead of `[]byte`.",
         ),
         "_embed": attr.label(
-            default = "@io_bazel_rules_go//go/tools/builders:embed",
+            default = "//go/tools/builders:embed",
             executable = True,
             cfg = "host",
         ),
@@ -133,6 +139,6 @@ go_embed_data = rule(
             default = "//:go_context_data",
         ),
     },
-    toolchains = ["@io_bazel_rules_go//go:toolchain"],
+    toolchains = [GO_TOOLCHAIN],
 )
 # See /docs/go/extras/extras.md#go_embed_data for full documentation.

@@ -144,6 +144,11 @@ void TracingSpanImpl::setComponentId(int32_t component_id) {
   component_id_ = component_id;
 }
 
+void TracingSpanImpl::setOperationName(std::string_view name) {
+  assert(!finished_);
+  operation_name_ = name;
+}
+
 TracingContextImpl::TracingContextImpl(const std::string& service_name,
                                        const std::string& instance_name,
                                        RandomGenerator& random)
@@ -192,16 +197,8 @@ TracingSpanPtr TracingContextImpl::createEntrySpan() {
 }
 
 std::optional<std::string> TracingContextImpl::createSW8HeaderValue(
-    TracingSpanPtr parent_span, const std::string_view target_address) {
-  TracingSpanPtr target_span = parent_span;
-  if (target_span == nullptr) {
-    if (spans_.empty()) {
-      throw TracerException(
-          "Can't create propagation header because current segment has no "
-          "valid span.");
-    }
-    target_span = spans_.back();
-  }
+    const std::string_view target_address) {
+  auto target_span = spans_.back();
   if (target_span->spanType() != skywalking::v3::SpanType::Exit) {
     return std::nullopt;
   }
@@ -224,7 +221,8 @@ std::string TracingContextImpl::encodeSpan(
   header_value += Base64::encode(service_) + "-";
   header_value += Base64::encode(service_instance_) + "-";
   header_value += Base64::encode(endpoint) + "-";
-  header_value += Base64::encode(target_address.data());
+  header_value +=
+      Base64::encode(target_address.data(), target_address.length());
 
   return header_value;
 }

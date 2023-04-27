@@ -17,13 +17,22 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"path"
 
+	"github.com/google/go-containerregistry/cmd/crane/cmd"
 	"github.com/google/go-containerregistry/pkg/gcrane"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/google"
 	"github.com/spf13/cobra"
 )
+
+func userAgent() string {
+	if cmd.Version != "" {
+		return path.Join("gcrane", cmd.Version)
+	}
+
+	return "gcrane"
+}
 
 // NewCmdList creates a new cobra.Command for the ls subcommand.
 func NewCmdList() *cobra.Command {
@@ -33,8 +42,8 @@ func NewCmdList() *cobra.Command {
 		Use:   "ls REPO",
 		Short: "List the contents of a repo",
 		Args:  cobra.ExactArgs(1),
-		Run: func(_ *cobra.Command, args []string) {
-			ls(args[0], recursive, json)
+		RunE: func(_ *cobra.Command, args []string) error {
+			return ls(args[0], recursive, json)
 		},
 	}
 
@@ -44,22 +53,19 @@ func NewCmdList() *cobra.Command {
 	return cmd
 }
 
-func ls(root string, recursive, j bool) {
+func ls(root string, recursive, j bool) error {
 	repo, err := name.NewRepository(root)
 	if err != nil {
-		log.Fatalln(err)
+		return err
 	}
 
 	if recursive {
-		if err := google.Walk(repo, printImages(j), google.WithAuthFromKeychain(gcrane.Keychain)); err != nil {
-			log.Fatalln(err)
-		}
-		return
+		return google.Walk(repo, printImages(j), google.WithAuthFromKeychain(gcrane.Keychain), google.WithUserAgent(userAgent()))
 	}
 
-	tags, err := google.List(repo, google.WithAuthFromKeychain(gcrane.Keychain))
+	tags, err := google.List(repo, google.WithAuthFromKeychain(gcrane.Keychain), google.WithUserAgent(userAgent()))
 	if err != nil {
-		log.Fatalln(err)
+		return err
 	}
 
 	if !j {
@@ -68,7 +74,7 @@ func ls(root string, recursive, j bool) {
 			for _, tag := range tags.Tags {
 				fmt.Printf("%s:%s\n", repo, tag)
 			}
-			return
+			return nil
 		}
 
 		// Since we're not recursing, print the subdirectories too.
@@ -77,9 +83,7 @@ func ls(root string, recursive, j bool) {
 		}
 	}
 
-	if err := printImages(j)(repo, tags, err); err != nil {
-		log.Fatalln(err)
-	}
+	return printImages(j)(repo, tags, err)
 }
 
 func printImages(j bool) google.WalkFunc {

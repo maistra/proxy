@@ -81,10 +81,10 @@ returnStat : 'return' expr {System.out.println("matched "+$expr.text);} ;
 Using a rule label looks like this:
 
 ```
-returnStat : 'return' e=expr {System.out.println("matched "+e.text);} ;
+returnStat : 'return' e=expr {System.out.println("matched "+$e.text);} ;
 ```
 
-You can also use `$ followed by the name of the attribute to access the value associated with the currently executing rule. For example, `$start` is the starting token of the current rule.
+You can also use `$` followed by the name of the attribute to access the value associated with the currently executing rule. For example, `$start` is the starting token of the current rule.
 
 ```
 returnStat : 'return' expr {System.out.println("first token "+$start.getText());} ;

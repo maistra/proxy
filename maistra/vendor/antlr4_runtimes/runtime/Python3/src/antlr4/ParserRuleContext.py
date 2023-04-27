@@ -34,7 +34,7 @@ from antlr4.tree.Tree import ParseTreeListener, ParseTree, TerminalNodeImpl, Err
 ParserRuleContext = None
 
 class ParserRuleContext(RuleContext):
-
+    __slots__ = ('children', 'start', 'stop', 'exception')
     def __init__(self, parent:ParserRuleContext = None, invokingStateNumber:int = None ):
         super().__init__(parent, invokingStateNumber)
         #* If we are debugging or building a parse tree for a visitor,
@@ -113,7 +113,7 @@ class ParserRuleContext(RuleContext):
 
     def getChild(self, i:int, ttype:type = None):
         if ttype is None:
-            return self.children[i] if len(self.children)>=i else None
+            return self.children[i] if len(self.children)>i else None
         else:
             for child in self.getChildren():
                 if not isinstance(child, ttype):

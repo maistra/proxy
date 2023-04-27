@@ -67,6 +67,16 @@ SDKs are specific to a host platform (e.g., ``linux_amd64``) and a version of
 Go. They may target all platforms that Go supports. The Go SDK is naturally
 cross compiling.
 
+By default, all ``go_binary``, ``go_test``, etc. rules will use the first declared
+Go SDK. If you would like to build a target using a specific Go SDK version, first
+ensure that you have declared a Go SDK of that version using one of the above rules
+(`go_download_sdk`_, `go_host_sdk`_, `go_local_sdk`_, `go_wrap_sdk`_). Then you
+can specify the sdk version to build with when running a ``bazel build`` by passing
+the flag ``--@io_bazel_rules_go//go/toolchain:sdk_version="version"`` where
+``"version"`` is the SDK version you would like to build with, eg. ``"1.18.3"``.
+The SDK version can omit the patch, or include a prerelease part, eg. ``"1"``,
+``"1.18"``, ``"1.18.0"``, and ``"1.19.0beta1"`` are all valid values for ``sdk_version``.
+
 The toolchain
 ~~~~~~~~~~~~~
 
@@ -296,7 +306,20 @@ This downloads a Go SDK for use in toolchains.
         name = "go_sdk",
         goos = "linux",
         goarch = "amd64",
-        version = "1.12.5",
+        version = "1.18.1",
+        sdks = {
+            # NOTE: In most cases the whole sdks attribute is not needed.
+            # There are 2 "common" reasons you might want it:
+            #
+            # 1. You need to use an modified GO SDK, or an unsupported version
+            #    (for example, a beta or release candidate)
+            #
+            # 2. You want to avoid the dependency on the index file for the
+            #    SHA-256 checksums. In this case, You can get the expected
+            #    filenames and checksums from https://go.dev/dl/
+            "linux_amd64": ("go1.18.1.linux-amd64.tar.gz", "b3b815f47ababac13810fc6021eb73d65478e0b2db4b09d348eefad9581a2334"),
+            "darwin_amd64": ("go1.18.1.darwin-amd64.tar.gz", "3703e9a0db1000f18c0c7b524f3d378aac71219b4715a6a4c5683eb639f41a4d"),
+        },
     )
 
     go_rules_dependencies()
@@ -585,6 +608,9 @@ It returns a GoArchive_.
 asm
 +++
 
+**Deprecated:** Planned to be removed in rules_go version 0.36.0. Please use `archive` instead and
+comment on https://github.com/bazelbuild/rules_go/issues/3168 if should not be possible.
+
 The asm function adds an action that runs ``go tool asm`` on a source file to
 produce an object, and returns the File of that object.
 
@@ -655,6 +681,9 @@ a ``runfiles`` object.
 compile
 +++++++
 
+**Deprecated:** Planned to be removed in rules_go version 0.36.0. Please use `archive` instead and
+comment on https://github.com/bazelbuild/rules_go/issues/3168 if should not be possible.
+
 The compile function adds an action that compiles a list of source files into
 a package archive (.a file).
 
@@ -715,6 +744,9 @@ It does not return anything.
 
 cover
 +++++
+
+**Removed in rules_go 0.32.0:** Please comment on https://github.com/bazelbuild/rules_go/issues/3168
+if you still use this feature and cannot rely on `archive` instead.
 
 The cover function adds an action that runs ``go tool cover`` on a set of source
 files to produce copies with cover instrumentation.
@@ -781,6 +813,9 @@ It does not return anything.
 
 pack
 ++++
+
+**Deprecated:** Planned to be removed in rules_go version 0.36.0. Please use `archive` instead and
+comment on https://github.com/bazelbuild/rules_go/issues/3168 if should not be possible.
 
 The pack function adds an action that produces an archive from a base archive
 and a collection of additional object files.
@@ -915,7 +950,7 @@ resolver when it is invoked.
 |                                                                                                  |
 | .. code:: bzl                                                                                    |
 |                                                                                                  |
-|     def _testmain_library_to_source(go, attr, source, merge)                                     |
+|     def _stdlib_library_to_source(go, attr, source, merge)                                       |
 |                                                                                                  |
 | attr is the attributes of the rule being processed                                               |
 | source is the dictionary of GoSource fields being generated                                      |

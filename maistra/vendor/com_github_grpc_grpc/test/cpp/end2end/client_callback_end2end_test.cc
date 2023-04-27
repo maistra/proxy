@@ -16,6 +16,17 @@
  *
  */
 
+#include <algorithm>
+#include <condition_variable>
+#include <functional>
+#include <mutex>
+#include <sstream>
+#include <thread>
+
+#include <gtest/gtest.h>
+
+#include "absl/memory/memory.h"
+
 #include <grpcpp/channel.h>
 #include <grpcpp/client_context.h>
 #include <grpcpp/create_channel.h>
@@ -25,16 +36,7 @@
 #include <grpcpp/server_builder.h>
 #include <grpcpp/server_context.h>
 #include <grpcpp/support/client_callback.h>
-#include <gtest/gtest.h>
 
-#include <algorithm>
-#include <condition_variable>
-#include <functional>
-#include <mutex>
-#include <sstream>
-#include <thread>
-
-#include "absl/memory/memory.h"
 #include "src/core/lib/gpr/env.h"
 #include "src/core/lib/iomgr/iomgr.h"
 #include "src/proto/grpc/testing/echo.grpc.pb.h"
@@ -67,8 +69,7 @@ class TestScenario {
   const std::string credentials_type;
 };
 
-static std::ostream& operator<<(std::ostream& out,
-                                const TestScenario& scenario) {
+std::ostream& operator<<(std::ostream& out, const TestScenario& scenario) {
   return out << "TestScenario{callback_server="
              << (scenario.callback_server ? "true" : "false") << ",protocol="
              << (scenario.protocol == Protocol::INPROC ? "INPROC" : "TCP")
@@ -132,8 +133,8 @@ class ClientCallbackEnd2endTest
     switch (GetParam().protocol) {
       case Protocol::TCP:
         if (!GetParam().use_interceptors) {
-          channel_ = ::grpc::CreateCustomChannel(server_address_.str(),
-                                                 channel_creds, args);
+          channel_ = grpc::CreateCustomChannel(server_address_.str(),
+                                               channel_creds, args);
         } else {
           channel_ = CreateCustomChannelWithInterceptors(
               server_address_.str(), channel_creds, args,
@@ -1371,8 +1372,8 @@ TEST_P(ClientCallbackEnd2endTest, UnimplementedRpc) {
       GetParam().credentials_type, &args);
   std::shared_ptr<Channel> channel =
       (GetParam().protocol == Protocol::TCP)
-          ? ::grpc::CreateCustomChannel(server_address_.str(), channel_creds,
-                                        args)
+          ? grpc::CreateCustomChannel(server_address_.str(), channel_creds,
+                                      args)
           : server_->InProcessChannel(args);
   std::unique_ptr<grpc::testing::UnimplementedEchoService::Stub> stub;
   stub = grpc::testing::UnimplementedEchoService::NewStub(channel);
@@ -1406,11 +1407,10 @@ TEST_P(ClientCallbackEnd2endTest, TestTrailersOnlyOnError) {
   }
 
   ResetStub();
-  class Reactor : public grpc::experimental::ClientBidiReactor<EchoRequest,
-                                                               EchoResponse> {
+  class Reactor : public grpc::ClientBidiReactor<EchoRequest, EchoResponse> {
    public:
     explicit Reactor(grpc::testing::EchoTestService::Stub* stub) {
-      stub->experimental_async()->UnimplementedBidi(&context_, this);
+      stub->async()->UnimplementedBidi(&context_, this);
       StartCall();
     }
     void Await() {
@@ -1569,7 +1569,7 @@ INSTANTIATE_TEST_SUITE_P(ClientCallbackEnd2endTest, ClientCallbackEnd2endTest,
 
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  grpc::testing::TestEnvironment env(argc, argv);
+  grpc::testing::TestEnvironment env(&argc, argv);
   grpc_init();
   int ret = RUN_ALL_TESTS();
   grpc_shutdown();

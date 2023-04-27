@@ -18,50 +18,28 @@
 
 #include <grpc/support/port_platform.h>
 
-#include "src/core/lib/channel/channel_stack.h"
-
-#include <inttypes.h>
-#include <stdarg.h>
-#include <stdio.h>
-#include <string.h>
-
+#include <algorithm>
+#include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 
-#include <grpc/support/alloc.h>
-#include <grpc/support/string_util.h>
-#include "src/core/lib/gpr/string.h"
-#include "src/core/lib/slice/slice_string_helpers.h"
+#include <grpc/support/log.h>
+
+#include "src/core/lib/channel/channel_fwd.h"
+#include "src/core/lib/channel/channel_stack.h"
+#include "src/core/lib/gprpp/orphanable.h"
+#include "src/core/lib/iomgr/error.h"
+#include "src/core/lib/slice/slice_buffer.h"
 #include "src/core/lib/transport/connectivity_state.h"
+#include "src/core/lib/transport/metadata_batch.h"
+#include "src/core/lib/transport/transport.h"
 
 /* These routines are here to facilitate debugging - they produce string
    representations of various transport data structures */
-
-static void put_metadata(grpc_mdelem md, std::vector<std::string>* out) {
-  out->push_back("key=");
-  char* dump = grpc_dump_slice(GRPC_MDKEY(md), GPR_DUMP_HEX | GPR_DUMP_ASCII);
-  out->push_back(dump);
-  gpr_free(dump);
-  out->push_back(" value=");
-  dump = grpc_dump_slice(GRPC_MDVALUE(md), GPR_DUMP_HEX | GPR_DUMP_ASCII);
-  out->push_back(dump);
-  gpr_free(dump);
-}
-
-static void put_metadata_list(grpc_metadata_batch md,
-                              std::vector<std::string>* out) {
-  grpc_linked_mdelem* m;
-  for (m = md.list.head; m != nullptr; m = m->next) {
-    if (m != md.list.head) out->push_back(", ");
-    put_metadata(m->md, out);
-  }
-  if (md.deadline != GRPC_MILLIS_INF_FUTURE) {
-    out->push_back(absl::StrFormat(" deadline=%" PRId64, md.deadline));
-  }
-}
 
 std::string grpc_transport_stream_op_batch_string(
     grpc_transport_stream_op_batch* op) {
@@ -69,17 +47,16 @@ std::string grpc_transport_stream_op_batch_string(
 
   if (op->send_initial_metadata) {
     out.push_back(" SEND_INITIAL_METADATA{");
-    put_metadata_list(*op->payload->send_initial_metadata.send_initial_metadata,
-                      &out);
+    out.push_back(op->payload->send_initial_metadata.send_initial_metadata
+                      ->DebugString());
     out.push_back("}");
   }
 
   if (op->send_message) {
     if (op->payload->send_message.send_message != nullptr) {
-      out.push_back(
-          absl::StrFormat(" SEND_MESSAGE:flags=0x%08x:len=%d",
-                          op->payload->send_message.send_message->flags(),
-                          op->payload->send_message.send_message->length()));
+      out.push_back(absl::StrFormat(
+          " SEND_MESSAGE:flags=0x%08x:len=%d", op->payload->send_message.flags,
+          op->payload->send_message.send_message->Length()));
     } else {
       // This can happen when we check a batch after the transport has
       // processed and cleared the send_message op.
@@ -89,8 +66,8 @@ std::string grpc_transport_stream_op_batch_string(
 
   if (op->send_trailing_metadata) {
     out.push_back(" SEND_TRAILING_METADATA{");
-    put_metadata_list(
-        *op->payload->send_trailing_metadata.send_trailing_metadata, &out);
+    out.push_back(op->payload->send_trailing_metadata.send_trailing_metadata
+                      ->DebugString());
     out.push_back("}");
   }
 
@@ -130,14 +107,14 @@ std::string grpc_transport_op_string(grpc_transport_op* op) {
                                   op->stop_connectivity_watch));
   }
 
-  if (op->disconnect_with_error != GRPC_ERROR_NONE) {
+  if (!GRPC_ERROR_IS_NONE(op->disconnect_with_error)) {
     out.push_back(absl::StrCat(
         " DISCONNECT:", grpc_error_std_string(op->disconnect_with_error)));
   }
 
-  if (op->goaway_error != GRPC_ERROR_NONE) {
-    out.push_back(absl::StrCat(" SEND_GOAWAY:%s",
-                               grpc_error_std_string(op->goaway_error)));
+  if (!GRPC_ERROR_IS_NONE(op->goaway_error)) {
+    out.push_back(
+        absl::StrCat(" SEND_GOAWAY:", grpc_error_std_string(op->goaway_error)));
   }
 
   if (op->set_accept_stream) {

@@ -57,6 +57,14 @@ SWIFT_FEATURE_DEBUG_PREFIX_MAP = "swift.debug_prefix_map"
 # of remote builds.
 SWIFT_FEATURE_COVERAGE_PREFIX_MAP = "swift.coverage_prefix_map"
 
+# If enabled, builds will use the `-file-prefix-map` feature to remap the
+# current working directory to `.`, which avoids embedding non-hermetic
+# absolute path information in build artifacts. Specifically what this flag
+# does is subject to change in Swift, but it should imply all other
+# `-*-prefix-map` flags. How those flags compose is potentially complicated, so
+# using only this flag, or the same values for each flag, is recommended.
+SWIFT_FEATURE_FILE_PREFIX_MAP = "swift.file_prefix_map"
+
 # If enabled, C and Objective-C libraries that are direct or transitive
 # dependencies of a Swift library will emit explicit precompiled modules that
 # are compatible with Swift's ClangImporter and propagate them up the build
@@ -98,9 +106,15 @@ SWIFT_FEATURE_ENABLE_TESTING = "swift.enable_testing"
 # warnings otherwise.
 SWIFT_FEATURE_FULL_DEBUG_INFO = "swift.full_debug_info"
 
+# Use CodeView debug information, which enables generation of PDBs for debugging.
+SWIFT_FEATURE_CODEVIEW_DEBUG_INFO = "swift.codeview_debug_info"
+
 # If enabled, the compilation action for a target will produce an index store.
 # https://docs.google.com/document/d/1cH2sTpgSnJZCkZtJl1aY-rzy4uGPcrI-6RrUpdATO2Q/
 SWIFT_FEATURE_INDEX_WHILE_BUILDING = "swift.index_while_building"
+
+# If enabled, the compilation action for a target will produce a symbol graph.
+SWIFT_FEATURE_EMIT_SYMBOL_GRAPH = "swift.emit_symbol_graph"
 
 # If enabled the compilation action will not produce indexes for system modules.
 SWIFT_FEATURE_DISABLE_SYSTEM_INDEX = "swift.disable_system_index"
@@ -195,6 +209,18 @@ SWIFT_FEATURE_USE_OLD_DRIVER = "swift.use_old_driver"
 # using a sufficiently recent version of Swift (4.2 or higher).
 SWIFT_FEATURE_USE_RESPONSE_FILES = "swift.use_response_files"
 
+# If enabled, Swift linking actions will use `swift-autolink-extract` to extract
+# the linker arguments.  This is required for ELF targets.  This is used
+# internally to determine the behaviour of the actions across different
+# toolchain platforms, this is should not be set by users of the toolchain.
+SWIFT_FEATURE_USE_AUTOLINK_EXTRACT = "swift.use_autolink_extract"
+
+# If enabled, Swift will wrap the `.swiftmodule` into an object file and link it
+# into the module.  This is used internally to support the different platforms
+# which have differing behaviour for debug information handling.  This should
+# not be used by users of the toolchain.
+SWIFT_FEATURE_USE_MODULE_WRAP = "swift.use_module_wrap"
+
 # If enabled, Swift compilation actions will create a virtual file system
 # overlay containing all its dependencies' `.swiftmodule` files and use that
 # overlay as its sole search path. This improves build performance by avoiding
@@ -286,3 +312,8 @@ SWIFT_FEATURE__NUM_THREADS_0_IN_SWIFTCOPTS = "swift._num_threads_0_in_swiftcopts
 # A feature to enable setting pch-output-dir
 # This is a directory to persist automatically created precompiled bridging headers
 SWIFT_FEATURE_USE_PCH_OUTPUT_DIR = "swift.use_pch_output_dir"
+
+# If enabled, Swift compilation actions will pass
+# `-enable-bare-slash-regex` to `swiftc`. This is a new flag as of
+# Swift 5.7 that enables `/.../` syntax regular-expression literals.
+SWIFT_FEATURE_SUPPORTS_BARE_SLASH_REGEX = "swift.supports_bare_slash_regex"

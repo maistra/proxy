@@ -19,20 +19,27 @@
 
 #include <grpc/support/port_platform.h>
 
-#include <functional>
-#include <map>
+#include <string.h>
+
+#include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 
-#include <grpc/grpc.h>
+#include <grpc/impl/codegen/grpc_types.h>
+#include <grpc/slice.h>
+#include <grpc/support/log.h>
 
-#include "src/core/ext/filters/client_channel/service_config.h"
-#include "src/core/ext/filters/client_channel/service_config_parser.h"
-#include "src/core/lib/channel/channel_stack.h"
-#include "src/core/lib/gprpp/arena.h"
+#include "src/core/lib/channel/channel_args.h"
+#include "src/core/lib/channel/channel_fwd.h"
+#include "src/core/lib/gpr/useful.h"
 #include "src/core/lib/gprpp/ref_counted.h"
 #include "src/core/lib/gprpp/ref_counted_ptr.h"
+#include "src/core/lib/resource_quota/arena.h"
+#include "src/core/lib/service_config/service_config.h"
+#include "src/core/lib/service_config/service_config_call_data.h"
+#include "src/core/lib/service_config/service_config_parser.h"
 #include "src/core/lib/transport/metadata_batch.h"
 
 // Channel arg key for ConfigSelector.
@@ -44,6 +51,20 @@ namespace grpc_core {
 // MethodConfig and provide input to LB policies on a per-call basis.
 class ConfigSelector : public RefCounted<ConfigSelector> {
  public:
+  // An interface to be used by the channel when dispatching calls.
+  class CallDispatchController {
+   public:
+    virtual ~CallDispatchController() = default;
+
+    // Called by the channel to decide if it should retry the call upon a
+    // failure.
+    virtual bool ShouldRetry() = 0;
+
+    // Called by the channel when no more LB picks will be performed for
+    // the call.
+    virtual void Commit() = 0;
+  };
+
   struct GetCallConfigArgs {
     grpc_slice* path;
     grpc_metadata_batch* initial_metadata;
@@ -52,7 +73,7 @@ class ConfigSelector : public RefCounted<ConfigSelector> {
 
   struct CallConfig {
     // Can be set to indicate the call should be failed.
-    grpc_error_handle error = GRPC_ERROR_NONE;
+    absl::Status status;
     // The per-method parsed configs that will be passed to
     // ServiceConfigCallData.
     const ServiceConfigParser::ParsedConfigVector* method_configs = nullptr;
@@ -60,11 +81,9 @@ class ConfigSelector : public RefCounted<ConfigSelector> {
     // the call to ensure that method_configs lives long enough.
     RefCountedPtr<ServiceConfig> service_config;
     // Call attributes that will be accessible to LB policy implementations.
-    std::map<const char*, absl::string_view> call_attributes;
-    // A callback that, if set, will be invoked when the call is
-    // committed (i.e., when we know that we will never again need to
-    // ask the picker for a subchannel for this call).
-    std::function<void()> on_call_committed;
+    ServiceConfigCallData::CallAttributes call_attributes;
+    // Call dispatch controller.
+    CallDispatchController* call_dispatch_controller = nullptr;
   };
 
   ~ConfigSelector() override = default;
@@ -85,10 +104,8 @@ class ConfigSelector : public RefCounted<ConfigSelector> {
   // The channel will call this when the resolver returns a new ConfigSelector
   // to determine what set of dynamic filters will be configured.
   virtual std::vector<const grpc_channel_filter*> GetFilters() { return {}; }
-
   // Modifies channel args to be passed to the dynamic filter stack.
-  // Takes ownership of argument.  Caller takes ownership of result.
-  virtual grpc_channel_args* ModifyChannelArgs(grpc_channel_args* args) {
+  virtual ChannelArgs ModifyChannelArgs(const ChannelArgs& args) {
     return args;
   }
 
@@ -97,6 +114,11 @@ class ConfigSelector : public RefCounted<ConfigSelector> {
   grpc_arg MakeChannelArg() const;
   static RefCountedPtr<ConfigSelector> GetFromChannelArgs(
       const grpc_channel_args& args);
+  static absl::string_view ChannelArgName() { return GRPC_ARG_CONFIG_SELECTOR; }
+  static int ChannelArgsCompare(const ConfigSelector* a,
+                                const ConfigSelector* b) {
+    return QsortCompare(a, b);
+  }
 };
 
 // Default ConfigSelector that gets the MethodConfig from the service config.

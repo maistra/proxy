@@ -23,7 +23,12 @@ namespace {
 class AccessLogIntegrationTest : public Grpc::GrpcClientIntegrationParamTest,
                                  public HttpIntegrationTest {
 public:
-  AccessLogIntegrationTest() : HttpIntegrationTest(Http::CodecType::HTTP1, ipVersion()) {}
+  AccessLogIntegrationTest() : HttpIntegrationTest(Http::CodecType::HTTP1, ipVersion()) {
+    // TODO(ggreenway): add tag extraction rules.
+    // Missing stat tag-extraction rule for stat 'grpc.accesslog.streams_closed_11' and stat_prefix
+    // 'accesslog'.
+    skip_tag_extraction_rule_check_ = true;
+  }
 
   void createUpstreams() override {
     HttpIntegrationTest::createUpstreams();
@@ -85,6 +90,7 @@ public:
     log_entry->mutable_common_properties()->clear_downstream_direct_remote_address();
     log_entry->mutable_common_properties()->clear_downstream_local_address();
     log_entry->mutable_common_properties()->clear_start_time();
+    log_entry->mutable_common_properties()->clear_duration();
     log_entry->mutable_common_properties()->clear_time_to_last_rx_byte();
     log_entry->mutable_common_properties()->clear_time_to_first_downstream_tx_byte();
     log_entry->mutable_common_properties()->clear_time_to_last_downstream_tx_byte();
@@ -271,6 +277,11 @@ typed_config:
 // Verify the grpc cached logger is available after the initial logger filter is destroyed.
 // Regression test for https://github.com/envoyproxy/envoy/issues/18066
 TEST_P(AccessLogIntegrationTest, GrpcLoggerSurvivesAfterReloadConfig) {
+#ifdef ENVOY_ENABLE_UHV
+  // TODO(#23287) - Determine HTTP/0.9 and HTTP/1.0 support within UHV
+  return;
+#endif
+
   config_helper_.disableDelayClose();
   autonomous_upstream_ = true;
   // The grpc access logger connection never closes. It's ok to see an incomplete logging stream.

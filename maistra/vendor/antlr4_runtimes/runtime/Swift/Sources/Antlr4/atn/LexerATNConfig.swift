@@ -72,22 +72,14 @@ public class LexerATNConfig: ATNConfig {
         return passedThroughNonGreedyDecision
     }
 
-    override
-    /*public func hashCode() -> Int {
-
-    }*/
-    public var hashValue: Int {
-        var hashCode = MurmurHash.initialize(7)
-        hashCode = MurmurHash.update(hashCode, state.stateNumber)
-        hashCode = MurmurHash.update(hashCode, alt)
-        hashCode = MurmurHash.update(hashCode, context)
-        hashCode = MurmurHash.update(hashCode, semanticContext)
-        hashCode = MurmurHash.update(hashCode, passedThroughNonGreedyDecision ? 1 : 0)
-        hashCode = MurmurHash.update(hashCode, lexerActionExecutor)
-        return MurmurHash.finish(hashCode, 6)
-
+    public override func hash(into hasher: inout Hasher) {
+        hasher.combine(state.stateNumber)
+        hasher.combine(alt)
+        hasher.combine(context)
+        hasher.combine(semanticContext)
+        hasher.combine(passedThroughNonGreedyDecision)
+        hasher.combine(lexerActionExecutor)
     }
-
 }
 
 //useless
@@ -116,30 +108,11 @@ public func ==(lhs: LexerATNConfig, rhs: LexerATNConfig) -> Bool {
         return false
     }
 
-    if lhs.getLexerActionExecutor() == nil && rhs.getLexerActionExecutor() != nil {
-        return false
-    } else if lhs.getLexerActionExecutor() != nil && rhs.getLexerActionExecutor() == nil {
-        return false
-    } else if lhs.getLexerActionExecutor() == nil && rhs.getLexerActionExecutor() == nil {
-
-    } else if !(lhs.getLexerActionExecutor()! == rhs.getLexerActionExecutor()!) {
+    if lhs.getLexerActionExecutor() != rhs.getLexerActionExecutor() {
         return false
     }
 
-
-    var contextCompare = false
-
-    if lhs.context == nil && rhs.context == nil {
-        contextCompare = true
-    } else if lhs.context == nil && rhs.context != nil {
-        contextCompare = false
-    } else if lhs.context != nil && rhs.context == nil {
-        contextCompare = false
-    } else {
-        contextCompare = (lhs.context! == rhs.context!)
-    }
-
-    if !contextCompare{
+    if lhs.context != rhs.context {
         return false
     }
 

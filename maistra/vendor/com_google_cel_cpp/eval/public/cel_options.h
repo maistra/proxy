@@ -1,3 +1,19 @@
+/*
+ * Copyright 2021 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #ifndef THIRD_PARTY_CEL_CPP_EVAL_PUBLIC_CEL_OPTIONS_H_
 #define THIRD_PARTY_CEL_CPP_EVAL_PUBLIC_CEL_OPTIONS_H_
 
@@ -14,6 +30,15 @@ enum class UnknownProcessingOptions {
   // Attributes and functions supported. Function results are dependent on the
   // logic for handling unknown_attributes, so clients must opt in to both.
   kAttributeAndFunction
+};
+
+// Options for handling unset wrapper types on field access.
+enum class ProtoWrapperTypeOptions {
+  // Default: legacy behavior following proto semantics (unset behaves as though
+  // it is set to default value).
+  kUnsetProtoDefault,
+  // CEL spec behavior, unset wrapper is treated as a null value when accessed.
+  kUnsetNull,
 };
 
 // Interpreter options for controlling evaluation and builtin functions.
@@ -54,6 +79,10 @@ struct InterpreterOptions {
   // including the nested loops as well. Use value 0 to disable the upper bound.
   int comprehension_max_iterations = 10000;
 
+  // Enable list append within comprehensions. Note, this option is not safe
+  // with hand-rolled ASTs.
+  int enable_comprehension_list_append = false;
+
   // Enable RE2 match() overload.
   bool enable_regex = true;
 
@@ -84,6 +113,40 @@ struct InterpreterOptions {
   // type or with protobuf message types linked into the binary to be resolved
   // as static type values rather than as per-eval variables.
   bool enable_qualified_type_identifiers = false;
+
+  // Enable a check for memory vulnerabilities within comprehension
+  // sub-expressions.
+  //
+  // Note: This flag is not necessary if you are only using Core CEL macros.
+  //
+  // Consider enabling this feature when using custom comprehensions, and
+  // absolutely enable the feature when using hand-written ASTs for
+  // comprehension expressions.
+  bool enable_comprehension_vulnerability_check = false;
+
+  // Enable coercing null cel values to messages in function resolution. This
+  // allows extension functions that previously depended on representing null
+  // values as nullptr messages to function.
+  //
+  // Note: This will be disabled by default in the future after clients that
+  // depend on the legacy function resolution are identified.
+  bool enable_null_to_message_coercion = true;
+
+  // Enable heterogeneous comparisons (e.g. support for cross-type comparisons).
+  bool enable_heterogeneous_equality = true;
+
+  // Enables unwrapping proto wrapper types to null if unset. e.g. if an
+  // expression access a field of type google.protobuf.Int64Value that is unset,
+  // that will result in a Null cel value, as opposed to returning the
+  // cel representation of the proto defined default int64_t: 0.
+  bool enable_empty_wrapper_null_unboxing = false;
+
+  // Enables expression rewrites to disambiguate namespace qualified identifiers
+  // from container access for variables and receiver-style calls for functions.
+  //
+  // Note: This makes an implicit copy of the input expression for lifetime
+  // safety.
+  bool enable_qualified_identifier_rewrites = false;
 };
 
 }  // namespace google::api::expr::runtime

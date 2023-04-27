@@ -22,9 +22,6 @@
 
 #ifdef GRPC_POSIX_WAKEUP_FD
 
-#include "src/core/lib/iomgr/wakeup_fd_pipe.h"
-#include "src/core/lib/iomgr/wakeup_fd_posix.h"
-
 #include <errno.h>
 #include <string.h>
 #include <unistd.h>
@@ -32,6 +29,8 @@
 #include <grpc/support/log.h>
 
 #include "src/core/lib/iomgr/socket_utils_posix.h"
+#include "src/core/lib/iomgr/wakeup_fd_pipe.h"
+#include "src/core/lib/iomgr/wakeup_fd_posix.h"
 
 static grpc_error_handle pipe_init(grpc_wakeup_fd* fd_info) {
   int pipefd[2];
@@ -42,9 +41,9 @@ static grpc_error_handle pipe_init(grpc_wakeup_fd* fd_info) {
   }
   grpc_error_handle err;
   err = grpc_set_socket_nonblocking(pipefd[0], 1);
-  if (err != GRPC_ERROR_NONE) return err;
+  if (!GRPC_ERROR_IS_NONE(err)) return err;
   err = grpc_set_socket_nonblocking(pipefd[1], 1);
-  if (err != GRPC_ERROR_NONE) return err;
+  if (!GRPC_ERROR_IS_NONE(err)) return err;
   fd_info->read_fd = pipefd[0];
   fd_info->write_fd = pipefd[1];
   return GRPC_ERROR_NONE;

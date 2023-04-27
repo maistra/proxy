@@ -1,17 +1,24 @@
 #include "eval/eval/evaluator_core.h"
 
+#include <string>
+#include <utility>
+
 #include "google/api/expr/v1alpha1/syntax.pb.h"
+#include "google/protobuf/descriptor.h"
 #include "eval/compiler/flat_expr_builder.h"
 #include "eval/eval/attribute_trail.h"
+#include "eval/eval/test_type_registry.h"
 #include "eval/public/activation.h"
 #include "eval/public/builtin_func_registrar.h"
 #include "eval/public/cel_attribute.h"
 #include "eval/public/cel_value.h"
+#include "extensions/protobuf/memory_manager.h"
 #include "internal/status_macros.h"
 #include "internal/testing.h"
 
 namespace google::api::expr::runtime {
 
+using ::cel::extensions::ProtoMemoryManager;
 using ::google::api::expr::v1alpha1::Expr;
 using ::google::api::expr::runtime::RegisterBuiltinFunctions;
 using testing::_;
@@ -63,7 +70,12 @@ TEST(EvaluatorCoreTest, ExecutionFrameNext) {
 
   Activation activation;
   CelExpressionFlatEvaluationState state(path.size(), {}, nullptr);
-  ExecutionFrame frame(path, activation, 0, &state, false, false, false);
+  ExecutionFrame frame(path, activation, &TestTypeRegistry(), 0, &state,
+                       /*enable_unknowns=*/false,
+                       /*enable_unknown_funcion_results=*/false,
+                       /*enable_missing_attribute_errors=*/false,
+                       /*enable_null_coercion=*/true,
+                       /*enable_heterogeneous_numeric_lookups=*/true);
 
   EXPECT_THAT(frame.Next(), Eq(path[0].get()));
   EXPECT_THAT(frame.Next(), Eq(path[1].get()));
@@ -73,64 +85,71 @@ TEST(EvaluatorCoreTest, ExecutionFrameNext) {
 
 // Test the set, get, and clear functions for "IterVar" on ExecutionFrame
 TEST(EvaluatorCoreTest, ExecutionFrameSetGetClearVar) {
-  const std::string test_key = "test_key";
+  const std::string test_iter_var = "test_iter_var";
+  const std::string test_accu_var = "test_accu_var";
   const int64_t test_value = 0xF00F00;
 
   Activation activation;
   google::protobuf::Arena arena;
+  ProtoMemoryManager manager(&arena);
   ExecutionPath path;
-  CelExpressionFlatEvaluationState state(path.size(), {test_key}, nullptr);
-  ExecutionFrame frame(path, activation, 0, &state, false, false, false);
+  CelExpressionFlatEvaluationState state(path.size(), {test_iter_var}, nullptr);
+  ExecutionFrame frame(path, activation, &TestTypeRegistry(), 0, &state,
+                       /*enable_unknowns=*/false,
+                       /*enable_unknown_funcion_results=*/false,
+                       /*enable_missing_attribute_errors=*/false,
+                       /*enable_null_coercion=*/true,
+                       /*enable_heterogeneous_numeric_lookups=*/true);
 
   CelValue original = CelValue::CreateInt64(test_value);
   Expr ident;
   ident.mutable_ident_expr()->set_name("var");
 
   AttributeTrail original_trail =
-      AttributeTrail(ident, &arena)
+      AttributeTrail(ident, manager)
           .Step(CelAttributeQualifier::Create(CelValue::CreateInt64(1)),
-                &arena);
+                manager);
   CelValue result;
   const AttributeTrail* trail;
 
-  ASSERT_OK(frame.PushIterFrame());
+  ASSERT_OK(frame.PushIterFrame(test_iter_var, test_accu_var));
 
   // Nothing is there yet
-  ASSERT_FALSE(frame.GetIterVar(test_key, &result));
-  ASSERT_OK(frame.SetIterVar(test_key, original, original_trail));
+  ASSERT_FALSE(frame.GetIterVar(test_iter_var, &result));
+  ASSERT_OK(frame.SetIterVar(original, original_trail));
+
+  // Nothing is there yet
+  ASSERT_FALSE(frame.GetIterVar(test_accu_var, &result));
+  ASSERT_OK(frame.SetAccuVar(CelValue::CreateBool(true)));
+  ASSERT_TRUE(frame.GetIterVar(test_accu_var, &result));
+  ASSERT_TRUE(result.IsBool());
+  EXPECT_EQ(result.BoolOrDie(), true);
 
   // Make sure its now there
-  ASSERT_TRUE(frame.GetIterVar(test_key, &result));
-  ASSERT_TRUE(frame.GetIterAttr(test_key, &trail));
+  ASSERT_TRUE(frame.GetIterVar(test_iter_var, &result));
+  ASSERT_TRUE(frame.GetIterAttr(test_iter_var, &trail));
 
   int64_t result_value;
   ASSERT_TRUE(result.GetValue(&result_value));
   EXPECT_EQ(test_value, result_value);
-  ASSERT_TRUE(trail->attribute()->variable().has_ident_expr());
-  ASSERT_EQ(trail->attribute()->variable().ident_expr().name(), "var");
+  ASSERT_TRUE(trail->attribute()->has_variable_name());
+  ASSERT_EQ(trail->attribute()->variable_name(), "var");
 
   // Test that it goes away properly
-  ASSERT_OK(frame.ClearIterVar(test_key));
-  ASSERT_FALSE(frame.GetIterVar(test_key, &result));
-  ASSERT_FALSE(frame.GetIterAttr(test_key, &trail));
+  ASSERT_OK(frame.ClearIterVar());
+  ASSERT_FALSE(frame.GetIterVar(test_iter_var, &result));
+  ASSERT_FALSE(frame.GetIterAttr(test_iter_var, &trail));
 
-  // Test that bogus names return the right thing
-  ASSERT_FALSE(frame.SetIterVar("foo", original).ok());
-  ASSERT_FALSE(frame.ClearIterVar("bar").ok());
-
-  // Test error conditions for accesses outside of comprehension.
-  ASSERT_OK(frame.SetIterVar(test_key, original));
   ASSERT_OK(frame.PopIterFrame());
 
   // Access on empty stack ok, but no value.
-  ASSERT_FALSE(frame.GetIterVar(test_key, &result));
+  ASSERT_FALSE(frame.GetIterVar(test_iter_var, &result));
 
   // Pop empty stack
   ASSERT_FALSE(frame.PopIterFrame().ok());
 
   // Updates on empty stack not ok.
-  ASSERT_FALSE(frame.SetIterVar(test_key, original).ok());
-  ASSERT_FALSE(frame.ClearIterVar(test_key).ok());
+  ASSERT_FALSE(frame.SetIterVar(original).ok());
 }
 
 TEST(EvaluatorCoreTest, SimpleEvaluatorTest) {
@@ -145,7 +164,8 @@ TEST(EvaluatorCoreTest, SimpleEvaluatorTest) {
 
   auto dummy_expr = absl::make_unique<Expr>();
 
-  CelExpressionFlatImpl impl(dummy_expr.get(), std::move(path), 0, {});
+  CelExpressionFlatImpl impl(dummy_expr.get(), std::move(path),
+                             &TestTypeRegistry(), 0, {});
 
   Activation activation;
   google::protobuf::Arena arena;

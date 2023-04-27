@@ -5,12 +5,12 @@ package(default_visibility = ["//visibility:public"])
 
 filegroup(
     name = "dist_info",
-    srcs = glob(["*.dist-info/**"], allow_empty = True),
+    srcs = glob(["site-packages/*.dist-info/**"], allow_empty = True),
 )
 
 filegroup(
     name = "data",
-    srcs = glob(["*.data/**"], allow_empty = True),
+    srcs = glob(["data/**"], allow_empty = True),
 )
 
 filegroup(
@@ -21,11 +21,11 @@ filegroup(
 
 py_library(
     name = "pkg",
-    srcs = glob(["**/*.py"], exclude=[], allow_empty = True),
-    data = [] + glob(["**/*"], exclude=["**/* *", "**/*.dist-info/RECORD", "**/*.py", "**/*.pyc", "**/__pycache__/**", "*.whl", "BUILD.bazel", "WORKSPACE", "rules_python_wheel_entry_point*.py"]),
+    srcs = glob(["site-packages/**/*.py"], exclude=[], allow_empty = True),
+    data = [] + glob(["site-packages/**/*"], exclude=["**/* *", "**/*.dist-info/RECORD", "**/*.py", "**/*.pyc"]),
     # This makes this directory a top-level in the python import
     # search path for anything that depends on this.
-    imports = ["."],
+    imports = ["site-packages"],
     deps = ["@base_pip3_markupsafe//:pkg"],
-    tags = ["pypi_name=Jinja2","pypi_version=3.0.3"],
+    tags = ["pypi_name=jinja2","pypi_version=3.0.3"],
 )

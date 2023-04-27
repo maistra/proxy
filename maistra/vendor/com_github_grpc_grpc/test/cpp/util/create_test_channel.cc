@@ -18,11 +18,12 @@
 
 #include "test/cpp/util/create_test_channel.h"
 
+#include "absl/flags/flag.h"
+
 #include <grpc/support/log.h>
 #include <grpcpp/create_channel.h>
 #include <grpcpp/security/credentials.h>
 
-#include "absl/flags/flag.h"
 #include "test/cpp/util/test_credentials_provider.h"
 
 ABSL_FLAG(std::string, grpc_test_use_grpclb_with_child_policy, "",
@@ -137,7 +138,7 @@ std::shared_ptr<Channel> CreateTestChannel(
   if (creds.get()) {
     channel_creds = grpc::CompositeChannelCredentials(channel_creds, creds);
   }
-  return ::grpc::CreateCustomChannel(server, channel_creds, channel_args);
+  return grpc::CreateCustomChannel(server, channel_creds, channel_args);
 }
 
 std::shared_ptr<Channel> CreateTestChannel(
@@ -152,8 +153,8 @@ std::shared_ptr<Channel> CreateTestChannel(
   std::shared_ptr<ChannelCredentials> channel_creds;
   if (cred_type.empty()) {
     if (interceptor_creators.empty()) {
-      return ::grpc::CreateCustomChannel(server, InsecureChannelCredentials(),
-                                         channel_args);
+      return grpc::CreateCustomChannel(server, InsecureChannelCredentials(),
+                                       channel_args);
     } else {
       return experimental::CreateCustomChannelWithInterceptors(
           server, InsecureChannelCredentials(), channel_args,
@@ -179,8 +180,7 @@ std::shared_ptr<Channel> CreateTestChannel(
       channel_creds = grpc::CompositeChannelCredentials(channel_creds, creds);
     }
     if (interceptor_creators.empty()) {
-      return ::grpc::CreateCustomChannel(connect_to, channel_creds,
-                                         channel_args);
+      return grpc::CreateCustomChannel(connect_to, channel_creds, channel_args);
     } else {
       return experimental::CreateCustomChannelWithInterceptors(
           connect_to, channel_creds, channel_args,
@@ -192,7 +192,7 @@ std::shared_ptr<Channel> CreateTestChannel(
     GPR_ASSERT(channel_creds != nullptr);
 
     if (interceptor_creators.empty()) {
-      return ::grpc::CreateCustomChannel(server, channel_creds, channel_args);
+      return grpc::CreateCustomChannel(server, channel_creds, channel_args);
     } else {
       return experimental::CreateCustomChannelWithInterceptors(
           server, channel_creds, channel_args, std::move(interceptor_creators));

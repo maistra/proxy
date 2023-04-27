@@ -21,6 +21,8 @@
 #include <thread>
 #include <vector>
 
+#include <gtest/gtest.h>
+
 #include <grpc/grpc.h>
 #include <grpc/support/log.h>
 #include <grpcpp/channel.h>
@@ -39,8 +41,6 @@
 #include "test/core/util/test_config.h"
 #include "test/cpp/end2end/test_health_check_service_impl.h"
 #include "test/cpp/end2end/test_service_impl.h"
-
-#include <gtest/gtest.h>
 
 using grpc::health::v1::Health;
 using grpc::health::v1::HealthCheckRequest;
@@ -187,7 +187,7 @@ class HealthServiceEnd2endTest : public ::testing::Test {
     ClientContext context;
     HealthCheckRequest request;
     request.set_service(kServiceName);
-    std::unique_ptr<::grpc::ClientReaderInterface<HealthCheckResponse>> reader =
+    std::unique_ptr<grpc::ClientReaderInterface<HealthCheckResponse>> reader =
         hc_stub_->Watch(&context, request);
     // Initial response will be SERVICE_UNKNOWN.
     HealthCheckResponse response;
@@ -230,7 +230,7 @@ class HealthServiceEnd2endTest : public ::testing::Test {
     ClientContext context;
     HealthCheckRequest request;
     request.set_service(kHealthyService);
-    std::unique_ptr<::grpc::ClientReaderInterface<HealthCheckResponse>> reader =
+    std::unique_ptr<grpc::ClientReaderInterface<HealthCheckResponse>> reader =
         hc_stub_->Watch(&context, request);
 
     HealthCheckResponse response;
@@ -368,7 +368,7 @@ TEST_F(HealthServiceEnd2endTest, ExplicitlyHealthServiceShutdown) {
 }  // namespace grpc
 
 int main(int argc, char** argv) {
-  grpc::testing::TestEnvironment env(argc, argv);
+  grpc::testing::TestEnvironment env(&argc, argv);
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

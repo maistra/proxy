@@ -4,9 +4,9 @@
 
 import FlatBuffers
 
-public struct models_HelloReply: FlatBufferObject {
+public struct models_HelloReply: FlatBufferObject, Verifiable {
 
-  static func validateVersion() { FlatBuffersVersion_2_0_0() }
+  static func validateVersion() { FlatBuffersVersion_22_9_29() }
   public var __buffer: ByteBuffer! { return _accessor.bb }
   private var _accessor: Table
 
@@ -34,11 +34,28 @@ public struct models_HelloReply: FlatBufferObject {
     models_HelloReply.add(message: message, &fbb)
     return models_HelloReply.endHelloReply(&fbb, start: __start)
   }
+
+  public static func verify<T>(_ verifier: inout Verifier, at position: Int, of type: T.Type) throws where T: Verifiable {
+    var _v = try verifier.visitTable(at: position)
+    try _v.visit(field: VTOFFSET.message.p, fieldName: "message", required: false, type: ForwardOffset<String>.self)
+    _v.finish()
+  }
 }
 
-public struct models_HelloRequest: FlatBufferObject {
+extension models_HelloReply: Encodable {
 
-  static func validateVersion() { FlatBuffersVersion_2_0_0() }
+  enum CodingKeys: String, CodingKey {
+    case message = "message"
+  }
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encodeIfPresent(message, forKey: .message)
+  }
+}
+
+public struct models_HelloRequest: FlatBufferObject, Verifiable {
+
+  static func validateVersion() { FlatBuffersVersion_22_9_29() }
   public var __buffer: ByteBuffer! { return _accessor.bb }
   private var _accessor: Table
 
@@ -65,6 +82,23 @@ public struct models_HelloRequest: FlatBufferObject {
     let __start = models_HelloRequest.startHelloRequest(&fbb)
     models_HelloRequest.add(name: name, &fbb)
     return models_HelloRequest.endHelloRequest(&fbb, start: __start)
+  }
+
+  public static func verify<T>(_ verifier: inout Verifier, at position: Int, of type: T.Type) throws where T: Verifiable {
+    var _v = try verifier.visitTable(at: position)
+    try _v.visit(field: VTOFFSET.name.p, fieldName: "name", required: false, type: ForwardOffset<String>.self)
+    _v.finish()
+  }
+}
+
+extension models_HelloRequest: Encodable {
+
+  enum CodingKeys: String, CodingKey {
+    case name = "name"
+  }
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encodeIfPresent(name, forKey: .name)
   }
 }
 

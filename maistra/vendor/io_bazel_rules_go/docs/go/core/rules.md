@@ -84,7 +84,9 @@ Introduction
 ------------
 
 Three core rules may be used to build most projects: [go_library], [go_binary],
-and [go_test].
+and [go_test]. These rules reimplement the low level plumping commands of a normal
+'go build' invocation: compiling package's source files to archives, then linking
+archives into go binary.
 
 [go_library] builds a single package. It has a list of source files
 (specified with `srcs`) and may depend on other packages (with `deps`).
@@ -102,6 +104,12 @@ consists of three packages: an internal test package compiled together with
 the library being tested (specified with `embed`), an external test package
 compiled separately, and a generated test main package.
 
+Here is an example of a Bazel build graph for a project using these core rules:
+
+![](./buildgraph.svg)
+
+By instrumenting the lower level go tooling, we can cache smaller, finer 
+artifacts with Bazel and thus, speed up incremental builds.
 
 Rules
 -----
@@ -164,6 +172,39 @@ This builds an executable from a set of source files,
 | <a id="go_binary-srcs"></a>srcs |  The list of Go source files that are compiled to create the package.             Only <code>.go</code> and <code>.s</code> files are permitted, unless the <code>cgo</code>             attribute is set, in which case,             <code>.c .cc .cpp .cxx .h .hh .hpp .hxx .inc .m .mm</code>             files are also permitted. Files may be filtered at build time             using Go [build constraints].   | <a href="https://bazel.build/docs/build-ref.html#labels">List of labels</a> | optional | [] |
 | <a id="go_binary-static"></a>static |  Controls whether a binary is statically linked. May be one of <code>on</code>,             <code>off</code>, or <code>auto</code>. Not available on all platforms or in all             modes. It's usually better to control this on the command line with             <code>--@io_bazel_rules_go//go/config:static</code>. See [mode attributes],             specifically [static].   | String | optional | "auto" |
 | <a id="go_binary-x_defs"></a>x_defs |  Map of defines to add to the go link command.             See [Defines and stamping] for examples of how to use these.   | <a href="https://bazel.build/docs/skylark/lib/dict.html">Dictionary: String -> String</a> | optional | {} |
+
+
+
+
+
+<a id="#go_cross_binary"></a>
+
+## go_cross_binary
+
+<pre>
+go_cross_binary(<a href="#go_cross_binary-name">name</a>, <a href="#go_cross_binary-platform">platform</a>, <a href="#go_cross_binary-sdk_version">sdk_version</a>, <a href="#go_cross_binary-target">target</a>)
+</pre>
+
+This wraps an executable built by `go_binary` to cross compile it
+    for a different platform, and/or compile it using a different version
+    of the golang SDK.<br><br>
+    **Providers:**
+    <ul>
+      <li>[GoLibrary]</li>
+      <li>[GoSource]</li>
+      <li>[GoArchive]</li>
+    </ul>
+    
+
+### **Attributes**
+
+
+| Name  | Description | Type | Mandatory | Default |
+| :------------- | :------------- | :------------- | :------------- | :------------- |
+| <a id="go_cross_binary-name"></a>name |  A unique name for this target.   | <a href="https://bazel.build/docs/build-ref.html#name">Name</a> | required |  |
+| <a id="go_cross_binary-platform"></a>platform |  The platform to cross compile the <code>target</code> for.             If unspecified, the <code>target</code> will be compiled with the             same platform as it would've with the original <code>go_binary</code> rule.   | <a href="https://bazel.build/docs/build-ref.html#labels">Label</a> | optional | None |
+| <a id="go_cross_binary-sdk_version"></a>sdk_version |  The golang SDK version to use for compiling the <code>target</code>.             Supports specifying major, minor, and/or patch versions, eg. <code>"1"</code>,             <code>"1.17"</code>, or <code>"1.17.1"</code>. The first Go SDK provider installed in the             repo's workspace (via <code>go_download_sdk</code>, <code>go_wrap_sdk</code>, etc) that             matches the specified version will be used for compiling the given             <code>target</code>. If unspecified, the <code>target</code> will be compiled with the same             SDK as it would've with the original <code>go_binary</code> rule.             Transitions <code>target</code> by changing the <code>--@io_bazel_rules_go//go/toolchain:sdk_version</code>             build flag to the value provided for <code>sdk_version</code> here.   | String | optional | "" |
+| <a id="go_cross_binary-target"></a>target |  Go binary target to transition to the given platform and/or sdk_version.   | <a href="https://bazel.build/docs/build-ref.html#labels">Label</a> | required |  |
 
 
 

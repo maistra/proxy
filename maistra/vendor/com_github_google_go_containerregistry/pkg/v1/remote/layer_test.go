@@ -20,7 +20,7 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/google/go-containerregistry/pkg/internal/compare"
+	"github.com/google/go-containerregistry/internal/compare"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/registry"
 	"github.com/google/go-containerregistry/pkg/v1/empty"
@@ -78,6 +78,12 @@ func TestRemoteLayer(t *testing.T) {
 	if err := validate.Layer(got); err != nil {
 		t.Errorf("validate.Layer: %v", err)
 	}
+
+	if ok, err := partial.Exists(got); err != nil {
+		t.Fatal(err)
+	} else if got, want := ok, true; got != want {
+		t.Errorf("Exists() = %t != %t", got, want)
+	}
 }
 
 func TestRemoteLayerDescriptor(t *testing.T) {
@@ -133,5 +139,10 @@ func TestRemoteLayerDescriptor(t *testing.T) {
 
 	if got, want := desc.URLs[0], "example.com"; got != want {
 		t.Errorf("layer[0].urls[0] = %s != %s", got, want)
+	}
+	if ok, err := partial.Exists(layers[0]); err != nil {
+		t.Fatal(err)
+	} else if got, want := ok, true; got != want {
+		t.Errorf("Exists() = %t != %t", got, want)
 	}
 }

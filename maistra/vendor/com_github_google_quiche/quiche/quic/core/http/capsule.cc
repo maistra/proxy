@@ -14,26 +14,26 @@
 #include "quiche/quic/core/quic_data_writer.h"
 #include "quiche/quic/core/quic_types.h"
 #include "quiche/quic/platform/api/quic_bug_tracker.h"
+#include "quiche/quic/platform/api/quic_ip_address.h"
 #include "quiche/common/platform/api/quiche_logging.h"
+#include "quiche/common/quiche_ip_address.h"
 
 namespace quic {
 
 std::string CapsuleTypeToString(CapsuleType capsule_type) {
   switch (capsule_type) {
-    case CapsuleType::REGISTER_DATAGRAM_CONTEXT:
-      return "REGISTER_DATAGRAM_CONTEXT";
-    case CapsuleType::CLOSE_DATAGRAM_CONTEXT:
-      return "CLOSE_DATAGRAM_CONTEXT";
     case CapsuleType::LEGACY_DATAGRAM:
       return "LEGACY_DATAGRAM";
-    case CapsuleType::DATAGRAM_WITH_CONTEXT:
-      return "DATAGRAM_WITH_CONTEXT";
     case CapsuleType::DATAGRAM_WITHOUT_CONTEXT:
       return "DATAGRAM_WITHOUT_CONTEXT";
-    case CapsuleType::REGISTER_DATAGRAM_NO_CONTEXT:
-      return "REGISTER_DATAGRAM_NO_CONTEXT";
     case CapsuleType::CLOSE_WEBTRANSPORT_SESSION:
       return "CLOSE_WEBTRANSPORT_SESSION";
+    case CapsuleType::ADDRESS_REQUEST:
+      return "ADDRESS_REQUEST";
+    case CapsuleType::ADDRESS_ASSIGN:
+      return "ADDRESS_ASSIGN";
+    case CapsuleType::ROUTE_ADVERTISEMENT:
+      return "ROUTE_ADVERTISEMENT";
   }
   return absl::StrCat("Unknown(", static_cast<uint64_t>(capsule_type), ")");
 }
@@ -43,101 +43,39 @@ std::ostream& operator<<(std::ostream& os, const CapsuleType& capsule_type) {
   return os;
 }
 
-std::string DatagramFormatTypeToString(
-    DatagramFormatType datagram_format_type) {
-  switch (datagram_format_type) {
-    case DatagramFormatType::UDP_PAYLOAD:
-      return "UDP_PAYLOAD";
-    case DatagramFormatType::WEBTRANSPORT:
-      return "WEBTRANSPORT";
-  }
-  return absl::StrCat("Unknown(", static_cast<uint64_t>(datagram_format_type),
-                      ")");
-}
-
-std::ostream& operator<<(std::ostream& os,
-                         const DatagramFormatType& datagram_format_type) {
-  os << DatagramFormatTypeToString(datagram_format_type);
-  return os;
-}
-
-std::string ContextCloseCodeToString(ContextCloseCode context_close_code) {
-  switch (context_close_code) {
-    case ContextCloseCode::CLOSE_NO_ERROR:
-      return "NO_ERROR";
-    case ContextCloseCode::UNKNOWN_FORMAT:
-      return "UNKNOWN_FORMAT";
-    case ContextCloseCode::DENIED:
-      return "DENIED";
-    case ContextCloseCode::RESOURCE_LIMIT:
-      return "RESOURCE_LIMIT";
-  }
-  return absl::StrCat("Unknown(", static_cast<uint64_t>(context_close_code),
-                      ")");
-}
-
-std::ostream& operator<<(std::ostream& os,
-                         const ContextCloseCode& context_close_code) {
-  os << ContextCloseCodeToString(context_close_code);
-  return os;
-}
-
 Capsule::Capsule(CapsuleType capsule_type) : capsule_type_(capsule_type) {
   switch (capsule_type) {
     case CapsuleType::LEGACY_DATAGRAM:
       static_assert(
           std::is_standard_layout<LegacyDatagramCapsule>::value &&
               std::is_trivially_destructible<LegacyDatagramCapsule>::value,
-          "All capsule structs must have these properties");
+          "All inline capsule structs must have these properties");
       legacy_datagram_capsule_ = LegacyDatagramCapsule();
-      break;
-    case CapsuleType::DATAGRAM_WITH_CONTEXT:
-      static_assert(
-          std::is_standard_layout<DatagramWithContextCapsule>::value &&
-              std::is_trivially_destructible<DatagramWithContextCapsule>::value,
-          "All capsule structs must have these properties");
-      datagram_with_context_capsule_ = DatagramWithContextCapsule();
       break;
     case CapsuleType::DATAGRAM_WITHOUT_CONTEXT:
       static_assert(
           std::is_standard_layout<DatagramWithoutContextCapsule>::value &&
               std::is_trivially_destructible<
                   DatagramWithoutContextCapsule>::value,
-          "All capsule structs must have these properties");
+          "All inline capsule structs must have these properties");
       datagram_without_context_capsule_ = DatagramWithoutContextCapsule();
-      break;
-    case CapsuleType::REGISTER_DATAGRAM_CONTEXT:
-      static_assert(
-          std::is_standard_layout<RegisterDatagramContextCapsule>::value &&
-              std::is_trivially_destructible<
-                  RegisterDatagramContextCapsule>::value,
-          "All capsule structs must have these properties");
-      register_datagram_context_capsule_ = RegisterDatagramContextCapsule();
-      break;
-    case CapsuleType::REGISTER_DATAGRAM_NO_CONTEXT:
-      static_assert(
-          std::is_standard_layout<RegisterDatagramNoContextCapsule>::value &&
-              std::is_trivially_destructible<
-                  RegisterDatagramNoContextCapsule>::value,
-          "All capsule structs must have these properties");
-      register_datagram_no_context_capsule_ =
-          RegisterDatagramNoContextCapsule();
-      break;
-    case CapsuleType::CLOSE_DATAGRAM_CONTEXT:
-      static_assert(
-          std::is_standard_layout<CloseDatagramContextCapsule>::value &&
-              std::is_trivially_destructible<
-                  CloseDatagramContextCapsule>::value,
-          "All capsule structs must have these properties");
-      close_datagram_context_capsule_ = CloseDatagramContextCapsule();
       break;
     case CapsuleType::CLOSE_WEBTRANSPORT_SESSION:
       static_assert(
           std::is_standard_layout<CloseWebTransportSessionCapsule>::value &&
               std::is_trivially_destructible<
                   CloseWebTransportSessionCapsule>::value,
-          "All capsule structs must have these properties");
+          "All inline capsule structs must have these properties");
       close_web_transport_session_capsule_ = CloseWebTransportSessionCapsule();
+      break;
+    case CapsuleType::ADDRESS_REQUEST:
+      address_request_capsule_ = new AddressRequestCapsule();
+      break;
+    case CapsuleType::ADDRESS_ASSIGN:
+      address_assign_capsule_ = new AddressAssignCapsule();
+      break;
+    case CapsuleType::ROUTE_ADVERTISEMENT:
+      route_advertisement_capsule_ = new RouteAdvertisementCapsule();
       break;
     default:
       unknown_capsule_data_ = absl::string_view();
@@ -145,23 +83,34 @@ Capsule::Capsule(CapsuleType capsule_type) : capsule_type_(capsule_type) {
   }
 }
 
-// static
-Capsule Capsule::LegacyDatagram(
-    absl::optional<QuicDatagramContextId> context_id,
-    absl::string_view http_datagram_payload) {
-  Capsule capsule(CapsuleType::LEGACY_DATAGRAM);
-  capsule.legacy_datagram_capsule().context_id = context_id;
-  capsule.legacy_datagram_capsule().http_datagram_payload =
-      http_datagram_payload;
-  return capsule;
+void Capsule::Free() {
+  switch (capsule_type_) {
+    // Inlined capsule types.
+    case CapsuleType::LEGACY_DATAGRAM:
+    case CapsuleType::DATAGRAM_WITHOUT_CONTEXT:
+    case CapsuleType::CLOSE_WEBTRANSPORT_SESSION:
+      // Do nothing, these are guaranteed to be trivially destructible.
+      break;
+    // Out-of-line capsule types.
+    case CapsuleType::ADDRESS_REQUEST:
+      delete address_request_capsule_;
+      break;
+    case CapsuleType::ADDRESS_ASSIGN:
+      delete address_assign_capsule_;
+      break;
+    case CapsuleType::ROUTE_ADVERTISEMENT:
+      delete route_advertisement_capsule_;
+      break;
+  }
+  capsule_type_ = static_cast<CapsuleType>(0x17);  // Reserved unknown value.
+  unknown_capsule_data_ = absl::string_view();
 }
+Capsule::~Capsule() { Free(); }
 
 // static
-Capsule Capsule::DatagramWithContext(QuicDatagramContextId context_id,
-                                     absl::string_view http_datagram_payload) {
-  Capsule capsule(CapsuleType::DATAGRAM_WITH_CONTEXT);
-  capsule.datagram_with_context_capsule().context_id = context_id;
-  capsule.datagram_with_context_capsule().http_datagram_payload =
+Capsule Capsule::LegacyDatagram(absl::string_view http_datagram_payload) {
+  Capsule capsule(CapsuleType::LEGACY_DATAGRAM);
+  capsule.legacy_datagram_capsule().http_datagram_payload =
       http_datagram_payload;
   return capsule;
 }
@@ -176,45 +125,27 @@ Capsule Capsule::DatagramWithoutContext(
 }
 
 // static
-Capsule Capsule::RegisterDatagramContext(
-    QuicDatagramContextId context_id, DatagramFormatType format_type,
-    absl::string_view format_additional_data) {
-  Capsule capsule(CapsuleType::REGISTER_DATAGRAM_CONTEXT);
-  capsule.register_datagram_context_capsule().context_id = context_id;
-  capsule.register_datagram_context_capsule().format_type = format_type;
-  capsule.register_datagram_context_capsule().format_additional_data =
-      format_additional_data;
-  return capsule;
-}
-
-// static
-Capsule Capsule::RegisterDatagramNoContext(
-    DatagramFormatType format_type, absl::string_view format_additional_data) {
-  Capsule capsule(CapsuleType::REGISTER_DATAGRAM_NO_CONTEXT);
-  capsule.register_datagram_no_context_capsule().format_type = format_type;
-  capsule.register_datagram_no_context_capsule().format_additional_data =
-      format_additional_data;
-  return capsule;
-}
-
-// static
-Capsule Capsule::CloseDatagramContext(QuicDatagramContextId context_id,
-                                      ContextCloseCode close_code,
-                                      absl::string_view close_details) {
-  Capsule capsule(CapsuleType::CLOSE_DATAGRAM_CONTEXT);
-  capsule.close_datagram_context_capsule().context_id = context_id;
-  capsule.close_datagram_context_capsule().close_code = close_code;
-  capsule.close_datagram_context_capsule().close_details = close_details;
-  return capsule;
-}
-
-// static
 Capsule Capsule::CloseWebTransportSession(WebTransportSessionError error_code,
                                           absl::string_view error_message) {
   Capsule capsule(CapsuleType::CLOSE_WEBTRANSPORT_SESSION);
   capsule.close_web_transport_session_capsule().error_code = error_code;
   capsule.close_web_transport_session_capsule().error_message = error_message;
   return capsule;
+}
+
+// static
+Capsule Capsule::AddressRequest() {
+  return Capsule(CapsuleType::ADDRESS_REQUEST);
+}
+
+// static
+Capsule Capsule::AddressAssign() {
+  return Capsule(CapsuleType::ADDRESS_ASSIGN);
+}
+
+// static
+Capsule Capsule::RouteAdvertisement() {
+  return Capsule(CapsuleType::ROUTE_ADVERTISEMENT);
 }
 
 // static
@@ -226,32 +157,31 @@ Capsule Capsule::Unknown(uint64_t capsule_type,
 }
 
 Capsule& Capsule::operator=(const Capsule& other) {
+  Free();
   capsule_type_ = other.capsule_type_;
   switch (capsule_type_) {
     case CapsuleType::LEGACY_DATAGRAM:
       legacy_datagram_capsule_ = other.legacy_datagram_capsule_;
       break;
-    case CapsuleType::DATAGRAM_WITH_CONTEXT:
-      datagram_with_context_capsule_ = other.datagram_with_context_capsule_;
-      break;
     case CapsuleType::DATAGRAM_WITHOUT_CONTEXT:
       datagram_without_context_capsule_ =
           other.datagram_without_context_capsule_;
       break;
-    case CapsuleType::REGISTER_DATAGRAM_CONTEXT:
-      register_datagram_context_capsule_ =
-          other.register_datagram_context_capsule_;
-      break;
-    case CapsuleType::REGISTER_DATAGRAM_NO_CONTEXT:
-      register_datagram_no_context_capsule_ =
-          other.register_datagram_no_context_capsule_;
-      break;
-    case CapsuleType::CLOSE_DATAGRAM_CONTEXT:
-      close_datagram_context_capsule_ = other.close_datagram_context_capsule_;
-      break;
     case CapsuleType::CLOSE_WEBTRANSPORT_SESSION:
       close_web_transport_session_capsule_ =
           other.close_web_transport_session_capsule_;
+      break;
+    case CapsuleType::ADDRESS_ASSIGN:
+      address_assign_capsule_ = new AddressAssignCapsule();
+      *address_assign_capsule_ = *other.address_assign_capsule_;
+      break;
+    case CapsuleType::ADDRESS_REQUEST:
+      address_request_capsule_ = new AddressRequestCapsule();
+      *address_request_capsule_ = *other.address_request_capsule_;
+      break;
+    case CapsuleType::ROUTE_ADVERTISEMENT:
+      route_advertisement_capsule_ = new RouteAdvertisementCapsule();
+      *route_advertisement_capsule_ = *other.route_advertisement_capsule_;
       break;
     default:
       unknown_capsule_data_ = other.unknown_capsule_data_;
@@ -270,44 +200,25 @@ bool Capsule::operator==(const Capsule& other) const {
   }
   switch (capsule_type_) {
     case CapsuleType::LEGACY_DATAGRAM:
-      return legacy_datagram_capsule_.context_id ==
-                 other.legacy_datagram_capsule_.context_id &&
-             legacy_datagram_capsule_.http_datagram_payload ==
-                 other.legacy_datagram_capsule_.http_datagram_payload;
-    case CapsuleType::DATAGRAM_WITH_CONTEXT:
-      return datagram_with_context_capsule_.context_id ==
-                 other.datagram_with_context_capsule_.context_id &&
-             datagram_with_context_capsule_.http_datagram_payload ==
-                 other.datagram_with_context_capsule_.http_datagram_payload;
+      return legacy_datagram_capsule_.http_datagram_payload ==
+             other.legacy_datagram_capsule_.http_datagram_payload;
     case CapsuleType::DATAGRAM_WITHOUT_CONTEXT:
       return datagram_without_context_capsule_.http_datagram_payload ==
              other.datagram_without_context_capsule_.http_datagram_payload;
-    case CapsuleType::REGISTER_DATAGRAM_CONTEXT:
-      return register_datagram_context_capsule_.context_id ==
-                 other.register_datagram_context_capsule_.context_id &&
-             register_datagram_context_capsule_.format_type ==
-                 other.register_datagram_context_capsule_.format_type &&
-             register_datagram_context_capsule_.format_additional_data ==
-                 other.register_datagram_context_capsule_
-                     .format_additional_data;
-    case CapsuleType::REGISTER_DATAGRAM_NO_CONTEXT:
-      return register_datagram_no_context_capsule_.format_type ==
-                 other.register_datagram_no_context_capsule_.format_type &&
-             register_datagram_no_context_capsule_.format_additional_data ==
-                 other.register_datagram_no_context_capsule_
-                     .format_additional_data;
-    case CapsuleType::CLOSE_DATAGRAM_CONTEXT:
-      return close_datagram_context_capsule_.context_id ==
-                 other.close_datagram_context_capsule_.context_id &&
-             close_datagram_context_capsule_.close_code ==
-                 other.close_datagram_context_capsule_.close_code &&
-             close_datagram_context_capsule_.close_details ==
-                 other.close_datagram_context_capsule_.close_details;
     case CapsuleType::CLOSE_WEBTRANSPORT_SESSION:
       return close_web_transport_session_capsule_.error_code ==
                  other.close_web_transport_session_capsule_.error_code &&
              close_web_transport_session_capsule_.error_message ==
                  other.close_web_transport_session_capsule_.error_message;
+    case CapsuleType::ADDRESS_REQUEST:
+      return address_request_capsule_->requested_addresses ==
+             other.address_request_capsule_->requested_addresses;
+    case CapsuleType::ADDRESS_ASSIGN:
+      return address_assign_capsule_->assigned_addresses ==
+             other.address_assign_capsule_->assigned_addresses;
+    case CapsuleType::ROUTE_ADVERTISEMENT:
+      return route_advertisement_capsule_->ip_address_ranges ==
+             other.route_advertisement_capsule_->ip_address_ranges;
     default:
       return unknown_capsule_data_ == other.unknown_capsule_data_;
   }
@@ -317,19 +228,9 @@ std::string Capsule::ToString() const {
   std::string rv = CapsuleTypeToString(capsule_type_);
   switch (capsule_type_) {
     case CapsuleType::LEGACY_DATAGRAM:
-      if (legacy_datagram_capsule_.context_id.has_value()) {
-        absl::StrAppend(&rv, "(", legacy_datagram_capsule_.context_id.value(),
-                        ")");
-      }
       absl::StrAppend(&rv, "[",
                       absl::BytesToHexString(
                           legacy_datagram_capsule_.http_datagram_payload),
-                      "]");
-      break;
-    case CapsuleType::DATAGRAM_WITH_CONTEXT:
-      absl::StrAppend(&rv, "(", datagram_with_context_capsule_.context_id, ")[",
-                      absl::BytesToHexString(
-                          datagram_with_context_capsule_.http_datagram_payload),
                       "]");
       break;
     case CapsuleType::DATAGRAM_WITHOUT_CONTEXT:
@@ -339,42 +240,40 @@ std::string Capsule::ToString() const {
               datagram_without_context_capsule_.http_datagram_payload),
           "]");
       break;
-    case CapsuleType::REGISTER_DATAGRAM_CONTEXT:
-      absl::StrAppend(
-          &rv, "(context_id=", register_datagram_context_capsule_.context_id,
-          ",format_type=",
-          DatagramFormatTypeToString(
-              register_datagram_context_capsule_.format_type),
-          "){",
-          absl::BytesToHexString(
-              register_datagram_context_capsule_.format_additional_data),
-          "}");
-      break;
-    case CapsuleType::REGISTER_DATAGRAM_NO_CONTEXT:
-      absl::StrAppend(
-          &rv, "(format_type=",
-          DatagramFormatTypeToString(
-              register_datagram_no_context_capsule_.format_type),
-          "){",
-          absl::BytesToHexString(
-              register_datagram_no_context_capsule_.format_additional_data),
-          "}");
-      break;
-    case CapsuleType::CLOSE_DATAGRAM_CONTEXT:
-      absl::StrAppend(
-          &rv, "(context_id=", close_datagram_context_capsule_.context_id,
-          ",close_code=",
-          ContextCloseCodeToString(close_datagram_context_capsule_.close_code),
-          ",close_details=\"",
-          absl::BytesToHexString(close_datagram_context_capsule_.close_details),
-          "\")");
-      break;
     case CapsuleType::CLOSE_WEBTRANSPORT_SESSION:
       absl::StrAppend(
           &rv, "(error_code=", close_web_transport_session_capsule_.error_code,
           ",error_message=\"",
           close_web_transport_session_capsule_.error_message, "\")");
       break;
+    case CapsuleType::ADDRESS_REQUEST: {
+      absl::StrAppend(&rv, "[");
+      for (auto requested_address :
+           address_request_capsule_->requested_addresses) {
+        absl::StrAppend(&rv, "(", requested_address.request_id, "-",
+                        requested_address.ip_prefix.ToString(), ")");
+      }
+      absl::StrAppend(&rv, "]");
+    } break;
+    case CapsuleType::ADDRESS_ASSIGN: {
+      absl::StrAppend(&rv, "[");
+      for (auto assigned_address :
+           address_assign_capsule_->assigned_addresses) {
+        absl::StrAppend(&rv, "(", assigned_address.request_id, "-",
+                        assigned_address.ip_prefix.ToString(), ")");
+      }
+      absl::StrAppend(&rv, "]");
+    } break;
+    case CapsuleType::ROUTE_ADVERTISEMENT: {
+      absl::StrAppend(&rv, "[");
+      for (auto ip_address_range :
+           route_advertisement_capsule_->ip_address_ranges) {
+        absl::StrAppend(&rv, "(", ip_address_range.start_ip_address.ToString(),
+                        "-", ip_address_range.end_ip_address.ToString(), "-",
+                        static_cast<int>(ip_address_range.ip_protocol), ")");
+      }
+      absl::StrAppend(&rv, "]");
+    } break;
     default:
       absl::StrAppend(&rv, "[", absl::BytesToHexString(unknown_capsule_data_),
                       "]");
@@ -401,50 +300,51 @@ quiche::QuicheBuffer SerializeCapsule(
     case CapsuleType::LEGACY_DATAGRAM:
       capsule_data_length =
           capsule.legacy_datagram_capsule().http_datagram_payload.length();
-      if (capsule.legacy_datagram_capsule().context_id.has_value()) {
-        capsule_data_length += QuicDataWriter::GetVarInt62Len(
-            capsule.legacy_datagram_capsule().context_id.value());
-      }
-      break;
-    case CapsuleType::DATAGRAM_WITH_CONTEXT:
-      capsule_data_length =
-          QuicDataWriter::GetVarInt62Len(
-              capsule.datagram_with_context_capsule().context_id) +
-          capsule.datagram_with_context_capsule()
-              .http_datagram_payload.length();
       break;
     case CapsuleType::DATAGRAM_WITHOUT_CONTEXT:
       capsule_data_length = capsule.datagram_without_context_capsule()
                                 .http_datagram_payload.length();
       break;
-    case CapsuleType::REGISTER_DATAGRAM_CONTEXT:
-      capsule_data_length =
-          QuicDataWriter::GetVarInt62Len(
-              capsule.register_datagram_context_capsule().context_id) +
-          QuicDataWriter::GetVarInt62Len(static_cast<uint64_t>(
-              capsule.register_datagram_context_capsule().format_type)) +
-          capsule.register_datagram_context_capsule()
-              .format_additional_data.length();
-      break;
-    case CapsuleType::REGISTER_DATAGRAM_NO_CONTEXT:
-      capsule_data_length =
-          QuicDataWriter::GetVarInt62Len(static_cast<uint64_t>(
-              capsule.register_datagram_no_context_capsule().format_type)) +
-          capsule.register_datagram_no_context_capsule()
-              .format_additional_data.length();
-      break;
-    case CapsuleType::CLOSE_DATAGRAM_CONTEXT:
-      capsule_data_length =
-          QuicDataWriter::GetVarInt62Len(
-              capsule.close_datagram_context_capsule().context_id) +
-          QuicDataWriter::GetVarInt62Len(static_cast<uint64_t>(
-              capsule.close_datagram_context_capsule().close_code)) +
-          capsule.close_datagram_context_capsule().close_details.length();
-      break;
     case CapsuleType::CLOSE_WEBTRANSPORT_SESSION:
       capsule_data_length =
           sizeof(WebTransportSessionError) +
           capsule.close_web_transport_session_capsule().error_message.size();
+      break;
+    case CapsuleType::ADDRESS_REQUEST:
+      capsule_data_length = 0;
+      for (auto requested_address :
+           capsule.address_request_capsule().requested_addresses) {
+        capsule_data_length +=
+            QuicDataWriter::GetVarInt62Len(requested_address.request_id) + 1 +
+            (requested_address.ip_prefix.address().IsIPv4()
+                 ? QuicIpAddress::kIPv4AddressSize
+                 : QuicIpAddress::kIPv6AddressSize) +
+            1;
+      }
+      break;
+    case CapsuleType::ADDRESS_ASSIGN:
+      capsule_data_length = 0;
+      for (auto assigned_address :
+           capsule.address_assign_capsule().assigned_addresses) {
+        capsule_data_length +=
+            QuicDataWriter::GetVarInt62Len(assigned_address.request_id) + 1 +
+            (assigned_address.ip_prefix.address().IsIPv4()
+                 ? QuicIpAddress::kIPv4AddressSize
+                 : QuicIpAddress::kIPv6AddressSize) +
+            1;
+      }
+      break;
+    case CapsuleType::ROUTE_ADVERTISEMENT:
+      capsule_data_length = 0;
+      for (auto ip_address_range :
+           capsule.route_advertisement_capsule().ip_address_ranges) {
+        capsule_data_length += 1 +
+                               (ip_address_range.start_ip_address.IsIPv4()
+                                    ? QuicIpAddress::kIPv4AddressSize
+                                    : QuicIpAddress::kIPv6AddressSize) *
+                                   2 +
+                               1;
+      }
       break;
     default:
       capsule_data_length = capsule.unknown_capsule_data().length();
@@ -466,32 +366,10 @@ quiche::QuicheBuffer SerializeCapsule(
   }
   switch (capsule.capsule_type()) {
     case CapsuleType::LEGACY_DATAGRAM:
-      if (capsule.legacy_datagram_capsule().context_id.has_value()) {
-        if (!writer.WriteVarInt62(
-                capsule.legacy_datagram_capsule().context_id.value())) {
-          QUIC_BUG(datagram capsule context ID write fail)
-              << "Failed to write LEGACY_DATAGRAM CAPSULE context ID";
-          return {};
-        }
-      }
       if (!writer.WriteStringPiece(
               capsule.legacy_datagram_capsule().http_datagram_payload)) {
         QUIC_BUG(datagram capsule payload write fail)
             << "Failed to write LEGACY_DATAGRAM CAPSULE payload";
-        return {};
-      }
-      break;
-    case CapsuleType::DATAGRAM_WITH_CONTEXT:
-      if (!writer.WriteVarInt62(
-              capsule.datagram_with_context_capsule().context_id)) {
-        QUIC_BUG(datagram capsule context ID write fail)
-            << "Failed to write DATAGRAM_WITH_CONTEXT CAPSULE context ID";
-        return {};
-      }
-      if (!writer.WriteStringPiece(
-              capsule.datagram_with_context_capsule().http_datagram_payload)) {
-        QUIC_BUG(datagram capsule payload write fail)
-            << "Failed to write DATAGRAM_WITH_CONTEXT CAPSULE payload";
         return {};
       }
       break;
@@ -500,64 +378,6 @@ quiche::QuicheBuffer SerializeCapsule(
                                        .http_datagram_payload)) {
         QUIC_BUG(datagram capsule payload write fail)
             << "Failed to write DATAGRAM_WITHOUT_CONTEXT CAPSULE payload";
-        return {};
-      }
-      break;
-    case CapsuleType::REGISTER_DATAGRAM_CONTEXT:
-      if (!writer.WriteVarInt62(
-              capsule.register_datagram_context_capsule().context_id)) {
-        QUIC_BUG(register context capsule context ID write fail)
-            << "Failed to write REGISTER_DATAGRAM_CONTEXT CAPSULE context ID";
-        return {};
-      }
-      if (!writer.WriteVarInt62(static_cast<uint64_t>(
-              capsule.register_datagram_context_capsule().format_type))) {
-        QUIC_BUG(register context capsule format type write fail)
-            << "Failed to write REGISTER_DATAGRAM_CONTEXT CAPSULE format type";
-        return {};
-      }
-      if (!writer.WriteStringPiece(capsule.register_datagram_context_capsule()
-                                       .format_additional_data)) {
-        QUIC_BUG(register context capsule additional data write fail)
-            << "Failed to write REGISTER_DATAGRAM_CONTEXT CAPSULE additional "
-               "data";
-        return {};
-      }
-      break;
-    case CapsuleType::REGISTER_DATAGRAM_NO_CONTEXT:
-      if (!writer.WriteVarInt62(static_cast<uint64_t>(
-              capsule.register_datagram_no_context_capsule().format_type))) {
-        QUIC_BUG(register no context capsule format type write fail)
-            << "Failed to write REGISTER_DATAGRAM_NO_CONTEXT CAPSULE format "
-               "type";
-        return {};
-      }
-      if (!writer.WriteStringPiece(
-              capsule.register_datagram_no_context_capsule()
-                  .format_additional_data)) {
-        QUIC_BUG(register no context capsule additional data write fail)
-            << "Failed to write REGISTER_DATAGRAM_NO_CONTEXT CAPSULE "
-               "additional data";
-        return {};
-      }
-      break;
-    case CapsuleType::CLOSE_DATAGRAM_CONTEXT:
-      if (!writer.WriteVarInt62(
-              capsule.close_datagram_context_capsule().context_id)) {
-        QUIC_BUG(close context capsule context ID write fail)
-            << "Failed to write CLOSE_DATAGRAM_CONTEXT CAPSULE context ID";
-        return {};
-      }
-      if (!writer.WriteVarInt62(static_cast<uint64_t>(
-              capsule.close_datagram_context_capsule().close_code))) {
-        QUIC_BUG(close context capsule close code write fail)
-            << "Failed to write CLOSE_DATAGRAM_CONTEXT CAPSULE close code";
-        return {};
-      }
-      if (!writer.WriteStringPiece(
-              capsule.close_datagram_context_capsule().close_details)) {
-        QUIC_BUG(close context capsule close details write fail)
-            << "Failed to write CLOSE_DATAGRAM_CONTEXT CAPSULE close details";
         return {};
       }
       break;
@@ -573,6 +393,88 @@ quiche::QuicheBuffer SerializeCapsule(
         QUIC_BUG(close webtransport session capsule error message write fail)
             << "Failed to write CLOSE_WEBTRANSPORT_SESSION error message";
         return {};
+      }
+      break;
+    case CapsuleType::ADDRESS_REQUEST:
+      for (auto requested_address :
+           capsule.address_request_capsule().requested_addresses) {
+        if (!writer.WriteVarInt62(requested_address.request_id)) {
+          QUIC_BUG(address request capsule id write fail)
+              << "Failed to write ADDRESS_REQUEST ID";
+          return {};
+        }
+        if (!writer.WriteUInt8(
+                requested_address.ip_prefix.address().IsIPv4() ? 4 : 6)) {
+          QUIC_BUG(address request capsule family write fail)
+              << "Failed to write ADDRESS_REQUEST family";
+          return {};
+        }
+        if (!writer.WriteStringPiece(
+                requested_address.ip_prefix.address().ToPackedString())) {
+          QUIC_BUG(address request capsule address write fail)
+              << "Failed to write ADDRESS_REQUEST address";
+          return {};
+        }
+        if (!writer.WriteUInt8(requested_address.ip_prefix.prefix_length())) {
+          QUIC_BUG(address request capsule prefix length write fail)
+              << "Failed to write ADDRESS_REQUEST prefix length";
+          return {};
+        }
+      }
+      break;
+    case CapsuleType::ADDRESS_ASSIGN:
+      for (auto assigned_address :
+           capsule.address_assign_capsule().assigned_addresses) {
+        if (!writer.WriteVarInt62(assigned_address.request_id)) {
+          QUIC_BUG(address request capsule id write fail)
+              << "Failed to write ADDRESS_ASSIGN ID";
+          return {};
+        }
+        if (!writer.WriteUInt8(
+                assigned_address.ip_prefix.address().IsIPv4() ? 4 : 6)) {
+          QUIC_BUG(address request capsule family write fail)
+              << "Failed to write ADDRESS_ASSIGN family";
+          return {};
+        }
+        if (!writer.WriteStringPiece(
+                assigned_address.ip_prefix.address().ToPackedString())) {
+          QUIC_BUG(address request capsule address write fail)
+              << "Failed to write ADDRESS_ASSIGN address";
+          return {};
+        }
+        if (!writer.WriteUInt8(assigned_address.ip_prefix.prefix_length())) {
+          QUIC_BUG(address request capsule prefix length write fail)
+              << "Failed to write ADDRESS_ASSIGN prefix length";
+          return {};
+        }
+      }
+      break;
+    case CapsuleType::ROUTE_ADVERTISEMENT:
+      for (auto ip_address_range :
+           capsule.route_advertisement_capsule().ip_address_ranges) {
+        if (!writer.WriteUInt8(
+                ip_address_range.start_ip_address.IsIPv4() ? 4 : 6)) {
+          QUIC_BUG(route advertisement capsule family write fail)
+              << "Failed to write ROUTE_ADVERTISEMENT family";
+          return {};
+        }
+        if (!writer.WriteStringPiece(
+                ip_address_range.start_ip_address.ToPackedString())) {
+          QUIC_BUG(route advertisement capsule start address write fail)
+              << "Failed to write ROUTE_ADVERTISEMENT start address";
+          return {};
+        }
+        if (!writer.WriteStringPiece(
+                ip_address_range.end_ip_address.ToPackedString())) {
+          QUIC_BUG(route advertisement capsule end address write fail)
+              << "Failed to write ROUTE_ADVERTISEMENT end address";
+          return {};
+        }
+        if (!writer.WriteUInt8(ip_address_range.ip_protocol)) {
+          QUIC_BUG(route advertisement capsule IP protocol write fail)
+              << "Failed to write ROUTE_ADVERTISEMENT IP protocol";
+          return {};
+        }
       }
       break;
     default:
@@ -638,73 +540,11 @@ size_t CapsuleParser::AttemptParseCapsule() {
   Capsule capsule(static_cast<CapsuleType>(capsule_type64));
   switch (capsule.capsule_type()) {
     case CapsuleType::LEGACY_DATAGRAM:
-      if (datagram_context_id_present_) {
-        uint64_t context_id;
-        if (!capsule_data_reader.ReadVarInt62(&context_id)) {
-          ReportParseFailure(
-              "Unable to parse capsule LEGACY_DATAGRAM context ID");
-          return 0;
-        }
-        capsule.legacy_datagram_capsule().context_id = context_id;
-      }
       capsule.legacy_datagram_capsule().http_datagram_payload =
-          capsule_data_reader.ReadRemainingPayload();
-      break;
-    case CapsuleType::DATAGRAM_WITH_CONTEXT:
-      uint64_t context_id;
-      if (!capsule_data_reader.ReadVarInt62(&context_id)) {
-        ReportParseFailure(
-            "Unable to parse capsule DATAGRAM_WITH_CONTEXT context ID");
-        return 0;
-      }
-      capsule.datagram_with_context_capsule().context_id = context_id;
-      capsule.datagram_with_context_capsule().http_datagram_payload =
           capsule_data_reader.ReadRemainingPayload();
       break;
     case CapsuleType::DATAGRAM_WITHOUT_CONTEXT:
       capsule.datagram_without_context_capsule().http_datagram_payload =
-          capsule_data_reader.ReadRemainingPayload();
-      break;
-    case CapsuleType::REGISTER_DATAGRAM_CONTEXT:
-      if (!capsule_data_reader.ReadVarInt62(
-              &capsule.register_datagram_context_capsule().context_id)) {
-        ReportParseFailure(
-            "Unable to parse capsule REGISTER_DATAGRAM_CONTEXT context ID");
-        return 0;
-      }
-      if (!capsule_data_reader.ReadVarInt62(reinterpret_cast<uint64_t*>(
-              &capsule.register_datagram_context_capsule().format_type))) {
-        ReportParseFailure(
-            "Unable to parse capsule REGISTER_DATAGRAM_CONTEXT format type");
-        return 0;
-      }
-      capsule.register_datagram_context_capsule().format_additional_data =
-          capsule_data_reader.ReadRemainingPayload();
-      break;
-    case CapsuleType::REGISTER_DATAGRAM_NO_CONTEXT:
-      if (!capsule_data_reader.ReadVarInt62(reinterpret_cast<uint64_t*>(
-              &capsule.register_datagram_no_context_capsule().format_type))) {
-        ReportParseFailure(
-            "Unable to parse capsule REGISTER_DATAGRAM_NO_CONTEXT format type");
-        return 0;
-      }
-      capsule.register_datagram_no_context_capsule().format_additional_data =
-          capsule_data_reader.ReadRemainingPayload();
-      break;
-    case CapsuleType::CLOSE_DATAGRAM_CONTEXT:
-      if (!capsule_data_reader.ReadVarInt62(
-              &capsule.close_datagram_context_capsule().context_id)) {
-        ReportParseFailure(
-            "Unable to parse capsule CLOSE_DATAGRAM_CONTEXT context ID");
-        return 0;
-      }
-      if (!capsule_data_reader.ReadVarInt62(reinterpret_cast<uint64_t*>(
-              &capsule.close_datagram_context_capsule().close_code))) {
-        ReportParseFailure(
-            "Unable to parse capsule CLOSE_DATAGRAM_CONTEXT close code");
-        return 0;
-      }
-      capsule.close_datagram_context_capsule().close_details =
           capsule_data_reader.ReadRemainingPayload();
       break;
     case CapsuleType::CLOSE_WEBTRANSPORT_SESSION:
@@ -717,6 +557,154 @@ size_t CapsuleParser::AttemptParseCapsule() {
       capsule.close_web_transport_session_capsule().error_message =
           capsule_data_reader.ReadRemainingPayload();
       break;
+    case CapsuleType::ADDRESS_REQUEST: {
+      while (!capsule_data_reader.IsDoneReading()) {
+        PrefixWithId requested_address;
+        if (!capsule_data_reader.ReadVarInt62(&requested_address.request_id)) {
+          ReportParseFailure(
+              "Unable to parse capsule ADDRESS_REQUEST request ID");
+          return 0;
+        }
+        uint8_t address_family;
+        if (!capsule_data_reader.ReadUInt8(&address_family)) {
+          ReportParseFailure("Unable to parse capsule ADDRESS_REQUEST family");
+          return 0;
+        }
+        if (address_family != 4 && address_family != 6) {
+          ReportParseFailure("Bad ADDRESS_REQUEST family");
+          return 0;
+        }
+        absl::string_view ip_address_bytes;
+        if (!capsule_data_reader.ReadStringPiece(
+                &ip_address_bytes, address_family == 4
+                                       ? QuicIpAddress::kIPv4AddressSize
+                                       : QuicIpAddress::kIPv6AddressSize)) {
+          ReportParseFailure("Unable to read capsule ADDRESS_REQUEST address");
+          return 0;
+        }
+        quiche::QuicheIpAddress ip_address;
+        if (!ip_address.FromPackedString(ip_address_bytes.data(),
+                                         ip_address_bytes.size())) {
+          ReportParseFailure("Unable to parse capsule ADDRESS_REQUEST address");
+          return 0;
+        }
+        uint8_t ip_prefix_length;
+        if (!capsule_data_reader.ReadUInt8(&ip_prefix_length)) {
+          ReportParseFailure(
+              "Unable to parse capsule ADDRESS_REQUEST IP prefix length");
+          return 0;
+        }
+        if (ip_prefix_length >
+            quiche::QuicheIpPrefix(ip_address).prefix_length()) {
+          ReportParseFailure("Invalid IP prefix length");
+          return 0;
+        }
+        requested_address.ip_prefix =
+            quiche::QuicheIpPrefix(ip_address, ip_prefix_length);
+        capsule.address_request_capsule().requested_addresses.push_back(
+            requested_address);
+      }
+    } break;
+    case CapsuleType::ADDRESS_ASSIGN: {
+      while (!capsule_data_reader.IsDoneReading()) {
+        PrefixWithId assigned_address;
+        if (!capsule_data_reader.ReadVarInt62(&assigned_address.request_id)) {
+          ReportParseFailure(
+              "Unable to parse capsule ADDRESS_ASSIGN request ID");
+          return 0;
+        }
+        uint8_t address_family;
+        if (!capsule_data_reader.ReadUInt8(&address_family)) {
+          ReportParseFailure("Unable to parse capsule ADDRESS_ASSIGN family");
+          return 0;
+        }
+        if (address_family != 4 && address_family != 6) {
+          ReportParseFailure("Bad ADDRESS_ASSIGN family");
+          return 0;
+        }
+        absl::string_view ip_address_bytes;
+        if (!capsule_data_reader.ReadStringPiece(
+                &ip_address_bytes, address_family == 4
+                                       ? QuicIpAddress::kIPv4AddressSize
+                                       : QuicIpAddress::kIPv6AddressSize)) {
+          ReportParseFailure("Unable to read capsule ADDRESS_ASSIGN address");
+          return 0;
+        }
+        quiche::QuicheIpAddress ip_address;
+        if (!ip_address.FromPackedString(ip_address_bytes.data(),
+                                         ip_address_bytes.size())) {
+          ReportParseFailure("Unable to parse capsule ADDRESS_ASSIGN address");
+          return 0;
+        }
+        uint8_t ip_prefix_length;
+        if (!capsule_data_reader.ReadUInt8(&ip_prefix_length)) {
+          ReportParseFailure(
+              "Unable to parse capsule ADDRESS_ASSIGN IP prefix length");
+          return 0;
+        }
+        if (ip_prefix_length >
+            quiche::QuicheIpPrefix(ip_address).prefix_length()) {
+          ReportParseFailure("Invalid IP prefix length");
+          return 0;
+        }
+        assigned_address.ip_prefix =
+            quiche::QuicheIpPrefix(ip_address, ip_prefix_length);
+        capsule.address_assign_capsule().assigned_addresses.push_back(
+            assigned_address);
+      }
+    } break;
+    case CapsuleType::ROUTE_ADVERTISEMENT: {
+      while (!capsule_data_reader.IsDoneReading()) {
+        uint8_t address_family;
+        if (!capsule_data_reader.ReadUInt8(&address_family)) {
+          ReportParseFailure(
+              "Unable to parse capsule ROUTE_ADVERTISEMENT family");
+          return 0;
+        }
+        if (address_family != 4 && address_family != 6) {
+          ReportParseFailure("Bad ROUTE_ADVERTISEMENT family");
+          return 0;
+        }
+        IpAddressRange ip_address_range;
+        absl::string_view start_ip_address_bytes;
+        if (!capsule_data_reader.ReadStringPiece(
+                &start_ip_address_bytes,
+                address_family == 4 ? QuicIpAddress::kIPv4AddressSize
+                                    : QuicIpAddress::kIPv6AddressSize)) {
+          ReportParseFailure(
+              "Unable to read capsule ROUTE_ADVERTISEMENT start address");
+          return 0;
+        }
+        if (!ip_address_range.start_ip_address.FromPackedString(
+                start_ip_address_bytes.data(), start_ip_address_bytes.size())) {
+          ReportParseFailure(
+              "Unable to parse capsule ROUTE_ADVERTISEMENT start address");
+          return 0;
+        }
+        absl::string_view end_ip_address_bytes;
+        if (!capsule_data_reader.ReadStringPiece(
+                &end_ip_address_bytes, address_family == 4
+                                           ? QuicIpAddress::kIPv4AddressSize
+                                           : QuicIpAddress::kIPv6AddressSize)) {
+          ReportParseFailure(
+              "Unable to read capsule ROUTE_ADVERTISEMENT end address");
+          return 0;
+        }
+        if (!ip_address_range.end_ip_address.FromPackedString(
+                end_ip_address_bytes.data(), end_ip_address_bytes.size())) {
+          ReportParseFailure(
+              "Unable to parse capsule ROUTE_ADVERTISEMENT end address");
+          return 0;
+        }
+        if (!capsule_data_reader.ReadUInt8(&ip_address_range.ip_protocol)) {
+          ReportParseFailure(
+              "Unable to parse capsule ROUTE_ADVERTISEMENT IP protocol");
+          return 0;
+        }
+        capsule.route_advertisement_capsule().ip_address_ranges.push_back(
+            ip_address_range);
+      }
+    } break;
     default:
       capsule.unknown_capsule_data() =
           capsule_data_reader.ReadRemainingPayload();
@@ -744,6 +732,30 @@ void CapsuleParser::ErrorIfThereIsRemainingBufferedData() {
   if (!buffered_data_.empty()) {
     ReportParseFailure("Incomplete capsule left at the end of the stream");
   }
+}
+
+bool PrefixWithId::operator==(const PrefixWithId& other) const {
+  return request_id == other.request_id && ip_prefix == other.ip_prefix;
+}
+
+bool IpAddressRange::operator==(const IpAddressRange& other) const {
+  return start_ip_address == other.start_ip_address &&
+         end_ip_address == other.end_ip_address &&
+         ip_protocol == other.ip_protocol;
+}
+
+bool AddressAssignCapsule::operator==(const AddressAssignCapsule& other) const {
+  return assigned_addresses == other.assigned_addresses;
+}
+
+bool AddressRequestCapsule::operator==(
+    const AddressRequestCapsule& other) const {
+  return requested_addresses == other.requested_addresses;
+}
+
+bool RouteAdvertisementCapsule::operator==(
+    const RouteAdvertisementCapsule& other) const {
+  return ip_address_ranges == other.ip_address_ranges;
 }
 
 }  // namespace quic

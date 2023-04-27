@@ -70,8 +70,7 @@ void QuicReceivedPacketManager::SetFromConfig(const QuicConfig& config,
 }
 
 void QuicReceivedPacketManager::RecordPacketReceived(
-    const QuicPacketHeader& header,
-    QuicTime receipt_time) {
+    const QuicPacketHeader& header, QuicTime receipt_time) {
   const QuicPacketNumber packet_number = header.packet_number;
   QUICHE_DCHECK(IsAwaitingPacket(packet_number))
       << " packet_number:" << packet_number;
@@ -171,7 +170,7 @@ const QuicFrame QuicReceivedPacketManager::GetUpdatedAckFrame(
   QuicFrame frame = QuicFrame(&ack_frame_);
   frame.delete_forbidden = true;
   return frame;
-#else  // QUIC_FRAME_DEBUG
+#else   // QUIC_FRAME_DEBUG
   return QuicFrame(&ack_frame_);
 #endif  // QUIC_FRAME_DEBUG
 }
@@ -268,24 +267,9 @@ void QuicReceivedPacketManager::MaybeUpdateAckTimeout(
     return;
   }
 
-  QuicTime ack_timeout_base = now;
-  const bool quic_update_ack_timeout_on_receipt_time =
-      GetQuicReloadableFlag(quic_update_ack_timeout_on_receipt_time);
-  if (quic_update_ack_timeout_on_receipt_time) {
-    if (last_packet_receipt_time <= now) {
-      QUIC_CODE_COUNT(quic_update_ack_timeout_on_receipt_time);
-      ack_timeout_base = last_packet_receipt_time;
-    } else {
-      QUIC_CODE_COUNT(quic_update_ack_timeout_on_now);
-      ack_timeout_base = now;
-    }
-  }
-  QuicTime updated_ack_time =
-      ack_timeout_base +
-      GetMaxAckDelay(last_received_packet_number, *rtt_stats);
-  if (quic_update_ack_timeout_on_receipt_time) {
-    updated_ack_time = std::max(now, updated_ack_time);
-  }
+  const QuicTime updated_ack_time = std::max(
+      now, std::min(last_packet_receipt_time, now) +
+               GetMaxAckDelay(last_received_packet_number, *rtt_stats));
   if (!ack_timeout_.IsInitialized() || ack_timeout_ > updated_ack_time) {
     ack_timeout_ = updated_ack_time;
   }

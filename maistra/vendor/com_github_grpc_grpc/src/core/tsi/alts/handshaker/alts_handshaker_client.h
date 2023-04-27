@@ -25,11 +25,10 @@
 #include <grpc/byte_buffer_reader.h>
 #include <grpc/grpc.h>
 
-#include "src/core/tsi/alts/handshaker/alts_tsi_handshaker.h"
-#include "src/core/tsi/transport_security_interface.h"
-
 #include "src/core/lib/iomgr/closure.h"
 #include "src/core/lib/iomgr/pollset_set.h"
+#include "src/core/tsi/alts/handshaker/alts_tsi_handshaker.h"
+#include "src/core/tsi/transport_security_interface.h"
 
 #define ALTS_SERVICE_METHOD "/grpc.gcp.HandshakerService/DoHandshake"
 #define ALTS_APPLICATION_PROTOCOL "grpc"
@@ -145,7 +144,7 @@ alts_handshaker_client* alts_grpc_handshaker_client_create(
     grpc_alts_credentials_options* options, const grpc_slice& target_name,
     grpc_iomgr_cb_func grpc_cb, tsi_handshaker_on_next_done_cb cb,
     void* user_data, alts_handshaker_client_vtable* vtable_for_testing,
-    bool is_client, size_t max_frame_size);
+    bool is_client, size_t max_frame_size, std::string* error);
 
 /**
  * This method handles handshaker response returned from ALTS handshaker

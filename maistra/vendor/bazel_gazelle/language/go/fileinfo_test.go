@@ -21,6 +21,8 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestOtherFileInfo(t *testing.T) {
@@ -46,7 +48,7 @@ func TestOtherFileInfo(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			if err := ioutil.WriteFile(tc.name, []byte(tc.source), 0600); err != nil {
+			if err := ioutil.WriteFile(tc.name, []byte(tc.source), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			defer os.Remove(tc.name)
@@ -55,9 +57,10 @@ func TestOtherFileInfo(t *testing.T) {
 
 			// Only check that we can extract tags. Everything else is covered
 			// by other tests.
-			if !reflect.DeepEqual(got.tags, tc.wantTags) {
-				t.Errorf("got %#v; want %#v", got.tags, tc.wantTags)
+			if diff := cmp.Diff(tc.wantTags, got.tags, fileInfoCmpOption); diff != "" {
+				t.Errorf("(-want, +got): %s", diff)
 			}
+
 		})
 	}
 }
@@ -240,7 +243,8 @@ func TestFileNameInfo(t *testing.T) {
 			fileInfo{
 				ext: unknownExt,
 			},
-		}, {
+		},
+		{
 			"hidden file",
 			".foo.go",
 			fileInfo{
@@ -324,14 +328,14 @@ package main`,
 		if err = f.Close(); err != nil {
 			t.Fatal(err)
 		}
-		if err = ioutil.WriteFile(path, []byte(tc.source), 0600); err != nil {
+		if err = ioutil.WriteFile(path, []byte(tc.source), 0o600); err != nil {
 			t.Fatal(err)
 		}
 
 		if got, err := readTags(path); err != nil {
 			t.Fatal(err)
-		} else if !reflect.DeepEqual(got, tc.want) {
-			t.Errorf("case %q: got %#v; want %#v", tc.desc, got, tc.want)
+		} else if diff := cmp.Diff(tc.want, got); diff != "" {
+			t.Errorf("(-want, +got): %s", diff)
 		}
 	}
 }
@@ -519,7 +523,7 @@ import "C"
 			}
 
 			path := filepath.Join(dir, filename)
-			if err := ioutil.WriteFile(path, []byte(content), 0666); err != nil {
+			if err := ioutil.WriteFile(path, []byte(content), 0o666); err != nil {
 				t.Fatal(err)
 			}
 

@@ -79,7 +79,7 @@ Additional options:
 -   `--allow-non-utf8` : Pass non-UTF-8 input through parser and emit nonstandard
     \x escapes in JSON. (Default is to raise parse error on non-UTF-8 input.)
 
--  `--natural-utf8` : Output strings with UTF-8 as human-readable strings.
+-   `--natural-utf8` : Output strings with UTF-8 as human-readable strings.
      By default, UTF-8 characters are printed as \uXXXX escapes."
 
 -   `--defaults-json` : Output fields whose value is equal to the default value
@@ -101,7 +101,7 @@ Additional options:
 -   `--gen-mutable` : Generate additional non-const accessors for mutating
     FlatBuffers in-place.
 
--   `--gen-onefile` : Generate single output file for C# and Go.
+-   `--gen-onefile` : Generate single output file for C#, Go, and Python.
 
 -   `--gen-name-strings` : Generate type name functions for C++.
 
@@ -216,7 +216,13 @@ Additional options:
 -   `--flexbuffers` : Used with "binary" and "json" options, it generates
      data using schema-less FlexBuffers.
 
--    `--no-warnings` : Inhibit all warning messages.
+-   `--no-warnings` : Inhibit all warning messages.
+
+-   `--cs-global-alias` : Prepend `global::` to all user generated csharp classes and structs.
+
+-   `--json-nested-bytes` : Allow a nested_flatbuffer field to be parsed as a
+    vector of bytes in JSON, which is unsafe unless checked by a verifier
+    afterwards.
 
 NOTE: short-form options for generators are deprecated, use the long form
 whenever possible.

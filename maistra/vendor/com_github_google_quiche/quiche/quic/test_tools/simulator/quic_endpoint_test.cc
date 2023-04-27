@@ -28,7 +28,7 @@ const QuicByteCount kDefaultBdp = kDefaultBandwidth * kDefaultPropagationDelay;
 
 // A simple test harness where all hosts are connected to a switch with
 // identical links.
-class QuicEndpointTest : public QuicTest {
+class QuicEndpointTest : public quic::test::QuicTest {
  public:
   QuicEndpointTest()
       : simulator_(), switch_(&simulator_, "Switch", 8, kDefaultBdp * 2) {}
@@ -42,8 +42,7 @@ class QuicEndpointTest : public QuicTest {
                                            kDefaultPropagationDelay);
   }
 
-  std::unique_ptr<SymmetricLink> CustomLink(Endpoint* a,
-                                            Endpoint* b,
+  std::unique_ptr<SymmetricLink> CustomLink(Endpoint* a, Endpoint* b,
                                             uint64_t extra_rtt_ms) {
     return std::make_unique<SymmetricLink>(
         a, b, kDefaultBandwidth,
@@ -105,7 +104,7 @@ TEST_F(QuicEndpointTest, WriteBlocked) {
       .WillRepeatedly(Return(10 * kDefaultBandwidth));
   EXPECT_CALL(*sender, GetCongestionWindow())
       .WillRepeatedly(Return(kMaxOutgoingPacketSize *
-                             GetQuicFlag(FLAGS_quic_max_congestion_window)));
+                             GetQuicFlag(quic_max_congestion_window)));
   test::QuicConnectionPeer::SetSendAlgorithm(endpoint_a.connection(), sender);
 
   // First transmit a small, packet-size chunk of data.

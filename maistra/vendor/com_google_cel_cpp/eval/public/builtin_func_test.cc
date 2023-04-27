@@ -1,5 +1,20 @@
+// Copyright 2021 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include <cstdint>
 #include <limits>
+#include <string>
 
 #include "google/api/expr/v1alpha1/syntax.pb.h"
 #include "absl/status/status.h"
@@ -14,9 +29,9 @@
 #include "eval/public/cel_options.h"
 #include "eval/public/cel_value.h"
 #include "eval/public/structs/cel_proto_wrapper.h"
-#include "internal/proto_util.h"
 #include "internal/status_macros.h"
 #include "internal/testing.h"
+#include "internal/time.h"
 
 namespace google::api::expr::runtime {
 namespace {
@@ -29,27 +44,31 @@ using google::api::expr::v1alpha1::SourceInfo;
 
 using google::protobuf::Arena;
 
-using ::google::api::expr::internal::MakeGoogleApiDurationMax;
-using ::google::api::expr::internal::MakeGoogleApiDurationMin;
-using ::google::api::expr::internal::MakeGoogleApiTimeMin;
+using ::cel::internal::MaxDuration;
+using ::cel::internal::MinDuration;
+using ::cel::internal::MinTimestamp;
 using testing::Eq;
 
 class BuiltinsTest : public ::testing::Test {
  protected:
   BuiltinsTest() {}
 
-  void SetUp() override { ASSERT_OK(RegisterBuiltinFunctions(&registry_)); }
+  // Helper method. Looks up in registry and tests comparison operation.
+  void PerformRun(absl::string_view operation, absl::optional<CelValue> target,
+                  const std::vector<CelValue>& values, CelValue* result) {
+    PerformRun(operation, target, values, result, options_);
+  }
 
   // Helper method. Looks up in registry and tests comparison operation.
   void PerformRun(absl::string_view operation, absl::optional<CelValue> target,
                   const std::vector<CelValue>& values, CelValue* result,
-                  const InterpreterOptions& options = InterpreterOptions()) {
+                  const InterpreterOptions& options) {
     Activation activation;
 
     Expr expr;
     SourceInfo source_info;
     auto call = expr.mutable_call_expr();
-    call->set_function(operation.data());
+    call->set_function(operation.data(), operation.size());
 
     if (target.has_value()) {
       std::string param_name = "target";
@@ -93,17 +112,21 @@ class BuiltinsTest : public ::testing::Test {
     ASSERT_NO_FATAL_FAILURE(
         PerformRun(operation, {}, {ref, other}, &result_value));
 
-    ASSERT_EQ(result_value.IsBool(), true);
+    ASSERT_EQ(result_value.IsBool(), true)
+        << absl::StrCat(CelValue::TypeName(ref.type()), " ", operation, " ",
+                        CelValue::TypeName(other.type()));
     ASSERT_EQ(result_value.BoolOrDie(), result)
-        << operation << " for " << CelValue::TypeName(ref.type());
+        << operation << " for " << ref.DebugString() << " with "
+        << other.DebugString();
   }
 
   // Helper method. Looks up in registry and tests for no matching equality
   // overload.
   void TestNoMatchingEqualOverload(const CelValue& ref, const CelValue& other) {
+    options_.enable_heterogeneous_equality = false;
     CelValue eq_value;
     ASSERT_NO_FATAL_FAILURE(
-        PerformRun(builtin::kEqual, {}, {ref, other}, &eq_value));
+        PerformRun(builtin::kEqual, {}, {ref, other}, &eq_value, options_));
     ASSERT_TRUE(eq_value.IsError())
         << " for " << CelValue::TypeName(ref.type()) << " and "
         << CelValue::TypeName(other.type());
@@ -111,7 +134,7 @@ class BuiltinsTest : public ::testing::Test {
 
     CelValue ineq_value;
     ASSERT_NO_FATAL_FAILURE(
-        PerformRun(builtin::kInequal, {}, {ref, other}, &ineq_value));
+        PerformRun(builtin::kInequal, {}, {ref, other}, &ineq_value, options_));
     ASSERT_TRUE(ineq_value.IsError())
         << " for " << CelValue::TypeName(ref.type()) << " and "
         << CelValue::TypeName(other.type());
@@ -328,7 +351,8 @@ class BuiltinsTest : public ::testing::Test {
                                        {value, CelValue::CreateList(cel_list)},
                                        &result_value));
 
-    ASSERT_EQ(result_value.IsBool(), true);
+    ASSERT_EQ(result_value.IsBool(), true)
+        << result_value.DebugString() << " argument: " << value.DebugString();
     ASSERT_EQ(result_value.BoolOrDie(), result)
         << " for " << CelValue::TypeName(value.type());
   }
@@ -361,11 +385,11 @@ class BuiltinsTest : public ::testing::Test {
     CelValue result_value;
     ASSERT_NO_FATAL_FAILURE(PerformRun(builtin::kIn, {},
                                        {value, CelValue::CreateMap(cel_map)},
-                                       &result_value));
+                                       &result_value, options_));
 
     ASSERT_EQ(result_value.IsBool(), true);
     ASSERT_EQ(result_value.BoolOrDie(), result)
-        << " for " << CelValue::TypeName(value.type());
+        << " for " << value.DebugString();
   }
 
   void TestInDeprecatedMap(const CelMap* cel_map, const CelValue& value,
@@ -373,7 +397,7 @@ class BuiltinsTest : public ::testing::Test {
     CelValue result_value;
     ASSERT_NO_FATAL_FAILURE(PerformRun(builtin::kInDeprecated, {},
                                        {value, CelValue::CreateMap(cel_map)},
-                                       &result_value));
+                                       &result_value, options_));
 
     ASSERT_EQ(result_value.IsBool(), true);
     ASSERT_EQ(result_value.BoolOrDie(), result)
@@ -385,18 +409,22 @@ class BuiltinsTest : public ::testing::Test {
     CelValue result_value;
     ASSERT_NO_FATAL_FAILURE(PerformRun(builtin::kInFunction, {},
                                        {value, CelValue::CreateMap(cel_map)},
-                                       &result_value));
+                                       &result_value, options_));
 
     ASSERT_EQ(result_value.IsBool(), true);
     ASSERT_EQ(result_value.BoolOrDie(), result)
         << " for " << CelValue::TypeName(value.type());
   }
 
-  // Function registry object
-  CelFunctionRegistry registry_;
+  InterpreterOptions options_;
 
   // Arena
   Arena arena_;
+};
+
+class HeterogeneousEqualityTest : public BuiltinsTest {
+ public:
+  HeterogeneousEqualityTest() { options_.enable_heterogeneous_equality = true; }
 };
 
 // Test Not() operation for Bool
@@ -495,9 +523,8 @@ TEST_F(BuiltinsTest, TestDurationComparisons) {
 // Test Equality/Non-Equality operation for messages
 TEST_F(BuiltinsTest, TestNullMessageEqual) {
   CelValue ref = CelValue::CreateNull();
-  Expr call;
-  call.mutable_call_expr()->set_function("test");
-  CelValue value = CelProtoWrapper::CreateMessage(&call, &arena_);
+  Expr dummy;
+  CelValue value = CelProtoWrapper::CreateMessage(&dummy, &arena_);
   TestComparison(builtin::kEqual, ref, ref, true);
   TestComparison(builtin::kInequal, ref, ref, false);
   TestComparison(builtin::kEqual, value, ref, false);
@@ -542,11 +569,11 @@ TEST_F(BuiltinsTest, TestDurationFunctions) {
                    CelValue::StringHolder(&result));
   TestTypeConverts(builtin::kDuration, CelValue::CreateString(&result), ref);
 
-  absl::Duration d = MakeGoogleApiDurationMin() + absl::Seconds(-1);
+  absl::Duration d = MinDuration() + absl::Seconds(-1);
   result = absl::FormatDuration(d);
   TestTypeConversionError(builtin::kDuration, CelValue::CreateString(&result));
 
-  d = MakeGoogleApiDurationMax() + absl::Seconds(1);
+  d = MaxDuration() + absl::Seconds(1);
   result = absl::FormatDuration(d);
   TestTypeConversionError(builtin::kDuration, CelValue::CreateString(&result));
 
@@ -702,7 +729,7 @@ TEST_F(BuiltinsTest, TestTimestampFunctionsWithTimeZone) {
 
   TestTypeConversionError(
       builtin::kString,
-      CelValue::CreateTimestamp(MakeGoogleApiTimeMin() + absl::Seconds(-1)));
+      CelValue::CreateTimestamp(MinTimestamp() + absl::Seconds(-1)));
 }
 
 TEST_F(BuiltinsTest, TestBytesConversions_bytes) {
@@ -1061,7 +1088,9 @@ class FakeErrorMap : public CelMap {
     return absl::nullopt;
   }
 
-  const CelList* ListKeys() const override { return nullptr; }
+  absl::StatusOr<const CelList*> ListKeys() const override {
+    return absl::UnimplementedError("CelMap::ListKeys is not implemented");
+  }
 };
 
 template <typename T>
@@ -1093,7 +1122,9 @@ class FakeMap : public CelMap {
     return it->second;
   }
 
-  const CelList* ListKeys() const override { return keys_.get(); }
+  absl::StatusOr<const CelList*> ListKeys() const override {
+    return keys_.get();
+  }
 
  private:
   std::map<T, CelValue> data_;
@@ -1454,8 +1485,6 @@ TEST_F(BuiltinsTest, MapSize) {
 }
 
 TEST_F(BuiltinsTest, TestBoolListIn) {
-  std::vector<CelValue> values;
-
   FakeList cel_list({CelValue::CreateBool(false), CelValue::CreateBool(false)});
 
   TestInList(&cel_list, CelValue::CreateBool(false), true);
@@ -1463,8 +1492,6 @@ TEST_F(BuiltinsTest, TestBoolListIn) {
 }
 
 TEST_F(BuiltinsTest, TestInt64ListIn) {
-  std::vector<CelValue> values;
-
   FakeList cel_list({CelValue::CreateInt64(1), CelValue::CreateInt64(2)});
 
   TestInList(&cel_list, CelValue::CreateInt64(2), true);
@@ -1472,8 +1499,6 @@ TEST_F(BuiltinsTest, TestInt64ListIn) {
 }
 
 TEST_F(BuiltinsTest, TestUint64ListIn) {
-  std::vector<CelValue> values;
-
   FakeList cel_list({CelValue::CreateUint64(1), CelValue::CreateUint64(2)});
 
   TestInList(&cel_list, CelValue::CreateUint64(2), true);
@@ -1481,8 +1506,6 @@ TEST_F(BuiltinsTest, TestUint64ListIn) {
 }
 
 TEST_F(BuiltinsTest, TestDoubleListIn) {
-  std::vector<CelValue> values;
-
   FakeList cel_list({CelValue::CreateDouble(1), CelValue::CreateDouble(2)});
 
   TestInList(&cel_list, CelValue::CreateDouble(2), true);
@@ -1490,8 +1513,6 @@ TEST_F(BuiltinsTest, TestDoubleListIn) {
 }
 
 TEST_F(BuiltinsTest, TestStringListIn) {
-  std::vector<CelValue> values;
-
   std::string v0 = "test0";
   std::string v1 = "test1";
   std::string v2 = "test2";
@@ -1515,6 +1536,41 @@ TEST_F(BuiltinsTest, TestBytesListIn) {
   TestInList(&cel_list, CelValue::CreateBytes(&v2), false);
 }
 
+TEST_F(HeterogeneousEqualityTest, MixedTypes) {
+  FakeList cel_list({CelValue::CreateDuration(absl::Seconds(1)),
+                     CelValue::CreateNull(), CelValue::CreateInt64(1)});
+
+  ASSERT_NO_FATAL_FAILURE(
+      TestInList(&cel_list, CelValue::CreateDuration(absl::Seconds(1)), true));
+  ASSERT_NO_FATAL_FAILURE(
+      TestInList(&cel_list, CelValue::CreateInt64(1), true));
+
+  ASSERT_NO_FATAL_FAILURE(
+      TestInList(&cel_list, CelValue::CreateUint64(1), true));
+
+  ASSERT_NO_FATAL_FAILURE(
+      TestInList(&cel_list, CelValue::CreateInt64(2), false));
+  ASSERT_NO_FATAL_FAILURE(
+      TestInList(&cel_list, CelValue::CreateStringView("abc"), false));
+}
+
+TEST_F(HeterogeneousEqualityTest, NullIn) {
+  FakeList cel_list({CelValue::CreateInt64(0), CelValue::CreateNull(),
+                     CelValue::CreateInt64(1)});
+
+  ASSERT_NO_FATAL_FAILURE(
+      TestInList(&cel_list, CelValue::CreateInt64(1), true));
+  ASSERT_NO_FATAL_FAILURE(TestInList(&cel_list, CelValue::CreateNull(), true));
+  ASSERT_NO_FATAL_FAILURE(
+      TestInList(&cel_list, CelValue::CreateInt64(2), false));
+}
+
+TEST_F(HeterogeneousEqualityTest, NullNotIn) {
+  FakeList cel_list({CelValue::CreateInt64(0), CelValue::CreateInt64(1)});
+
+  ASSERT_NO_FATAL_FAILURE(TestInList(&cel_list, CelValue::CreateNull(), false));
+}
+
 TEST_F(BuiltinsTest, TestMapInError) {
   Arena arena;
   FakeErrorMap cel_map;
@@ -1524,6 +1580,17 @@ TEST_F(BuiltinsTest, TestMapInError) {
       CelValue::CreateStringView("hello"),
       CelValue::CreateUint64(2),
   };
+
+  options_.enable_heterogeneous_equality = true;
+  for (auto key : kValues) {
+    CelValue result_value;
+    ASSERT_NO_FATAL_FAILURE(PerformRun(
+        builtin::kIn, {}, {key, CelValue::CreateMap(&cel_map)}, &result_value));
+    EXPECT_TRUE(result_value.IsBool());
+    EXPECT_FALSE(result_value.BoolOrDie());
+  }
+
+  options_.enable_heterogeneous_equality = false;
   for (auto key : kValues) {
     CelValue result_value;
     ASSERT_NO_FATAL_FAILURE(PerformRun(
@@ -1555,9 +1622,21 @@ TEST_F(BuiltinsTest, TestInt64MapIn) {
     data[value] = CelValue::CreateInt64(value * value);
   }
   FakeInt64Map cel_map(data);
+  options_.enable_heterogeneous_equality = false;
   TestInMap(&cel_map, CelValue::CreateInt64(-4), true);
   TestInMap(&cel_map, CelValue::CreateInt64(4), false);
   TestInMap(&cel_map, CelValue::CreateUint64(3), false);
+  TestInMap(&cel_map, CelValue::CreateUint64(4), false);
+
+  options_.enable_heterogeneous_equality = true;
+  TestInMap(&cel_map, CelValue::CreateUint64(3), true);
+  TestInMap(&cel_map, CelValue::CreateUint64(4), false);
+  TestInMap(&cel_map, CelValue::CreateDouble(NAN), false);
+  TestInMap(&cel_map, CelValue::CreateDouble(-4.0), true);
+  TestInMap(&cel_map, CelValue::CreateDouble(-4.1), false);
+  TestInMap(&cel_map,
+            CelValue::CreateDouble(std::numeric_limits<uint64_t>::max()),
+            false);
 }
 
 TEST_F(BuiltinsTest, TestUint64MapIn) {
@@ -1567,9 +1646,17 @@ TEST_F(BuiltinsTest, TestUint64MapIn) {
     data[value] = CelValue::CreateUint64(value * value);
   }
   FakeUint64Map cel_map(data);
+  options_.enable_heterogeneous_equality = false;
   TestInMap(&cel_map, CelValue::CreateUint64(4), true);
   TestInMap(&cel_map, CelValue::CreateUint64(44), false);
   TestInMap(&cel_map, CelValue::CreateInt64(4), false);
+
+  options_.enable_heterogeneous_equality = true;
+  TestInMap(&cel_map, CelValue::CreateInt64(-1), false);
+  TestInMap(&cel_map, CelValue::CreateInt64(4), true);
+  TestInMap(&cel_map, CelValue::CreateDouble(4.0), true);
+  TestInMap(&cel_map, CelValue::CreateDouble(-4.0), false);
+  TestInMap(&cel_map, CelValue::CreateDouble(7.0), false);
 }
 
 TEST_F(BuiltinsTest, TestStringMapIn) {

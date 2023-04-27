@@ -16,22 +16,30 @@
  *
  */
 
-#include "src/core/lib/iomgr/sockaddr.h"
-#include "src/core/lib/iomgr/socket_utils.h"
-
 #include "test/core/util/test_tcp_server.h"
+
+#include <stdint.h>
+#include <string.h>
+
+#include <algorithm>
+#include <memory>
 
 #include <grpc/grpc.h>
 #include <grpc/support/alloc.h>
 #include <grpc/support/log.h>
 #include <grpc/support/sync.h>
 #include <grpc/support/time.h>
-#include <string.h>
 
-#include "src/core/lib/iomgr/endpoint.h"
-#include "src/core/lib/iomgr/resolve_address.h"
+#include "src/core/lib/channel/channel_args.h"
+#include "src/core/lib/channel/channel_args_preconditioning.h"
+#include "src/core/lib/config/core_configuration.h"
+#include "src/core/lib/gprpp/time.h"
+#include "src/core/lib/iomgr/error.h"
+#include "src/core/lib/iomgr/exec_ctx.h"
+#include "src/core/lib/iomgr/resolved_address.h"
+#include "src/core/lib/iomgr/sockaddr.h"
+#include "src/core/lib/iomgr/socket_utils.h"
 #include "src/core/lib/iomgr/tcp_server.h"
-#include "test/core/util/port.h"
 #include "test/core/util/test_config.h"
 
 static void on_server_destroyed(void* data, grpc_error_handle /*error*/) {
@@ -63,13 +71,18 @@ void test_tcp_server_start(test_tcp_server* server, int port) {
   addr->sin_family = GRPC_AF_INET;
   addr->sin_port = grpc_htons(static_cast<uint16_t>(port));
   memset(&addr->sin_addr, 0, sizeof(addr->sin_addr));
+  resolved_addr.len = static_cast<socklen_t>(sizeof(grpc_sockaddr_in));
 
+  auto args = grpc_core::CoreConfiguration::Get()
+                  .channel_args_preconditioning()
+                  .PreconditionChannelArgs(nullptr)
+                  .ToC();
   grpc_error_handle error = grpc_tcp_server_create(
-      &server->shutdown_complete, nullptr, &server->tcp_server);
-  GPR_ASSERT(error == GRPC_ERROR_NONE);
+      &server->shutdown_complete, args.get(), &server->tcp_server);
+  GPR_ASSERT(GRPC_ERROR_IS_NONE(error));
   error =
       grpc_tcp_server_add_port(server->tcp_server, &resolved_addr, &port_added);
-  GPR_ASSERT(error == GRPC_ERROR_NONE);
+  GPR_ASSERT(GRPC_ERROR_IS_NONE(error));
   GPR_ASSERT(port_added == port);
 
   grpc_tcp_server_start(server->tcp_server, &server->pollset,
@@ -80,7 +93,7 @@ void test_tcp_server_start(test_tcp_server* server, int port) {
 void test_tcp_server_poll(test_tcp_server* server, int milliseconds) {
   grpc_pollset_worker* worker = nullptr;
   grpc_core::ExecCtx exec_ctx;
-  grpc_millis deadline = grpc_timespec_to_millis_round_up(
+  grpc_core::Timestamp deadline = grpc_core::Timestamp::FromTimespecRoundUp(
       grpc_timeout_milliseconds_to_deadline(milliseconds));
   gpr_mu_lock(server->mu);
   GRPC_LOG_IF_ERROR("pollset_work",

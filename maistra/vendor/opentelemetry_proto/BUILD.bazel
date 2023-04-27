@@ -10,6 +10,17 @@ api_cc_py_proto_library(
     visibility = ["//visibility:public"],
 )
 
+api_cc_py_proto_library(
+    name = "resource",
+    srcs = [
+        "opentelemetry/proto/resource/v1/resource.proto",
+    ],
+    deps = [
+        "//:common",
+    ],
+    visibility = ["//visibility:public"],
+)
+
 go_proto_library(
     name = "common_go_proto",
     importpath = "go.opentelemetry.io/proto/otlp/common/v1",
@@ -24,10 +35,10 @@ api_cc_py_proto_library(
     srcs = [
         "opentelemetry/proto/collector/logs/v1/logs_service.proto",
         "opentelemetry/proto/logs/v1/logs.proto",
-        "opentelemetry/proto/resource/v1/resource.proto",
     ],
     deps = [
         "//:common",
+        "//:resource",
     ],
     visibility = ["//visibility:public"],
 )
@@ -36,5 +47,18 @@ go_proto_library(
     name = "logs_go_proto",
     importpath = "go.opentelemetry.io/proto/otlp/logs/v1",
     proto = ":logs",
+    visibility = ["//visibility:public"],
+)
+
+api_cc_py_proto_library(
+    name = "trace",
+    srcs = [
+        "opentelemetry/proto/collector/trace/v1/trace_service.proto",
+        "opentelemetry/proto/trace/v1/trace.proto",
+    ],
+    deps = [
+        "//:common",
+        "//:resource",
+    ],
     visibility = ["//visibility:public"],
 )

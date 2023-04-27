@@ -25,7 +25,7 @@ dnl Do not change user variables!
 dnl https://www.gnu.org/software/automake/manual/html_node/Flag-Variables-Ordering.html
 
 AC_PREREQ(2.61)
-AC_INIT([nghttp2], [1.46.0], [t-tujikawa@users.sourceforge.net])
+AC_INIT([nghttp2], [1.50.0], [t-tujikawa@users.sourceforge.net])
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_HEADERS([config.h])
@@ -44,9 +44,9 @@ m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 
 dnl See versioning rule:
 dnl  https://www.gnu.org/software/libtool/manual/html_node/Updating-version-info.html
-AC_SUBST(LT_CURRENT, 35)
-AC_SUBST(LT_REVISION, 1)
-AC_SUBST(LT_AGE, 21)
+AC_SUBST(LT_CURRENT, 38)
+AC_SUBST(LT_REVISION, 0)
+AC_SUBST(LT_AGE, 24)
 
 major=`echo $PACKAGE_VERSION |cut -d. -f1 | sed -e "s/[^0-9]//g"`
 minor=`echo $PACKAGE_VERSION |cut -d. -f2 | sed -e "s/[^0-9]//g"`
@@ -230,6 +230,21 @@ if [test "x$request_lib_only" = "xyes"]; then
   request_hpack_tools=no
   request_examples=no
   request_python_bindings=no
+  request_http3=no
+  request_libxml2=no
+  request_jansson=no
+  request_zlib=no
+  request_libevent_openssl=no
+  request_libcares=no
+  request_openssl=no
+  request_libev=no
+  request_jemalloc=no
+  request_systemd=no
+  request_mruby=no
+  request_neverbleed=no
+  request_libngtcp2=no
+  request_libnghttp3=no
+  request_libbpf=no
 fi
 
 if test "x$request_python_bindings" != "xno" &&
@@ -349,7 +364,7 @@ APPLDFLAGS=
 case "$host_os" in
   *android*)
     android_build=yes
-    # android does not need -pthread, but needs followng 3 libs for C++
+    # android does not need -pthread, but needs following 3 libs for C++
     APPLDFLAGS="$APPLDFLAGS -lstdc++ -latomic -lsupc++"
     ;;
   *)
@@ -525,7 +540,7 @@ fi
 # ngtcp2 (for src)
 have_libngtcp2=no
 if test "x${request_libngtcp2}" != "xno"; then
-  PKG_CHECK_MODULES([LIBNGTCP2], [libngtcp2 >= 0.0.0], [have_libngtcp2=yes],
+  PKG_CHECK_MODULES([LIBNGTCP2], [libngtcp2 >= 0.9.0], [have_libngtcp2=yes],
                     [have_libngtcp2=no])
   if test "x${have_libngtcp2}" = "xno"; then
     AC_MSG_NOTICE($LIBNGTCP2_PKG_ERRORS)
@@ -542,7 +557,7 @@ have_libngtcp2_crypto_openssl=no
 if test "x${have_ssl_is_quic}" = "xyes" &&
    test "x${request_libngtcp2}" != "xno"; then
   PKG_CHECK_MODULES([LIBNGTCP2_CRYPTO_OPENSSL],
-                    [libngtcp2_crypto_openssl >= 0.0.0],
+                    [libngtcp2_crypto_openssl >= 0.9.0],
                     [have_libngtcp2_crypto_openssl=yes],
                     [have_libngtcp2_crypto_openssl=no])
   if test "x${have_libngtcp2_crypto_openssl}" = "xno"; then
@@ -584,7 +599,7 @@ fi
 # nghttp3 (for src)
 have_libnghttp3=no
 if test "x${request_libnghttp3}" != "xno"; then
-  PKG_CHECK_MODULES([LIBNGHTTP3], [libnghttp3 >= 0.0.0], [have_libnghttp3=yes],
+  PKG_CHECK_MODULES([LIBNGHTTP3], [libnghttp3 >= 0.7.0], [have_libnghttp3=yes],
                     [have_libnghttp3=no])
   if test "x${have_libnghttp3}" = "xno"; then
     AC_MSG_NOTICE($LIBNGHTTP3_PKG_ERRORS)
@@ -599,7 +614,7 @@ fi
 # libbpf (for src)
 have_libbpf=no
 if test "x${request_libbpf}" != "xno"; then
-  PKG_CHECK_MODULES([LIBBPF], [libbpf >= 0.4.0], [have_libbpf=yes],
+  PKG_CHECK_MODULES([LIBBPF], [libbpf >= 0.7.0], [have_libbpf=yes],
                     [have_libbpf=no])
   if test "x${have_libbpf}" = "xyes"; then
     AC_DEFINE([HAVE_LIBBPF], [1], [Define to 1 if you have `libbpf` library.])

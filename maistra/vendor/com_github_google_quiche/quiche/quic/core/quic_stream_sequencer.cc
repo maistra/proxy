@@ -247,9 +247,7 @@ void QuicStreamSequencer::MarkConsumed(size_t num_bytes_consumed) {
   stream_->AddBytesConsumed(num_bytes_consumed);
 }
 
-void QuicStreamSequencer::SetBlockedUntilFlush() {
-  blocked_ = true;
-}
+void QuicStreamSequencer::SetBlockedUntilFlush() { blocked_ = true; }
 
 void QuicStreamSequencer::SetUnblocked() {
   blocked_ = false;
@@ -292,6 +290,11 @@ size_t QuicStreamSequencer::NumBytesBuffered() const {
 
 QuicStreamOffset QuicStreamSequencer::NumBytesConsumed() const {
   return buffered_frames_.BytesConsumed();
+}
+
+bool QuicStreamSequencer::IsAllDataAvailable() const {
+  QUICHE_DCHECK_LE(NumBytesConsumed() + NumBytesBuffered(), close_offset_);
+  return NumBytesConsumed() + NumBytesBuffered() >= close_offset_;
 }
 
 const std::string QuicStreamSequencer::DebugString() const {

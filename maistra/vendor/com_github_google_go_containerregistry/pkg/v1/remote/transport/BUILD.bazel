@@ -18,9 +18,9 @@ go_library(
     importpath = "github.com/google/go-containerregistry/pkg/v1/remote/transport",
     visibility = ["//visibility:public"],
     deps = [
+        "//internal/redact",
+        "//internal/retry",
         "//pkg/authn",
-        "//pkg/internal/redact",
-        "//pkg/internal/retry",
         "//pkg/logs",
         "//pkg/name",
         "//vendor/github.com/docker/distribution/registry/client/auth/challenge",
@@ -46,9 +46,9 @@ go_test(
     ],
     embed = [":transport"],
     deps = [
+        "//internal/redact",
+        "//internal/retry",
         "//pkg/authn",
-        "//pkg/internal/redact",
-        "//pkg/internal/retry",
         "//pkg/logs",
         "//pkg/name",
         "//vendor/github.com/google/go-cmp/cmp",

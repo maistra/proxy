@@ -6,6 +6,7 @@
 #define QUICHE_QUIC_TEST_TOOLS_FAKE_PROOF_SOURCE_HANDLE_H_
 
 #include "quiche/quic/core/crypto/proof_source.h"
+#include "quiche/quic/core/quic_connection_id.h"
 
 namespace quic {
 namespace test {
@@ -43,10 +44,9 @@ class FakeProofSourceHandle : public ProofSourceHandle {
   QuicAsyncStatus SelectCertificate(
       const QuicSocketAddress& server_address,
       const QuicSocketAddress& client_address,
-      absl::string_view ssl_capabilities,
-      const std::string& hostname,
-      absl::string_view client_hello,
-      const std::string& alpn,
+      const QuicConnectionId& original_connection_id,
+      absl::string_view ssl_capabilities, const std::string& hostname,
+      absl::string_view client_hello, const std::string& alpn,
       absl::optional<std::string> alps,
       const std::vector<uint8_t>& quic_transport_params,
       const absl::optional<std::vector<uint8_t>>& early_data_context,
@@ -68,16 +68,16 @@ class FakeProofSourceHandle : public ProofSourceHandle {
   struct SelectCertArgs {
     SelectCertArgs(QuicSocketAddress server_address,
                    QuicSocketAddress client_address,
-                   absl::string_view ssl_capabilities,
-                   std::string hostname,
-                   absl::string_view client_hello,
-                   std::string alpn,
+                   QuicConnectionId original_connection_id,
+                   absl::string_view ssl_capabilities, std::string hostname,
+                   absl::string_view client_hello, std::string alpn,
                    absl::optional<std::string> alps,
                    std::vector<uint8_t> quic_transport_params,
                    absl::optional<std::vector<uint8_t>> early_data_context,
                    QuicSSLConfig ssl_config)
         : server_address(server_address),
           client_address(client_address),
+          original_connection_id(original_connection_id),
           ssl_capabilities(ssl_capabilities),
           hostname(hostname),
           client_hello(client_hello),
@@ -89,6 +89,7 @@ class FakeProofSourceHandle : public ProofSourceHandle {
 
     QuicSocketAddress server_address;
     QuicSocketAddress client_address;
+    QuicConnectionId original_connection_id;
     std::string ssl_capabilities;
     std::string hostname;
     std::string client_hello;
@@ -101,10 +102,8 @@ class FakeProofSourceHandle : public ProofSourceHandle {
 
   struct ComputeSignatureArgs {
     ComputeSignatureArgs(QuicSocketAddress server_address,
-                         QuicSocketAddress client_address,
-                         std::string hostname,
-                         uint16_t signature_algorithm,
-                         absl::string_view in,
+                         QuicSocketAddress client_address, std::string hostname,
+                         uint16_t signature_algorithm, absl::string_view in,
                          size_t max_signature_size)
         : server_address(server_address),
           client_address(client_address),
@@ -132,8 +131,7 @@ class FakeProofSourceHandle : public ProofSourceHandle {
  private:
   class PendingOperation {
    public:
-    PendingOperation(ProofSource* delegate,
-                     ProofSourceHandleCallback* callback,
+    PendingOperation(ProofSource* delegate, ProofSourceHandleCallback* callback,
                      Action action)
         : delegate_(delegate), callback_(callback), action_(action) {}
     virtual ~PendingOperation() = default;
@@ -165,8 +163,7 @@ class FakeProofSourceHandle : public ProofSourceHandle {
    public:
     ComputeSignatureOperation(ProofSource* delegate,
                               ProofSourceHandleCallback* callback,
-                              Action action,
-                              ComputeSignatureArgs args);
+                              Action action, ComputeSignatureArgs args);
 
     ~ComputeSignatureOperation() override = default;
 

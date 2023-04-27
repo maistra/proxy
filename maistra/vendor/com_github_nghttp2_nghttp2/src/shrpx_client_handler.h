@@ -52,6 +52,7 @@ class Worker;
 class Downstream;
 struct WorkerStat;
 struct DownstreamAddrGroup;
+struct SharedDownstreamAddr;
 struct DownstreamAddr;
 #ifdef ENABLE_HTTP3
 class Http3Upstream;
@@ -67,6 +68,8 @@ public:
   // Performs clear text I/O
   int read_clear();
   int write_clear();
+  // Specialized for PROXY-protocol use; peek data from socket.
+  int proxy_protocol_peek_clear();
   // Performs TLS handshake
   int tls_handshake();
   // Performs TLS I/O
@@ -149,7 +152,8 @@ public:
 #ifdef ENABLE_HTTP3
   void setup_http3_upstream(std::unique_ptr<Http3Upstream> &&upstream);
   int read_quic(const UpstreamAddr *faddr, const Address &remote_addr,
-                const Address &local_addr, const uint8_t *data, size_t datalen);
+                const Address &local_addr, const ngtcp2_pkt_info &pi,
+                const uint8_t *data, size_t datalen);
   int write_quic();
 #endif // ENABLE_HTTP3
 
@@ -168,6 +172,10 @@ public:
   // is used to inspect cookie header field in request header fields.
   uint32_t get_affinity_cookie(Downstream *downstream,
                                const StringRef &cookie_name);
+
+  DownstreamAddr *get_downstream_addr_strict_affinity(
+      int &err, const std::shared_ptr<SharedDownstreamAddr> &shared_addr,
+      Downstream *downstream);
 
   const UpstreamAddr *get_upstream_addr() const;
 

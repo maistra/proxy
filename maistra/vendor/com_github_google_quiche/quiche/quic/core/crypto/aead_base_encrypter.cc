@@ -12,25 +12,11 @@
 #include "quiche/quic/core/quic_utils.h"
 #include "quiche/quic/platform/api/quic_bug_tracker.h"
 #include "quiche/quic/platform/api/quic_logging.h"
+#include "quiche/common/quiche_crypto_logging.h"
 
 namespace quic {
-
+using ::quiche::DLogOpenSslErrors;
 namespace {
-
-// In debug builds only, log OpenSSL error stack. Then clear OpenSSL error
-// stack.
-void DLogOpenSslErrors() {
-#ifdef NDEBUG
-  while (ERR_get_error()) {
-  }
-#else
-  while (unsigned long error = ERR_get_error()) {
-    char buf[120];
-    ERR_error_string_n(error, buf, ABSL_ARRAYSIZE(buf));
-    QUIC_DLOG(ERROR) << "OpenSSL error: " << buf;
-  }
-#endif
-}
 
 const EVP_AEAD* InitAndCall(const EVP_AEAD* (*aead_getter)()) {
   // Ensure BoringSSL is initialized before calling |aead_getter|. In Chromium,
@@ -42,8 +28,7 @@ const EVP_AEAD* InitAndCall(const EVP_AEAD* (*aead_getter)()) {
 }  // namespace
 
 AeadBaseEncrypter::AeadBaseEncrypter(const EVP_AEAD* (*aead_getter)(),
-                                     size_t key_size,
-                                     size_t auth_tag_size,
+                                     size_t key_size, size_t auth_tag_size,
                                      size_t nonce_size,
                                      bool use_ietf_nonce_construction)
     : aead_alg_(InitAndCall(aead_getter)),
@@ -126,8 +111,7 @@ bool AeadBaseEncrypter::Encrypt(absl::string_view nonce,
 
 bool AeadBaseEncrypter::EncryptPacket(uint64_t packet_number,
                                       absl::string_view associated_data,
-                                      absl::string_view plaintext,
-                                      char* output,
+                                      absl::string_view plaintext, char* output,
                                       size_t* output_length,
                                       size_t max_output_length) {
   size_t ciphertext_size = GetCiphertextSize(plaintext.length());
@@ -156,17 +140,13 @@ bool AeadBaseEncrypter::EncryptPacket(uint64_t packet_number,
   return true;
 }
 
-size_t AeadBaseEncrypter::GetKeySize() const {
-  return key_size_;
-}
+size_t AeadBaseEncrypter::GetKeySize() const { return key_size_; }
 
 size_t AeadBaseEncrypter::GetNoncePrefixSize() const {
   return nonce_size_ - sizeof(QuicPacketNumber);
 }
 
-size_t AeadBaseEncrypter::GetIVSize() const {
-  return nonce_size_;
-}
+size_t AeadBaseEncrypter::GetIVSize() const { return nonce_size_; }
 
 size_t AeadBaseEncrypter::GetMaxPlaintextSize(size_t ciphertext_size) const {
   return ciphertext_size - std::min(ciphertext_size, auth_tag_size_);

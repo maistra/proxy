@@ -326,8 +326,8 @@ public class IntervalSet: IntSet, Hashable, CustomStringConvertible {
             return nil // nothing in common with null set
         }
 
-        var myIntervals = self.intervals
-        var theirIntervals = (other as! IntervalSet).intervals
+        let myIntervals = self.intervals
+        let theirIntervals = (other as! IntervalSet).intervals
         var intersection: IntervalSet? = nil
         let mySize = myIntervals.count
         let theirSize = theirIntervals.count
@@ -470,25 +470,13 @@ public class IntervalSet: IntSet, Hashable, CustomStringConvertible {
         return intervals
     }
 
-
-    public func hashCode() -> Int {
-        var hash = MurmurHash.initialize()
-        for I: Interval in intervals {
-            hash = MurmurHash.update(hash, I.a)
-            hash = MurmurHash.update(hash, I.b)
+    public func hash(into hasher: inout Hasher) {
+        for interval in intervals {
+            hasher.combine(interval.a)
+            hasher.combine(interval.b)
         }
-
-        return MurmurHash.finish(hash, intervals.count * 2)
     }
-    public var hashValue: Int {
-        var hash = MurmurHash.initialize()
-        for I: Interval in intervals {
-            hash = MurmurHash.update(hash, I.a)
-            hash = MurmurHash.update(hash, I.b)
-        }
 
-        return MurmurHash.finish(hash, intervals.count * 2)
-    }
     /// 
     /// Are two IntervalSets equal?  Because all intervals are sorted
     /// and disjoint, equals is a simple linear walk over both lists
@@ -625,10 +613,7 @@ public class IntervalSet: IntSet, Hashable, CustomStringConvertible {
         for interval in intervals {
             let a = interval.a
             let b = interval.b
-
-            for v in a...b  {
-                values.append(v)
-            }
+            values.append(contentsOf: a...b)
         }
         return values
     }
@@ -669,7 +654,17 @@ public class IntervalSet: IntSet, Hashable, CustomStringConvertible {
         if readonly {
             throw ANTLRError.illegalState(msg: "can't alter readonly IntervalSet")
         }
-        for interval in intervals {
+        var idx = intervals.startIndex
+        while idx < intervals.endIndex {
+            defer { intervals.formIndex(after: &idx) }
+            var interval: Interval {
+                get {
+                    return intervals[idx]
+                }
+                set {
+                    intervals[idx] = newValue
+                }
+            } 
             let a = interval.a
             let b = interval.b
             if el < a {
@@ -677,7 +672,7 @@ public class IntervalSet: IntSet, Hashable, CustomStringConvertible {
             }
             // if whole interval x..x, rm
             if el == a && el == b {
-                intervals.removeObject(interval)
+                intervals.remove(at: idx)
                 break
             }
             // if on left edge x..b, adjust left

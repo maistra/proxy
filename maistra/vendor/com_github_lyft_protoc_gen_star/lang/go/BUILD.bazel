@@ -35,6 +35,7 @@ go_test(
         "type_name_p2_presence_test.go",
         "type_name_test.go",
     ],
+    data = glob(["testdata/**"]),
     embed = [":go"],
     deps = [
         "//:protoc-gen-star",

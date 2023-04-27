@@ -29,9 +29,13 @@ bool squelch = true;
 bool leak_check = true;
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-  grpc_error_handle error = GRPC_ERROR_NONE;
-  grpc_core::Json::Parse(
-      absl::string_view(reinterpret_cast<const char*>(data), size), &error);
-  GRPC_ERROR_UNREF(error);
+  auto json = grpc_core::Json::Parse(
+      absl::string_view(reinterpret_cast<const char*>(data), size));
+  if (json.ok()) {
+    auto text2 = json->Dump();
+    auto json2 = grpc_core::Json::Parse(text2);
+    GPR_ASSERT(json2.ok());
+    GPR_ASSERT(*json == *json2);
+  }
   return 0;
 }

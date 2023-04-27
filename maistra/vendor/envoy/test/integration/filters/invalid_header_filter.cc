@@ -25,6 +25,27 @@ public:
     if (!headers.get(Http::LowerCaseString("remove-path")).empty()) {
       headers.removePath();
     }
+
+    if (!headers.get(Http::LowerCaseString("x-add-invalid-header-key")).empty()) {
+      // Insert invalid characters by bypassing assert(valid()) checks, which would not run
+      // in release mode
+      headers.addCopy(Http::LowerCaseString("x-foo"), "hello  x-oops: yes");
+      absl::string_view value = headers.getByKey("x-foo").value();
+      char* data = const_cast<char*>(value.data());
+      data[5] = '\r';
+      data[6] = '\n';
+    }
+
+    if (!headers.get(Http::LowerCaseString("x-add-invalid-header-value")).empty()) {
+      // Insert invalid characters by bypassing assert(valid()) checks, which would not run
+      // in release mode
+      headers.addCopy(Http::LowerCaseString("x-foo"), "hello  GET /evil HTTP/1.1");
+      absl::string_view value = headers.getByKey("x-foo").value();
+      char* data = const_cast<char*>(value.data());
+      data[5] = '\r';
+      data[6] = '\n';
+    }
+
     if (Http::HeaderUtility::isConnect(headers)) {
       headers.removeHost();
     }
@@ -41,5 +62,9 @@ constexpr char InvalidHeaderFilter::name[];
 static Registry::RegisterFactory<SimpleFilterConfig<InvalidHeaderFilter>,
                                  Server::Configuration::NamedHttpFilterConfigFactory>
     decoder_register_;
+constexpr char InvalidHeaderFilter::name[];
+static Registry::RegisterFactory<SimpleFilterConfig<InvalidHeaderFilter>,
+                                 Server::Configuration::UpstreamHttpFilterConfigFactory>
+    decoder_register_upstream_;
 
 } // namespace Envoy

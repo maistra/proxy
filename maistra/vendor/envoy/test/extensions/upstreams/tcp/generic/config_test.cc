@@ -1,6 +1,7 @@
 #include "source/common/tcp_proxy/tcp_proxy.h"
 #include "source/extensions/upstreams/tcp/generic/config.h"
 
+#include "test/mocks/server/factory_context.h"
 #include "test/mocks/tcp/mocks.h"
 #include "test/mocks/upstream/cluster_manager.h"
 #include "test/mocks/upstream/load_balancer_context.h"
@@ -22,7 +23,6 @@ namespace Generic {
 class TcpConnPoolTest : public ::testing::Test {
 public:
   TcpConnPoolTest() {
-    EXPECT_CALL(connection_, streamInfo()).WillRepeatedly(ReturnRef(downstream_stream_info_));
     EXPECT_CALL(lb_context_, downstreamConnection()).WillRepeatedly(Return(&connection_));
   }
   NiceMock<Upstream::MockThreadLocalCluster> thread_local_cluster_;
@@ -31,16 +31,17 @@ public:
   NiceMock<StreamInfo::MockStreamInfo> downstream_stream_info_;
   NiceMock<Network::MockConnection> connection_;
   Upstream::MockLoadBalancerContext lb_context_;
+  NiceMock<Server::Configuration::MockFactoryContext> context_;
 };
 
 TEST_F(TcpConnPoolTest, TestNoConnPool) {
   envoy::extensions::filters::network::tcp_proxy::v3::TcpProxy_TunnelingConfig config_proto;
   config_proto.set_hostname("host");
-  const TcpProxy::TunnelingConfigHelperImpl config(config_proto);
+  const TcpProxy::TunnelingConfigHelperImpl config(config_proto, context_);
   EXPECT_CALL(thread_local_cluster_, httpConnPool(_, _, _)).WillOnce(Return(absl::nullopt));
   EXPECT_EQ(nullptr, factory_.createGenericConnPool(
                          thread_local_cluster_, TcpProxy::TunnelingConfigHelperOptConstRef(config),
-                         &lb_context_, callbacks_));
+                         &lb_context_, callbacks_, downstream_stream_info_));
 }
 
 TEST_F(TcpConnPoolTest, Http2Config) {
@@ -49,12 +50,12 @@ TEST_F(TcpConnPoolTest, Http2Config) {
   EXPECT_CALL(thread_local_cluster_, info).WillOnce(Return(info));
   envoy::extensions::filters::network::tcp_proxy::v3::TcpProxy_TunnelingConfig config_proto;
   config_proto.set_hostname("host");
-  const TcpProxy::TunnelingConfigHelperImpl config(config_proto);
+  const TcpProxy::TunnelingConfigHelperImpl config(config_proto, context_);
 
   EXPECT_CALL(thread_local_cluster_, httpConnPool(_, _, _)).WillOnce(Return(absl::nullopt));
   EXPECT_EQ(nullptr, factory_.createGenericConnPool(
                          thread_local_cluster_, TcpProxy::TunnelingConfigHelperOptConstRef(config),
-                         &lb_context_, callbacks_));
+                         &lb_context_, callbacks_, downstream_stream_info_));
 }
 
 TEST_F(TcpConnPoolTest, Http3Config) {
@@ -65,11 +66,11 @@ TEST_F(TcpConnPoolTest, Http3Config) {
   EXPECT_CALL(thread_local_cluster_, info).Times(AnyNumber()).WillRepeatedly(Return(info));
   envoy::extensions::filters::network::tcp_proxy::v3::TcpProxy_TunnelingConfig config_proto;
   config_proto.set_hostname("host");
-  const TcpProxy::TunnelingConfigHelperImpl config(config_proto);
+  const TcpProxy::TunnelingConfigHelperImpl config(config_proto, context_);
   EXPECT_CALL(thread_local_cluster_, httpConnPool(_, _, _)).WillOnce(Return(absl::nullopt));
   EXPECT_EQ(nullptr, factory_.createGenericConnPool(
                          thread_local_cluster_, TcpProxy::TunnelingConfigHelperOptConstRef(config),
-                         &lb_context_, callbacks_));
+                         &lb_context_, callbacks_, downstream_stream_info_));
 }
 
 } // namespace Generic

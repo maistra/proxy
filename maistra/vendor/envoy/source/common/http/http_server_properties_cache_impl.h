@@ -22,14 +22,15 @@ namespace Http {
 
 // A cache of HTTP server properties.
 // This caches
-//   - alternate protocol entries as documented here: source/docs/http3_upstream.md
-//   - QUIC SRTT, used for TCP failover
+//   - Alternate protocol entries as documented here: source/docs/http3_upstream.md.
+//   - QUIC round trip time used for TCP failover.
 //   - The last connectivity status of HTTP/3, if available.
-// TODO(alyssawilk) move and rename.
+//   - Expected concurrent streams allowed.
 class HttpServerPropertiesCacheImpl : public HttpServerPropertiesCache,
                                       Logger::Loggable<Logger::Id::alternate_protocols_cache> {
 public:
   HttpServerPropertiesCacheImpl(Event::Dispatcher& dispatcher,
+                                std::vector<std::string>&& canonical_suffixes,
                                 std::unique_ptr<KeyValueStore>&& store, size_t max_entries);
   ~HttpServerPropertiesCacheImpl() override;
 
@@ -37,8 +38,9 @@ public:
   struct OriginData {
     OriginData() = default;
     OriginData(OptRef<std::vector<AlternateProtocol>> protocols, std::chrono::microseconds srtt,
-               Http3StatusTrackerPtr&& tracker)
-        : protocols(protocols), srtt(srtt), h3_status_tracker(std::move(tracker)) {}
+               Http3StatusTrackerPtr&& tracker, uint32_t concurrent_streams)
+        : protocols(protocols), srtt(srtt), h3_status_tracker(std::move(tracker)),
+          concurrent_streams(concurrent_streams) {}
 
     // The alternate protocols supported if available.
     absl::optional<std::vector<AlternateProtocol>> protocols;
@@ -46,6 +48,8 @@ public:
     std::chrono::microseconds srtt;
     // The last connectivity status of HTTP/3, if available else nullptr.
     Http3StatusTrackerPtr h3_status_tracker;
+    // The number of concurrent streams expected to be allowed.
+    uint32_t concurrent_streams;
   };
 
   // Converts an Origin to a string which can be parsed by stringToOrigin.
@@ -81,6 +85,8 @@ public:
   void setAlternatives(const Origin& origin, std::vector<AlternateProtocol>& protocols) override;
   void setSrtt(const Origin& origin, std::chrono::microseconds srtt) override;
   std::chrono::microseconds getSrtt(const Origin& origin) const override;
+  void setConcurrentStreams(const Origin& origin, uint32_t concurrent_streams) override;
+  uint32_t getConcurrentStreams(const Origin& origin) const override;
   OptRef<const std::vector<AlternateProtocol>> findAlternatives(const Origin& origin) override;
   size_t size() const override;
   HttpServerPropertiesCache::Http3StatusTracker&
@@ -109,22 +115,44 @@ private:
   struct OriginDataWithOptRef {
     OriginDataWithOptRef() : srtt(std::chrono::milliseconds(0)) {}
     OriginDataWithOptRef(OptRef<std::vector<AlternateProtocol>> protocols,
-                         std::chrono::microseconds s, Http3StatusTrackerPtr&& t)
-        : protocols(protocols), srtt(s), h3_status_tracker(std::move(t)) {}
+                         std::chrono::microseconds srtt, Http3StatusTrackerPtr&& h3_status_tracker,
+                         uint32_t concurrent_streams)
+        : protocols(protocols), srtt(srtt), h3_status_tracker(std::move(h3_status_tracker)),
+          concurrent_streams(concurrent_streams) {}
     // The alternate protocols supported if available.
     OptRef<std::vector<AlternateProtocol>> protocols;
     // The last smoothed round trip time, if available else 0.
     std::chrono::microseconds srtt;
     // The last connectivity status of HTTP/3, if available else nullptr.
     Http3StatusTrackerPtr h3_status_tracker;
+    // The number of concurrent streams expected to be allowed.
+    uint32_t concurrent_streams{0};
   };
 
   ProtocolsMap::iterator setPropertiesImpl(const Origin& origin, OriginDataWithOptRef& origin_data);
 
   ProtocolsMap::iterator addOriginData(const Origin& origin, OriginData&& origin_data);
 
+  // Returns the canonical suffix, if any, associated with `hostname`.
+  absl::string_view getCanonicalSuffix(absl::string_view hostname);
+
+  // Returns the canonical origin, if any, associated with `hostname`.
+  absl::optional<Origin> getCanonicalOrigin(absl::string_view hostname);
+
+  // If `origin` matches a canonical suffix then updates canonical_alt_svc_map_ accordingly.
+  void maybeSetCanonicalOrigin(const Origin& origin);
+
   // The key value store, if flushing to persistent storage.
   std::unique_ptr<KeyValueStore> key_value_store_;
+
+  // Contains a map of servers which could share the same alternate protocol.
+  // Map from a Canonical suffix to an actual origin, which has a plausible alternate
+  // protocol mapping.
+  std::map<std::string, Origin> canonical_alt_svc_map_;
+
+  // Contains list of suffixes (for example ".c.youtube.com",
+  // ".googlevideo.com", ".googleusercontent.com") of canonical hostnames.
+  std::vector<std::string> canonical_suffixes_;
 
   const size_t max_entries_;
 };

@@ -72,7 +72,7 @@ struct FlatHashSetPolicy;
 // absl/hash/hash.h for information on extending Abseil hashing to user-defined
 // types.
 //
-// Using `absl::flat_hash_set` at interface boundries in dynamically loaded
+// Using `absl::flat_hash_set` at interface boundaries in dynamically loaded
 // libraries (e.g. .dll, .so) is unsupported due to way `absl::Hash` values may
 // be randomized across dynamically loaded libraries.
 //
@@ -472,13 +472,6 @@ struct FlatHashSetPolicy {
   template <class Allocator>
   static void destroy(Allocator* alloc, slot_type* slot) {
     absl::allocator_traits<Allocator>::destroy(*alloc, slot);
-  }
-
-  template <class Allocator>
-  static void transfer(Allocator* alloc, slot_type* new_slot,
-                       slot_type* old_slot) {
-    construct(alloc, new_slot, std::move(*old_slot));
-    destroy(alloc, old_slot);
   }
 
   static T& element(slot_type* slot) { return *slot; }

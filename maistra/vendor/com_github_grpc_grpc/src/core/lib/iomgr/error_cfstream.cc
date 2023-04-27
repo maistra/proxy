@@ -19,11 +19,11 @@
 #include <grpc/support/port_platform.h>
 
 #ifdef GRPC_CFSTREAM
+#include <CoreFoundation/CoreFoundation.h>
+
 #include <string>
 
 #include "absl/strings/str_format.h"
-
-#include <CoreFoundation/CoreFoundation.h>
 
 #include <grpc/support/alloc.h>
 
@@ -48,7 +48,7 @@ grpc_error_handle grpc_error_create_from_cferror(const char* file, int line,
       absl::StrFormat("%s (error domain:%s, code:%ld, description:%s)",
                       custom_desc, buf_domain, code, buf_desc);
   CFRelease(desc);
-  return grpc_error_create(
-      file, line, grpc_slice_from_copied_string(error_msg.c_str()), NULL, 0);
+  return StatusCreate(absl::StatusCode::kUnknown, error_msg,
+                      grpc_core::DebugLocation(file, line), {});
 }
 #endif /* GRPC_CFSTREAM */

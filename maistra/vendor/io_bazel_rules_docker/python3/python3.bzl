@@ -19,8 +19,8 @@
 # git repository.
 
 DIGESTS = {
-    # "gcr.io/distroless/python3:debug" circa 2021-03-14 11:14 -0400
-    "debug": "sha256:0951be19d51e7db0706299b3d08bea13ddedf62435d68e98a001e4c73775bea4",
-    # "gcr.io/distroless/python3:latest" circa 2021-03-14 11:14 -0400
-    "latest": "sha256:daaeda88192f299fd430a5278657b2322b24de6514bf94086083ef7c367c21ba",
+    # "gcr.io/distroless/python3:debug" circa 2021-12-01 22:45 +0200
+    "debug": "sha256:c6374d0612e77d912c17690eecc6fbca1b9402814cd5bc61adad23824b87388c",
+    # "gcr.io/distroless/python3:latest" circa 2021-12-01 22:45 +0200
+    "latest": "sha256:70feef894a89e769eb0b5e3b0c04d7006d4eb7753fc6b797ce4b86d7deafcf13",
 }

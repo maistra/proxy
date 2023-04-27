@@ -18,7 +18,7 @@ All interfaces are subject to change at any time.
 
 load("@rules_python//python:defs.bzl", "py_library")
 
-licenses(["notice"])
+package(default_applicable_licenses = ["//:license"])
 
 filegroup(
     name = "standard_package",
@@ -29,7 +29,10 @@ filegroup(
         "*.bzl",
         "*.py",
     ]),
-    visibility = ["//distro:__pkg__"],
+    visibility = [
+        "//distro:__pkg__",
+        "//pkg:__pkg__",
+    ],
 )
 
 exports_files(
@@ -39,6 +42,7 @@ exports_files(
     visibility = [
         "//distro:__pkg__",
         "//doc_build:__pkg__",
+        "//pkg:__pkg__",
     ],
 )
 
@@ -88,20 +92,6 @@ py_library(
     visibility = [
         "//:__subpackages__",
         "//tests:__pkg__",
-    ],
-)
-
-py_binary(
-    name = "build_tar",
-    srcs = ["build_tar.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":archive",
-        ":build_info",
-        ":helpers",
-        ":manifest",
     ],
 )
 

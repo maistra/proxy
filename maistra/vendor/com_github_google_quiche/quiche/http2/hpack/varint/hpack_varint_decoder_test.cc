@@ -11,8 +11,9 @@
 #include "absl/base/macros.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/string_view.h"
-#include "quiche/http2/platform/api/http2_logging.h"
-#include "quiche/http2/tools/random_decoder_test.h"
+#include "quiche/http2/test_tools/random_decoder_test_base.h"
+#include "quiche/http2/test_tools/verify_macros.h"
+#include "quiche/common/platform/api/quiche_logging.h"
 #include "quiche/common/platform/api/quiche_test.h"
 
 using ::testing::AssertionSuccess;
@@ -30,13 +31,12 @@ class HpackVarintDecoderTest
         suffix_(absl::HexStringToBytes(std::get<1>(GetParam()))),
         prefix_length_(0) {}
 
-  void DecodeExpectSuccess(absl::string_view data,
-                           uint32_t prefix_length,
+  void DecodeExpectSuccess(absl::string_view data, uint32_t prefix_length,
                            uint64_t expected_value) {
     Validator validator = [expected_value, this](
                               const DecodeBuffer& /*db*/,
                               DecodeStatus /*status*/) -> AssertionResult {
-      VERIFY_EQ(expected_value, decoder_.value())
+      HTTP2_VERIFY_EQ(expected_value, decoder_.value())
           << "Value doesn't match expected: " << decoder_.value()
           << " != " << expected_value;
       return AssertionSuccess();
@@ -54,7 +54,7 @@ class HpackVarintDecoderTest
   void DecodeExpectError(absl::string_view data, uint32_t prefix_length) {
     Validator validator = [](const DecodeBuffer& /*db*/,
                              DecodeStatus status) -> AssertionResult {
-      VERIFY_EQ(DecodeStatus::kDecodeError, status);
+      HTTP2_VERIFY_EQ(DecodeStatus::kDecodeError, status);
       return AssertionSuccess();
     };
 
@@ -62,8 +62,7 @@ class HpackVarintDecoderTest
   }
 
  private:
-  AssertionResult Decode(absl::string_view data,
-                         uint32_t prefix_length,
+  AssertionResult Decode(absl::string_view data, uint32_t prefix_length,
                          const Validator validator) {
     prefix_length_ = prefix_length;
 
@@ -107,8 +106,7 @@ class HpackVarintDecoderTest
 };
 
 INSTANTIATE_TEST_SUITE_P(
-    HpackVarintDecoderTest,
-    HpackVarintDecoderTest,
+    HpackVarintDecoderTest, HpackVarintDecoderTest,
     ::testing::Combine(
         // Bits of the first byte not part of the prefix should be ignored.
         ::testing::Values(0b00000000, 0b11111111, 0b10101010),

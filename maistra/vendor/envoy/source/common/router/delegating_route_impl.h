@@ -84,6 +84,8 @@ public:
   Upstream::ResourcePriority priority() const override;
   const RateLimitPolicy& rateLimitPolicy() const override;
   const RetryPolicy& retryPolicy() const override;
+  const Router::PathMatcherSharedPtr& pathMatcher() const override;
+  const Router::PathRewriterSharedPtr& pathRewriter() const override;
   const InternalRedirectPolicy& internalRedirectPolicy() const override;
   uint32_t retryShadowBufferLimit() const override;
   const std::vector<Router::ShadowPolicyPtr>& shadowPolicies() const override;
@@ -109,6 +111,7 @@ public:
   const UpgradeMap& upgradeMap() const override;
   const absl::optional<ConnectConfig>& connectConfig() const override;
   const std::string& routeName() const override;
+  const EarlyDataPolicy& earlyDataPolicy() const override;
 
 private:
   const Router::RouteConstSharedPtr base_route_;

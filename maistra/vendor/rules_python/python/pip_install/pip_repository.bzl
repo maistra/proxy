@@ -1,7 +1,12 @@
 ""
 
+load("//python:repositories.bzl", "is_standalone_interpreter")
 load("//python/pip_install:repositories.bzl", "all_requirements")
 load("//python/pip_install/private:srcs.bzl", "PIP_INSTALL_PY_SRCS")
+
+CPPFLAGS = "CPPFLAGS"
+
+COMMAND_LINE_TOOLS_PATH_SLUG = "commandlinetools"
 
 def _construct_pypath(rctx):
     """Helper function to construct a PYTHONPATH.
@@ -61,6 +66,69 @@ def _resolve_python_interpreter(rctx):
             fail("python interpreter `{}` not found in PATH".format(python_interpreter))
     return python_interpreter
 
+def _get_xcode_location_cflags(rctx):
+    """Query the xcode sdk location to update cflags
+
+    Figure out if this interpreter target comes from rules_python, and patch the xcode sdk location if so.
+    Pip won't be able to compile c extensions from sdists with the pre built python distributions from indygreg
+    otherwise. See https://github.com/indygreg/python-build-standalone/issues/103
+    """
+
+    # Only run on MacOS hosts
+    if not rctx.os.name.lower().startswith("mac os"):
+        return []
+
+    # Only update the location when using a hermetic toolchain.
+    if not is_standalone_interpreter(rctx, rctx.attr.python_interpreter_target):
+        return []
+
+    # Locate xcode-select
+    xcode_select = rctx.which("xcode-select")
+
+    xcode_sdk_location = rctx.execute([xcode_select, "--print-path"])
+    if xcode_sdk_location.return_code != 0:
+        return []
+
+    xcode_root = xcode_sdk_location.stdout.strip()
+    if COMMAND_LINE_TOOLS_PATH_SLUG not in xcode_root.lower():
+        # This is a full xcode installation somewhere like /Applications/Xcode13.0.app/Contents/Developer
+        # so we need to change the path to to the macos specific tools which are in a different relative
+        # path than xcode installed command line tools.
+        xcode_root = "{}/Platforms/MacOSX.platform/Developer".format(xcode_root)
+    return [
+        "-isysroot {}/SDKs/MacOSX.sdk".format(xcode_root),
+    ]
+
+def _get_toolchain_unix_cflags(rctx):
+    """Gather cflags from a standalone toolchain for unix systems.
+
+    Pip won't be able to compile c extensions from sdists with the pre built python distributions from indygreg
+    otherwise. See https://github.com/indygreg/python-build-standalone/issues/103
+    """
+
+    # Only run on Unix systems
+    if not rctx.os.name.lower().startswith(("mac os", "linux")):
+        return []
+
+    # Only update the location when using a standalone toolchain.
+    if not is_standalone_interpreter(rctx, rctx.attr.python_interpreter_target):
+        return []
+
+    er = rctx.execute([
+        rctx.path(rctx.attr.python_interpreter_target).realpath,
+        "-c",
+        "import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}')",
+    ])
+    if er.return_code != 0:
+        fail("could not get python version from interpreter (status {}): {}".format(er.return_code, er.stderr))
+    _python_version = er.stdout
+    include_path = "{}/include/python{}".format(
+        rctx.path(Label("@{}//:WORKSPACE".format(rctx.attr.python_interpreter_target.workspace_name))).dirname.realpath,
+        _python_version,
+    )
+
+    return ["-isystem {}".format(include_path)]
+
 def _parse_optional_attrs(rctx, args):
     """Helper function to parse common attributes of pip_repository and whl_library repository rules.
 
@@ -95,6 +163,9 @@ def _parse_optional_attrs(rctx, args):
             struct(arg = rctx.attr.extra_pip_args).to_json(),
         ]
 
+    if rctx.attr.download_only:
+        args.append("--download_only")
+
     if rctx.attr.pip_data_exclude != None:
         args += [
             "--pip_data_exclude",
@@ -112,6 +183,27 @@ def _parse_optional_attrs(rctx, args):
 
     return args
 
+def _create_repository_execution_environment(rctx):
+    """Create a environment dictionary for processes we spawn with rctx.execute.
+
+    Args:
+        rctx: The repository context.
+    Returns:
+        Dictionary of environment variable suitable to pass to rctx.execute.
+    """
+
+    # Gather any available CPPFLAGS values
+    cppflags = []
+    cppflags.extend(_get_xcode_location_cflags(rctx))
+    cppflags.extend(_get_toolchain_unix_cflags(rctx))
+
+    env = {
+        "PYTHONPATH": _construct_pypath(rctx),
+        CPPFLAGS: " ".join(cppflags),
+    }
+
+    return env
+
 _BUILD_FILE_CONTENTS = """\
 package(default_visibility = ["//visibility:public"])
 
@@ -119,14 +211,24 @@ package(default_visibility = ["//visibility:public"])
 exports_files(["requirements.bzl"])
 """
 
+def _locked_requirements(rctx):
+    os = rctx.os.name.lower()
+    requirements_txt = rctx.attr.requirements_lock
+    if os.startswith("mac os") and rctx.attr.requirements_darwin != None:
+        requirements_txt = rctx.attr.requirements_darwin
+    elif os.startswith("linux") and rctx.attr.requirements_linux != None:
+        requirements_txt = rctx.attr.requirements_linux
+    elif "win" in os and rctx.attr.requirements_windows != None:
+        requirements_txt = rctx.attr.requirements_windows
+    if not requirements_txt:
+        fail("""\
+Incremental mode requires a requirements_lock attribute be specified,
+or a platform-specific lockfile using one of the requirements_* attributes.
+""")
+    return requirements_txt
+
 def _pip_repository_impl(rctx):
     python_interpreter = _resolve_python_interpreter(rctx)
-
-    if rctx.attr.incremental and not rctx.attr.requirements_lock:
-        fail("Incremental mode requires a requirements_lock attribute be specified.")
-
-    # We need a BUILD file to load the generated requirements.bzl
-    rctx.file("BUILD.bazel", _BUILD_FILE_CONTENTS)
 
     # Write the annotations file to pass to the wheel maker
     annotations = {package: json.decode(data) for (package, data) in rctx.attr.annotations.items()}
@@ -134,12 +236,15 @@ def _pip_repository_impl(rctx):
     rctx.file(annotations_file, json.encode_indent(annotations, indent = " " * 4))
 
     if rctx.attr.incremental:
+        requirements_txt = _locked_requirements(rctx)
         args = [
             python_interpreter,
             "-m",
-            "python.pip_install.parse_requirements_to_bzl",
+            "python.pip_install.extract_wheels.parse_requirements_to_bzl",
             "--requirements_lock",
-            rctx.path(rctx.attr.requirements_lock),
+            rctx.path(requirements_txt),
+            "--requirements_lock_label",
+            str(requirements_txt),
             # pass quiet and timeout args through to child repos.
             "--quiet",
             str(rctx.attr.quiet),
@@ -152,31 +257,37 @@ def _pip_repository_impl(rctx):
         args += ["--python_interpreter", _get_python_interpreter_attr(rctx)]
         if rctx.attr.python_interpreter_target:
             args += ["--python_interpreter_target", str(rctx.attr.python_interpreter_target)]
-
+        progress_message = "Parsing requirements to starlark"
     else:
         args = [
             python_interpreter,
             "-m",
-            "python.pip_install.extract_wheels",
+            "python.pip_install.extract_wheels.extract_wheels",
             "--requirements",
             rctx.path(rctx.attr.requirements),
             "--annotations",
             annotations_file,
         ]
+        progress_message = "Extracting wheels"
 
     args += ["--repo", rctx.attr.name, "--repo-prefix", rctx.attr.repo_prefix]
     args = _parse_optional_attrs(rctx, args)
 
+    rctx.report_progress(progress_message)
+
     result = rctx.execute(
         args,
         # Manually construct the PYTHONPATH since we cannot use the toolchain here
-        environment = {"PYTHONPATH": _construct_pypath(rctx)},
+        environment = _create_repository_execution_environment(rctx),
         timeout = rctx.attr.timeout,
         quiet = rctx.attr.quiet,
     )
 
     if result.return_code:
         fail("rules_python failed: %s (%s)" % (result.stdout, result.stderr))
+
+    # We need a BUILD file to load the generated requirements.bzl
+    rctx.file("BUILD.bazel", _BUILD_FILE_CONTENTS + "\n# The requirements.bzl file was generated by running:\n# " + " ".join([str(a) for a in args]))
 
     return
 
@@ -185,6 +296,13 @@ common_env = [
 ]
 
 common_attrs = {
+    "download_only": attr.bool(
+        doc = """
+Whether to use "pip download" instead of "pip wheel". Disables building wheels from source, but allows use of
+--platform, --python-version, --implementation, and --abi in --extra_pip_args to download wheels for a different
+platform from the host platform.
+        """,
+    ),
     "enable_implicit_namespace_pkgs": attr.bool(
         default = False,
         doc = """
@@ -277,6 +395,14 @@ pip_repository_attrs = {
         allow_single_file = True,
         doc = "A 'requirements.txt' pip requirements file.",
     ),
+    "requirements_darwin": attr.label(
+        allow_single_file = True,
+        doc = "Override the requirements_lock attribute when the host platform is Mac OS",
+    ),
+    "requirements_linux": attr.label(
+        allow_single_file = True,
+        doc = "Override the requirements_lock attribute when the host platform is Linux",
+    ),
     "requirements_lock": attr.label(
         allow_single_file = True,
         doc = """
@@ -284,6 +410,10 @@ A fully resolved 'requirements.txt' pip requirement file containing the transiti
 of 'requirements' no resolve will take place and pip_repository will create individual repositories for each of your dependencies so that
 wheels are fetched/built only for the targets specified by 'build/run/test'.
 """,
+    ),
+    "requirements_windows": attr.label(
+        allow_single_file = True,
+        doc = "Override the requirements_lock attribute when the host platform is Windows",
     ),
 }
 
@@ -340,7 +470,7 @@ def _whl_library_impl(rctx):
     args = [
         python_interpreter,
         "-m",
-        "python.pip_install.parse_requirements_to_bzl.extract_single_wheel",
+        "python.pip_install.extract_wheels.extract_single_wheel",
         "--requirement",
         rctx.attr.requirement,
         "--repo",
@@ -359,7 +489,7 @@ def _whl_library_impl(rctx):
     result = rctx.execute(
         args,
         # Manually construct the PYTHONPATH since we cannot use the toolchain here
-        environment = {"PYTHONPATH": _construct_pypath(rctx)},
+        environment = _create_repository_execution_environment(rctx),
         quiet = rctx.attr.quiet,
         timeout = rctx.attr.timeout,
     )

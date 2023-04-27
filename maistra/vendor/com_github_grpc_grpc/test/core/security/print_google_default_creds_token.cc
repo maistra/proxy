@@ -37,13 +37,13 @@ typedef struct {
   grpc_polling_entity pops;
   bool is_done;
 
-  grpc_credentials_mdelem_array md_array;
+  grpc_core::CredentialsMetadataArray md_array;
   grpc_closure on_request_metadata;
 } synchronizer;
 
 static void on_metadata_response(void* arg, grpc_error_handle error) {
   synchronizer* sync = static_cast<synchronizer*>(arg);
-  if (error != GRPC_ERROR_NONE) {
+  if (!GRPC_ERROR_IS_NONE(error)) {
     fprintf(stderr, "Fetching token failed: %s\n",
             grpc_error_std_string(error).c_str());
     fflush(stderr);
@@ -112,7 +112,7 @@ int main(int argc, char** argv) {
     if (!GRPC_LOG_IF_ERROR(
             "pollset_work",
             grpc_pollset_work(grpc_polling_entity_pollset(&sync.pops), &worker,
-                              GRPC_MILLIS_INF_FUTURE)))
+                              grpc_core::Timestamp::InfFuture())))
       sync.is_done = true;
     gpr_mu_unlock(sync.mu);
     grpc_core::ExecCtx::Get()->Flush();

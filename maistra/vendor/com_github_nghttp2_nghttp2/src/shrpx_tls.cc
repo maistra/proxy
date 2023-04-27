@@ -933,24 +933,30 @@ SSL_CTX *create_ssl_context(const char *private_key_file, const char *cert_file,
     DIE();
   }
 
-  constexpr auto ssl_opts =
-      (SSL_OP_ALL & ~SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS) | SSL_OP_NO_SSLv2 |
-      SSL_OP_NO_SSLv3 | SSL_OP_NO_COMPRESSION |
-      SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION | SSL_OP_SINGLE_ECDH_USE |
-      SSL_OP_SINGLE_DH_USE |
-      SSL_OP_CIPHER_SERVER_PREFERENCE
+  auto ssl_opts = (SSL_OP_ALL & ~SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS) |
+                  SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_COMPRESSION |
+                  SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION |
+                  SSL_OP_SINGLE_ECDH_USE | SSL_OP_SINGLE_DH_USE |
+                  SSL_OP_CIPHER_SERVER_PREFERENCE
 #if OPENSSL_1_1_1_API && !defined(OPENSSL_IS_BORINGSSL)
-      // The reason for disabling built-in anti-replay in OpenSSL is
-      // that it only works if client gets back to the same server.
-      // The freshness check described in
-      // https://tools.ietf.org/html/rfc8446#section-8.3 is still
-      // performed.
-      | SSL_OP_NO_ANTI_REPLAY
+                  // The reason for disabling built-in anti-replay in
+                  // OpenSSL is that it only works if client gets back
+                  // to the same server.  The freshness check
+                  // described in
+                  // https://tools.ietf.org/html/rfc8446#section-8.3
+                  // is still performed.
+                  | SSL_OP_NO_ANTI_REPLAY
 #endif // OPENSSL_1_1_1_API && !defined(OPENSSL_IS_BORINGSSL)
       ;
 
   auto config = mod_config();
   auto &tlsconf = config->tls;
+
+#ifdef SSL_OP_ENABLE_KTLS
+  if (tlsconf.ktls) {
+    ssl_opts |= SSL_OP_ENABLE_KTLS;
+  }
+#endif // SSL_OP_ENABLE_KTLS
 
   SSL_CTX_set_options(ssl_ctx, ssl_opts | tlsconf.tls_proto_mask);
 
@@ -1213,149 +1219,6 @@ SSL_CTX *create_ssl_context(const char *private_key_file, const char *cert_file,
 }
 
 #ifdef ENABLE_HTTP3
-#  ifdef HAVE_LIBNGTCP2_CRYPTO_OPENSSL
-namespace {
-int quic_set_encryption_secrets(SSL *ssl, OSSL_ENCRYPTION_LEVEL ossl_level,
-                                const uint8_t *rx_secret,
-                                const uint8_t *tx_secret, size_t secretlen) {
-  auto conn = static_cast<Connection *>(SSL_get_app_data(ssl));
-  auto handler = static_cast<ClientHandler *>(conn->data);
-  auto upstream = static_cast<Http3Upstream *>(handler->get_upstream());
-  auto level = ngtcp2_crypto_openssl_from_ossl_encryption_level(ossl_level);
-
-  if (upstream->on_rx_secret(level, rx_secret, secretlen) != 0) {
-    return 0;
-  }
-
-  if (tx_secret && upstream->on_tx_secret(level, tx_secret, secretlen) != 0) {
-    return 0;
-  }
-
-  return 1;
-}
-} // namespace
-
-namespace {
-int quic_add_handshake_data(SSL *ssl, OSSL_ENCRYPTION_LEVEL ossl_level,
-                            const uint8_t *data, size_t len) {
-  auto conn = static_cast<Connection *>(SSL_get_app_data(ssl));
-  auto handler = static_cast<ClientHandler *>(conn->data);
-  auto upstream = static_cast<Http3Upstream *>(handler->get_upstream());
-  auto level = ngtcp2_crypto_openssl_from_ossl_encryption_level(ossl_level);
-
-  upstream->add_crypto_data(level, data, len);
-
-  return 1;
-}
-} // namespace
-
-namespace {
-int quic_flush_flight(SSL *ssl) { return 1; }
-} // namespace
-
-namespace {
-int quic_send_alert(SSL *ssl, OSSL_ENCRYPTION_LEVEL ossl_level, uint8_t alert) {
-  auto conn = static_cast<Connection *>(SSL_get_app_data(ssl));
-  auto handler = static_cast<ClientHandler *>(conn->data);
-  auto upstream = static_cast<Http3Upstream *>(handler->get_upstream());
-
-  if (!upstream) {
-    return 1;
-  }
-
-  upstream->set_tls_alert(alert);
-
-  return 1;
-}
-} // namespace
-
-namespace {
-auto quic_method = SSL_QUIC_METHOD{
-    quic_set_encryption_secrets,
-    quic_add_handshake_data,
-    quic_flush_flight,
-    quic_send_alert,
-};
-} // namespace
-#  endif // HAVE_LIBNGTCP2_CRYPTO_OPENSSL
-
-#  ifdef HAVE_LIBNGTCP2_CRYPTO_BORINGSSL
-namespace {
-int quic_set_read_secret(SSL *ssl, ssl_encryption_level_t ssl_level,
-                         const SSL_CIPHER *cipher, const uint8_t *secret,
-                         size_t secretlen) {
-  auto conn = static_cast<Connection *>(SSL_get_app_data(ssl));
-  auto handler = static_cast<ClientHandler *>(conn->data);
-  auto upstream = static_cast<Http3Upstream *>(handler->get_upstream());
-  auto level = ngtcp2_crypto_boringssl_from_ssl_encryption_level(ssl_level);
-
-  if (upstream->on_rx_secret(level, secret, secretlen) != 0) {
-    return 0;
-  }
-
-  return 1;
-}
-} // namespace
-
-namespace {
-int quic_set_write_secret(SSL *ssl, ssl_encryption_level_t ssl_level,
-                          const SSL_CIPHER *cipher, const uint8_t *secret,
-                          size_t secretlen) {
-  auto conn = static_cast<Connection *>(SSL_get_app_data(ssl));
-  auto handler = static_cast<ClientHandler *>(conn->data);
-  auto upstream = static_cast<Http3Upstream *>(handler->get_upstream());
-  auto level = ngtcp2_crypto_boringssl_from_ssl_encryption_level(ssl_level);
-
-  if (upstream->on_tx_secret(level, secret, secretlen) != 0) {
-    return 0;
-  }
-
-  return 1;
-}
-} // namespace
-
-namespace {
-int quic_add_handshake_data(SSL *ssl, ssl_encryption_level_t ssl_level,
-                            const uint8_t *data, size_t len) {
-  auto conn = static_cast<Connection *>(SSL_get_app_data(ssl));
-  auto handler = static_cast<ClientHandler *>(conn->data);
-  auto upstream = static_cast<Http3Upstream *>(handler->get_upstream());
-  auto level = ngtcp2_crypto_boringssl_from_ssl_encryption_level(ssl_level);
-
-  upstream->add_crypto_data(level, data, len);
-
-  return 1;
-}
-} // namespace
-
-namespace {
-int quic_flush_flight(SSL *ssl) { return 1; }
-} // namespace
-
-namespace {
-int quic_send_alert(SSL *ssl, ssl_encryption_level_t level, uint8_t alert) {
-  auto conn = static_cast<Connection *>(SSL_get_app_data(ssl));
-  auto handler = static_cast<ClientHandler *>(conn->data);
-  auto upstream = static_cast<Http3Upstream *>(handler->get_upstream());
-
-  if (!upstream) {
-    return 1;
-  }
-
-  upstream->set_tls_alert(alert);
-
-  return 1;
-}
-} // namespace
-
-namespace {
-auto quic_method = SSL_QUIC_METHOD{
-    quic_set_read_secret, quic_set_write_secret, quic_add_handshake_data,
-    quic_flush_flight,    quic_send_alert,
-};
-} // namespace
-#  endif // HAVE_LIBNGTCP2_CRYPTO_BORINGSSL
-
 SSL_CTX *create_quic_ssl_context(const char *private_key_file,
                                  const char *cert_file,
                                  const std::vector<uint8_t> &sct_data
@@ -1390,8 +1253,18 @@ SSL_CTX *create_quic_ssl_context(const char *private_key_file,
 
   SSL_CTX_set_options(ssl_ctx, ssl_opts);
 
-  SSL_CTX_set_min_proto_version(ssl_ctx, TLS1_3_VERSION);
-  SSL_CTX_set_max_proto_version(ssl_ctx, TLS1_3_VERSION);
+#  ifdef HAVE_LIBNGTCP2_CRYPTO_OPENSSL
+  if (ngtcp2_crypto_openssl_configure_server_context(ssl_ctx) != 0) {
+    LOG(FATAL) << "ngtcp2_crypto_openssl_configure_server_context failed";
+    DIE();
+  }
+#  endif // HAVE_LIBNGTCP2_CRYPTO_OPENSSL
+#  ifdef HAVE_LIBNGTCP2_CRYPTO_BORINGSSL
+  if (ngtcp2_crypto_boringssl_configure_server_context(ssl_ctx) != 0) {
+    LOG(FATAL) << "ngtcp2_crypto_boringssl_configure_server_context failed";
+    DIE();
+  }
+#  endif // HAVE_LIBNGTCP2_CRYPTO_BORINGSSL
 
   const unsigned char sid_ctx[] = "shrpx";
   SSL_CTX_set_session_id_context(ssl_ctx, sid_ctx, sizeof(sid_ctx) - 1);
@@ -1632,8 +1505,6 @@ SSL_CTX *create_quic_ssl_context(const char *private_key_file,
   SSL_CTX_set_psk_server_callback(ssl_ctx, psk_server_cb);
 #  endif // !LIBRESSL_NO_PSK
 
-  SSL_CTX_set_quic_method(ssl_ctx, &quic_method);
-
   return ssl_ctx;
 }
 #endif // ENABLE_HTTP3
@@ -1700,12 +1571,17 @@ SSL_CTX *create_ssl_client_context(
     DIE();
   }
 
-  constexpr auto ssl_opts = (SSL_OP_ALL & ~SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS) |
-                            SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 |
-                            SSL_OP_NO_COMPRESSION |
-                            SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION;
+  auto ssl_opts = (SSL_OP_ALL & ~SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS) |
+                  SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_COMPRESSION |
+                  SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION;
 
   auto &tlsconf = get_config()->tls;
+
+#ifdef SSL_OP_ENABLE_KTLS
+  if (tlsconf.ktls) {
+    ssl_opts |= SSL_OP_ENABLE_KTLS;
+  }
+#endif // SSL_OP_ENABLE_KTLS
 
   SSL_CTX_set_options(ssl_ctx, ssl_opts | tlsconf.tls_proto_mask);
 
