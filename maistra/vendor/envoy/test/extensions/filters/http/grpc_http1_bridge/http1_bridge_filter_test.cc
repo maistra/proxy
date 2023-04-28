@@ -260,7 +260,7 @@ TEST_F(GrpcHttp1BridgeFilterTest, ProtobufUpgradedToGrpc) {
                                                  {":path", "/v1/spotify.Concat/Concat"}};
   Buffer::OwnedImpl data("hello");
 
-  EXPECT_CALL(decoder_callbacks_, clearRouteCache());
+  EXPECT_CALL(decoder_callbacks_.downstream_callbacks_, clearRouteCache());
   EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->decodeHeaders(request_headers, false));
   EXPECT_EQ(Http::Headers::get().ContentTypeValues.Grpc, request_headers.getContentTypeValue());
 
@@ -288,10 +288,10 @@ TEST_F(GrpcHttp1BridgeFilterTest, ProtobufUpgradedHeaderSanitized) {
                                                  {":path", "/v1/spotify.Concat/Concat"}};
   Buffer::OwnedImpl data("hello");
 
-  EXPECT_CALL(decoder_callbacks_, clearRouteCache());
+  EXPECT_CALL(decoder_callbacks_.downstream_callbacks_, clearRouteCache());
   EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->decodeHeaders(request_headers, false));
   EXPECT_EQ(Http::Headers::get().ContentTypeValues.Grpc, request_headers.getContentTypeValue());
-  EXPECT_EQ(nullptr, request_headers.getContentLengthValue());
+  EXPECT_EQ("", request_headers.getContentLengthValue());
 }
 
 } // namespace

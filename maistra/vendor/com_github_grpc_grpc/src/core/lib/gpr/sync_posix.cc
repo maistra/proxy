@@ -21,13 +21,13 @@
 #if defined(GPR_POSIX_SYNC) && !defined(GPR_ABSEIL_SYNC) && \
     !defined(GPR_CUSTOM_SYNC)
 
+#include <errno.h>
+#include <time.h>
+
 #include <grpc/support/alloc.h>
 #include <grpc/support/log.h>
 #include <grpc/support/sync.h>
 #include <grpc/support/time.h>
-
-#include <errno.h>
-#include <time.h>
 
 #include "src/core/lib/profiling/timers.h"
 
@@ -131,6 +131,7 @@ int gpr_cv_wait(gpr_cv* cv, gpr_mu* mu, gpr_timespec abs_deadline) {
     abs_deadline = gpr_convert_clock_type(abs_deadline, GPR_CLOCK_MONOTONIC);
 #else
     abs_deadline = gpr_convert_clock_type(abs_deadline, GPR_CLOCK_REALTIME);
+    abs_deadline = gpr_time_max(abs_deadline, gpr_now(abs_deadline.clock_type));
 #endif  // GPR_LINUX
     abs_deadline_ts.tv_sec = static_cast<time_t>(abs_deadline.tv_sec);
     abs_deadline_ts.tv_nsec = abs_deadline.tv_nsec;

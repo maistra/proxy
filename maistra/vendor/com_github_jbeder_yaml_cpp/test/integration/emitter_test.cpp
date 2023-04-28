@@ -968,6 +968,14 @@ TEST_F(EmitterTest, UserType) {
   ExpectEmit("- x: 5\n  bar: hello\n- x: 3\n  bar: goodbye");
 }
 
+TEST_F(EmitterTest, UserType2) {
+  out << BeginSeq;
+  out << Foo(5, "\r");
+  out << EndSeq;
+
+  ExpectEmit("- x: 5\n  bar: \"\\r\"");
+}
+
 TEST_F(EmitterTest, UserTypeInContainer) {
   std::vector<Foo> fv;
   fv.push_back(Foo(5, "hello"));
@@ -1616,6 +1624,15 @@ NodeB:
   k: [*k0, *k1])");
 }
 
+TEST_F(EmitterTest, AnchorEncoding) {
+  Node node;
+  node["--- &$ [*$]1"] = 1;
+  out << node;
+  ExpectEmit("\"--- &$ [*$]1\": 1");
+  Node reparsed = YAML::Load(out.c_str());
+  EXPECT_EQ(reparsed["--- &$ [*$]1"].as<int>(), 1);
+}
+
 class EmitterErrorTest : public ::testing::Test {
  protected:
   void ExpectEmitError(const std::string& expectedError) {
@@ -1686,5 +1703,6 @@ TEST_F(EmitterErrorTest, InvalidAlias) {
 
   ExpectEmitError(ErrorMsg::INVALID_ALIAS);
 }
+
 }  // namespace
 }  // namespace YAML

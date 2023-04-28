@@ -21,10 +21,11 @@ load("//go/private/actions:archive.bzl", "emit_archive")
 load("//go/private/actions:asm.bzl", "emit_asm")
 load("//go/private/actions:binary.bzl", "emit_binary")
 load("//go/private/actions:compile.bzl", "emit_compile")
-load("//go/private/actions:cover.bzl", "emit_cover")
 load("//go/private/actions:link.bzl", "emit_link")
 load("//go/private/actions:pack.bzl", "emit_pack")
 load("//go/private/actions:stdlib.bzl", "emit_stdlib")
+
+GO_TOOLCHAIN = "@io_bazel_rules_go//go:toolchain"
 
 def _go_toolchain_impl(ctx):
     sdk = ctx.attr.sdk[GoSDK]
@@ -40,7 +41,6 @@ def _go_toolchain_impl(ctx):
             asm = emit_asm,
             binary = emit_binary,
             compile = emit_compile,
-            cover = emit_cover,
             link = emit_link,
             pack = emit_pack,
             stdlib = emit_stdlib,
@@ -92,7 +92,7 @@ go_toolchain = rule(
     provides = [platform_common.ToolchainInfo],
 )
 
-def declare_toolchains(host, sdk, builder):
+def declare_toolchains(host, sdk, builder, sdk_version_setting):
     """Declares go_toolchain and toolchain targets for each platform."""
 
     # keep in sync with generate_toolchain_names
@@ -133,11 +133,12 @@ def declare_toolchains(host, sdk, builder):
         )
         native.toolchain(
             name = toolchain_name,
-            toolchain_type = "@io_bazel_rules_go//go:toolchain",
+            toolchain_type = GO_TOOLCHAIN,
             exec_compatible_with = [
                 "@io_bazel_rules_go//go/toolchain:" + host_goos,
                 "@io_bazel_rules_go//go/toolchain:" + host_goarch,
             ],
             target_compatible_with = constraints,
+            target_settings = [sdk_version_setting],
             toolchain = ":" + impl_name,
         )

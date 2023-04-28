@@ -36,7 +36,7 @@ struct ThreadState {
   size_t depth;  // Number of closures in the closure list
   bool shutdown;
   bool queued_long_job;
-  grpc_core::Thread thd;
+  Thread thd;
 };
 
 enum class ExecutorType {
@@ -113,9 +113,6 @@ class Executor {
   gpr_atm num_threads_;
   gpr_spinlock adding_thread_lock_;
 };
-
-// Global initializer for executor
-void grpc_executor_global_init();
 
 }  // namespace grpc_core
 

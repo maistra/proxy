@@ -40,6 +40,7 @@ class CallSiteInfo : public TorqueGeneratedCallSiteInfo<CallSiteInfo, Struct> {
   bool IsMethodCall() const;
   bool IsToplevel() const;
   bool IsPromiseAll() const;
+  bool IsPromiseAllSettled() const;
   bool IsPromiseAny() const;
   bool IsNative() const;
 
@@ -72,6 +73,7 @@ class CallSiteInfo : public TorqueGeneratedCallSiteInfo<CallSiteInfo, Struct> {
       Handle<CallSiteInfo> info);
   static Handle<String> GetFunctionDebugName(Handle<CallSiteInfo> info);
   static Handle<Object> GetMethodName(Handle<CallSiteInfo> info);
+  static Handle<String> GetScriptHash(Handle<CallSiteInfo> info);
   static Handle<Object> GetTypeName(Handle<CallSiteInfo> info);
 
 #if V8_ENABLE_WEBASSEMBLY

@@ -72,32 +72,3 @@ def emscripten_deps(emscripten_version = "latest"):
             build_file = "@emsdk//emscripten_toolchain:emscripten.BUILD",
             type = "zip",
         )
-
-    # Commented out, as it downloads  nodejs again
-    # if "emscripten_npm_linux" not in excludes:
-    #     npm_install(
-    #         name = "emscripten_npm_linux",
-    #         package_json = "@emscripten_bin_linux//:emscripten/package.json",
-    #         package_lock_json = "@emscripten_bin_linux//:emscripten/package-lock.json",
-    #     )
-
-    if "emscripten_npm_mac" not in excludes:
-        npm_install(
-            name = "emscripten_npm_mac",
-            package_json = "@emscripten_bin_mac//:emscripten/package.json",
-            package_lock_json = "@emscripten_bin_mac//:emscripten/package-lock.json",
-        )
-
-    if "emscripten_npm_mac_arm64" not in excludes:
-        npm_install(
-            name = "emscripten_npm_mac",
-            package_json = "@emscripten_bin_mac_arm64//:emscripten/package.json",
-            package_lock_json = "@emscripten_bin_mac_arm64//:emscripten/package-lock.json",
-        )
-
-    if "emscripten_npm_win" not in excludes:
-        npm_install(
-            name = "emscripten_npm_win",
-            package_json = "@emscripten_bin_win//:emscripten/package.json",
-            package_lock_json = "@emscripten_bin_win//:emscripten/package-lock.json",
-        )

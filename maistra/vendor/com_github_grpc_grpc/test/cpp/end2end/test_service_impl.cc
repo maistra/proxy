@@ -18,14 +18,15 @@
 
 #include "test/cpp/end2end/test_service_impl.h"
 
+#include <string>
+#include <thread>
+
+#include <gtest/gtest.h>
+
 #include <grpc/support/log.h>
 #include <grpcpp/alarm.h>
 #include <grpcpp/security/credentials.h>
 #include <grpcpp/server_context.h>
-#include <gtest/gtest.h>
-
-#include <string>
-#include <thread>
 
 #include "src/proto/grpc/testing/echo.grpc.pb.h"
 #include "test/cpp/util/string_ref_helper.h"
@@ -127,7 +128,7 @@ void ServerTryCancelNonblocking(CallbackServerContext* context) {
 ServerUnaryReactor* CallbackTestServiceImpl::Echo(
     CallbackServerContext* context, const EchoRequest* request,
     EchoResponse* response) {
-  class Reactor : public ::grpc::ServerUnaryReactor {
+  class Reactor : public grpc::ServerUnaryReactor {
    public:
     Reactor(CallbackTestServiceImpl* service, CallbackServerContext* ctx,
             const EchoRequest* request, EchoResponse* response)
@@ -231,6 +232,11 @@ ServerUnaryReactor* CallbackTestServiceImpl::Echo(
       internal::MaybeEchoDeadline(ctx_, req_, resp_);
       if (service_->host_) {
         resp_->mutable_param()->set_host(*service_->host_);
+      } else if (req_->has_param() &&
+                 req_->param().echo_host_from_authority_header()) {
+        auto authority = ctx_->ExperimentalGetAuthority();
+        std::string authority_str(authority.data(), authority.size());
+        resp_->mutable_param()->set_host(std::move(authority_str));
       }
       if (req_->has_param() && req_->param().client_cancel_after_us()) {
         {
@@ -322,7 +328,7 @@ ServerUnaryReactor* CallbackTestServiceImpl::Echo(
 
 ServerUnaryReactor* CallbackTestServiceImpl::CheckClientInitialMetadata(
     CallbackServerContext* context, const SimpleRequest*, SimpleResponse*) {
-  class Reactor : public ::grpc::ServerUnaryReactor {
+  class Reactor : public grpc::ServerUnaryReactor {
    public:
     explicit Reactor(CallbackServerContext* ctx) {
       EXPECT_EQ(internal::MetadataMatchCount(ctx->client_metadata(),
@@ -357,7 +363,7 @@ ServerReadReactor<EchoRequest>* CallbackTestServiceImpl::RequestStream(
     return nullptr;
   }
 
-  class Reactor : public ::grpc::ServerReadReactor<EchoRequest> {
+  class Reactor : public grpc::ServerReadReactor<EchoRequest> {
    public:
     Reactor(CallbackServerContext* ctx, EchoResponse* response,
             int server_try_cancel)
@@ -440,7 +446,7 @@ ServerWriteReactor<EchoResponse>* CallbackTestServiceImpl::ResponseStream(
     internal::ServerTryCancelNonblocking(context);
   }
 
-  class Reactor : public ::grpc::ServerWriteReactor<EchoResponse> {
+  class Reactor : public grpc::ServerWriteReactor<EchoResponse> {
    public:
     Reactor(CallbackServerContext* ctx, const EchoRequest* request,
             int server_try_cancel)
@@ -527,7 +533,7 @@ ServerWriteReactor<EchoResponse>* CallbackTestServiceImpl::ResponseStream(
 
 ServerBidiReactor<EchoRequest, EchoResponse>*
 CallbackTestServiceImpl::BidiStream(CallbackServerContext* context) {
-  class Reactor : public ::grpc::ServerBidiReactor<EchoRequest, EchoResponse> {
+  class Reactor : public grpc::ServerBidiReactor<EchoRequest, EchoResponse> {
    public:
     explicit Reactor(CallbackServerContext* ctx) : ctx_(ctx) {
       // If 'server_try_cancel' is set in the metadata, the RPC is cancelled by

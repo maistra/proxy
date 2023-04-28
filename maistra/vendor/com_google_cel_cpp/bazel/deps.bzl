@@ -2,14 +2,14 @@
 Main dependencies of cel-cpp.
 """
 
-load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive", "http_jar")
 
 def base_deps():
     """Base evaluator and test dependencies."""
 
-    # 2021-10-05
-    ABSL_SHA1 = "b9b925341f9e90f5e7aa0cf23f036c29c7e454eb"
-    ABSL_SHA256 = "bb2a0b57c92b6666e8acb00f4cbbfce6ddb87e83625fb851b0e78db581340617"
+    # 2021-11-30
+    ABSL_SHA1 = "3e1983c5c07eb8a43ad030e770cbae023a470a04"
+    ABSL_SHA256 = "f3d286893fe23eb0efbb30709848b26fa4a311692b147bea1b0d1efff9c8f03a"
     http_archive(
         name = "com_google_absl",
         urls = ["https://github.com/abseil/abseil-cpp/archive/" + ABSL_SHA1 + ".zip"],
@@ -49,8 +49,8 @@ def base_deps():
         sha256 = RE2_SHA256,
     )
 
-    PROTOBUF_VERSION = "3.18.0"
-    PROTOBUF_SHA = "14e8042b5da37652c92ef6a2759e7d2979d295f60afd7767825e3de68c856c54"
+    PROTOBUF_VERSION = "3.21.1"
+    PROTOBUF_SHA = "a295dd3b9551d3e2749a9969583dea110c6cdcc39d02088f7c7bb1100077e081"
     http_archive(
         name = "com_google_protobuf",
         sha256 = PROTOBUF_SHA,
@@ -58,8 +58,8 @@ def base_deps():
         urls = ["https://github.com/protocolbuffers/protobuf/archive/v" + PROTOBUF_VERSION + ".tar.gz"],
     )
 
-    GOOGLEAPIS_GIT_SHA = "77066268d1fd5d72278afc2aef1ebc1d2112cca6"  # Oct 01, 2021
-    GOOGLEAPIS_SHA = "dca75efd11a6295618dba919ad52fe551ba8bb85778d331a38c2bca282234296"
+    GOOGLEAPIS_GIT_SHA = "f19049fdd8dfc8b6eba387f4ef6d1d8b4d0103e7"  # May 31, 2022
+    GOOGLEAPIS_SHA = "cbda1073fe2eb3b7a5a41fd940a592cfe1861895580c13bf25066896f9e9bede"
     http_archive(
         name = "com_google_googleapis",
         sha256 = GOOGLEAPIS_SHA,
@@ -69,12 +69,9 @@ def base_deps():
 
 def parser_deps():
     """ANTLR dependency for the parser."""
-    http_archive(
-        name = "rules_antlr",
-        sha256 = "7249d1569293d9b239e23c65f6b4c81a07da921738bde0dfeb231ed98be40429",
-        strip_prefix = "rules_antlr-3cc2f9502a54ceb7b79b37383316b23c4da66f9a",
-        urls = ["https://github.com/marcohu/rules_antlr/archive/3cc2f9502a54ceb7b79b37383316b23c4da66f9a.tar.gz"],
-    )
+
+    # Apr 15, 2022
+    ANTLR4_VERSION = "4.10.1"
 
     http_archive(
         name = "antlr4_runtimes",
@@ -87,9 +84,14 @@ cc_library(
     includes = ["runtime/Cpp/runtime/src"],
 )
   """,
-        sha256 = "46f5e1af5f4bd28ade55cb632f9a069656b31fc8c2408f9aa045f9b5f5caad64",
-        strip_prefix = "antlr4-4.7.2",
-        urls = ["https://github.com/antlr/antlr4/archive/4.7.2.tar.gz"],
+        sha256 = "a320568b738e42735946bebc5d9d333170e14a251c5734e8b852ad1502efa8a2",
+        strip_prefix = "antlr4-" + ANTLR4_VERSION,
+        urls = ["https://github.com/antlr/antlr4/archive/" + ANTLR4_VERSION + ".tar.gz"],
+    )
+    http_jar(
+        name = "antlr4_jar",
+        urls = ["https://www.antlr.org/download/antlr-" + ANTLR4_VERSION + "-complete.jar"],
+        sha256 = "41949d41f20d31d5b8277187735dd755108df52b38db6c865108d3382040f918",
     )
 
 def flatbuffers_deps():
@@ -122,9 +124,10 @@ def cel_spec_deps():
         ],
     )
 
-    CEL_SPEC_GIT_SHA = "c9ae91b24fdaf869d7c59a9f64863249a6a2905e"  # 9/22/2021
+    CEL_SPEC_GIT_SHA = "6040c0a6df9601751e628405706bac18948b8eb3"  # 3/31/2022
     http_archive(
         name = "com_google_cel_spec",
+        sha256 = "6b4ca28de8d8a3038a96c393774c2ab65abd6a57cb50295dddea406b2eeafc9e",
         strip_prefix = "cel-spec-" + CEL_SPEC_GIT_SHA,
         urls = ["https://github.com/google/cel-spec/archive/" + CEL_SPEC_GIT_SHA + ".zip"],
     )

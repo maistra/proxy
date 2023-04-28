@@ -19,28 +19,26 @@
 #ifndef TEST_CPP_MICROBENCHMARKS_COUNTERS_H
 #define TEST_CPP_MICROBENCHMARKS_COUNTERS_H
 
+#include <grpc/support/port_platform.h>
+
 #include <sstream>
 #include <vector>
 
-#include <grpc/support/port_platform.h>
-#include "src/core/lib/debug/stats.h"
-#include "test/core/util/memory_counters.h"
-
 #include <benchmark/benchmark.h>
+
 #include <grpcpp/impl/grpc_library.h>
+
+#include "src/core/lib/debug/stats.h"
 
 class LibraryInitializer {
  public:
   LibraryInitializer();
   ~LibraryInitializer();
 
-  grpc_resource_quota* rq() { return rq_; }
-
   static LibraryInitializer& get();
 
  private:
   grpc::internal::GrpcLibrary init_lib_;
-  grpc_resource_quota* rq_;
 };
 
 #ifdef GPR_LOW_LEVEL_COUNTERS
@@ -69,7 +67,6 @@ class TrackCounters {
       gpr_atm_no_barrier_load(&gpr_counter_atm_add);
   const size_t now_calls_at_start_ =
       gpr_atm_no_barrier_load(&gpr_now_call_count);
-  grpc_memory_counters counters_at_start_ = grpc_memory_counters_snapshot();
 #endif
 };
 

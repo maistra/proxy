@@ -5,6 +5,8 @@
 #ifndef QUICHE_QUIC_CORE_QUIC_PACKETS_H_
 #define QUICHE_QUIC_CORE_QUIC_PACKETS_H_
 
+#include <sys/types.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -31,21 +33,18 @@ struct QuicPacketHeader;
 
 // Returns the destination connection ID of |header| when |perspective| is
 // server, and the source connection ID when |perspective| is client.
-QUIC_EXPORT_PRIVATE QuicConnectionId
-GetServerConnectionIdAsRecipient(const QuicPacketHeader& header,
-                                 Perspective perspective);
+QUIC_EXPORT_PRIVATE QuicConnectionId GetServerConnectionIdAsRecipient(
+    const QuicPacketHeader& header, Perspective perspective);
 
 // Returns the destination connection ID of |header| when |perspective| is
 // client, and the source connection ID when |perspective| is server.
-QUIC_EXPORT_PRIVATE QuicConnectionId
-GetClientConnectionIdAsRecipient(const QuicPacketHeader& header,
-                                 Perspective perspective);
+QUIC_EXPORT_PRIVATE QuicConnectionId GetClientConnectionIdAsRecipient(
+    const QuicPacketHeader& header, Perspective perspective);
 
 // Returns the destination connection ID of |header| when |perspective| is
 // client, and the source connection ID when |perspective| is server.
-QUIC_EXPORT_PRIVATE QuicConnectionId
-GetServerConnectionIdAsSender(const QuicPacketHeader& header,
-                              Perspective perspective);
+QUIC_EXPORT_PRIVATE QuicConnectionId GetServerConnectionIdAsSender(
+    const QuicPacketHeader& header, Perspective perspective);
 
 // Returns the destination connection ID included of |header| when |perspective|
 // is client, and the source connection ID included when |perspective| is
@@ -56,9 +55,8 @@ GetServerConnectionIdIncludedAsSender(const QuicPacketHeader& header,
 
 // Returns the destination connection ID of |header| when |perspective| is
 // server, and the source connection ID when |perspective| is client.
-QUIC_EXPORT_PRIVATE QuicConnectionId
-GetClientConnectionIdAsSender(const QuicPacketHeader& header,
-                              Perspective perspective);
+QUIC_EXPORT_PRIVATE QuicConnectionId GetClientConnectionIdAsSender(
+    const QuicPacketHeader& header, Perspective perspective);
 
 // Returns the destination connection ID included of |header| when |perspective|
 // is server, and the source connection ID included when |perspective| is
@@ -68,50 +66,45 @@ GetClientConnectionIdIncludedAsSender(const QuicPacketHeader& header,
                                       Perspective perspective);
 
 // Number of connection ID bytes that are actually included over the wire.
-QUIC_EXPORT_PRIVATE QuicConnectionIdLength
+QUIC_EXPORT_PRIVATE uint8_t
 GetIncludedConnectionIdLength(QuicConnectionId connection_id,
                               QuicConnectionIdIncluded connection_id_included);
 
 // Number of destination connection ID bytes that are actually included over the
 // wire for this particular header.
-QUIC_EXPORT_PRIVATE QuicConnectionIdLength
+QUIC_EXPORT_PRIVATE uint8_t
 GetIncludedDestinationConnectionIdLength(const QuicPacketHeader& header);
 
 // Number of source connection ID bytes that are actually included over the
 // wire for this particular header.
-QUIC_EXPORT_PRIVATE QuicConnectionIdLength
+QUIC_EXPORT_PRIVATE uint8_t
 GetIncludedSourceConnectionIdLength(const QuicPacketHeader& header);
 
 // Size in bytes of the data packet header.
 QUIC_EXPORT_PRIVATE size_t GetPacketHeaderSize(QuicTransportVersion version,
                                                const QuicPacketHeader& header);
 
-QUIC_EXPORT_PRIVATE size_t
-GetPacketHeaderSize(QuicTransportVersion version,
-                    QuicConnectionIdLength destination_connection_id_length,
-                    QuicConnectionIdLength source_connection_id_length,
-                    bool include_version,
-                    bool include_diversification_nonce,
-                    QuicPacketNumberLength packet_number_length,
-                    QuicVariableLengthIntegerLength retry_token_length_length,
-                    QuicByteCount retry_token_length,
-                    QuicVariableLengthIntegerLength length_length);
-
-// Index of the first byte in a QUIC packet of encrypted data.
-QUIC_EXPORT_PRIVATE size_t
-GetStartOfEncryptedData(QuicTransportVersion version,
-                        const QuicPacketHeader& header);
-
-QUIC_EXPORT_PRIVATE size_t GetStartOfEncryptedData(
-    QuicTransportVersion version,
-    QuicConnectionIdLength destination_connection_id_length,
-    QuicConnectionIdLength source_connection_id_length,
-    bool include_version,
+QUIC_EXPORT_PRIVATE size_t GetPacketHeaderSize(
+    QuicTransportVersion version, uint8_t destination_connection_id_length,
+    uint8_t source_connection_id_length, bool include_version,
     bool include_diversification_nonce,
     QuicPacketNumberLength packet_number_length,
-    QuicVariableLengthIntegerLength retry_token_length_length,
+    quiche::QuicheVariableLengthIntegerLength retry_token_length_length,
     QuicByteCount retry_token_length,
-    QuicVariableLengthIntegerLength length_length);
+    quiche::QuicheVariableLengthIntegerLength length_length);
+
+// Index of the first byte in a QUIC packet of encrypted data.
+QUIC_EXPORT_PRIVATE size_t GetStartOfEncryptedData(
+    QuicTransportVersion version, const QuicPacketHeader& header);
+
+QUIC_EXPORT_PRIVATE size_t GetStartOfEncryptedData(
+    QuicTransportVersion version, uint8_t destination_connection_id_length,
+    uint8_t source_connection_id_length, bool include_version,
+    bool include_diversification_nonce,
+    QuicPacketNumberLength packet_number_length,
+    quiche::QuicheVariableLengthIntegerLength retry_token_length_length,
+    QuicByteCount retry_token_length,
+    quiche::QuicheVariableLengthIntegerLength length_length);
 
 struct QUIC_EXPORT_PRIVATE QuicPacketHeader {
   QuicPacketHeader();
@@ -121,8 +114,7 @@ struct QUIC_EXPORT_PRIVATE QuicPacketHeader {
   QuicPacketHeader& operator=(const QuicPacketHeader& other);
 
   QUIC_EXPORT_PRIVATE friend std::ostream& operator<<(
-      std::ostream& os,
-      const QuicPacketHeader& header);
+      std::ostream& os, const QuicPacketHeader& header);
 
   // Universal header. All QuicPacket headers will have a connection_id and
   // public flags.
@@ -155,12 +147,12 @@ struct QUIC_EXPORT_PRIVATE QuicPacketHeader {
   StatelessResetToken possible_stateless_reset_token;
   // Length of the retry token length variable length integer field,
   // carried only by v99 IETF Initial packets.
-  QuicVariableLengthIntegerLength retry_token_length_length;
+  quiche::QuicheVariableLengthIntegerLength retry_token_length_length;
   // Retry token, carried only by v99 IETF Initial packets.
   absl::string_view retry_token;
   // Length of the length variable length integer field,
   // carried only by v99 IETF Initial, 0-RTT and Handshake packets.
-  QuicVariableLengthIntegerLength length_length;
+  quiche::QuicheVariableLengthIntegerLength length_length;
   // Length of the packet number and payload, carried only by v99 IETF Initial,
   // 0-RTT and Handshake packets. Also includes the length of the
   // diversification nonce in server to client 0-RTT packets.
@@ -230,22 +222,17 @@ class QUIC_EXPORT_PRIVATE QuicData {
 
 class QUIC_EXPORT_PRIVATE QuicPacket : public QuicData {
  public:
-  QuicPacket(char* buffer,
-             size_t length,
-             bool owns_buffer,
-             QuicConnectionIdLength destination_connection_id_length,
-             QuicConnectionIdLength source_connection_id_length,
-             bool includes_version,
-             bool includes_diversification_nonce,
-             QuicPacketNumberLength packet_number_length,
-             QuicVariableLengthIntegerLength retry_token_length_length,
-             QuicByteCount retry_token_length,
-             QuicVariableLengthIntegerLength length_length);
-  QuicPacket(QuicTransportVersion version,
-             char* buffer,
-             size_t length,
-             bool owns_buffer,
-             const QuicPacketHeader& header);
+  QuicPacket(
+      char* buffer, size_t length, bool owns_buffer,
+      uint8_t destination_connection_id_length,
+      uint8_t source_connection_id_length, bool includes_version,
+      bool includes_diversification_nonce,
+      QuicPacketNumberLength packet_number_length,
+      quiche::QuicheVariableLengthIntegerLength retry_token_length_length,
+      QuicByteCount retry_token_length,
+      quiche::QuicheVariableLengthIntegerLength length_length);
+  QuicPacket(QuicTransportVersion version, char* buffer, size_t length,
+             bool owns_buffer, const QuicPacketHeader& header);
   QuicPacket(const QuicPacket&) = delete;
   QuicPacket& operator=(const QuicPacket&) = delete;
 
@@ -256,14 +243,14 @@ class QUIC_EXPORT_PRIVATE QuicPacket : public QuicData {
 
  private:
   char* buffer_;
-  const QuicConnectionIdLength destination_connection_id_length_;
-  const QuicConnectionIdLength source_connection_id_length_;
+  const uint8_t destination_connection_id_length_;
+  const uint8_t source_connection_id_length_;
   const bool includes_version_;
   const bool includes_diversification_nonce_;
   const QuicPacketNumberLength packet_number_length_;
-  const QuicVariableLengthIntegerLength retry_token_length_length_;
+  const quiche::QuicheVariableLengthIntegerLength retry_token_length_length_;
   const QuicByteCount retry_token_length_;
-  const QuicVariableLengthIntegerLength length_length_;
+  const quiche::QuicheVariableLengthIntegerLength length_length_;
 };
 
 class QUIC_EXPORT_PRIVATE QuicEncryptedPacket : public QuicData {
@@ -289,32 +276,20 @@ class QUIC_EXPORT_PRIVATE QuicEncryptedPacket : public QuicData {
   // bytes, which causes the default gtest object printer to read
   // uninitialize memory. So we need to teach gtest how to print this object.
   QUIC_EXPORT_PRIVATE friend std::ostream& operator<<(
-      std::ostream& os,
-      const QuicEncryptedPacket& s);
+      std::ostream& os, const QuicEncryptedPacket& s);
 };
 
 // A received encrypted QUIC packet, with a recorded time of receipt.
 class QUIC_EXPORT_PRIVATE QuicReceivedPacket : public QuicEncryptedPacket {
  public:
   QuicReceivedPacket(const char* buffer, size_t length, QuicTime receipt_time);
-  QuicReceivedPacket(const char* buffer,
-                     size_t length,
-                     QuicTime receipt_time,
+  QuicReceivedPacket(const char* buffer, size_t length, QuicTime receipt_time,
                      bool owns_buffer);
-  QuicReceivedPacket(const char* buffer,
-                     size_t length,
-                     QuicTime receipt_time,
-                     bool owns_buffer,
-                     int ttl,
-                     bool ttl_valid);
-  QuicReceivedPacket(const char* buffer,
-                     size_t length,
-                     QuicTime receipt_time,
-                     bool owns_buffer,
-                     int ttl,
-                     bool ttl_valid,
-                     char* packet_headers,
-                     size_t headers_length,
+  QuicReceivedPacket(const char* buffer, size_t length, QuicTime receipt_time,
+                     bool owns_buffer, int ttl, bool ttl_valid);
+  QuicReceivedPacket(const char* buffer, size_t length, QuicTime receipt_time,
+                     bool owns_buffer, int ttl, bool ttl_valid,
+                     char* packet_headers, size_t headers_length,
                      bool owns_header_buffer);
   ~QuicReceivedPacket();
   QuicReceivedPacket(const QuicReceivedPacket&) = delete;
@@ -340,8 +315,7 @@ class QUIC_EXPORT_PRIVATE QuicReceivedPacket : public QuicEncryptedPacket {
   // bytes, which causes the default gtest object printer to read
   // uninitialize memory. So we need to teach gtest how to print this object.
   QUIC_EXPORT_PRIVATE friend std::ostream& operator<<(
-      std::ostream& os,
-      const QuicReceivedPacket& s);
+      std::ostream& os, const QuicReceivedPacket& s);
 
  private:
   const QuicTime receipt_time_;
@@ -365,8 +339,7 @@ struct QUIC_EXPORT_PRIVATE SerializedPacket {
   SerializedPacket(QuicPacketNumber packet_number,
                    QuicPacketNumberLength packet_number_length,
                    const char* encrypted_buffer,
-                   QuicPacketLength encrypted_length,
-                   bool has_ack,
+                   QuicPacketLength encrypted_length, bool has_ack,
                    bool has_stop_waiting);
 
   // Copy constructor & assignment are deleted. Use |CopySerializedPacket| to
@@ -404,6 +377,10 @@ struct QUIC_EXPORT_PRIVATE SerializedPacket {
   bool has_message;
   SerializedPacketFate fate;
   QuicSocketAddress peer_address;
+  // Sum of bytes from frames that are not retransmissions. This field is only
+  // populated for packets with "mixed frames": at least one frame of a
+  // retransmission type and at least one frame of NOT_RETRANSMISSION type.
+  absl::optional<QuicByteCount> bytes_not_retransmitted;
 };
 
 // Make a copy of |serialized| (including the underlying frames). |copy_buffer|
@@ -438,8 +415,7 @@ struct QUIC_EXPORT_PRIVATE ReceivedPacketInfo {
   std::string ToString() const;
 
   QUIC_EXPORT_PRIVATE friend std::ostream& operator<<(
-      std::ostream& os,
-      const ReceivedPacketInfo& packet_info);
+      std::ostream& os, const ReceivedPacketInfo& packet_info);
 
   const QuicSocketAddress& self_address;
   const QuicSocketAddress& peer_address;

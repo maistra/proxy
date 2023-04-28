@@ -40,7 +40,7 @@ PROJECT_NAME           = "GRPC C++"
 # could be handy for archiving the generated documentation or if some version
 # control system is used.
 
-PROJECT_NUMBER         = 1.39.0-dev
+PROJECT_NUMBER         = 1.49.0
 
 # Using the PROJECT_BRIEF tag one can provide an optional one line description
 # for a project that appears at the top of each page and should give viewer a
@@ -762,6 +762,7 @@ WARN_LOGFILE           =
 
 INPUT                  = doc/PROTOCOL-HTTP2.md \
 doc/PROTOCOL-WEB.md \
+doc/bazel_support.md \
 doc/binary-logging.md \
 doc/c-style-guide.md \
 doc/command_line_tool.md \
@@ -881,10 +882,14 @@ include/grpc/byte_buffer.h \
 include/grpc/byte_buffer_reader.h \
 include/grpc/census.h \
 include/grpc/compression.h \
-include/grpc/event_engine/channel_args.h \
+include/grpc/event_engine/endpoint_config.h \
 include/grpc/event_engine/event_engine.h \
+include/grpc/event_engine/internal/memory_allocator_impl.h \
+include/grpc/event_engine/memory_allocator.h \
+include/grpc/event_engine/memory_request.h \
 include/grpc/event_engine/port.h \
-include/grpc/event_engine/slice_allocator.h \
+include/grpc/event_engine/slice.h \
+include/grpc/event_engine/slice_buffer.h \
 include/grpc/fork.h \
 include/grpc/grpc.h \
 include/grpc/grpc_posix.h \
@@ -941,7 +946,9 @@ include/grpcpp/channel.h \
 include/grpcpp/client_context.h \
 include/grpcpp/completion_queue.h \
 include/grpcpp/create_channel.h \
+include/grpcpp/create_channel_binder.h \
 include/grpcpp/create_channel_posix.h \
+include/grpcpp/ext/call_metric_recorder.h \
 include/grpcpp/ext/health_check_service_server_builder_option.h \
 include/grpcpp/generic/async_generic_service.h \
 include/grpcpp/generic/generic_stub.h \
@@ -1014,9 +1021,12 @@ include/grpcpp/resource_quota.h \
 include/grpcpp/security/auth_context.h \
 include/grpcpp/security/auth_metadata_processor.h \
 include/grpcpp/security/authorization_policy_provider.h \
+include/grpcpp/security/binder_credentials.h \
+include/grpcpp/security/binder_security_policy.h \
 include/grpcpp/security/credentials.h \
 include/grpcpp/security/server_credentials.h \
 include/grpcpp/security/tls_certificate_provider.h \
+include/grpcpp/security/tls_certificate_verifier.h \
 include/grpcpp/security/tls_credentials_options.h \
 include/grpcpp/server.h \
 include/grpcpp/server_builder.h \

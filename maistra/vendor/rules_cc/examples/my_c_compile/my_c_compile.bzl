@@ -20,7 +20,7 @@ load("@rules_cc//cc:toolchain_utils.bzl", "find_cpp_toolchain")
 MyCCompileInfo = provider(doc = "", fields = ["object"])
 
 DISABLED_FEATURES = [
-    "module_maps",  # # copybara-comment-this-out-please
+#     "module_maps",  # copybara-comment-this-out-please
 ]
 
 def _my_c_compile_impl(ctx):
@@ -76,7 +76,6 @@ my_c_compile = rule(
         "src": attr.label(mandatory = True, allow_single_file = True),
         "_cc_toolchain": attr.label(default = Label("@bazel_tools//tools/cpp:current_cc_toolchain")),
     },
-    toolchains = ["@bazel_tools//tools/cpp:toolchain_type"],  # copybara-use-repo-external-label
-    incompatible_use_toolchain_transition = True,
+    toolchains = ["@bazel_tools//tools/cpp:toolchain_type"],
     fragments = ["cpp"],
 )

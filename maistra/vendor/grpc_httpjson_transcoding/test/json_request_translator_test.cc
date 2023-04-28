@@ -391,6 +391,49 @@ TEST_F(JsonRequestTranslatorTest, ScalarBody) {
   EXPECT_TRUE((RunTest<Shelf>(3, 0.1, &tc)));
 }
 
+TEST_F(JsonRequestTranslatorTest, StructValueFlat) {
+  LoadService("bookstore_service.pb.txt");
+  SetMessageType("google.protobuf.Struct");
+  TranslationTestCase tc(false);
+  tc.AddMessage(
+      R"({"payload" : "Hello World!"})",
+      R"(
+        fields {
+          key: "payload"
+          value { string_value: "Hello World!" }
+        })");
+  tc.Build();
+
+  EXPECT_TRUE((RunTest<::google::protobuf::Struct>(1, 1.0, &tc)));
+  EXPECT_TRUE((RunTest<::google::protobuf::Struct>(2, 1.0, &tc)));
+  EXPECT_TRUE((RunTest<::google::protobuf::Struct>(3, 0.1, &tc)));
+}
+
+TEST_F(JsonRequestTranslatorTest, StructValueNested) {
+  LoadService("bookstore_service.pb.txt");
+  SetMessageType("google.protobuf.Struct");
+  TranslationTestCase tc(false);
+  tc.AddMessage(
+      R"({"nested" : {"payload" : "Hello World!"}})",
+      R"(
+        fields {
+          key: "nested"
+          value {
+            struct_value: {
+              fields {
+                key: "payload"
+                value { string_value: "Hello World!" }
+              }
+            }
+          }
+        })");
+  tc.Build();
+
+  EXPECT_TRUE((RunTest<::google::protobuf::Struct>(1, 1.0, &tc)));
+  EXPECT_TRUE((RunTest<::google::protobuf::Struct>(2, 1.0, &tc)));
+  EXPECT_TRUE((RunTest<::google::protobuf::Struct>(3, 0.1, &tc)));
+}
+
 TEST_F(JsonRequestTranslatorTest, Empty) {
   LoadService("bookstore_service.pb.txt");
   SetMessageType("Shelf");
@@ -484,9 +527,23 @@ TEST_F(JsonRequestTranslatorTest, ErrorInvalidJson) {
       AddChunk(invalid);
       Finish();
       EXPECT_TRUE(Tester().ExpectNone());
-      EXPECT_TRUE(Tester().ExpectStatusEq(google::protobuf::util::StatusCode::kInvalidArgument));
+      EXPECT_TRUE(Tester().ExpectStatusEq(
+          google::protobuf::util::StatusCode::kInvalidArgument));
     }
   }
+}
+
+TEST_F(JsonRequestTranslatorTest, WrongBindingType) {
+  LoadService("bookstore_service.pb.txt");
+  SetMessageType("GetShelfRequest");
+  // "shelf" field type should be integer, but set as string
+  AddVariableBinding("shelf", "abc");
+
+  Build();
+  Finish();
+  EXPECT_TRUE(Tester().ExpectNone());
+  EXPECT_TRUE(Tester().ExpectStatusEq(
+      google::protobuf::util::StatusCode::kInvalidArgument));
 }
 
 TEST_F(JsonRequestTranslatorTest, StreamingSimple) {
@@ -733,7 +790,8 @@ TEST_F(JsonRequestTranslatorTest, StreamingErrorNotAnArray) {
   AddChunk(R"({"name" : "1"})");
   Finish();
   EXPECT_TRUE(Tester().ExpectNone());
-  EXPECT_TRUE(Tester().ExpectStatusEq(google::protobuf::util::StatusCode::kInvalidArgument));
+  EXPECT_TRUE(Tester().ExpectStatusEq(
+      google::protobuf::util::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

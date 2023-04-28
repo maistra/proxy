@@ -30,13 +30,13 @@ Let's suppose that your grammar is named `MyGrammar`. The tool will generate for
 
 Now a fully functioning code might look like the following for start rule `StartRule`:
 
-```
+```csharp
 using Antlr4.Runtime;
 using Antlr4.Runtime.Tree;
      
 public void MyParseMethod() {
       String input = "your text to parse here";
-      ICharStream stream = CharStreams.fromstring(input);
+      ICharStream stream = CharStreams.fromString(input);
       ITokenSource lexer = new MyGrammarLexer(stream);
       ITokenStream tokens = new CommonTokenStream(lexer);
       MyGrammarParser parser = new MyGrammarParser(tokens);
@@ -59,7 +59,7 @@ Let's suppose your MyGrammar grammar comprises 2 rules: "key" and "value".
 
 The antlr4 tool will have generated the following listener (only partial code shown here): 
 
-```
+```csharp
 interface IMyGrammarParserListener : IParseTreeListener {
       void EnterKey (MyGrammarParser.KeyContext context);
       void ExitKey (MyGrammarParser.KeyContext context);
@@ -70,7 +70,7 @@ interface IMyGrammarParserListener : IParseTreeListener {
  
 In order to provide custom behavior, you might want to create the following class:
  
-```
+```csharp
 class KeyPrinter : MyGrammarBaseListener {
     // override default listener behavior
     void ExitKey (MyGrammarParser.KeyContext context) {
@@ -82,11 +82,11 @@ class KeyPrinter : MyGrammarBaseListener {
 In order to execute this listener, you would simply add the following lines to the above code:
  
  
-```
+```csharp
 ...
 IParseTree tree = parser.StartRule() - only repeated here for reference
 KeyPrinter printer = new KeyPrinter();
-ParseTreeWalker.DEFAULT.walk(printer, tree);
+ParseTreeWalker.Default.Walk(printer, tree);
 ```
         
 Further information can be found from The Definitive ANTLR Reference book.

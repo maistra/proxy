@@ -1,5 +1,7 @@
 #include "tools/flatbuffers_backed_impl.h"
 
+#include <string>
+
 #include "internal/status_macros.h"
 #include "internal/testing.h"
 #include "flatbuffers/idl.h"
@@ -12,10 +14,9 @@ namespace runtime {
 
 namespace {
 
-using google::protobuf::Arena;
-
 constexpr char kReflectionBufferPath[] =
-    "tools/flatbuffers.bfbs";
+    "tools/testdata/"
+    "flatbuffers.bfbs";
 
 constexpr absl::string_view kByteField = "f_byte";
 constexpr absl::string_view kUbyteField = "f_ubyte";
@@ -70,7 +71,7 @@ class FlatBuffersTest : public testing::Test {
         parser_.builder_.GetBufferPointer(), *schema_, &arena_);
     EXPECT_NE(nullptr, value);
     EXPECT_EQ(kNumFields, value->size());
-    const CelList* keys = value->ListKeys();
+    const CelList* keys = value->ListKeys().value();
     EXPECT_NE(nullptr, keys);
     EXPECT_EQ(kNumFields, keys->size());
     EXPECT_TRUE((*keys)[2].IsString());
@@ -495,7 +496,7 @@ TEST_F(FlatBuffersTest, VectorFieldDefaults) {
     EXPECT_TRUE(f->IsMap());
     const CelMap& m = *f->MapOrDie();
     EXPECT_EQ(0, m.size());
-    EXPECT_EQ(0, m.ListKeys()->size());
+    EXPECT_EQ(0, (*m.ListKeys())->size());
   }
 
   {
@@ -532,7 +533,7 @@ TEST_F(FlatBuffersTest, IndexedObjectVectorField) {
   EXPECT_TRUE(f->IsMap());
   const CelMap& m = *f->MapOrDie();
   EXPECT_EQ(4, m.size());
-  const CelList& l = *m.ListKeys();
+  const CelList& l = *m.ListKeys().value();
   EXPECT_EQ(4, l.size());
   EXPECT_TRUE(l[0].IsString());
   EXPECT_TRUE(l[1].IsString());
@@ -590,7 +591,7 @@ TEST_F(FlatBuffersTest, IndexedObjectVectorFieldDefaults) {
   const CelMap& m = *f->MapOrDie();
 
   EXPECT_EQ(1, m.size());
-  const CelList& l = *m.ListKeys();
+  const CelList& l = *m.ListKeys().value();
   EXPECT_EQ(1, l.size());
   EXPECT_TRUE(l[0].IsString());
   EXPECT_EQ("", l[0].StringOrDie().value());

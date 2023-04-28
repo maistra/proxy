@@ -39,6 +39,11 @@ Synopsis
     :macro:`NGHTTP2_MIN_WEIGHT`.  If it is strictly greater than
     :macro:`NGHTTP2_MAX_WEIGHT`, it becomes :macro:`NGHTTP2_MAX_WEIGHT`.
     
+    If
+    :macro:`nghttp2_settings_id.NGHTTP2_SETTINGS_NO_RFC7540_PRIORITIES`
+    of value of 1 is received by a remote endpoint, *pri_spec* is
+    ignored, and treated as if ``NULL`` is specified.
+    
     The *nva* is an array of name/value pair :type:`nghttp2_nv` with
     *nvlen* elements.  The application is responsible to include
     required pseudo-header fields (header field whose name starts with

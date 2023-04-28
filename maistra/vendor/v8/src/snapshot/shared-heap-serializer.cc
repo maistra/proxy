@@ -4,7 +4,6 @@
 
 #include "src/snapshot/shared-heap-serializer.h"
 
-#include "src/heap/heap-inl.h"
 #include "src/heap/read-only-heap.h"
 #include "src/objects/objects-inl.h"
 #include "src/snapshot/read-only-serializer.h"
@@ -61,7 +60,7 @@ void SharedHeapSerializer::FinalizeSerialization() {
   VisitRootPointer(Root::kSharedHeapObjectCache, nullptr,
                    FullObjectSlot(&undefined));
 
-  // When FLAG_shared_string_table is true, all internalized and
+  // When v8_flags.shared_string_table is true, all internalized and
   // internalizable-in-place strings are in the shared heap.
   SerializeStringTable(isolate()->string_table());
   SerializeDeferredObjects();
@@ -169,15 +168,22 @@ void SharedHeapSerializer::SerializeObjectImpl(Handle<HeapObject> obj) {
   // Objects in the shared heap cannot depend on per-Isolate roots but can
   // depend on RO roots since sharing objects requires sharing the RO space.
   DCHECK(CanBeInSharedOldSpace(*obj) || ReadOnlyHeap::Contains(*obj));
-
-  if (SerializeHotObject(obj)) return;
-  if (IsRootAndHasBeenSerialized(*obj) && SerializeRoot(obj)) return;
+  {
+    DisallowGarbageCollection no_gc;
+    HeapObject raw = *obj;
+    if (SerializeHotObject(raw)) return;
+    if (IsRootAndHasBeenSerialized(raw) && SerializeRoot(raw)) return;
+  }
   if (SerializeUsingReadOnlyObjectCache(&sink_, obj)) return;
-  if (SerializeBackReference(obj)) return;
+  {
+    DisallowGarbageCollection no_gc;
+    HeapObject raw = *obj;
+    if (SerializeBackReference(raw)) return;
+    CheckRehashability(raw);
 
-  CheckRehashability(*obj);
+    DCHECK(!ReadOnlyHeap::Contains(raw));
+  }
 
-  DCHECK(!ReadOnlyHeap::Contains(*obj));
   ObjectSerializer object_serializer(this, obj, &sink_);
   object_serializer.Serialize();
 

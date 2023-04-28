@@ -1,4 +1,5 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@bazel_skylib//lib:selects.bzl", "selects")
 
 licenses(["notice"])
 
@@ -43,6 +44,7 @@ bzl_library(
         ":autolinking",
         ":debugging",
         ":derived_files",
+        ":developer_dirs",
         ":feature_names",
         ":features",
         ":providers",
@@ -78,11 +80,19 @@ bzl_library(
 )
 
 bzl_library(
+    name = "developer_dirs",
+    srcs = ["developer_dirs.bzl"],
+    visibility = ["//swift:__subpackages__"],
+    deps = ["@bazel_skylib//lib:paths"],
+)
+
+bzl_library(
     name = "features",
     srcs = ["features.bzl"],
     visibility = ["//swift:__subpackages__"],
     deps = [
         ":feature_names",
+        ":package_specs",
         "@bazel_skylib//lib:collections",
         "@bazel_skylib//lib:new_sets",
     ],
@@ -105,6 +115,11 @@ bzl_library(
     srcs = ["module_maps.bzl"],
     visibility = ["//swift:__subpackages__"],
     deps = ["@bazel_skylib//lib:paths"],
+)
+
+bzl_library(
+    name = "package_specs",
+    srcs = ["package_specs.bzl"],
 )
 
 bzl_library(
@@ -266,6 +281,16 @@ bzl_library(
 )
 
 bzl_library(
+    name = "swift_package_configuration",
+    srcs = ["swift_package_configuration.bzl"],
+    visibility = ["//swift:__subpackages__"],
+    deps = [
+        ":package_specs",
+        ":providers",
+    ],
+)
+
+bzl_library(
     name = "swift_proto_library",
     srcs = ["swift_proto_library.bzl"],
     visibility = ["//swift:__subpackages__"],
@@ -378,6 +403,145 @@ bzl_library(
 bzl_library(
     name = "build_settings",
     srcs = ["build_settings.bzl"],
+)
+
+# `config_setting`s to allow for `swizzle_absolute_xcttestsourcelocation` to
+# only resolve to an `objc_library` on Apple platforms
+
+config_setting(
+    name = "catalyst_x86_64",
+    values = {"cpu": "catalyst_x86_64"},
+)
+
+config_setting(
+    name = "darwin",
+    values = {"cpu": "darwin"},
+)
+
+config_setting(
+    name = "darwin_x86_64",
+    values = {"cpu": "darwin_x86_64"},
+)
+
+config_setting(
+    name = "darwin_arm64",
+    values = {"cpu": "darwin_arm64"},
+)
+
+config_setting(
+    name = "ios_i386",
+    values = {"cpu": "ios_i386"},
+)
+
+config_setting(
+    name = "ios_x86_64",
+    values = {"cpu": "ios_x86_64"},
+)
+
+config_setting(
+    name = "ios_armv7",
+    values = {"cpu": "ios_armv7"},
+)
+
+config_setting(
+    name = "ios_armv7s",
+    values = {"cpu": "ios_armv7s"},
+)
+
+config_setting(
+    name = "ios_arm64",
+    values = {"cpu": "ios_arm64"},
+)
+
+config_setting(
+    name = "ios_arm64e",
+    values = {"cpu": "ios_arm64e"},
+)
+
+config_setting(
+    name = "ios_sim_arm64",
+    values = {"cpu": "ios_sim_arm64"},
+)
+
+config_setting(
+    name = "watchos_arm64",
+    values = {"cpu": "watchos_arm64"},
+)
+
+config_setting(
+    name = "watchos_arm64_32",
+    values = {"cpu": "watchos_arm64_32"},
+)
+
+config_setting(
+    name = "watchos_armv7k",
+    values = {"cpu": "watchos_armv7k"},
+)
+
+config_setting(
+    name = "watchos_i386",
+    values = {"cpu": "watchos_i386"},
+)
+
+config_setting(
+    name = "watchos_x86_64",
+    values = {"cpu": "watchos_x86_64"},
+)
+
+config_setting(
+    name = "tvos_arm64",
+    values = {"cpu": "tvos_arm64"},
+)
+
+config_setting(
+    name = "tvos_sim_arm64",
+    values = {"cpu": "tvos_sim_arm64"},
+)
+
+config_setting(
+    name = "tvos_x86_64",
+    values = {"cpu": "tvos_x86_64"},
+)
+
+selects.config_setting_group(
+    name = "apple",
+    match_any = [
+        ":catalyst_x86_64",
+        ":darwin",
+        ":darwin_arm64",
+        ":darwin_x86_64",
+        ":ios_arm64",
+        ":ios_arm64e",
+        ":ios_armv7",
+        ":ios_armv7s",
+        ":ios_i386",
+        ":ios_sim_arm64",
+        ":ios_x86_64",
+        ":watchos_arm64",
+        ":watchos_arm64_32",
+        ":watchos_armv7k",
+        ":watchos_i386",
+        ":watchos_x86_64",
+        ":tvos_arm64",
+        ":tvos_sim_arm64",
+        ":tvos_x86_64",
+    ],
+)
+
+# Indirection needed to prevent using `objc_library` outside of macOS
+alias(
+    name = "swizzle_absolute_xcttestsourcelocation",
+    actual = select({
+        ":apple": (
+            "@build_bazel_apple_support//lib:swizzle_absolute_xcttestsourcelocation"
+        ),
+        "//conditions:default": ":dummy_swizzle_absolute_xcttestsourcelocation",
+    }),
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "dummy_swizzle_absolute_xcttestsourcelocation",
 )
 
 # Consumed by Bazel integration tests.

@@ -97,6 +97,9 @@ const (
 	// PackageMode generates a proto_library for each set of .proto files with
 	// the same package name in each directory.
 	PackageMode
+
+	// FileMode generates a proto_library for each .proto file.
+	FileMode
 )
 
 func ModeFromString(s string) (Mode, error) {
@@ -111,6 +114,8 @@ func ModeFromString(s string) (Mode, error) {
 		return LegacyMode, nil
 	case "package":
 		return PackageMode, nil
+	case "file":
+		return FileMode, nil
 	default:
 		return 0, fmt.Errorf("unrecognized proto mode: %q", s)
 	}
@@ -128,6 +133,8 @@ func (m Mode) String() string {
 		return "legacy"
 	case PackageMode:
 		return "package"
+	case FileMode:
+		return "file"
 	default:
 		log.Panicf("unknown mode %d", m)
 		return ""
@@ -177,7 +184,7 @@ func (f *modeFlag) String() string {
 	return mode.String()
 }
 
-func (_ *protoLang) RegisterFlags(fs *flag.FlagSet, cmd string, c *config.Config) {
+func (*protoLang) RegisterFlags(fs *flag.FlagSet, cmd string, c *config.Config) {
 	pc := &ProtoConfig{}
 	c.Exts[protoName] = pc
 
@@ -189,15 +196,15 @@ func (_ *protoLang) RegisterFlags(fs *flag.FlagSet, cmd string, c *config.Config
 	fs.StringVar(&pc.ImportPrefix, "proto_import_prefix", "", "When set, .proto source files in the srcs attribute of the rule are accessible at their path with this prefix appended on.")
 }
 
-func (_ *protoLang) CheckFlags(fs *flag.FlagSet, c *config.Config) error {
+func (*protoLang) CheckFlags(fs *flag.FlagSet, c *config.Config) error {
 	return nil
 }
 
-func (_ *protoLang) KnownDirectives() []string {
+func (*protoLang) KnownDirectives() []string {
 	return []string{"proto", "proto_group", "proto_strip_import_prefix", "proto_import_prefix"}
 }
 
-func (_ *protoLang) Configure(c *config.Config, rel string, f *rule.File) {
+func (*protoLang) Configure(c *config.Config, rel string, f *rule.File) {
 	pc := &ProtoConfig{}
 	*pc = *GetProtoConfig(c)
 	c.Exts[protoName] = pc

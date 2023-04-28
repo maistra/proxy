@@ -21,12 +21,20 @@
 
 #include <grpc/support/port_platform.h>
 
-#include <assert.h>
-#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#include <string>
+
+#include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
+
+#include <grpc/event_engine/memory_allocator.h>
+#include <grpc/impl/codegen/grpc_types.h>
+#include <grpc/slice.h>
 
 #include "src/core/ext/transport/chttp2/transport/flow_control.h"
 #include "src/core/ext/transport/chttp2/transport/frame.h"
-#include "src/core/ext/transport/chttp2/transport/frame_data.h"
 #include "src/core/ext/transport/chttp2/transport/frame_goaway.h"
 #include "src/core/ext/transport/chttp2/transport/frame_ping.h"
 #include "src/core/ext/transport/chttp2/transport/frame_rst_stream.h"
@@ -34,15 +42,28 @@
 #include "src/core/ext/transport/chttp2/transport/frame_window_update.h"
 #include "src/core/ext/transport/chttp2/transport/hpack_encoder.h"
 #include "src/core/ext/transport/chttp2/transport/hpack_parser.h"
-#include "src/core/ext/transport/chttp2/transport/incoming_metadata.h"
+#include "src/core/ext/transport/chttp2/transport/http2_settings.h"
 #include "src/core/ext/transport/chttp2/transport/stream_map.h"
+#include "src/core/lib/channel/channel_args.h"
 #include "src/core/lib/channel/channelz.h"
-#include "src/core/lib/compression/stream_compression.h"
-#include "src/core/lib/gprpp/manual_constructor.h"
+#include "src/core/lib/debug/trace.h"
+#include "src/core/lib/gprpp/bitset.h"
+#include "src/core/lib/gprpp/debug_location.h"
+#include "src/core/lib/gprpp/ref_counted.h"
+#include "src/core/lib/gprpp/ref_counted_ptr.h"
+#include "src/core/lib/gprpp/time.h"
+#include "src/core/lib/iomgr/closure.h"
 #include "src/core/lib/iomgr/combiner.h"
 #include "src/core/lib/iomgr/endpoint.h"
+#include "src/core/lib/iomgr/error.h"
 #include "src/core/lib/iomgr/timer.h"
+#include "src/core/lib/resource_quota/arena.h"
+#include "src/core/lib/resource_quota/memory_quota.h"
+#include "src/core/lib/slice/slice_buffer.h"
 #include "src/core/lib/transport/connectivity_state.h"
+#include "src/core/lib/transport/metadata_batch.h"
+#include "src/core/lib/transport/transport.h"
+#include "src/core/lib/transport/transport_fwd.h"
 #include "src/core/lib/transport/transport_impl.h"
 
 namespace grpc_core {
@@ -98,6 +119,7 @@ typedef enum {
   GRPC_CHTTP2_INITIATE_WRITE_STREAM_FLOW_CONTROL,
   GRPC_CHTTP2_INITIATE_WRITE_TRANSPORT_FLOW_CONTROL,
   GRPC_CHTTP2_INITIATE_WRITE_SEND_SETTINGS,
+  GRPC_CHTTP2_INITIATE_WRITE_SETTINGS_ACK,
   GRPC_CHTTP2_INITIATE_WRITE_FLOW_CONTROL_UNSTALLED_BY_SETTING,
   GRPC_CHTTP2_INITIATE_WRITE_FLOW_CONTROL_UNSTALLED_BY_UPDATE,
   GRPC_CHTTP2_INITIATE_WRITE_APPLICATION_PING,
@@ -118,16 +140,16 @@ struct grpc_chttp2_ping_queue {
 struct grpc_chttp2_repeated_ping_policy {
   int max_pings_without_data;
   int max_ping_strikes;
-  grpc_millis min_recv_ping_interval_without_data;
+  grpc_core::Duration min_recv_ping_interval_without_data;
 };
 struct grpc_chttp2_repeated_ping_state {
-  grpc_millis last_ping_sent_time;
+  grpc_core::Timestamp last_ping_sent_time;
   int pings_before_data_required;
   grpc_timer delayed_ping_timer;
   bool is_delayed_ping_timer_set;
 };
 struct grpc_chttp2_server_ping_recv_state {
-  grpc_millis last_ping_recv_time;
+  grpc_core::Timestamp last_ping_recv_time;
   int ping_strikes;
 };
 /* deframer state for the overall http2 stream of bytes */
@@ -196,8 +218,9 @@ typedef enum {
 
 typedef enum {
   GRPC_CHTTP2_NO_GOAWAY_SEND,
-  GRPC_CHTTP2_GOAWAY_SEND_SCHEDULED,
-  GRPC_CHTTP2_GOAWAY_SENT,
+  GRPC_CHTTP2_GRACEFUL_GOAWAY,
+  GRPC_CHTTP2_FINAL_GOAWAY_SEND_SCHEDULED,
+  GRPC_CHTTP2_FINAL_GOAWAY_SENT,
 } grpc_chttp2_sent_goaway_state;
 
 typedef struct grpc_chttp2_write_cb {
@@ -205,78 +228,6 @@ typedef struct grpc_chttp2_write_cb {
   grpc_closure* closure;
   struct grpc_chttp2_write_cb* next;
 } grpc_chttp2_write_cb;
-
-namespace grpc_core {
-
-class Chttp2IncomingByteStream : public ByteStream {
- public:
-  Chttp2IncomingByteStream(grpc_chttp2_transport* transport,
-                           grpc_chttp2_stream* stream, uint32_t frame_size,
-                           uint32_t flags);
-
-  void Orphan() override;
-
-  bool Next(size_t max_size_hint, grpc_closure* on_complete) override;
-  grpc_error_handle Pull(grpc_slice* slice) override;
-  void Shutdown(grpc_error_handle error) override;
-
-  // TODO(roth): When I converted this class to C++, I wanted to make it
-  // inherit from RefCounted or InternallyRefCounted instead of continuing
-  // to use its own custom ref-counting code.  However, that would require
-  // using multiple inheritance, which sucks in general.  And to make matters
-  // worse, it causes problems with our New<> and Delete<> wrappers.
-  // Specifically, unless RefCounted is first in the list of parent classes,
-  // it will see a different value of the address of the object than the one
-  // we actually allocated, in which case gpr_free() will be called on a
-  // different address than the one we got from gpr_malloc(), thus causing a
-  // crash.  Given the fragility of depending on that, as well as a desire to
-  // avoid multiple inheritance in general, I've decided to leave this
-  // alone for now.  We can revisit this once we're able to link against
-  // libc++, at which point we can eliminate New<> and Delete<> and
-  // switch to std::shared_ptr<>.
-  void Ref() { refs_.Ref(); }
-  void Unref() {
-    if (GPR_UNLIKELY(refs_.Unref())) {
-      delete this;
-    }
-  }
-
-  void PublishError(grpc_error_handle error);
-
-  grpc_error_handle Push(const grpc_slice& slice, grpc_slice* slice_out);
-
-  grpc_error_handle Finished(grpc_error_handle error, bool reset_on_error);
-
-  uint32_t remaining_bytes() const { return remaining_bytes_; }
-
- private:
-  static void NextLocked(void* arg, grpc_error_handle error_ignored);
-  static void OrphanLocked(void* arg, grpc_error_handle error_ignored);
-
-  void MaybeCreateStreamDecompressionCtx();
-
-  grpc_chttp2_transport* transport_;  // Immutable.
-  grpc_chttp2_stream* stream_;        // Immutable.
-
-  grpc_core::RefCount refs_;
-
-  /* Accessed only by transport thread when stream->pending_byte_stream == false
-   * Accessed only by application thread when stream->pending_byte_stream ==
-   * true */
-  uint32_t remaining_bytes_;
-
-  /* Accessed only by transport thread when stream->pending_byte_stream == false
-   * Accessed only by application thread when stream->pending_byte_stream ==
-   * true */
-  struct {
-    grpc_closure closure;
-    size_t max_size_hint;
-    grpc_closure* on_complete;
-  } next_action_;
-  grpc_closure destroy_action_;
-};
-
-}  // namespace grpc_core
 
 typedef enum {
   GRPC_CHTTP2_KEEPALIVE_STATE_WAITING,
@@ -286,9 +237,8 @@ typedef enum {
 } grpc_chttp2_keepalive_state;
 
 struct grpc_chttp2_transport {
-  grpc_chttp2_transport(const grpc_channel_args* channel_args,
-                        grpc_endpoint* ep, bool is_client,
-                        grpc_resource_user* resource_user);
+  grpc_chttp2_transport(const grpc_core::ChannelArgs& channel_args,
+                        grpc_endpoint* ep, bool is_client);
   ~grpc_chttp2_transport();
 
   grpc_transport base; /* must be first */
@@ -296,7 +246,9 @@ struct grpc_chttp2_transport {
   grpc_endpoint* ep;
   std::string peer_string;
 
-  grpc_resource_user* resource_user;
+  grpc_core::MemoryOwner memory_owner;
+  const grpc_core::MemoryAllocator::Reservation self_reservation;
+  grpc_core::ReclamationSweep active_reclamation;
 
   grpc_core::Combiner* combiner;
 
@@ -345,7 +297,7 @@ struct grpc_chttp2_transport {
   /** data to write now */
   grpc_slice_buffer outbuf;
   /** hpack encoding */
-  grpc_chttp2_hpack_compressor hpack_compressor;
+  grpc_core::HPackCompressor hpack_compressor;
   /** is this a client? */
   bool is_client;
 
@@ -394,7 +346,7 @@ struct grpc_chttp2_transport {
   grpc_chttp2_server_ping_recv_state ping_recv_state;
 
   /** parser for headers */
-  grpc_chttp2_hpack_parser hpack_parser;
+  grpc_core::HPackParser hpack_parser;
   /** simple one shot parsers */
   union {
     grpc_chttp2_window_update_parser window_update;
@@ -405,11 +357,7 @@ struct grpc_chttp2_transport {
   /** parser for goaway frames */
   grpc_chttp2_goaway_parser goaway_parser;
 
-  grpc_core::PolymorphicManualConstructor<
-      grpc_core::chttp2::TransportFlowControlBase,
-      grpc_core::chttp2::TransportFlowControl,
-      grpc_core::chttp2::TransportFlowControlDisabled>
-      flow_control;
+  grpc_core::chttp2::TransportFlowControl flow_control;
   /** initial window change. This is tracked as we parse settings frames from
    * the remote peer. If there is a positive delta, then we will make all
    * streams readable since they may have become unstalled */
@@ -478,9 +426,9 @@ struct grpc_chttp2_transport {
   /** watchdog to kill the transport when waiting for the keepalive ping */
   grpc_timer keepalive_watchdog_timer;
   /** time duration in between pings */
-  grpc_millis keepalive_time;
+  grpc_core::Duration keepalive_time;
   /** grace period for a ping to complete before watchdog kicks in */
-  grpc_millis keepalive_timeout;
+  grpc_core::Duration keepalive_timeout;
   /** if keepalive pings are allowed when there's no outstanding streams */
   bool keepalive_permit_without_calls = false;
   /** If start_keepalive_ping_locked has been called */
@@ -525,7 +473,7 @@ struct grpc_chttp2_stream {
   grpc_closure* destroy_stream_arg;
 
   grpc_chttp2_stream_link links[STREAM_LIST_COUNT];
-  uint8_t included[STREAM_LIST_COUNT] = {};
+  grpc_core::BitSet<STREAM_LIST_COUNT> included;
 
   /** HTTP2 stream id for this stream, or zero if one has not been assigned */
   uint32_t id = 0;
@@ -543,19 +491,16 @@ struct grpc_chttp2_stream {
   bool* sent_trailing_metadata_op = nullptr;
   grpc_closure* send_trailing_metadata_finished = nullptr;
 
-  grpc_core::OrphanablePtr<grpc_core::ByteStream> fetching_send_message;
-  uint32_t fetched_send_message_length = 0;
-  grpc_slice fetching_slice = grpc_empty_slice();
   int64_t next_message_end_offset;
   int64_t flow_controlled_bytes_written = 0;
   int64_t flow_controlled_bytes_flowed = 0;
-  grpc_closure complete_fetch_locked;
-  grpc_closure* fetching_send_message_finished = nullptr;
+  grpc_closure* send_message_finished = nullptr;
 
   grpc_metadata_batch* recv_initial_metadata;
   grpc_closure* recv_initial_metadata_ready = nullptr;
   bool* trailing_metadata_available = nullptr;
-  grpc_core::OrphanablePtr<grpc_core::ByteStream>* recv_message;
+  absl::optional<grpc_core::SliceBuffer>* recv_message = nullptr;
+  uint32_t* recv_message_flags = nullptr;
   bool* call_failed_before_recv_message = nullptr;
   grpc_closure* recv_message_ready = nullptr;
   grpc_metadata_batch* recv_trailing_metadata;
@@ -589,48 +534,25 @@ struct grpc_chttp2_stream {
   grpc_published_metadata_method published_metadata[2] = {};
   bool final_metadata_requested = false;
 
-  grpc_chttp2_incoming_metadata_buffer metadata_buffer[2];
+  grpc_metadata_batch initial_metadata_buffer;
+  grpc_metadata_batch trailing_metadata_buffer;
 
-  grpc_slice_buffer frame_storage; /* protected by t combiner */
-
-  grpc_closure* on_next = nullptr;  /* protected by t combiner */
-  bool pending_byte_stream = false; /* protected by t combiner */
-  // cached length of buffer to be used by the transport thread in cases where
-  // stream->pending_byte_stream == true. The value is saved before
-  // application threads are allowed to modify
-  // unprocessed_incoming_frames_buffer
-  size_t unprocessed_incoming_frames_buffer_cached_length = 0;
-  /* Accessed only by transport thread when stream->pending_byte_stream == false
-   * Accessed only by application thread when stream->pending_byte_stream ==
-   * true */
-  grpc_slice_buffer unprocessed_incoming_frames_buffer;
-  grpc_closure reset_byte_stream;
-  grpc_error_handle byte_stream_error =
-      GRPC_ERROR_NONE;              /* protected by t combiner */
+  grpc_slice_buffer frame_storage;  /* protected by t combiner */
   bool received_last_frame = false; /* protected by t combiner */
 
-  grpc_millis deadline = GRPC_MILLIS_INF_FUTURE;
+  grpc_core::Timestamp deadline = grpc_core::Timestamp::InfFuture();
 
   /** saw some stream level error */
   grpc_error_handle forced_close_error = GRPC_ERROR_NONE;
   /** how many header frames have we received? */
   uint8_t header_frames_received = 0;
-  /** parsing state for data frames */
-  /* Accessed only by transport thread when stream->pending_byte_stream == false
-   * Accessed only by application thread when stream->pending_byte_stream ==
-   * true */
-  grpc_chttp2_data_parser data_parser;
   /** number of bytes received - reset at end of parse thread execution */
   int64_t received_bytes = 0;
 
   bool sent_initial_metadata = false;
   bool sent_trailing_metadata = false;
 
-  grpc_core::PolymorphicManualConstructor<
-      grpc_core::chttp2::StreamFlowControlBase,
-      grpc_core::chttp2::StreamFlowControl,
-      grpc_core::chttp2::StreamFlowControlDisabled>
-      flow_control;
+  grpc_core::chttp2::StreamFlowControl flow_control;
 
   grpc_slice_buffer flow_controlled_buffer;
 
@@ -639,38 +561,10 @@ struct grpc_chttp2_stream {
   grpc_chttp2_write_cb* finish_after_write = nullptr;
   size_t sending_bytes = 0;
 
-  /* Stream compression method to be used. */
-  grpc_stream_compression_method stream_compression_method =
-      GRPC_STREAM_COMPRESSION_IDENTITY_COMPRESS;
-  /* Stream decompression method to be used. */
-  grpc_stream_compression_method stream_decompression_method =
-      GRPC_STREAM_COMPRESSION_IDENTITY_DECOMPRESS;
-
-  /** Whether bytes stored in unprocessed_incoming_byte_stream is decompressed
-   */
-  bool unprocessed_incoming_frames_decompressed = false;
   /** Whether the bytes needs to be traced using Fathom */
   bool traced = false;
-  /** gRPC header bytes that are already decompressed */
-  size_t decompressed_header_bytes = 0;
   /** Byte counter for number of bytes written */
   size_t byte_counter = 0;
-
-  /** Amount of uncompressed bytes sent out when compressed_data_buffer is
-   * emptied */
-  size_t uncompressed_data_size;
-  /** Stream compression compress context */
-  grpc_stream_compression_context* stream_compression_ctx;
-  /** Buffer storing data that is compressed but not sent */
-  grpc_slice_buffer compressed_data_buffer;
-
-  /** Stream compression decompress context */
-  grpc_stream_compression_context* stream_decompression_ctx;
-  /** Temporary buffer storing decompressed data.
-   * Initialized, used, and destroyed only when stream uses (non-identity)
-   * compression.
-   */
-  grpc_slice_buffer decompressed_data_buffer;
 };
 
 /** Transport writing call flow:
@@ -766,7 +660,7 @@ grpc_chttp2_stream* grpc_chttp2_parsing_accept_stream(grpc_chttp2_transport* t,
 void grpc_chttp2_add_incoming_goaway(grpc_chttp2_transport* t,
                                      uint32_t goaway_error,
                                      uint32_t last_stream_id,
-                                     const grpc_slice& goaway_text);
+                                     absl::string_view goaway_text);
 
 void grpc_chttp2_parsing_become_skip_parser(grpc_chttp2_transport* t);
 

@@ -14,6 +14,7 @@
 #include "source/common/protobuf/protobuf.h"
 #include "source/common/singleton/const_singleton.h"
 
+#include "absl/status/status.h"
 #include "absl/strings/str_join.h"
 
 // Obtain the value of a wrapped field (e.g. google.protobuf.UInt32Value) if set. Otherwise, return
@@ -358,6 +359,18 @@ public:
   static void unpackTo(const ProtobufWkt::Any& any_message, Protobuf::Message& message);
 
   /**
+   * Convert from google.protobuf.Any to a typed message. This should be used
+   * instead of the inbuilt UnpackTo as it performs validation of results.
+   *
+   * @param any_message source google.protobuf.Any message.
+   * @param message destination to unpack to.
+   *
+   * @return absl::Status
+   */
+  static absl::Status unpackToNoThrow(const ProtobufWkt::Any& any_message,
+                                      Protobuf::Message& message);
+
+  /**
    * Convert from google.protobuf.Any to bytes as std::string
    * @param any source google.protobuf.Any message.
    *
@@ -562,6 +575,12 @@ public:
    * @throw EnvoyException if a conversion error occurs.
    */
   static void wireCast(const Protobuf::Message& src, Protobuf::Message& dst);
+
+  /**
+   * Sanitizes a string to contain only valid UTF-8. Invalid UTF-8 characters will be replaced. If
+   * the input string is valid UTF-8, it will be returned unmodified.
+   */
+  static std::string sanitizeUtf8String(absl::string_view str);
 };
 
 class ValueUtil {

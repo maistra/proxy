@@ -1,3 +1,0 @@
-#pragma once
-
-#define LIGHTSTEP_VERSION "${LIGHTSTEP_VERSION_STRING}"

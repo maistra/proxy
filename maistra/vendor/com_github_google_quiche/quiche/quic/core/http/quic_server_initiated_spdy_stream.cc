@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 #include "quiche/quic/core/http/quic_server_initiated_spdy_stream.h"
+
 #include "quiche/quic/core/quic_error_codes.h"
 
 namespace quic {
@@ -16,7 +17,7 @@ void QuicServerInitiatedSpdyStream::OnBodyAvailable() {
 }
 
 size_t QuicServerInitiatedSpdyStream::WriteHeaders(
-    spdy::SpdyHeaderBlock /*header_block*/, bool /*fin*/,
+    spdy::Http2HeaderBlock /*header_block*/, bool /*fin*/,
     quiche::QuicheReferenceCountedPointer<
         QuicAckListenerInterface> /*ack_listener*/) {
   QUIC_BUG(Writing headers in QuicServerInitiatedSpdyStream)
@@ -28,9 +29,7 @@ size_t QuicServerInitiatedSpdyStream::WriteHeaders(
 }
 
 void QuicServerInitiatedSpdyStream::OnInitialHeadersComplete(
-    bool /*fin*/,
-    size_t /*frame_len*/,
-    const QuicHeaderList& /*header_list*/) {
+    bool /*fin*/, size_t /*frame_len*/, const QuicHeaderList& /*header_list*/) {
   QUIC_PEER_BUG(Reading headers in QuicServerInitiatedSpdyStream)
       << "Attempting to receive headers in QuicServerInitiatedSpdyStream";
 

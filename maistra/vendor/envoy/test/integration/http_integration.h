@@ -12,6 +12,10 @@
 #include "test/integration/utility.h"
 #include "test/test_common/printers.h"
 
+#ifdef ENVOY_ENABLE_QUIC
+#include "quiche/quic/core/deterministic_connection_id_generator.h"
+#endif
+
 namespace Envoy {
 
 using ::Envoy::Http::Http2::Http2Frame;
@@ -38,11 +42,12 @@ public:
 
   IntegrationStreamDecoderPtr makeHeaderOnlyRequest(const Http::RequestHeaderMap& headers);
   IntegrationStreamDecoderPtr makeRequestWithBody(const Http::RequestHeaderMap& headers,
-                                                  uint64_t body_size);
+                                                  uint64_t body_size, bool end_stream = true);
   IntegrationStreamDecoderPtr makeRequestWithBody(const Http::RequestHeaderMap& headers,
-                                                  const std::string& body);
+                                                  const std::string& body, bool end_stream = true);
   bool sawGoAway() const { return saw_goaway_; }
   bool connected() const { return connected_; }
+  bool streamOpen() const { return !stream_gone_; }
   void sendData(Http::RequestEncoder& encoder, absl::string_view data, bool end_stream);
   void sendData(Http::RequestEncoder& encoder, Buffer::Instance& data, bool end_stream);
   void sendData(Http::RequestEncoder& encoder, uint64_t size, bool end_stream);
@@ -82,14 +87,26 @@ private:
     IntegrationCodecClient& parent_;
   };
 
+  struct CodecClientCallbacks : public Http::CodecClientCallbacks {
+    CodecClientCallbacks(IntegrationCodecClient& parent) : parent_(parent) {}
+
+    // Http::CodecClientCallbacks
+    void onStreamDestroy() override { parent_.stream_gone_ = true; }
+    void onStreamReset(Http::StreamResetReason) override { parent_.stream_gone_ = true; }
+
+    IntegrationCodecClient& parent_;
+  };
+
   void flushWrite();
 
   Event::Dispatcher& dispatcher_;
   ConnectionCallbacks callbacks_;
   CodecCallbacks codec_callbacks_;
+  CodecClientCallbacks codec_client_callbacks_;
   bool connected_{};
   bool disconnected_{};
   bool saw_goaway_{};
+  bool stream_gone_{};
   Network::ConnectionEvent last_connection_event_;
 };
 
@@ -218,6 +235,7 @@ protected:
   void testRouterNotFound();
   void testRouterNotFoundWithBody();
   void testRouterVirtualClusters();
+  void testRouteStats();
   void testRouterUpstreamProtocolError(const std::string&, const std::string&);
 
   void testRouterRequestAndResponseWithBody(
@@ -274,6 +292,31 @@ protected:
                     bool response_trailers_present);
   // Test /drain_listener from admin portal.
   void testAdminDrain(Http::CodecClient::Type admin_request_type);
+
+  // Test sending and receiving large request and response bodies with autonomous upstream.
+  void testGiantRequestAndResponse(
+      uint64_t request_size, uint64_t response_size, bool set_content_length_header,
+      std::chrono::milliseconds timeout = 2 * TestUtility::DefaultTimeout * TSAN_TIMEOUT_FACTOR);
+
+  struct BytesCountExpectation {
+    BytesCountExpectation(int wire_bytes_sent, int wire_bytes_received, int header_bytes_sent,
+                          int header_bytes_received)
+        : wire_bytes_sent_{wire_bytes_sent}, wire_bytes_received_{wire_bytes_received},
+          header_bytes_sent_{header_bytes_sent}, header_bytes_received_{header_bytes_received} {}
+    int wire_bytes_sent_;
+    int wire_bytes_received_;
+    int header_bytes_sent_;
+    int header_bytes_received_;
+  };
+
+  void expectUpstreamBytesSentAndReceived(BytesCountExpectation h1_expectation,
+                                          BytesCountExpectation h2_expectation,
+                                          BytesCountExpectation h3_expectation, const int id = 0);
+
+  void expectDownstreamBytesSentAndReceived(BytesCountExpectation h1_expectation,
+                                            BytesCountExpectation h2_expectation,
+                                            BytesCountExpectation h3_expectation, const int id = 0);
+
   Http::CodecClient::Type downstreamProtocol() const { return downstream_protocol_; }
   std::string downstreamProtocolStatsRoot() const;
   // Return the upstream protocol part of the stats root.
@@ -281,7 +324,7 @@ protected:
   // Prefix listener stat with IP:port, including IP version dependent loopback address.
   std::string listenerStatPrefix(const std::string& stat_name);
 
-  Network::TransportSocketFactoryPtr quic_transport_socket_factory_;
+  Network::UpstreamTransportSocketFactoryPtr quic_transport_socket_factory_;
   // Must outlive |codec_client_| because it may not close connection till the end of its life
   // scope.
   std::unique_ptr<Http::PersistentQuicInfo> quic_connection_persistent_info_;
@@ -306,6 +349,10 @@ protected:
   Quic::QuicStatNames quic_stat_names_;
   std::string san_to_match_{"spiffe://lyft.com/backend-team"};
   bool enable_quic_early_data_{true};
+#ifdef ENVOY_ENABLE_QUIC
+  quic::DeterministicConnectionIdGenerator connection_id_generator_{
+      quic::kQuicDefaultConnectionIdLength};
+#endif
 };
 
 // Helper class for integration tests using raw HTTP/2 frames

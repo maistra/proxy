@@ -10,7 +10,6 @@
 #include "include/v8-cppgc.h"
 #include "include/v8-embedder-heap.h"
 #include "include/v8-traced-handle.h"
-#include "src/common/allow-deprecated.h"
 #include "src/common/globals.h"
 #include "src/execution/isolate.h"
 #include "src/flags/flags.h"
@@ -22,14 +21,12 @@ namespace internal {
 class Heap;
 class JSObject;
 
+START_ALLOW_USE_DEPRECATED()
+
 class V8_EXPORT_PRIVATE DefaultEmbedderRootsHandler final
     : public EmbedderRootsHandler {
  public:
   bool IsRoot(const v8::TracedReference<v8::Value>& handle) final;
-
-  START_ALLOW_USE_DEPRECATED()
-  bool IsRoot(const v8::TracedGlobal<v8::Value>& handle) final;
-  END_ALLOW_USE_DEPRECATED()
 
   void ResetRoot(const v8::TracedReference<v8::Value>& handle) final;
 
@@ -91,8 +88,8 @@ class V8_EXPORT_PRIVATE LocalEmbedderHeapTracer final {
   explicit LocalEmbedderHeapTracer(Isolate* isolate) : isolate_(isolate) {}
 
   ~LocalEmbedderHeapTracer() {
-    if (remote_tracer_) remote_tracer_->isolate_ = nullptr;
-    // CppHeap is not detached from Isolate here. Detaching is done explciitly
+    if (remote_tracer_) remote_tracer_->v8_isolate_ = nullptr;
+    // CppHeap is not detached from Isolate here. Detaching is done explicitly
     // on Isolate/Heap/CppHeap destruction.
   }
 
@@ -113,12 +110,19 @@ class V8_EXPORT_PRIVATE LocalEmbedderHeapTracer final {
   bool IsRemoteTracingDone();
 
   bool ShouldFinalizeIncrementalMarking() {
-    return !FLAG_incremental_marking_wrappers || !InUse() ||
-           (IsRemoteTracingDone() && embedder_worklist_empty_);
+    // Covers cases where no remote tracer is in use or the flags for
+    // incremental marking have been disabled.
+    if (!SupportsIncrementalEmbedderSteps()) return true;
+
+    return IsRemoteTracingDone() && embedder_worklist_empty_;
   }
 
-  void SetEmbedderStackStateForNextFinalization(
-      EmbedderHeapTracer::EmbedderStackState stack_state);
+  bool SupportsIncrementalEmbedderSteps() const {
+    if (!InUse()) return false;
+
+    return cpp_heap_ ? v8_flags.cppheap_incremental_marking
+                     : v8_flags.incremental_marking_wrappers;
+  }
 
   void SetEmbedderWorklistEmpty(bool is_empty) {
     embedder_worklist_empty_ = is_empty;
@@ -159,8 +163,6 @@ class V8_EXPORT_PRIVATE LocalEmbedderHeapTracer final {
   DefaultEmbedderRootsHandler& default_embedder_roots_handler() {
     return default_embedder_roots_handler_;
   }
-
-  void NotifyEmptyEmbedderStack();
 
   EmbedderHeapTracer::EmbedderStackState embedder_stack_state() const {
     return embedder_stack_state_;
@@ -230,25 +232,7 @@ class V8_EXPORT_PRIVATE LocalEmbedderHeapTracer final {
   friend class EmbedderStackStateScope;
 };
 
-class V8_EXPORT_PRIVATE V8_NODISCARD EmbedderStackStateScope final {
- public:
-  EmbedderStackStateScope(LocalEmbedderHeapTracer* local_tracer,
-                          EmbedderHeapTracer::EmbedderStackState stack_state)
-      : local_tracer_(local_tracer),
-        old_stack_state_(local_tracer_->embedder_stack_state_) {
-    local_tracer_->embedder_stack_state_ = stack_state;
-    if (EmbedderHeapTracer::EmbedderStackState::kNoHeapPointers == stack_state)
-      local_tracer_->NotifyEmptyEmbedderStack();
-  }
-
-  ~EmbedderStackStateScope() {
-    local_tracer_->embedder_stack_state_ = old_stack_state_;
-  }
-
- private:
-  LocalEmbedderHeapTracer* const local_tracer_;
-  const EmbedderHeapTracer::EmbedderStackState old_stack_state_;
-};
+END_ALLOW_USE_DEPRECATED()
 
 }  // namespace internal
 }  // namespace v8

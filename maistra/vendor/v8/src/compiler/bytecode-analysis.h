@@ -5,7 +5,6 @@
 #ifndef V8_COMPILER_BYTECODE_ANALYSIS_H_
 #define V8_COMPILER_BYTECODE_ANALYSIS_H_
 
-#include "src/base/hashmap.h"
 #include "src/compiler/bytecode-liveness-map.h"
 #include "src/handles/handles.h"
 #include "src/interpreter/bytecode-register.h"
@@ -110,6 +109,11 @@ class V8_EXPORT_PRIVATE BytecodeAnalysis : public ZoneObject {
   int GetLoopOffsetFor(int offset) const;
   // Get the loop info of the loop header at {header_offset}.
   const LoopInfo& GetLoopInfoFor(int header_offset) const;
+  // Try to get the loop info of the loop header at {header_offset}, returning
+  // null if there isn't any.
+  const LoopInfo* TryGetLoopInfoFor(int header_offset) const;
+
+  const ZoneMap<int, LoopInfo>& GetLoopInfos() const { return header_to_info_; }
 
   // Get the top-level resume jump targets.
   const ZoneVector<ResumeJumpTarget>& resume_jump_targets() const {

@@ -466,17 +466,17 @@ class AlpnTestConfigFactory
     : public Envoy::Extensions::TransportSockets::RawBuffer::UpstreamRawBufferSocketFactory {
 public:
   std::string name() const override { return "envoy.transport_sockets.alpn"; }
-  Network::TransportSocketFactoryPtr
+  Network::UpstreamTransportSocketFactoryPtr
   createTransportSocketFactory(const Protobuf::Message&,
                                Server::Configuration::TransportSocketFactoryContext&) override {
     return std::make_unique<AlpnSocketFactory>();
   }
+  ProtobufTypes::MessagePtr createEmptyConfigProto() override {
+    return std::make_unique<ProtobufWkt::Struct>();
+  }
 };
 
 TEST_F(ClusterManagerImplTest, MultipleProtocolClusterAlpn) {
-  TestScopedRuntime scoped_runtime;
-  scoped_runtime.mergeValues({{"envoy.reloadable_features.no_extension_lookup_by_name", "false"}});
-
   AlpnTestConfigFactory alpn_factory;
   Registry::InjectFactory<Server::Configuration::UpstreamTransportSocketConfigFactory>
       registered_factory(alpn_factory);
@@ -495,6 +495,8 @@ TEST_F(ClusterManagerImplTest, MultipleProtocolClusterAlpn) {
             http_protocol_options: {}
       transport_socket:
         name: envoy.transport_sockets.alpn
+        typed_config:
+          "@type": type.googleapis.com/google.protobuf.Struct
   )EOF";
   create(parseBootstrapFromV3Yaml(yaml));
 }
@@ -2197,6 +2199,60 @@ TEST_F(ClusterManagerImplTest, CloseHttpConnectionsOnHealthFailure) {
   test_host->healthFlagClear(Host::HealthFlag::FAILED_OUTLIER_CHECK);
   outlier_detector.runCallbacks(test_host);
   test_host->healthFlagClear(Host::HealthFlag::FAILED_ACTIVE_HC);
+  health_checker.runCallbacks(test_host, HealthTransition::Changed);
+
+  EXPECT_TRUE(Mock::VerifyAndClearExpectations(cluster1.get()));
+}
+
+// Test that we drain or close all HTTP or TCP connection pool connections when there is a host
+// health failure and 'CLOSE_CONNECTIONS_ON_HOST_HEALTH_FAILURE' set to true.
+TEST_F(ClusterManagerImplTest,
+       CloseConnectionsOnHealthFailureWithCloseConnectionsOnHostHealthFailure) {
+  const std::string json = fmt::sprintf("{\"static_resources\":{%s}}",
+                                        clustersJson({defaultStaticClusterJson("some_cluster")}));
+  std::shared_ptr<MockClusterMockPrioritySet> cluster1(new NiceMock<MockClusterMockPrioritySet>());
+  EXPECT_CALL(*cluster1->info_, features())
+      .WillRepeatedly(Return(ClusterInfo::Features::CLOSE_CONNECTIONS_ON_HOST_HEALTH_FAILURE));
+  cluster1->info_->name_ = "some_cluster";
+  HostSharedPtr test_host = makeTestHost(cluster1->info_, "tcp://127.0.0.1:80", time_system_);
+  cluster1->prioritySet().getMockHostSet(0)->hosts_ = {test_host};
+  ON_CALL(*cluster1, initializePhase()).WillByDefault(Return(Cluster::InitializePhase::Primary));
+
+  MockHealthChecker health_checker;
+  ON_CALL(*cluster1, healthChecker()).WillByDefault(Return(&health_checker));
+
+  Outlier::MockDetector outlier_detector;
+  ON_CALL(*cluster1, outlierDetector()).WillByDefault(Return(&outlier_detector));
+
+  Http::ConnectionPool::MockInstance* cp1 = new NiceMock<Http::ConnectionPool::MockInstance>();
+  Tcp::ConnectionPool::MockInstance* cp2 = new NiceMock<Tcp::ConnectionPool::MockInstance>();
+
+  InSequence s;
+
+  EXPECT_CALL(factory_, clusterFromProto_(_, _, _, _))
+      .WillOnce(Return(std::make_pair(cluster1, nullptr)));
+  EXPECT_CALL(health_checker, addHostCheckCompleteCb(_));
+  EXPECT_CALL(outlier_detector, addChangedStateCb(_));
+  EXPECT_CALL(*cluster1, initialize(_))
+      .WillOnce(Invoke([cluster1](std::function<void()> initialize_callback) {
+        // Test inline init.
+        initialize_callback();
+      }));
+  create(parseBootstrapFromV3Json(json));
+
+  EXPECT_CALL(factory_, allocateConnPool_(_, _, _, _, _)).WillOnce(Return(cp1));
+  cluster_manager_->getThreadLocalCluster("some_cluster")
+      ->httpConnPool(ResourcePriority::Default, Http::Protocol::Http11, nullptr);
+
+  EXPECT_CALL(factory_, allocateTcpConnPool_(_)).WillOnce(Return(cp2));
+  cluster_manager_->getThreadLocalCluster("some_cluster")
+      ->tcpConnPool(ResourcePriority::Default, nullptr);
+
+  // Order of these calls is implementation dependent, so can't sequence them!
+  EXPECT_CALL(*cp1,
+              drainConnections(Envoy::ConnectionPool::DrainBehavior::DrainExistingConnections));
+  EXPECT_CALL(*cp2, closeConnections());
+  test_host->healthFlagSet(Host::HealthFlag::FAILED_ACTIVE_HC);
   health_checker.runCallbacks(test_host, HealthTransition::Changed);
 
   EXPECT_TRUE(Mock::VerifyAndClearExpectations(cluster1.get()));
@@ -4246,6 +4302,9 @@ TEST_F(ClusterManagerImplTest, HttpPoolDataForwardsCallsToConnectionPool) {
   ConnectionPool::Instance::IdleCb drained_cb = []() {};
   EXPECT_CALL(*pool_mock, addIdleCallback(_));
   opt_cp.value().addIdleCallback(drained_cb);
+
+  EXPECT_CALL(*pool_mock, drainConnections(ConnectionPool::DrainBehavior::DrainAndDelete));
+  opt_cp.value().drainConnections(ConnectionPool::DrainBehavior::DrainAndDelete);
 }
 
 // Test that the read only cross-priority host map in the main thread is correctly synchronized to
@@ -5176,6 +5235,52 @@ TEST_F(TcpKeepaliveTest, TcpKeepaliveWithAllOptions) {
   expectSetsockoptSoKeepalive(7, 4, 1);
 }
 
+// Make sure the drainConnections() with a predicate can correctly exclude a host.
+TEST_F(ClusterManagerImplTest, DrainConnectionsPredicate) {
+  const std::string yaml = R"EOF(
+  static_resources:
+    clusters:
+    - name: cluster_1
+      connect_timeout: 0.250s
+      lb_policy: ROUND_ROBIN
+      type: STATIC
+  )EOF";
+
+  create(parseBootstrapFromV3Yaml(yaml));
+
+  // Set up the HostSet.
+  Cluster& cluster = cluster_manager_->activeClusters().begin()->second;
+  HostSharedPtr host1 = makeTestHost(cluster.info(), "tcp://127.0.0.1:80", time_system_);
+  HostSharedPtr host2 = makeTestHost(cluster.info(), "tcp://127.0.0.1:81", time_system_);
+
+  HostVector hosts{host1, host2};
+  auto hosts_ptr = std::make_shared<HostVector>(hosts);
+
+  // Sending non-mergeable updates.
+  cluster.prioritySet().updateHosts(
+      0, HostSetImpl::partitionHosts(hosts_ptr, HostsPerLocalityImpl::empty()), nullptr, hosts, {},
+      100);
+
+  // Using RR LB get a pool for each host.
+  EXPECT_CALL(factory_, allocateConnPool_(_, _, _, _, _))
+      .Times(2)
+      .WillRepeatedly(ReturnNew<NiceMock<Http::ConnectionPool::MockInstance>>());
+  Http::ConnectionPool::MockInstance* cp1 = HttpPoolDataPeer::getPool(
+      cluster_manager_->getThreadLocalCluster("cluster_1")
+          ->httpConnPool(ResourcePriority::Default, Http::Protocol::Http11, nullptr));
+  Http::ConnectionPool::MockInstance* cp2 = HttpPoolDataPeer::getPool(
+      cluster_manager_->getThreadLocalCluster("cluster_1")
+          ->httpConnPool(ResourcePriority::Default, Http::Protocol::Http11, nullptr));
+  EXPECT_NE(cp1, cp2);
+
+  EXPECT_CALL(*cp1,
+              drainConnections(Envoy::ConnectionPool::DrainBehavior::DrainExistingConnections));
+  EXPECT_CALL(*cp2, drainConnections(_)).Times(0);
+  cluster_manager_->drainConnections("cluster_1", [](const Upstream::Host& host) {
+    return host.address()->asString() == "127.0.0.1:80";
+  });
+}
+
 TEST_F(ClusterManagerImplTest, ConnPoolsDrainedOnHostSetChange) {
   const std::string yaml = R"EOF(
   static_resources:
@@ -5390,7 +5495,6 @@ TEST_F(ClusterManagerImplTest, ConnPoolsNotDrainedOnHostSetChange) {
 
 TEST_F(ClusterManagerImplTest, ConnPoolsIdleDeleted) {
   TestScopedRuntime scoped_runtime;
-  scoped_runtime.mergeValues({{"envoy.reloadable_features.conn_pool_delete_when_idle", "true"}});
 
   const std::string yaml = R"EOF(
   static_resources:

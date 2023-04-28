@@ -16,13 +16,14 @@
  *
  */
 
+#include "src/compiler/csharp_generator.h"
+
 #include <cctype>
 #include <map>
 #include <sstream>
 #include <vector>
 
 #include "src/compiler/config.h"
-#include "src/compiler/csharp_generator.h"
 #include "src/compiler/csharp_generator_helpers.h"
 
 using grpc::protobuf::Descriptor;
@@ -38,7 +39,7 @@ namespace grpc_csharp_generator {
 namespace {
 
 // This function is a massaged version of
-// https://github.com/google/protobuf/blob/master/src/google/protobuf/compiler/csharp/csharp_doc_comment.cc
+// https://github.com/protocolbuffers/protobuf/blob/master/src/google/protobuf/compiler/csharp/csharp_doc_comment.cc
 // Currently, we cannot easily reuse the functionality as
 // google/protobuf/compiler/csharp/csharp_doc_comment.h is not a public header.
 // TODO(jtattermusch): reuse the functionality from google/protobuf.
@@ -694,7 +695,7 @@ void GenerateBindServiceWithBinderMethod(Printer* out,
                                          const ServiceDescriptor* service) {
   out->Print(
       "/// <summary>Register service method with a service "
-      "binder with or without implementation. Useful when customizing the  "
+      "binder with or without implementation. Useful when customizing the "
       "service binding logic.\n"
       "/// Note: this method is part of an experimental API that can change or "
       "be "
@@ -800,7 +801,7 @@ std::string GetServices(const FileDescriptor* file, bool generate_client,
       out.PrintRaw(leading_comments.c_str());
     }
 
-    out.Print("#pragma warning disable 0414, 1591\n");
+    out.Print("#pragma warning disable 0414, 1591, 8981\n");
 
     out.Print("#region Designer generated code\n");
     out.Print("\n");

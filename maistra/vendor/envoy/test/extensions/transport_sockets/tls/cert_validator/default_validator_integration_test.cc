@@ -38,7 +38,7 @@ SslCertValidatorIntegrationTest::makeSslClientConnection(const ClientSslTranspor
       createClientSslTransportSocketFactory(modified_options, *context_manager_, *api_);
   return dispatcher_->createClientConnection(
       address, Network::Address::InstanceConstSharedPtr(),
-      client_transport_socket_factory_ptr->createTransportSocket({}), nullptr);
+      client_transport_socket_factory_ptr->createTransportSocket({}, nullptr), nullptr, nullptr);
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -50,8 +50,7 @@ INSTANTIATE_TEST_SUITE_P(
     SslCertValidatorIntegrationTest::ipClientVersionTestParamsToString);
 
 // Default case, certificate is accepted
-// FIXME https://issues.redhat.com/browse/OSSM-1801
-TEST_P(SslCertValidatorIntegrationTest, DISABLED_CertValidated) {
+TEST_P(SslCertValidatorIntegrationTest, CertValidated) {
   config_helper_.addSslConfig(ConfigHelper::ServerSslOptions()
                                   .setRsaCert(true)
                                   .setTlsV13(true)

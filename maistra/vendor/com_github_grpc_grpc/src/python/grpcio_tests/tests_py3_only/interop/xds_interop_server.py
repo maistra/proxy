@@ -13,29 +13,28 @@
 # limitations under the License.
 
 import argparse
+import collections
+from concurrent import futures
 import logging
 import signal
-import threading
-import time
 import socket
 import sys
-
-from typing import DefaultDict, Dict, List, Mapping, Set, Sequence, Tuple
-import collections
-
-from concurrent import futures
+import threading
+import time
+from typing import DefaultDict, Dict, List, Mapping, Sequence, Set, Tuple
 
 import grpc
 from grpc_channelz.v1 import channelz
 from grpc_channelz.v1 import channelz_pb2
-from grpc_health.v1 import health_pb2, health_pb2_grpc
 from grpc_health.v1 import health as grpc_health
+from grpc_health.v1 import health_pb2
+from grpc_health.v1 import health_pb2_grpc
 from grpc_reflection.v1alpha import reflection
 
+from src.proto.grpc.testing import empty_pb2
+from src.proto.grpc.testing import messages_pb2
 from src.proto.grpc.testing import test_pb2
 from src.proto.grpc.testing import test_pb2_grpc
-from src.proto.grpc.testing import messages_pb2
-from src.proto.grpc.testing import empty_pb2
 
 # NOTE: This interop server is not fully compatible with all xDS interop tests.
 #  It currently only implements enough functionality to pass the xDS security
@@ -60,10 +59,12 @@ class TestService(test_pb2_grpc.TestServiceServicer):
 
     def EmptyCall(self, _: empty_pb2.Empty,
                   context: grpc.ServicerContext) -> empty_pb2.Empty:
+        context.send_initial_metadata((('hostname', self._hostname),))
         return empty_pb2.Empty()
 
     def UnaryCall(self, request: messages_pb2.SimpleRequest,
                   context: grpc.ServicerContext) -> messages_pb2.SimpleResponse:
+        context.send_initial_metadata((('hostname', self._hostname),))
         response = messages_pb2.SimpleResponse()
         response.server_id = self._server_id
         response.hostname = self._hostname

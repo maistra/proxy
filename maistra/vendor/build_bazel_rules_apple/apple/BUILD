@@ -22,6 +22,7 @@ licenses(["notice"])
         "ios_sim_arm64",
         "tvos_x86_64",
         "tvos_arm64",
+        "tvos_sim_arm64",
         "watchos_i386",
         "watchos_arm64",
         "watchos_armv7k",
@@ -36,6 +37,7 @@ bzl_library(
     deps = [
         "//apple/internal:apple_framework_import",
         "//apple/internal:apple_universal_binary",
+        "//apple/internal:local_provisioning_profiles",
         "//apple/internal:xcframework_rules",
     ],
 )
@@ -126,6 +128,7 @@ bzl_library(
         "//apple/internal/resource_rules:apple_bundle_import",
         "//apple/internal/resource_rules:apple_core_data_model",
         "//apple/internal/resource_rules:apple_core_ml_library",
+        "//apple/internal/resource_rules:apple_intent_library",
         "//apple/internal/resource_rules:apple_resource_bundle",
         "//apple/internal/resource_rules:apple_resource_group",
     ],
@@ -158,6 +161,8 @@ bzl_library(
     srcs = ["versioning.bzl"],
     deps = [
         ":providers",
+        "//apple/internal:apple_toolchains",
+        "@bazel_skylib//lib:dicts",
     ],
 )
 

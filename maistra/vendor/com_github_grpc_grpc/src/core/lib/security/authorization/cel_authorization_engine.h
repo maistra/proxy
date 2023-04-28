@@ -18,7 +18,6 @@
 
 #include <grpc/support/port_platform.h>
 
-#include <grpc/support/log.h>
 #include <map>
 #include <memory>
 #include <string>
@@ -31,6 +30,7 @@
 
 #include "src/core/lib/security/authorization/evaluate_args.h"
 #include "src/core/lib/security/authorization/mock_cel/activation.h"
+#include "src/core/lib/security/authorization/mock_cel/cel_value.h"
 
 namespace grpc_core {
 

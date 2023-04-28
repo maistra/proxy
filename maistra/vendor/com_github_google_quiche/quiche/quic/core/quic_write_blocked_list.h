@@ -13,7 +13,6 @@
 #include "quiche/http2/core/priority_write_scheduler.h"
 #include "quiche/quic/core/quic_packets.h"
 #include "quiche/quic/platform/api/quic_bug_tracker.h"
-#include "quiche/quic/platform/api/quic_containers.h"
 #include "quiche/quic/platform/api/quic_export.h"
 #include "quiche/quic/platform/api/quic_flags.h"
 
@@ -57,8 +56,7 @@ class QUIC_EXPORT_PRIVATE QuicWriteBlockedList {
   // purposes.
   QuicStreamId PopFront();
 
-  void RegisterStream(QuicStreamId stream_id,
-                      bool is_static_stream,
+  void RegisterStream(QuicStreamId stream_id, bool is_static_stream,
                       const spdy::SpdyStreamPrecedence& precedence);
 
   void UnregisterStream(QuicStreamId stream_id, bool is_static);

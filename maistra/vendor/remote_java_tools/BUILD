@@ -51,28 +51,8 @@ filegroup(
 )
 
 filegroup(
-    name = "Turbine",
-    srcs = ["java_tools/turbine_deploy.jar"],
-)
-
-filegroup(
     name = "TurbineDirect",
     srcs = ["java_tools/turbine_direct_binary_deploy.jar"],
-)
-
-filegroup(
-    name = "javac_jar",
-    srcs = ["java_tools/javac-9+181-r4173-1.jar"],
-)
-
-filegroup(
-    name = "jdk_compiler_jar",
-    srcs = ["java_tools/jdk_compiler.jar"],
-)
-
-filegroup(
-    name = "java_compiler_jar",
-    srcs = ["java_tools/java_compiler.jar"],
 )
 
 java_import(
@@ -401,6 +381,8 @@ cc_binary(
     malloc = ":malloc",
     visibility = ["//visibility:public"],
     deps = [
+        ":combiners",
+        ":diag",
         ":options",
         ":output_jar",
         "//java_tools/zlib",

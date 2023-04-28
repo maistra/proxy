@@ -87,6 +87,7 @@ public:
 #undef _GET_MODULE_FUNCTION
 
   void terminate() override {}
+  bool usesWasmByteOrder() override { return true; }
 
 private:
   template <typename... Args>
@@ -296,7 +297,7 @@ bool Wamr::link(std::string_view /*debug_name*/) {
     return false;
   }
 
-  wasm_extern_vec_t imports_vec = {imports.size(), imports.data()};
+  wasm_extern_vec_t imports_vec = {imports.size(), imports.data(), imports.size()};
   instance_ = wasm_instance_new(store_.get(), module_.get(), &imports_vec, nullptr);
   if (instance_ == nullptr) {
     fail(FailState::UnableToInitializeCode, "Failed to create new Wasm instance");
@@ -368,7 +369,7 @@ bool Wamr::getWord(uint64_t pointer, Word *word) {
 
   uint32_t word32;
   ::memcpy(&word32, wasm_memory_data(memory_.get()) + pointer, size);
-  word->u64_ = wasmtoh(word32);
+  word->u64_ = wasmtoh(word32, true);
   return true;
 }
 
@@ -377,7 +378,7 @@ bool Wamr::setWord(uint64_t pointer, Word word) {
   if (pointer + size > wasm_memory_data_size(memory_.get())) {
     return false;
   }
-  uint32_t word32 = htowasm(word.u32());
+  uint32_t word32 = htowasm(word.u32(), true);
   ::memcpy(wasm_memory_data(memory_.get()) + pointer, &word32, size);
   return true;
 }
@@ -578,9 +579,9 @@ void Wamr::getModuleFunctionImpl(std::string_view function_name,
     if (trap) {
       WasmByteVec error_message;
       wasm_trap_message(trap.get(), error_message.get());
+      std::string message(error_message.get()->data); // NULL-terminated
       fail(FailState::RuntimeError,
-           "Function: " + std::string(function_name) + " failed:\n" +
-               std::string(error_message.get()->data, error_message.get()->size));
+           "Function: " + std::string(function_name) + " failed: " + message);
       return;
     }
     if (log) {
@@ -628,9 +629,9 @@ void Wamr::getModuleFunctionImpl(std::string_view function_name,
     if (trap) {
       WasmByteVec error_message;
       wasm_trap_message(trap.get(), error_message.get());
+      std::string message(error_message.get()->data); // NULL-terminated
       fail(FailState::RuntimeError,
-           "Function: " + std::string(function_name) + " failed:\n" +
-               std::string(error_message.get()->data, error_message.get()->size));
+           "Function: " + std::string(function_name) + " failed: " + message);
       return R{};
     }
     R ret = convertValueTypeToArg<R>(results.data[0]);

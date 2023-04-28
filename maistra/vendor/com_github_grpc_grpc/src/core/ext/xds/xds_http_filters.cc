@@ -18,9 +18,18 @@
 
 #include "src/core/ext/xds/xds_http_filters.h"
 
+#include <algorithm>
+#include <map>
+#include <utility>
+#include <vector>
+
+#include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "envoy/extensions/filters/http/router/v3/router.upb.h"
 #include "envoy/extensions/filters/http/router/v3/router.upbdefs.h"
+
 #include "src/core/ext/xds/xds_http_fault_filter.h"
+#include "src/core/ext/xds/xds_http_rbac_filter.h"
 
 namespace grpc_core {
 
@@ -31,12 +40,13 @@ namespace {
 
 class XdsHttpRouterFilter : public XdsHttpFilterImpl {
  public:
-  void PopulateSymtab(upb_symtab* symtab) const override {
+  void PopulateSymtab(upb_DefPool* symtab) const override {
     envoy_extensions_filters_http_router_v3_Router_getmsgdef(symtab);
   }
 
   absl::StatusOr<FilterConfig> GenerateFilterConfig(
-      upb_strview serialized_filter_config, upb_arena* arena) const override {
+      upb_StringView serialized_filter_config,
+      upb_Arena* arena) const override {
     if (envoy_extensions_filters_http_router_v3_Router_parse(
             serialized_filter_config.data, serialized_filter_config.size,
             arena) == nullptr) {
@@ -46,16 +56,15 @@ class XdsHttpRouterFilter : public XdsHttpFilterImpl {
   }
 
   absl::StatusOr<FilterConfig> GenerateFilterConfigOverride(
-      upb_strview /*serialized_filter_config*/,
-      upb_arena* /*arena*/) const override {
+      upb_StringView /*serialized_filter_config*/,
+      upb_Arena* /*arena*/) const override {
     return absl::InvalidArgumentError(
         "router filter does not support config override");
   }
 
-  // No-op -- this filter is special-cased by the xds resolver.
   const grpc_channel_filter* channel_filter() const override { return nullptr; }
 
-  // No-op -- this filter is special-cased by the xds resolver.
+  // No-op.  This will never be called, since channel_filter() returns null.
   absl::StatusOr<ServiceConfigJsonEntry> GenerateServiceConfig(
       const FilterConfig& /*hcm_filter_config*/,
       const FilterConfig* /*filter_config_override*/) const override {
@@ -65,6 +74,8 @@ class XdsHttpRouterFilter : public XdsHttpFilterImpl {
   bool IsSupportedOnClients() const override { return true; }
 
   bool IsSupportedOnServers() const override { return true; }
+
+  bool IsTerminalFilter() const override { return true; }
 };
 
 using FilterOwnerList = std::vector<std::unique_ptr<XdsHttpFilterImpl>>;
@@ -91,7 +102,7 @@ const XdsHttpFilterImpl* XdsHttpFilterRegistry::GetFilterForType(
   return it->second;
 }
 
-void XdsHttpFilterRegistry::PopulateSymtab(upb_symtab* symtab) {
+void XdsHttpFilterRegistry::PopulateSymtab(upb_DefPool* symtab) {
   for (const auto& filter : *g_filters) {
     filter->PopulateSymtab(symtab);
   }
@@ -104,6 +115,10 @@ void XdsHttpFilterRegistry::Init() {
                  {kXdsHttpRouterFilterConfigName});
   RegisterFilter(absl::make_unique<XdsHttpFaultFilter>(),
                  {kXdsHttpFaultFilterConfigName});
+  RegisterFilter(absl::make_unique<XdsHttpRbacFilter>(),
+                 {kXdsHttpRbacFilterConfigName});
+  RegisterFilter(absl::make_unique<XdsHttpRbacFilter>(),
+                 {kXdsHttpRbacFilterConfigOverrideName});
 }
 
 void XdsHttpFilterRegistry::Shutdown() {

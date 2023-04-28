@@ -115,6 +115,8 @@ class V8_EXPORT_PRIVATE LookupIterator final {
   // any integer for JSTypedArrays).
   inline bool IsElement(JSReceiver object) const;
 
+  inline bool IsPrivateName() const;
+
   bool IsFound() const { return state_ != NOT_FOUND; }
   void Next();
   void NotFound() {
@@ -188,6 +190,9 @@ class V8_EXPORT_PRIVATE LookupIterator final {
   Handle<Object> GetDataValue(AllocationPolicy allocation_policy =
                                   AllocationPolicy::kAllocationAllowed) const;
   void WriteDataValue(Handle<Object> value, bool initializing_store);
+  Handle<Object> GetDataValue(SeqCstAccessTag tag) const;
+  void WriteDataValue(Handle<Object> value, SeqCstAccessTag tag);
+  Handle<Object> SwapDataValue(Handle<Object> value, SeqCstAccessTag tag);
   inline void UpdateProtector();
   static inline void UpdateProtector(Isolate* isolate, Handle<Object> receiver,
                                      Handle<Name> name);

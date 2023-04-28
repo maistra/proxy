@@ -14,10 +14,20 @@
 
 #include <grpc/support/port_platform.h>
 
-#include "absl/memory/memory.h"
-
-#include "src/core/lib/address_utils/sockaddr_utils.h"
 #include "src/core/lib/security/authorization/cel_authorization_engine.h"
+
+#include <stddef.h>
+
+#include <algorithm>
+#include <utility>
+
+#include "absl/memory/memory.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
+#include "absl/types/span.h"
+#include "upb/upb.h"
+
+#include <grpc/support/log.h>
 
 namespace grpc_core {
 
@@ -63,11 +73,11 @@ CelAuthorizationEngine::CelAuthorizationEngine(
     // Extract array of policies and store their condition fields in either
     // allow_if_matched_ or deny_if_matched_, depending on the policy action.
     upb::Arena temp_arena;
-    size_t policy_num = UPB_MAP_BEGIN;
+    size_t policy_num = kUpb_Map_Begin;
     const envoy_config_rbac_v3_RBAC_PoliciesEntry* policy_entry;
     while ((policy_entry = envoy_config_rbac_v3_RBAC_policies_next(
                 rbac_policy, &policy_num)) != nullptr) {
-      const upb_strview policy_name_strview =
+      const upb_StringView policy_name_strview =
           envoy_config_rbac_v3_RBAC_PoliciesEntry_key(policy_entry);
       const std::string policy_name(policy_name_strview.data,
                                     policy_name_strview.size);
@@ -102,7 +112,7 @@ std::unique_ptr<mock_cel::Activation> CelAuthorizationEngine::CreateActivation(
                                 mock_cel::CelValue::CreateStringView(url_path));
       }
     } else if (elem == kHost) {
-      absl::string_view host(args.GetHost());
+      absl::string_view host(args.GetAuthority());
       if (!host.empty()) {
         activation->InsertValue(kHost,
                                 mock_cel::CelValue::CreateStringView(host));
@@ -114,17 +124,17 @@ std::unique_ptr<mock_cel::Activation> CelAuthorizationEngine::CreateActivation(
                                 mock_cel::CelValue::CreateStringView(method));
       }
     } else if (elem == kHeaders) {
-      std::multimap<absl::string_view, absl::string_view> headers =
-          args.GetHeaders();
       std::vector<std::pair<mock_cel::CelValue, mock_cel::CelValue>>
           header_items;
       for (const auto& header_key : header_keys_) {
-        auto header_item = headers.find(header_key);
-        if (header_item != headers.end()) {
+        std::string temp_value;
+        absl::optional<absl::string_view> header_value =
+            args.GetHeaderValue(header_key, &temp_value);
+        if (header_value.has_value()) {
           header_items.push_back(
               std::pair<mock_cel::CelValue, mock_cel::CelValue>(
                   mock_cel::CelValue::CreateStringView(header_key),
-                  mock_cel::CelValue::CreateStringView(header_item->second)));
+                  mock_cel::CelValue::CreateStringView(*header_value)));
         }
       }
       headers_ = mock_cel::ContainerBackedMapImpl::Create(

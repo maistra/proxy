@@ -11,11 +11,11 @@ go_library(
     importpath = "github.com/google/go-containerregistry/pkg/v1/tarball",
     visibility = ["//visibility:public"],
     deps = [
+        "//internal/and",
+        "//internal/estargz",
+        "//internal/gzip",
         "//pkg/name",
         "//pkg/v1:pkg",
-        "//pkg/v1/internal/and",
-        "//pkg/v1/internal/estargz",
-        "//pkg/v1/internal/gzip",
         "//pkg/v1/partial",
         "//pkg/v1/types",
         "//vendor/github.com/containerd/stargz-snapshotter/estargz",
@@ -39,7 +39,7 @@ go_test(
     data = glob(["testdata/**"]),
     embed = [":tarball"],
     deps = [
-        "//pkg/internal/compare",
+        "//internal/compare",
         "//pkg/name",
         "//pkg/v1:pkg",
         "//pkg/v1/mutate",

@@ -1203,6 +1203,25 @@ Types (structs, unions and typedefs)
     this structure are intentionally hidden from the public API.
 
 
+.. type:: nghttp2_extpri
+
+    
+    :type:`nghttp2_extpri` is :rfc:`9218` extensible priorities
+    specification for a stream.
+
+    .. member::   uint32_t urgency
+
+        :member:`urgency` is the urgency of a stream, it must be in
+        [:macro:`NGHTTP2_EXTPRI_URGENCY_HIGH`,
+        :macro:`NGHTTP2_EXTPRI_URGENCY_LOW`], inclusive, and 0 is the
+        highest urgency.
+    .. member::   int inc
+
+        :member:`inc` indicates that a content can be processed
+        incrementally or not.  If inc is 0, it cannot be processed
+        incrementally.  If inc is 1, it can be processed incrementally.
+        Other value is not permitted.
+
 .. type:: nghttp2_ext_altsvc
 
     
@@ -1264,6 +1283,29 @@ Types (structs, unions and typedefs)
     .. member::   nghttp2_origin_entry *ov
 
         The pointer to the array of origins contained in ORIGIN frame.
+
+.. type:: nghttp2_ext_priority_update
+
+    
+    The payload of PRIORITY_UPDATE frame.  PRIORITY_UPDATE frame is a
+    non-critical extension to HTTP/2.  If this frame is received, and
+    `nghttp2_option_set_user_recv_extension_type()` is not set, and
+    `nghttp2_option_set_builtin_recv_extension_type()` is set for
+    :macro:`nghttp2_frame_type.NGHTTP2_PRIORITY_UPDATE`,
+    ``nghttp2_extension.payload`` will point to this struct.
+    
+    It has the following members:
+
+    .. member::   int32_t stream_id
+
+        The stream ID of the stream whose priority is updated.
+    .. member::   uint8_t *field_value
+
+        The pointer to Priority field value.  It is not necessarily
+        NULL-terminated.
+    .. member::   size_t field_value_len
+
+        The length of the :member:`field_value`.
 
 .. type:: nghttp2_hd_deflater
 

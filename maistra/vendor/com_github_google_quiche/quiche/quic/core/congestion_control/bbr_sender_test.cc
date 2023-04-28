@@ -86,25 +86,16 @@ class BbrSenderTest : public QuicTest {
  protected:
   BbrSenderTest()
       : simulator_(&random_),
-        bbr_sender_(&simulator_,
-                    "BBR sender",
-                    "Receiver",
+        bbr_sender_(&simulator_, "BBR sender", "Receiver",
                     Perspective::IS_CLIENT,
                     /*connection_id=*/TestConnectionId(42)),
-        competing_sender_(&simulator_,
-                          "Competing sender",
-                          "Competing receiver",
+        competing_sender_(&simulator_, "Competing sender", "Competing receiver",
                           Perspective::IS_CLIENT,
                           /*connection_id=*/TestConnectionId(43)),
-        receiver_(&simulator_,
-                  "Receiver",
-                  "BBR sender",
-                  Perspective::IS_SERVER,
+        receiver_(&simulator_, "Receiver", "BBR sender", Perspective::IS_SERVER,
                   /*connection_id=*/TestConnectionId(42)),
-        competing_receiver_(&simulator_,
-                            "Competing receiver",
-                            "Competing sender",
-                            Perspective::IS_SERVER,
+        competing_receiver_(&simulator_, "Competing receiver",
+                            "Competing sender", Perspective::IS_SERVER,
                             /*connection_id=*/TestConnectionId(43)),
         receiver_multiplexer_("Receiver multiplexer",
                               {&receiver_, &competing_receiver_}) {
@@ -117,7 +108,8 @@ class BbrSenderTest : public QuicTest {
   }
 
   void SetUp() override {
-    if (GetQuicFlag(FLAGS_quic_bbr_test_regression_mode) == "regress") {
+    if (quiche::GetQuicheCommandLineFlag(FLAGS_quic_bbr_test_regression_mode) ==
+        "regress") {
       SendAlgorithmTestResult expected;
       ASSERT_TRUE(LoadSendAlgorithmTestResult(&expected));
       random_seed_ = expected.random_seed();
@@ -130,7 +122,7 @@ class BbrSenderTest : public QuicTest {
 
   ~BbrSenderTest() {
     const std::string regression_mode =
-        GetQuicFlag(FLAGS_quic_bbr_test_regression_mode);
+        quiche::GetQuicheCommandLineFlag(FLAGS_quic_bbr_test_regression_mode);
     const QuicTime::Delta simulated_duration = clock_->Now() - QuicTime::Zero();
     if (regression_mode == "record") {
       RecordSendAlgorithmTestResult(random_seed_,
@@ -169,7 +161,7 @@ class BbrSenderTest : public QuicTest {
         QuicSentPacketManagerPeer::GetUnackedPacketMap(
             QuicConnectionPeer::GetSentPacketManager(endpoint->connection())),
         kInitialCongestionWindowPackets,
-        GetQuicFlag(FLAGS_quic_max_congestion_window), &random_,
+        GetQuicFlag(quic_max_congestion_window), &random_,
         QuicConnectionPeer::GetStats(endpoint->connection()));
     QuicConnectionPeer::SetSendAlgorithm(endpoint->connection(), sender);
     endpoint->RecordTrace();
@@ -258,8 +250,7 @@ class BbrSenderTest : public QuicTest {
 
   // Send |bytes|-sized bursts of data |number_of_bursts| times, waiting for
   // |wait_time| between each burst.
-  void SendBursts(size_t number_of_bursts,
-                  QuicByteCount bytes,
+  void SendBursts(size_t number_of_bursts, QuicByteCount bytes,
                   QuicTime::Delta wait_time) {
     ASSERT_EQ(0u, bbr_sender_.bytes_to_transfer());
     for (size_t i = 0; i < number_of_bursts; i++) {
@@ -442,14 +433,13 @@ TEST_F(BbrSenderTest, SimpleTransfer2RTTAggregationBytes) {
 TEST_F(BbrSenderTest, SimpleTransferAckDecimation) {
   SetConnectionOption(kBSAO);
   // Decrease the CWND gain so extra CWND is required with stretch acks.
-  SetQuicFlag(FLAGS_quic_bbr_cwnd_gain, 1.0);
+  SetQuicFlag(quic_bbr_cwnd_gain, 1.0);
   sender_ = new BbrSender(
       bbr_sender_.connection()->clock()->Now(), rtt_stats_,
       QuicSentPacketManagerPeer::GetUnackedPacketMap(
           QuicConnectionPeer::GetSentPacketManager(bbr_sender_.connection())),
-      kInitialCongestionWindowPackets,
-      GetQuicFlag(FLAGS_quic_max_congestion_window), &random_,
-      QuicConnectionPeer::GetStats(bbr_sender_.connection()));
+      kInitialCongestionWindowPackets, GetQuicFlag(quic_max_congestion_window),
+      &random_, QuicConnectionPeer::GetStats(bbr_sender_.connection()));
   QuicConnectionPeer::SetSendAlgorithm(bbr_sender_.connection(), sender_);
   CreateDefaultSetup();
 
@@ -471,9 +461,8 @@ TEST_F(BbrSenderTest, SimpleTransferAckDecimation) {
 
 // Test a simple long data transfer with 2 rtts of aggregation.
 // TODO(b/172302465) Re-enable this test.
-TEST_F(BbrSenderTest,
-       QUIC_TEST_DISABLED_IN_CHROME(
-           SimpleTransfer2RTTAggregationBytes20RTTWindow)) {
+TEST_F(BbrSenderTest, QUIC_TEST_DISABLED_IN_CHROME(
+                          SimpleTransfer2RTTAggregationBytes20RTTWindow)) {
   SetConnectionOption(kBSAO);
   CreateDefaultSetup();
   SetConnectionOption(kBBR4);

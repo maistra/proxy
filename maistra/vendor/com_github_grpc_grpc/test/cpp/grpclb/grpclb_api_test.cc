@@ -16,18 +16,18 @@
  *
  */
 
+#include <gtest/gtest.h>
+
 #include "google/protobuf/duration.upb.h"
 #include "upb/upb.hpp"
 
 #include <grpc/grpc.h>
 #include <grpcpp/impl/codegen/config.h>
-#include <gtest/gtest.h>
 
 #include "src/core/ext/filters/client_channel/lb_policy/grpclb/load_balancer_api.h"
 #include "src/core/lib/address_utils/sockaddr_utils.h"
 #include "src/core/lib/iomgr/sockaddr.h"
 #include "src/proto/grpc/lb/v1/load_balancer.pb.h"  // C++ version
-
 #include "test/core/util/test_config.h"
 
 namespace grpc {
@@ -94,7 +94,8 @@ TEST_F(GrpclbTest, ParseInitialResponse) {
       grpc_core::GrpcLbResponseParse(encoded_slice, arena.ptr(), &resp));
   grpc_slice_unref(encoded_slice);
   EXPECT_EQ(resp.type, resp.INITIAL);
-  EXPECT_EQ(resp.client_stats_report_interval, 123456);
+  EXPECT_EQ(resp.client_stats_report_interval,
+            grpc_core::Duration::Milliseconds(123456));
   EXPECT_EQ(resp.serverlist.size(), 0);
 }
 
@@ -137,7 +138,7 @@ TEST_F(GrpclbTest, ParseResponseServerList) {
 }  // namespace grpc
 
 int main(int argc, char** argv) {
-  grpc::testing::TestEnvironment env(argc, argv);
+  grpc::testing::TestEnvironment env(&argc, argv);
   ::testing::InitGoogleTest(&argc, argv);
   int ret = RUN_ALL_TESTS();
   return ret;

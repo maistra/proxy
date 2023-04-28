@@ -13,6 +13,7 @@
 #include "quiche/quic/core/crypto/quic_crypto_server_config.h"
 #include "quiche/quic/core/crypto/tls_server_connection.h"
 #include "quiche/quic/core/proto/cached_network_parameters_proto.h"
+#include "quiche/quic/core/quic_connection_id.h"
 #include "quiche/quic/core/quic_crypto_server_stream_base.h"
 #include "quiche/quic/core/quic_crypto_stream.h"
 #include "quiche/quic/core/quic_time_accumulator.h"
@@ -71,6 +72,10 @@ class QUIC_EXPORT_PRIVATE TlsServerHandshaker
   bool ExportKeyingMaterial(absl::string_view label, absl::string_view context,
                             size_t result_len, std::string* result) override;
   SSL* GetSsl() const override;
+  bool IsCryptoFrameExpectedForEncryptionLevel(
+      EncryptionLevel level) const override;
+  EncryptionLevel GetEncryptionLevelToSendCryptoDataOfSpace(
+      PacketNumberSpace space) const override;
 
   // From QuicCryptoServerStreamBase and TlsHandshaker
   ssl_early_data_reason_t EarlyDataReason() const override;
@@ -86,9 +91,8 @@ class QUIC_EXPORT_PRIVATE TlsServerHandshaker
   std::unique_ptr<QuicDecrypter> AdvanceKeysAndCreateCurrentOneRttDecrypter()
       override;
   std::unique_ptr<QuicEncrypter> CreateCurrentOneRttEncrypter() override;
-  void SetWriteSecret(EncryptionLevel level,
-                      const SSL_CIPHER* cipher,
-                      const std::vector<uint8_t>& write_secret) override;
+  void SetWriteSecret(EncryptionLevel level, const SSL_CIPHER* cipher,
+                      absl::Span<const uint8_t> write_secret) override;
 
   // Called with normalized SNI hostname as |hostname|.  Return value will be
   // sent in an ACCEPT_CH frame in the TLS ALPS extension, unless empty.
@@ -128,10 +132,8 @@ class QUIC_EXPORT_PRIVATE TlsServerHandshaker
   void FinishHandshake() override;
   void ProcessPostHandshakeMessage() override {}
   QuicAsyncStatus VerifyCertChain(
-      const std::vector<std::string>& certs,
-      std::string* error_details,
-      std::unique_ptr<ProofVerifyDetails>* details,
-      uint8_t* out_alert,
+      const std::vector<std::string>& certs, std::string* error_details,
+      std::unique_ptr<ProofVerifyDetails>* details, uint8_t* out_alert,
       std::unique_ptr<ProofVerifierCallback> callback) override;
   void OnProofVerifyDetailsAvailable(
       const ProofVerifyDetails& verify_details) override;
@@ -141,25 +143,17 @@ class QUIC_EXPORT_PRIVATE TlsServerHandshaker
   ssl_select_cert_result_t EarlySelectCertCallback(
       const SSL_CLIENT_HELLO* client_hello) override;
   int TlsExtServernameCallback(int* out_alert) override;
-  int SelectAlpn(const uint8_t** out,
-                 uint8_t* out_len,
-                 const uint8_t* in,
+  int SelectAlpn(const uint8_t** out, uint8_t* out_len, const uint8_t* in,
                  unsigned in_len) override;
-  ssl_private_key_result_t PrivateKeySign(uint8_t* out,
-                                          size_t* out_len,
-                                          size_t max_out,
-                                          uint16_t sig_alg,
+  ssl_private_key_result_t PrivateKeySign(uint8_t* out, size_t* out_len,
+                                          size_t max_out, uint16_t sig_alg,
                                           absl::string_view in) override;
-  ssl_private_key_result_t PrivateKeyComplete(uint8_t* out,
-                                              size_t* out_len,
+  ssl_private_key_result_t PrivateKeyComplete(uint8_t* out, size_t* out_len,
                                               size_t max_out) override;
   size_t SessionTicketMaxOverhead() override;
-  int SessionTicketSeal(uint8_t* out,
-                        size_t* out_len,
-                        size_t max_out_len,
+  int SessionTicketSeal(uint8_t* out, size_t* out_len, size_t max_out_len,
                         absl::string_view in) override;
-  ssl_ticket_aead_result_t SessionTicketOpen(uint8_t* out,
-                                             size_t* out_len,
+  ssl_ticket_aead_result_t SessionTicketOpen(uint8_t* out, size_t* out_len,
                                              size_t max_out_len,
                                              absl::string_view in) override;
   // Called when ticket_decryption_callback_ is done to determine a final
@@ -188,9 +182,7 @@ class QUIC_EXPORT_PRIVATE TlsServerHandshaker
       QuicDelayedSSLConfig delayed_ssl_config) override;
 
   void OnComputeSignatureDone(
-      bool ok,
-      bool is_sync,
-      std::string signature,
+      bool ok, bool is_sync, std::string signature,
       std::unique_ptr<ProofSource::Details> details) override;
 
   void set_encryption_established(bool encryption_established) {
@@ -238,10 +230,9 @@ class QUIC_EXPORT_PRIVATE TlsServerHandshaker
     QuicAsyncStatus SelectCertificate(
         const QuicSocketAddress& server_address,
         const QuicSocketAddress& client_address,
-        absl::string_view ssl_capabilities,
-        const std::string& hostname,
-        absl::string_view client_hello,
-        const std::string& alpn,
+        const QuicConnectionId& original_connection_id,
+        absl::string_view ssl_capabilities, const std::string& hostname,
+        absl::string_view client_hello, const std::string& alpn,
         absl::optional<std::string> alps,
         const std::vector<uint8_t>& quic_transport_params,
         const absl::optional<std::vector<uint8_t>>& early_data_context,
@@ -266,8 +257,7 @@ class QUIC_EXPORT_PRIVATE TlsServerHandshaker
       explicit DefaultSignatureCallback(DefaultProofSourceHandle* handle)
           : handle_(handle) {}
 
-      void Run(bool ok,
-               std::string signature,
+      void Run(bool ok, std::string signature,
                std::unique_ptr<ProofSource::Details> details) override {
         if (handle_ == nullptr) {
           // Operation has been canceled, or Run has been called.
@@ -316,8 +306,9 @@ class QUIC_EXPORT_PRIVATE TlsServerHandshaker
 
   struct QUIC_NO_EXPORT SetApplicationSettingsResult {
     bool success = false;
-    std::unique_ptr<char[]> alps_buffer;
-    size_t alps_length = 0;
+    // TODO(b/239676439): Change type to absl::optional<std::string> and make
+    // sure SetApplicationSettings() returns nullopt if no ALPS data.
+    std::string alps_buffer;
   };
   SetApplicationSettingsResult SetApplicationSettings(absl::string_view alpn);
 
@@ -337,7 +328,7 @@ class QUIC_EXPORT_PRIVATE TlsServerHandshaker
   // |ticket_decryption_callback_| points to the non-owned callback that was
   // passed to ProofSource::TicketCrypter::Decrypt but hasn't finished running
   // yet.
-  DecryptCallback* ticket_decryption_callback_ = nullptr;
+  std::shared_ptr<DecryptCallback> ticket_decryption_callback_;
   // |decrypted_session_ticket_| contains the decrypted session ticket after the
   // callback has run but before it is passed to BoringSSL.
   std::vector<uint8_t> decrypted_session_ticket_;

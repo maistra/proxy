@@ -18,13 +18,6 @@ class QuicSentPacketManagerPeer {
  public:
   QuicSentPacketManagerPeer() = delete;
 
-  static size_t GetMaxTailLossProbes(
-      QuicSentPacketManager* sent_packet_manager);
-
-  static void SetMaxTailLossProbes(QuicSentPacketManager* sent_packet_manager,
-                                   size_t max_tail_loss_probes);
-
-  static bool GetUseNewRto(QuicSentPacketManager* sent_packet_manager);
 
   static void SetPerspective(QuicSentPacketManager* sent_packet_manager,
                              Perspective perspective);
@@ -51,18 +44,10 @@ class QuicSentPacketManagerPeer {
                                     uint64_t packet_number,
                                     TransmissionType transmission_type);
 
-  static QuicTime::Delta GetRetransmissionDelay(
-      const QuicSentPacketManager* sent_packet_manager);
-  static QuicTime::Delta GetTailLossProbeDelay(
-      const QuicSentPacketManager* sent_packet_manager);
-
   static size_t GetNumRetransmittablePackets(
       const QuicSentPacketManager* sent_packet_manager);
 
-  static void SetConsecutiveRtoCount(QuicSentPacketManager* sent_packet_manager,
-                                     size_t count);
-
-  static void SetConsecutiveTlpCount(QuicSentPacketManager* sent_packet_manager,
+  static void SetConsecutivePtoCount(QuicSentPacketManager* sent_packet_manager,
                                      size_t count);
 
   static QuicSustainedBandwidthRecorder& GetBandwidthRecorder(
@@ -74,8 +59,7 @@ class QuicSentPacketManagerPeer {
   static bool UsingPacing(const QuicSentPacketManager* sent_packet_manager);
 
   static bool HasRetransmittableFrames(
-      QuicSentPacketManager* sent_packet_manager,
-      uint64_t packet_number);
+      QuicSentPacketManager* sent_packet_manager, uint64_t packet_number);
 
   static QuicUnackedPacketMap* GetUnackedPacketMap(
       QuicSentPacketManager* sent_packet_manager);

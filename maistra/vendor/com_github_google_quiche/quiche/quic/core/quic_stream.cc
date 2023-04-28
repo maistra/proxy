@@ -150,7 +150,7 @@ void PendingStream::AddBytesConsumed(QuicByteCount bytes) {
 void PendingStream::ResetWithError(QuicResetStreamError /*error*/) {
   // Currently PendingStream is only read-unidirectional. It shouldn't send
   // Reset.
-  QUIC_NOTREACHED();
+  QUICHE_NOTREACHED();
 }
 
 void PendingStream::OnUnrecoverableError(QuicErrorCode error,
@@ -364,7 +364,7 @@ QuicStream::QuicStream(QuicStreamId id, QuicSession* session,
       add_random_padding_after_fin_(false),
       send_buffer_(
           session->connection()->helper()->GetStreamSendBufferAllocator()),
-      buffered_data_threshold_(GetQuicFlag(FLAGS_quic_buffered_data_threshold)),
+      buffered_data_threshold_(GetQuicFlag(quic_buffered_data_threshold)),
       is_static_(is_static),
       deadline_(QuicTime::Zero()),
       was_draining_(false),
@@ -741,20 +741,25 @@ void QuicStream::MaybeSendBlocked() {
         << ENDPOINT << "MaybeSendBlocked called on stream without flow control";
     return;
   }
-  if (flow_controller_->ShouldSendBlocked()) {
-    session_->SendBlocked(id_);
-  }
+  flow_controller_->MaybeSendBlocked();
   if (!stream_contributes_to_connection_flow_control_) {
     return;
   }
-  if (connection_flow_controller_->ShouldSendBlocked()) {
-    session_->SendBlocked(QuicUtils::GetInvalidStreamId(transport_version()));
+  connection_flow_controller_->MaybeSendBlocked();
+  if (GetQuicReloadableFlag(
+          quic_donot_mark_stream_write_blocked_if_write_side_closed)) {
+    QUIC_RELOADABLE_FLAG_COUNT(
+        quic_donot_mark_stream_write_blocked_if_write_side_closed);
   }
+
   // If the stream is blocked by connection-level flow control but not by
   // stream-level flow control, add the stream to the write blocked list so that
   // the stream will be given a chance to write when a connection-level
   // WINDOW_UPDATE arrives.
-  if (connection_flow_controller_->IsBlocked() &&
+  if ((!GetQuicReloadableFlag(
+           quic_donot_mark_stream_write_blocked_if_write_side_closed) ||
+       !write_side_closed_) &&
+      connection_flow_controller_->IsBlocked() &&
       !flow_controller_->IsBlocked()) {
     session_->MarkConnectionLevelWriteBlocked(id());
   }
@@ -1139,8 +1144,7 @@ void QuicStream::OnStreamFrameLost(QuicStreamOffset offset,
 bool QuicStream::RetransmitStreamData(QuicStreamOffset offset,
                                       QuicByteCount data_length, bool fin,
                                       TransmissionType type) {
-  QUICHE_DCHECK(type == PTO_RETRANSMISSION || type == RTO_RETRANSMISSION ||
-                type == TLP_RETRANSMISSION || type == PROBING_RETRANSMISSION);
+  QUICHE_DCHECK(type == PTO_RETRANSMISSION);
   if (HasDeadlinePassed()) {
     OnDeadlinePassed();
     return true;
@@ -1296,7 +1300,11 @@ void QuicStream::WriteBufferedData(EncryptionLevel level) {
         was_draining_ = true;
       }
       CloseWriteSide();
-    } else if (fin && !consumed_data.fin_consumed) {
+    } else if (
+        fin && !consumed_data.fin_consumed &&
+        (!GetQuicReloadableFlag(
+             quic_donot_mark_stream_write_blocked_if_write_side_closed) ||
+         !write_side_closed_)) {
       session_->MarkConnectionLevelWriteBlocked(id());
     }
   } else {

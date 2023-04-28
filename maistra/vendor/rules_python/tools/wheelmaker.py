@@ -67,6 +67,7 @@ class WheelMaker(object):
             + ".dist-info/"
         )
         self._zipfile = None
+        # Entries for the RECORD file as (filename, hash, size) tuples.
         self._record = []
 
     def __enter__(self):
@@ -119,6 +120,9 @@ class WheelMaker(object):
         def arcname_from(name):
             # Always use unix path separators.
             normalized_arcname = name.replace(os.path.sep, "/")
+            # Don't manipulate names filenames in the .distinfo directory.
+            if normalized_arcname.startswith(self._distinfo_dir):
+                return normalized_arcname
             for prefix in self._strip_path_prefixes:
                 if normalized_arcname.startswith(prefix):
                     return normalized_arcname[len(prefix) :]
@@ -142,7 +146,7 @@ class WheelMaker(object):
         size = 0
         with open(real_filename, "rb") as f:
             while True:
-                block = f.read(2 ** 20)
+                block = f.read(2**20)
                 if not block:
                     break
                 hash.update(block)
@@ -210,7 +214,7 @@ Root-Is-Purelib: {}
         contents = b""
         for filename, digest, size in entries:
             if sys.version_info[0] > 2 and isinstance(filename, str):
-                filename = filename.encode("utf-8", "surrogateescape")
+                filename = filename.lstrip("/").encode("utf-8", "surrogateescape")
             contents += b"%s,%s,%s\n" % (filename, digest, size)
         self.add_string(record_path, contents)
 

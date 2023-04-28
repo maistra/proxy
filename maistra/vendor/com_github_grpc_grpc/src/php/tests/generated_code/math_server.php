@@ -17,12 +17,6 @@
  *
  */
 
-require dirname(__FILE__) . '/../../lib/Grpc/MethodDescriptor.php';
-require dirname(__FILE__) . '/../../lib/Grpc/Status.php';
-require dirname(__FILE__) . '/../../lib/Grpc/ServerCallReader.php';
-require dirname(__FILE__) . '/../../lib/Grpc/ServerCallWriter.php';
-require dirname(__FILE__) . '/../../lib/Grpc/ServerContext.php';
-require dirname(__FILE__) . '/../../lib/Grpc/RpcServer.php';
 include 'vendor/autoload.php';
 
 class MathService extends Math\MathStub
@@ -38,6 +32,21 @@ class MathService extends Math\MathStub
                 \Grpc\Status::status(
                     \Grpc\STATUS_INVALID_ARGUMENT,
                     'Cannot divide by zero'
+                )
+            );
+            return null;
+        }
+        // for GeneratedCodeTest::testRetry
+        $metadata = $context->clientMetadata();
+        if (array_key_exists('response-unavailable', $metadata)) {
+            $trailingMetadata = array_key_exists('grpc-previous-rpc-attempts', $metadata)
+            ? ['unavailable-retry-attempts' => $metadata['grpc-previous-rpc-attempts']]
+            : null;
+            $context->setStatus(
+                \Grpc\Status::status(
+                    \Grpc\STATUS_UNAVAILABLE,
+                    "unavailable",
+                    $trailingMetadata
                 )
             );
             return null;

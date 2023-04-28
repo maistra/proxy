@@ -101,8 +101,8 @@ public class DiagnosticErrorListener: BaseErrorListener {
         let decision: Int = dfa.decision
         let ruleIndex: Int = dfa.atnStartState.ruleIndex!
 
-        var ruleNames: [String] = recognizer.getRuleNames()
-        if ruleIndex < 0 || ruleIndex >= ruleNames.count {
+        let ruleNames: [String] = recognizer.getRuleNames()
+        guard ruleNames.indices.contains(ruleIndex) else {
             return String(decision)
         }
 

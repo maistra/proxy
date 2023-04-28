@@ -28,16 +28,21 @@ bazel_integration_test(
 )
 
 bazel_integration_test(
-    name = "pip_repository_annotations_example",
+    name = "pip_parse_vendored_example",
     timeout = "long",
+    tags = ["fix-windows"],
 )
 
 bazel_integration_test(
-    name = "py_import_example",
+    name = "pip_repository_annotations_example",
     timeout = "long",
 )
 
 bazel_integration_test(
     name = "relative_requirements_example",
     timeout = "long",
+)
+
+bazel_integration_test(
+    name = "bzlmod_example",
 )

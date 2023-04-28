@@ -221,6 +221,41 @@ ios_unit_test(
 )
 ```
 
+### Codesigning performance
+
+For larger applications, codesigning the final binary might be a
+bottleneck in incremental build performance. [Michael Eisel
+discovered](https://eisel.me/signing) a few clever optimizations for
+improving this performance for debug builds. To use these with bazel you
+can add something like this to your top level app rule, for example with
+`ios_application`:
+
+```bzl
+config_setting(
+    name = "dbg",
+    values = {"compilation_mode": "dbg"},
+)
+
+ios_application(
+    ...
+    codesignopts = select({
+        ":dbg": [
+            "--digest-algorithm=sha1",
+            "--resource-rules=$(RESOURCE_RULES)",
+        ],
+        "//conditions:default": [],
+    }),
+    codesign_inputs = select({
+        ":dbg": ["@build_bazel_rules_apple//tools/codesigningtool:disable_signing_resource_rules"],
+        "//conditions:default": [],
+    }),
+    toolchains = select({
+        "//:dbg": ["@build_bazel_rules_apple//tools/codesigningtool:disable_signing_resource_rules"],
+        "//conditions:default": [],
+    }),
+)
+```
+
 ### Localization Handling
 
 The Apple bundling rules have two flags for limiting which \*.lproj directories
@@ -430,3 +465,12 @@ work i.e. naming your tests something like `ModelsTests` residing at `src/Models
 runfiles will break. To fix this rename the test target to something like `ModelsUnitTests`
 
 This issue is tracked [here](https://github.com/bazelbuild/bazel/issues/12312)
+
+### Xcode's Issue navigator
+
+If integrating with Xcode, the relative paths in test binaries can prevent the
+Issue navigator from working for test failures. To work around this, you can
+have the paths made absolute via swizzling by enabling the
+`"apple.swizzle_absolute_xcttestsourcelocation"` feature. You'll also need to
+set the `BAZEL_WORKSPACE_DIRECTORY` environment variable in your scheme to the
+root of your workspace (i.e. `$(SRCROOT)`).

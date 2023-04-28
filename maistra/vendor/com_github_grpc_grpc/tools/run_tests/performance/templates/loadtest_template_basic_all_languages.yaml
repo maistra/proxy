@@ -24,14 +24,39 @@ spec:
     language: csharp
     pool: ${client_pool}
     run:
-      args:
-      - exec
-      - qps_worker/Grpc.IntegrationTesting.QpsWorker.dll
+    - args:
+      - -c
+      - |
+        timeout --kill-after="${KILL_AFTER}" "${POD_TIMEOUT}" dotnet exec \
+            qps_worker/Grpc.IntegrationTesting.QpsWorker.dll \
+            --driver_port="${DRIVER_PORT}"
       command:
-      - dotnet
+      - bash
+      name: main
+  - build:
+      command:
+      - bash
+      - /build_scripts/build_qps_worker.sh
+    clone:
+      gitRef: master
+      repo: https://github.com/grpc/grpc-dotnet.git
+    language: dotnet
+    pool: ${client_pool}
+    run:
+    - args:
+      - -c
+      # TODO(jtattermusch): why is the extra "--" in cmdline needed?
+      - |
+        timeout --kill-after="${KILL_AFTER}" "${POD_TIMEOUT}" \
+            qps_worker/QpsWorker -- --driver_port="${DRIVER_PORT}"
+      command:
+      - bash
+      name: main
   - build:
       args:
       - build
+      - --config
+      - opt
       - //test/cpp/qps:qps_worker
       command:
       - bazel
@@ -41,8 +66,14 @@ spec:
     language: cxx
     pool: ${client_pool}
     run:
+    - args:
+      - -c
+      - |
+        timeout --kill-after="${KILL_AFTER}" "${POD_TIMEOUT}" \
+            bazel-bin/test/cpp/qps/qps_worker --driver_port="${DRIVER_PORT}"
       command:
-      - bazel-bin/test/cpp/qps/qps_worker
+      - bash
+      name: main
   - build:
       args:
       - build
@@ -57,8 +88,14 @@ spec:
     language: go
     pool: ${client_pool}
     run:
+    - args:
+      - -c
+      - |
+        timeout --kill-after="${KILL_AFTER}" "${POD_TIMEOUT}" \
+            /src/workspace/bin/worker --driver_port="${DRIVER_PORT}"
       command:
-      - /src/workspace/bin/worker
+      - bash
+      name: main
   - build:
       args:
       - -PskipAndroid=true
@@ -72,8 +109,14 @@ spec:
     language: java
     pool: ${client_pool}
     run:
+    - args:
+      - -c
+      - |
+        timeout --kill-after="${KILL_AFTER}" "${POD_TIMEOUT}" \
+            /run_scripts/run_worker.sh
       command:
-      - benchmarks/build/install/grpc-benchmarks/bin/benchmark_worker
+      - bash
+      name: main
   - build:
       command:
       - bash
@@ -84,13 +127,15 @@ spec:
     language: node
     pool: ${client_pool}
     run:
-      args:
-      - -r
-      - ./test/fixtures/native_native.js
-      - test/performance/worker.js
-      - --benchmark_impl=grpc
+    - args:
+      - -c
+      - |
+        timeout --kill-after="${KILL_AFTER}" "${POD_TIMEOUT}" node -r \
+            ./test/fixtures/native_native.js test/performance/worker.js \
+            --benchmark_impl=grpc --driver_port="${DRIVER_PORT}"
       command:
-      - node
+      - bash
+      name: main
   - build:
       command:
       - bash
@@ -101,12 +146,37 @@ spec:
     language: php7
     pool: ${client_pool}
     run:
+    - args:
+      - -c
+      - |
+        timeout --kill-after="${KILL_AFTER}" "${POD_TIMEOUT}" \
+        /run_scripts/run_worker.sh
       command:
       - bash
-      - /run_scripts/run_worker.sh
+      name: main
+  - build:
+      command:
+      - bash
+      - /build_scripts/build_qps_worker.sh
+    clone:
+      gitRef: master
+      repo: https://github.com/grpc/grpc.git
+    language: php7_protobuf_c
+    pool: ${client_pool}
+    run:
+    - args:
+      - -c
+      - |
+        timeout --kill-after="${KILL_AFTER}" "${POD_TIMEOUT}" \
+        /run_scripts/run_protobuf_c_worker.sh
+      command:
+      - bash
+      name: main
   - build:
       args:
       - build
+      - --compilation_mode
+      - opt
       - //src/python/grpcio_tests/tests/qps:qps_worker
       command:
       - bazel
@@ -116,11 +186,20 @@ spec:
     language: python
     pool: ${client_pool}
     run:
+    - args:
+      - -c
+      - |
+        timeout --kill-after="${KILL_AFTER}" "${POD_TIMEOUT}" \
+            bazel-bin/src/python/grpcio_tests/tests/qps/qps_worker \
+            --driver_port="${DRIVER_PORT}"
       command:
-      - bazel-bin/src/python/grpcio_tests/tests/qps/qps_worker
+      - bash
+      name: main
   - build:
       args:
       - build
+      - --compilation_mode
+      - opt
       - //src/python/grpcio_tests/tests_aio/benchmark:worker
       command:
       - bazel
@@ -130,8 +209,15 @@ spec:
     language: python_asyncio
     pool: ${client_pool}
     run:
+    - args:
+      - -c
+      - |
+        timeout --kill-after="${KILL_AFTER}" "${POD_TIMEOUT}" \
+            bazel-bin/src/python/grpcio_tests/tests_aio/benchmark/worker \
+            --driver_port="${DRIVER_PORT}"
       command:
-      - bazel-bin/src/python/grpcio_tests/tests_aio/benchmark/worker
+      - bash
+      name: main
   - build:
       command:
       - bash
@@ -142,10 +228,17 @@ spec:
     language: ruby
     pool: ${client_pool}
     run:
-      args:
-      - src/ruby/qps/worker.rb
+    - args:
+      - -c
+      - |
+        timeout --kill-after="${KILL_AFTER}" "${POD_TIMEOUT}" ruby \
+            src/ruby/qps/worker.rb --driver_port="${DRIVER_PORT}"
       command:
-      - ruby
+      - bash
+      name: main
+  driver:
+    language: cxx
+    run: []
   results:
     bigQueryTable: ${big_query_table}
   servers:
@@ -159,14 +252,38 @@ spec:
     language: csharp
     pool: ${server_pool}
     run:
-      args:
-      - exec
-      - qps_worker/Grpc.IntegrationTesting.QpsWorker.dll
+    - args:
+      - -c
+      - |
+        timeout --kill-after="${KILL_AFTER}" "${POD_TIMEOUT}" dotnet exec \
+            qps_worker/Grpc.IntegrationTesting.QpsWorker.dll \
+            --driver_port="${DRIVER_PORT}"
       command:
-      - dotnet
+      - bash
+      name: main
+  - build:
+      command:
+      - bash
+      - /build_scripts/build_qps_worker.sh
+    clone:
+      gitRef: master
+      repo: https://github.com/grpc/grpc-dotnet.git
+    language: dotnet
+    pool: ${server_pool}
+    run:
+    - args:
+      - -c
+      - |
+        timeout --kill-after="${KILL_AFTER}" "${POD_TIMEOUT}" \
+            qps_worker/QpsWorker -- --driver_port="${DRIVER_PORT}"
+      command:
+      - bash
+      name: main
   - build:
       args:
       - build
+      - --config
+      - opt
       - //test/cpp/qps:qps_worker
       command:
       - bazel
@@ -176,10 +293,15 @@ spec:
     language: cxx
     pool: ${server_pool}
     run:
-      args:
-      - --server_port=10010
+    - args:
+      - -c
+      - |
+        timeout --kill-after="${KILL_AFTER}" "${POD_TIMEOUT}" \
+            bazel-bin/test/cpp/qps/qps_worker --driver_port="${DRIVER_PORT}" \
+            --server_port=10010
       command:
-      - bazel-bin/test/cpp/qps/qps_worker
+      - bash
+      name: main
   - build:
       args:
       - build
@@ -194,8 +316,14 @@ spec:
     language: go
     pool: ${server_pool}
     run:
+    - args:
+      - -c
+      - |
+        timeout --kill-after="${KILL_AFTER}" "${POD_TIMEOUT}" \
+            /src/workspace/bin/worker --driver_port="${DRIVER_PORT}"
       command:
-      - /src/workspace/bin/worker
+      - bash
+      name: main
   - build:
       args:
       - -PskipAndroid=true
@@ -209,8 +337,14 @@ spec:
     language: java
     pool: ${server_pool}
     run:
+    - args:
+      - -c
+      - |
+        timeout --kill-after="${KILL_AFTER}" "${POD_TIMEOUT}" \
+            /run_scripts/run_worker.sh
       command:
-      - benchmarks/build/install/grpc-benchmarks/bin/benchmark_worker
+      - bash
+      name: main
   - build:
       command:
       - bash
@@ -221,16 +355,20 @@ spec:
     language: node
     pool: ${server_pool}
     run:
-      args:
-      - -r
-      - ./test/fixtures/native_native.js
-      - test/performance/worker.js
-      - --benchmark_impl=grpc
+    - args:
+      - -c
+      - |
+        timeout --kill-after="${KILL_AFTER}" "${POD_TIMEOUT}" node -r \
+            ./test/fixtures/native_native.js test/performance/worker.js \
+            --benchmark_impl=grpc --driver_port="${DRIVER_PORT}"
       command:
-      - node
+      - bash
+      name: main
   - build:
       args:
       - build
+      - --compilation_mode
+      - opt
       - //src/python/grpcio_tests/tests/qps:qps_worker
       command:
       - bazel
@@ -240,11 +378,20 @@ spec:
     language: python
     pool: ${server_pool}
     run:
+    - args:
+      - -c
+      - |
+        timeout --kill-after="${KILL_AFTER}" "${POD_TIMEOUT}" \
+            bazel-bin/src/python/grpcio_tests/tests/qps/qps_worker \
+            --driver_port="${DRIVER_PORT}"
       command:
-      - bazel-bin/src/python/grpcio_tests/tests/qps/qps_worker
+      - bash
+      name: main
   - build:
       args:
       - build
+      - --compilation_mode
+      - opt
       - //src/python/grpcio_tests/tests_aio/benchmark:worker
       command:
       - bazel
@@ -254,8 +401,15 @@ spec:
     language: python_asyncio
     pool: ${server_pool}
     run:
+    - args:
+      - -c
+      - |
+        timeout --kill-after="${KILL_AFTER}" "${POD_TIMEOUT}" \
+            bazel-bin/src/python/grpcio_tests/tests_aio/benchmark/worker \
+            --driver_port="${DRIVER_PORT}"
       command:
-      - bazel-bin/src/python/grpcio_tests/tests_aio/benchmark/worker
+      - bash
+      name: main
   - build:
       command:
       - bash
@@ -266,9 +420,13 @@ spec:
     language: ruby
     pool: ${server_pool}
     run:
-      args:
-      - src/ruby/qps/worker.rb
+    - args:
+      - -c
+      - |
+        timeout --kill-after="${KILL_AFTER}" "${POD_TIMEOUT}" ruby \
+            src/ruby/qps/worker.rb --driver_port="${DRIVER_PORT}"
       command:
-      - ruby
+      - bash
+      name: main
   timeoutSeconds: ${timeout_seconds}
   ttlSeconds: 86400

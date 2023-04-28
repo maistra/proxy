@@ -15,11 +15,12 @@
  */
 
 // This is a sandbox for modeling C++17 code generator.
-// C++17 code generator: "flatc --cpp_std c++17".
+// C++17 code generator: "flatc --cpp-std c++17".
 // Warning:
 // This is an experimental feature and could change at any time.
 
 #include "flatbuffers/flatbuffers.h"
+#include "flatbuffers/flex_flat_util.h"
 #include "flatbuffers/flexbuffers.h"
 #include "flatbuffers/idl.h"
 #include "flatbuffers/minireflect.h"
@@ -32,6 +33,7 @@
 namespace cpp17 {
 #include "generated_cpp17/monster_test_generated.h"
 #include "generated_cpp17/optional_scalars_generated.h"
+#include "generated_cpp17/union_vector_generated.h"
 }  // namespace cpp17
 
 namespace cpp11 {
@@ -45,6 +47,7 @@ using ::cpp17::MyGame::Example::Vec3;
 /*******************************************************************************
 ** Build some FB objects.
 *******************************************************************************/
+namespace {
 const Monster *BuildMonster(flatbuffers::FlatBufferBuilder &fbb) {
   using ::cpp17::MyGame::Example::Color;
   using ::cpp17::MyGame::Example::MonsterBuilder;
@@ -143,6 +146,8 @@ void StringifyAnyFlatbuffersTypeTest() {
         any_unique_type = 0
         any_ambiguous_type = 0
         signed_enum = -1
+        long_enum_non_enum_default = 0
+        long_enum_normal_default = 2
       })";
 
   // Call a generic function that has no specific knowledge of the flatbuffer we
@@ -166,13 +171,13 @@ void StringifyAnyFlatbuffersTypeTest() {
 ** Test Traits::FieldType
 *******************************************************************************/
 using pos_type = Monster::Traits::FieldType<0>;
-static_assert(std::is_same_v<pos_type, const Vec3*>);
+static_assert(std::is_same_v<pos_type, const Vec3 *>);
 
 using mana_type = Monster::Traits::FieldType<1>;
 static_assert(std::is_same_v<mana_type, int16_t>);
 
 using name_type = Monster::Traits::FieldType<3>;
-static_assert(std::is_same_v<name_type, const flatbuffers::String*>);
+static_assert(std::is_same_v<name_type, const flatbuffers::String *>);
 
 /*******************************************************************************
 ** Generic Create Function Test.
@@ -248,6 +253,7 @@ int FlatBufferCpp17Tests() {
   StringifyAnyFlatbuffersTypeTest();
   return 0;
 }
+}  // namespace
 
 int main(int /*argc*/, const char * /*argv*/[]) {
   InitTestEngine();

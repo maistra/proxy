@@ -113,7 +113,9 @@ Config::Config()
       early_response(false),
       hexdump(false),
       echo_upload(false),
-      no_content_length(false) {}
+      no_content_length(false),
+      ktls(false),
+      no_rfc7540_pri(false) {}
 
 Config::~Config() {}
 
@@ -748,37 +750,37 @@ int Http2Handler::read_tls() {
 
   ERR_clear_error();
 
-  auto rv = SSL_read(ssl_, buf.data(), buf.size());
+  for (;;) {
+    auto rv = SSL_read(ssl_, buf.data(), buf.size());
 
-  if (rv <= 0) {
-    auto err = SSL_get_error(ssl_, rv);
-    switch (err) {
-    case SSL_ERROR_WANT_READ:
-      return write_(*this);
-    case SSL_ERROR_WANT_WRITE:
-      // renegotiation started
-      return -1;
-    default:
+    if (rv <= 0) {
+      auto err = SSL_get_error(ssl_, rv);
+      switch (err) {
+      case SSL_ERROR_WANT_READ:
+        return write_(*this);
+      case SSL_ERROR_WANT_WRITE:
+        // renegotiation started
+        return -1;
+      default:
+        return -1;
+      }
+    }
+
+    auto nread = rv;
+
+    if (get_config()->hexdump) {
+      util::hexdump(stdout, buf.data(), nread);
+    }
+
+    rv = nghttp2_session_mem_recv(session_, buf.data(), nread);
+    if (rv < 0) {
+      if (rv != NGHTTP2_ERR_BAD_CLIENT_MAGIC) {
+        std::cerr << "nghttp2_session_mem_recv() returned error: "
+                  << nghttp2_strerror(rv) << std::endl;
+      }
       return -1;
     }
   }
-
-  auto nread = rv;
-
-  if (get_config()->hexdump) {
-    util::hexdump(stdout, buf.data(), nread);
-  }
-
-  rv = nghttp2_session_mem_recv(session_, buf.data(), nread);
-  if (rv < 0) {
-    if (rv != NGHTTP2_ERR_BAD_CLIENT_MAGIC) {
-      std::cerr << "nghttp2_session_mem_recv() returned error: "
-                << nghttp2_strerror(rv) << std::endl;
-    }
-    return -1;
-  }
-
-  return write_(*this);
 }
 
 int Http2Handler::write_tls() {
@@ -860,6 +862,12 @@ int Http2Handler::connection_made() {
   if (config->window_bits != -1) {
     entry[niv].settings_id = NGHTTP2_SETTINGS_INITIAL_WINDOW_SIZE;
     entry[niv].value = (1 << config->window_bits) - 1;
+    ++niv;
+  }
+
+  if (config->no_rfc7540_pri) {
+    entry[niv].settings_id = NGHTTP2_SETTINGS_NO_RFC7540_PRIORITIES;
+    entry[niv].value = 1;
     ++niv;
   }
 
@@ -1797,7 +1805,7 @@ void worker_acceptcb(struct ev_loop *loop, ev_async *w, int revents) {
     q.swap(worker->q);
   }
 
-  for (auto c : q) {
+  for (const auto &c : q) {
     sessions->accept_connection(c.fd);
   }
 }
@@ -2121,6 +2129,12 @@ int HttpServer::run() {
                     SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION |
                     SSL_OP_SINGLE_ECDH_USE | SSL_OP_NO_TICKET |
                     SSL_OP_CIPHER_SERVER_PREFERENCE;
+
+#ifdef SSL_OP_ENABLE_KTLS
+    if (config_->ktls) {
+      ssl_opts |= SSL_OP_ENABLE_KTLS;
+    }
+#endif // SSL_OP_ENABLE_KTLS
 
     SSL_CTX_set_options(ssl_ctx, ssl_opts);
     SSL_CTX_set_mode(ssl_ctx, SSL_MODE_AUTO_RETRY);

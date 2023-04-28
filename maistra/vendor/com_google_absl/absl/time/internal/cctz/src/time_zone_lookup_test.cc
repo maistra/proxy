@@ -21,10 +21,14 @@
 #include <thread>
 #include <vector>
 
-#include "gtest/gtest.h"
 #include "absl/base/config.h"
-#include "absl/time/internal/cctz/include/cctz/civil_time.h"
 #include "absl/time/internal/cctz/include/cctz/time_zone.h"
+#if defined(__linux__)
+#include <features.h>
+#endif
+
+#include "gtest/gtest.h"
+#include "absl/time/internal/cctz/include/cctz/civil_time.h"
 
 namespace chrono = std::chrono;
 
@@ -485,6 +489,7 @@ const char* const kTimeZoneNames[] = {"Africa/Abidjan",
                                       "Europe/Kaliningrad",
                                       "Europe/Kiev",
                                       "Europe/Kirov",
+                                      "Europe/Kyiv",
                                       "Europe/Lisbon",
                                       "Europe/Ljubljana",
                                       "Europe/London",
@@ -524,6 +529,7 @@ const char* const kTimeZoneNames[] = {"Africa/Abidjan",
                                       "Europe/Zagreb",
                                       "Europe/Zaporozhye",
                                       "Europe/Zurich",
+                                      "Factory",
                                       "GB",
                                       "GB-Eire",
                                       "GMT",
@@ -1043,7 +1049,7 @@ TEST(MakeTime, LocalTimeLibC) {
   //  1) we know how to change the time zone used by localtime()/mktime(),
   //  2) cctz and localtime()/mktime() will use similar-enough tzdata, and
   //  3) we have some idea about how mktime() behaves during transitions.
-#if defined(__linux__) && !defined(__ANDROID__)
+#if defined(__linux__) && defined(__GLIBC__) && !defined(__ANDROID__)
   const char* const ep = getenv("TZ");
   std::string tz_name = (ep != nullptr) ? ep : "";
   for (const char* const* np = kTimeZoneNames; *np != nullptr; ++np) {
@@ -1184,11 +1190,12 @@ TEST(PrevTransition, AmericaNewYork) {
 
 TEST(NextTransition, Scan) {
   for (const char* const* np = kTimeZoneNames; *np != nullptr; ++np) {
+    SCOPED_TRACE(testing::Message() << "In " << *np);
     time_zone tz;
+    // EXPECT_TRUE(load_time_zone(*np, &tz));
     if (!load_time_zone(*np, &tz)) {
       continue;  // tolerate kTimeZoneNames/zoneinfo skew
     }
-    SCOPED_TRACE(testing::Message() << "In " << *np);
 
     auto tp = time_point<absl::time_internal::cctz::seconds>::min();
     time_zone::civil_transition trans;

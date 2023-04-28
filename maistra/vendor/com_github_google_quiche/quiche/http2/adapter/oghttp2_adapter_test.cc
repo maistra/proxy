@@ -9,8 +9,9 @@
 #include "quiche/http2/adapter/oghttp2_util.h"
 #include "quiche/http2/adapter/test_frame_sequence.h"
 #include "quiche/http2/adapter/test_utils.h"
+#include "quiche/common/platform/api/quiche_expect_bug.h"
 #include "quiche/common/platform/api/quiche_test.h"
-#include "quiche/common/platform/api/quiche_test_helpers.h"
+#include "quiche/spdy/core/http2_header_block.h"
 
 namespace http2 {
 namespace adapter {
@@ -44,14 +45,16 @@ enum FrameFlag {
 
 TEST(OgHttp2AdapterTest, IsServerSession) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
   EXPECT_TRUE(adapter->IsServerSession());
 }
 
 TEST(OgHttp2AdapterTest, ProcessBytes) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence seq;
@@ -64,16 +67,94 @@ TEST(OgHttp2AdapterTest, ProcessBytes) {
       TestFrameSequence().ClientPreface().Ping(17).Serialize());
 }
 
+TEST(OgHttp2AdapterTest, HeaderValuesWithObsTextAllowedByDefault) {
+  DataSavingVisitor visitor;
+  OgHttp2Session::Options options;
+  options.perspective = Perspective::kServer;
+  ASSERT_TRUE(options.allow_obs_text);
+  auto adapter = OgHttp2Adapter::Create(visitor, options);
+
+  const std::string frames = TestFrameSequence()
+                                 .ClientPreface()
+                                 .Headers(1,
+                                          {{":method", "GET"},
+                                           {":scheme", "https"},
+                                           {":authority", "example.com"},
+                                           {":path", "/"},
+                                           {"name", "val\xa1ue"}},
+                                          /*fin=*/true)
+                                 .Serialize();
+  testing::InSequence s;
+
+  // Client preface (empty SETTINGS)
+  EXPECT_CALL(visitor, OnFrameHeader(0, 0, SETTINGS, 0));
+  EXPECT_CALL(visitor, OnSettingsStart());
+  EXPECT_CALL(visitor, OnSettingsEnd());
+  // Stream 1
+  EXPECT_CALL(visitor, OnFrameHeader(1, _, HEADERS, 5));
+  EXPECT_CALL(visitor, OnBeginHeadersForStream(1));
+  EXPECT_CALL(visitor, OnHeaderForStream(1, ":method", "GET"));
+  EXPECT_CALL(visitor, OnHeaderForStream(1, ":scheme", "https"));
+  EXPECT_CALL(visitor, OnHeaderForStream(1, ":authority", "example.com"));
+  EXPECT_CALL(visitor, OnHeaderForStream(1, ":path", "/"));
+  EXPECT_CALL(visitor, OnHeaderForStream(1, "name", "val\xa1ue"));
+  EXPECT_CALL(visitor, OnEndHeadersForStream(1));
+  EXPECT_CALL(visitor, OnEndStream(1));
+
+  const int64_t result = adapter->ProcessBytes(frames);
+  EXPECT_EQ(frames.size(), static_cast<size_t>(result));
+}
+
+TEST(OgHttp2AdapterTest, HeaderValuesWithObsTextDisallowed) {
+  DataSavingVisitor visitor;
+  OgHttp2Session::Options options;
+  options.allow_obs_text = false;
+  options.perspective = Perspective::kServer;
+  auto adapter = OgHttp2Adapter::Create(visitor, options);
+
+  const std::string frames = TestFrameSequence()
+                                 .ClientPreface()
+                                 .Headers(1,
+                                          {{":method", "GET"},
+                                           {":scheme", "https"},
+                                           {":authority", "example.com"},
+                                           {":path", "/"},
+                                           {"name", "val\xa1ue"}},
+                                          /*fin=*/true)
+                                 .Serialize();
+  testing::InSequence s;
+
+  // Client preface (empty SETTINGS)
+  EXPECT_CALL(visitor, OnFrameHeader(0, 0, SETTINGS, 0));
+  EXPECT_CALL(visitor, OnSettingsStart());
+  EXPECT_CALL(visitor, OnSettingsEnd());
+  // Stream 1
+  EXPECT_CALL(visitor, OnFrameHeader(1, _, HEADERS, 5));
+  EXPECT_CALL(visitor, OnBeginHeadersForStream(1));
+  EXPECT_CALL(visitor, OnHeaderForStream(1, ":method", "GET"));
+  EXPECT_CALL(visitor, OnHeaderForStream(1, ":scheme", "https"));
+  EXPECT_CALL(visitor, OnHeaderForStream(1, ":authority", "example.com"));
+  EXPECT_CALL(visitor, OnHeaderForStream(1, ":path", "/"));
+  EXPECT_CALL(
+      visitor,
+      OnInvalidFrame(1, Http2VisitorInterface::InvalidFrameError::kHttpHeader));
+
+  const int64_t result = adapter->ProcessBytes(frames);
+  EXPECT_EQ(frames.size(), static_cast<size_t>(result));
+}
+
 TEST(OgHttp2AdapterTest, InitialSettingsNoExtendedConnect) {
   DataSavingVisitor client_visitor;
-  OgHttp2Adapter::Options client_options{.perspective = Perspective::kClient,
-                                         .max_header_list_bytes = 42,
-                                         .allow_extended_connect = false};
+  OgHttp2Adapter::Options client_options;
+  client_options.perspective = Perspective::kClient;
+  client_options.max_header_list_bytes = 42;
+  client_options.allow_extended_connect = false;
   auto client_adapter = OgHttp2Adapter::Create(client_visitor, client_options);
 
   DataSavingVisitor server_visitor;
-  OgHttp2Adapter::Options server_options{.perspective = Perspective::kServer,
-                                         .allow_extended_connect = false};
+  OgHttp2Adapter::Options server_options;
+  server_options.perspective = Perspective::kServer;
+  server_options.allow_extended_connect = false;
   auto server_adapter = OgHttp2Adapter::Create(server_visitor, server_options);
 
   testing::InSequence s;
@@ -126,13 +207,15 @@ TEST(OgHttp2AdapterTest, InitialSettingsNoExtendedConnect) {
 
 TEST(OgHttp2AdapterTest, InitialSettings) {
   DataSavingVisitor client_visitor;
-  OgHttp2Adapter::Options client_options{.perspective = Perspective::kClient,
-                                         .max_header_list_bytes = 42};
+  OgHttp2Adapter::Options client_options;
+  client_options.perspective = Perspective::kClient;
+  client_options.max_header_list_bytes = 42;
   ASSERT_TRUE(client_options.allow_extended_connect);
   auto client_adapter = OgHttp2Adapter::Create(client_visitor, client_options);
 
   DataSavingVisitor server_visitor;
-  OgHttp2Adapter::Options server_options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options server_options;
+  server_options.perspective = Perspective::kServer;
   ASSERT_TRUE(server_options.allow_extended_connect);
   auto server_adapter = OgHttp2Adapter::Create(server_visitor, server_options);
 
@@ -189,7 +272,8 @@ TEST(OgHttp2AdapterTest, InitialSettings) {
 
 TEST(OgHttp2AdapterTest, AutomaticSettingsAndPingAcks) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   const std::string frames =
@@ -228,8 +312,9 @@ TEST(OgHttp2AdapterTest, AutomaticSettingsAndPingAcks) {
 
 TEST(OgHttp2AdapterTest, AutomaticPingAcksDisabled) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer,
-                                  .auto_ping_ack = false};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
+  options.auto_ping_ack = false;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   const std::string frames =
@@ -263,9 +348,148 @@ TEST(OgHttp2AdapterTest, AutomaticPingAcksDisabled) {
               EqualsFrames({SpdyFrameType::SETTINGS, SpdyFrameType::SETTINGS}));
 }
 
+TEST(OgHttp2AdapterTest, InvalidMaxFrameSizeSetting) {
+  DataSavingVisitor visitor;
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
+  auto adapter = OgHttp2Adapter::Create(visitor, options);
+
+  const std::string frames =
+      TestFrameSequence().ClientPreface({{MAX_FRAME_SIZE, 3u}}).Serialize();
+  testing::InSequence s;
+
+  // Client preface
+  EXPECT_CALL(visitor, OnFrameHeader(0, 6, SETTINGS, 0));
+  EXPECT_CALL(visitor, OnSettingsStart());
+  EXPECT_CALL(
+      visitor,
+      OnInvalidFrame(0, Http2VisitorInterface::InvalidFrameError::kProtocol));
+  EXPECT_CALL(visitor, OnConnectionError(ConnectionError::kInvalidSetting));
+
+  const int64_t read_result = adapter->ProcessBytes(frames);
+  EXPECT_EQ(static_cast<size_t>(read_result), frames.size());
+
+  EXPECT_TRUE(adapter->want_write());
+
+  EXPECT_CALL(visitor, OnBeforeFrameSent(SETTINGS, 0, _, 0x0));
+  EXPECT_CALL(visitor, OnFrameSent(SETTINGS, 0, _, 0x0, 0));
+  EXPECT_CALL(visitor, OnBeforeFrameSent(GOAWAY, 0, _, 0x0));
+  EXPECT_CALL(visitor,
+              OnFrameSent(GOAWAY, 0, _, 0x0,
+                          static_cast<int>(Http2ErrorCode::PROTOCOL_ERROR)));
+
+  int send_result = adapter->Send();
+  EXPECT_EQ(0, send_result);
+  EXPECT_THAT(visitor.data(),
+              EqualsFrames({SpdyFrameType::SETTINGS, SpdyFrameType::GOAWAY}));
+}
+
+TEST(OgHttp2AdapterTest, InvalidPushSetting) {
+  DataSavingVisitor visitor;
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
+  auto adapter = OgHttp2Adapter::Create(visitor, options);
+
+  const std::string frames =
+      TestFrameSequence().ClientPreface({{ENABLE_PUSH, 3u}}).Serialize();
+  testing::InSequence s;
+
+  // Client preface
+  EXPECT_CALL(visitor, OnFrameHeader(0, 6, SETTINGS, 0));
+  EXPECT_CALL(visitor, OnSettingsStart());
+  EXPECT_CALL(
+      visitor,
+      OnInvalidFrame(0, Http2VisitorInterface::InvalidFrameError::kProtocol));
+  EXPECT_CALL(visitor, OnConnectionError(ConnectionError::kInvalidSetting));
+
+  const int64_t read_result = adapter->ProcessBytes(frames);
+  EXPECT_EQ(static_cast<size_t>(read_result), frames.size());
+
+  EXPECT_TRUE(adapter->want_write());
+
+  EXPECT_CALL(visitor, OnBeforeFrameSent(SETTINGS, 0, _, 0x0));
+  EXPECT_CALL(visitor, OnFrameSent(SETTINGS, 0, _, 0x0, 0));
+  EXPECT_CALL(visitor, OnBeforeFrameSent(GOAWAY, 0, _, 0x0));
+  EXPECT_CALL(visitor,
+              OnFrameSent(GOAWAY, 0, _, 0x0,
+                          static_cast<int>(Http2ErrorCode::PROTOCOL_ERROR)));
+
+  int send_result = adapter->Send();
+  EXPECT_EQ(0, send_result);
+  EXPECT_THAT(visitor.data(),
+              EqualsFrames({SpdyFrameType::SETTINGS, SpdyFrameType::GOAWAY}));
+}
+
+TEST(OgHttp2AdapterTest, InvalidConnectProtocolSetting) {
+  DataSavingVisitor visitor;
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
+  auto adapter = OgHttp2Adapter::Create(visitor, options);
+
+  const std::string frames = TestFrameSequence()
+                                 .ClientPreface({{ENABLE_CONNECT_PROTOCOL, 3u}})
+                                 .Serialize();
+  testing::InSequence s;
+
+  EXPECT_CALL(visitor, OnFrameHeader(0, 6, SETTINGS, 0));
+  EXPECT_CALL(visitor, OnSettingsStart());
+  EXPECT_CALL(
+      visitor,
+      OnInvalidFrame(0, Http2VisitorInterface::InvalidFrameError::kProtocol));
+  EXPECT_CALL(visitor, OnConnectionError(ConnectionError::kInvalidSetting));
+
+  int64_t read_result = adapter->ProcessBytes(frames);
+  EXPECT_EQ(static_cast<size_t>(read_result), frames.size());
+
+  EXPECT_TRUE(adapter->want_write());
+
+  EXPECT_CALL(visitor, OnBeforeFrameSent(SETTINGS, 0, _, 0x0));
+  EXPECT_CALL(visitor, OnFrameSent(SETTINGS, 0, _, 0x0, 0));
+  EXPECT_CALL(visitor, OnBeforeFrameSent(GOAWAY, 0, _, 0x0));
+  EXPECT_CALL(visitor,
+              OnFrameSent(GOAWAY, 0, _, 0x0,
+                          static_cast<int>(Http2ErrorCode::PROTOCOL_ERROR)));
+
+  int send_result = adapter->Send();
+  EXPECT_EQ(0, send_result);
+  EXPECT_THAT(visitor.data(),
+              EqualsFrames({SpdyFrameType::SETTINGS, SpdyFrameType::GOAWAY}));
+
+  auto adapter2 = OgHttp2Adapter::Create(visitor, options);
+  const std::string frames2 = TestFrameSequence()
+                                  .ClientPreface({{ENABLE_CONNECT_PROTOCOL, 1}})
+                                  .Settings({{ENABLE_CONNECT_PROTOCOL, 0}})
+                                  .Serialize();
+
+  EXPECT_CALL(visitor, OnFrameHeader(0, 6, SETTINGS, 0));
+  EXPECT_CALL(visitor, OnSettingsStart());
+  EXPECT_CALL(visitor, OnSetting(Http2Setting{ENABLE_CONNECT_PROTOCOL, 1u}));
+  EXPECT_CALL(visitor, OnSettingsEnd());
+  EXPECT_CALL(visitor, OnFrameHeader(0, 6, SETTINGS, 0));
+  EXPECT_CALL(visitor, OnSettingsStart());
+  EXPECT_CALL(
+      visitor,
+      OnInvalidFrame(0, Http2VisitorInterface::InvalidFrameError::kProtocol));
+  EXPECT_CALL(visitor, OnConnectionError(ConnectionError::kInvalidSetting));
+
+  read_result = adapter2->ProcessBytes(frames2);
+  EXPECT_EQ(static_cast<size_t>(read_result), frames2.size());
+
+  EXPECT_TRUE(adapter2->want_write());
+
+  EXPECT_CALL(visitor, OnBeforeFrameSent(SETTINGS, 0, _, 0x0));
+  EXPECT_CALL(visitor, OnFrameSent(SETTINGS, 0, _, 0x0, 0));
+  EXPECT_CALL(visitor, OnBeforeFrameSent(GOAWAY, 0, _, 0x0));
+  EXPECT_CALL(visitor,
+              OnFrameSent(GOAWAY, 0, _, 0x0,
+                          static_cast<int>(Http2ErrorCode::PROTOCOL_ERROR)));
+  adapter2->Send();
+}
+
 TEST(OgHttp2AdapterTest, ClientHandles100Headers) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -342,7 +566,8 @@ TEST(OgHttp2AdapterTest, ClientHandles100Headers) {
 
 TEST(OgHttp2AdapterTest, QueuingWindowUpdateAffectsWindow) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   EXPECT_EQ(adapter->GetReceiveWindowSize(), kInitialFlowControlWindowSize);
@@ -376,7 +601,8 @@ TEST(OgHttp2AdapterTest, QueuingWindowUpdateAffectsWindow) {
 
 TEST(OgHttp2AdapterTest, AckOfSettingInitialWindowSizeAffectsWindow) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -461,7 +687,8 @@ TEST(OgHttp2AdapterTest, AckOfSettingInitialWindowSizeAffectsWindow) {
 
 TEST(OgHttp2AdapterTest, ClientRejects100HeadersWithFin) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -527,7 +754,8 @@ TEST(OgHttp2AdapterTest, ClientRejects100HeadersWithFin) {
 
 TEST(OgHttp2AdapterTest, ClientRejects100HeadersWithContent) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -590,7 +818,8 @@ TEST(OgHttp2AdapterTest, ClientRejects100HeadersWithContent) {
 
 TEST(OgHttp2AdapterTest, ClientRejects100HeadersWithContentLength) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -657,7 +886,8 @@ TEST(OgHttp2AdapterTest, ClientRejects100HeadersWithContentLength) {
 
 TEST(OgHttp2AdapterTest, ClientHandles204WithContent) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -745,7 +975,8 @@ TEST(OgHttp2AdapterTest, ClientHandles204WithContent) {
 
 TEST(OgHttp2AdapterTest, ClientHandles304WithContent) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -809,7 +1040,8 @@ TEST(OgHttp2AdapterTest, ClientHandles304WithContent) {
 
 TEST(OgHttp2AdapterTest, ClientHandles304WithContentLength) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -866,7 +1098,8 @@ TEST(OgHttp2AdapterTest, ClientHandles304WithContentLength) {
 
 TEST(OgHttp2AdapterTest, ClientHandlesTrailers) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -946,7 +1179,8 @@ TEST(OgHttp2AdapterTest, ClientHandlesTrailers) {
 
 TEST(OgHttp2AdapterTest, ClientSendsTrailers) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -997,7 +1231,8 @@ TEST(OgHttp2AdapterTest, ClientSendsTrailers) {
 
 TEST(OgHttp2AdapterTest, ClientHandlesMetadata) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -1081,7 +1316,8 @@ TEST(OgHttp2AdapterTest, ClientHandlesMetadata) {
 
 TEST(OgHttp2AdapterTest, ClientHandlesMetadataWithEmptyPayload) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -1145,7 +1381,8 @@ TEST(OgHttp2AdapterTest, ClientHandlesMetadataWithEmptyPayload) {
 
 TEST(OgHttp2AdapterTest, ClientHandlesMetadataWithPayloadError) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -1219,7 +1456,8 @@ TEST(OgHttp2AdapterTest, ClientHandlesMetadataWithPayloadError) {
 
 TEST(OgHttp2AdapterTest, ClientHandlesMetadataWithCompletionError) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -1294,7 +1532,8 @@ TEST(OgHttp2AdapterTest, ClientHandlesMetadataWithCompletionError) {
 
 TEST(OgHttp2AdapterTest, ClientRstStreamWhileHandlingHeaders) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -1373,7 +1612,8 @@ TEST(OgHttp2AdapterTest, ClientRstStreamWhileHandlingHeaders) {
 
 TEST(OgHttp2AdapterTest, ClientConnectionErrorWhileHandlingHeaders) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -1446,7 +1686,8 @@ TEST(OgHttp2AdapterTest, ClientConnectionErrorWhileHandlingHeaders) {
 
 TEST(OgHttp2AdapterTest, ClientConnectionErrorWhileHandlingHeadersOnly) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -1518,7 +1759,8 @@ TEST(OgHttp2AdapterTest, ClientConnectionErrorWhileHandlingHeadersOnly) {
 
 TEST(OgHttp2AdapterTest, ClientRejectsHeaders) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -1587,7 +1829,8 @@ TEST(OgHttp2AdapterTest, ClientRejectsHeaders) {
 
 TEST(OgHttp2AdapterTest, ClientHandlesSmallerHpackHeaderTableSetting) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -1634,7 +1877,8 @@ TEST(OgHttp2AdapterTest, ClientHandlesSmallerHpackHeaderTableSetting) {
 
 TEST(OgHttp2AdapterTest, ClientHandlesLargerHpackHeaderTableSetting) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -1675,7 +1919,8 @@ TEST(OgHttp2AdapterTest, ClientHandlesLargerHpackHeaderTableSetting) {
 
 TEST(OgHttp2AdapterTest, ClientSendsHpackHeaderTableSetting) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -1810,7 +2055,8 @@ TEST(OgHttp2AdapterTest, ClientSendsHpackHeaderTableSetting) {
 // library should also invoke OnInvalidFrame() for the invalid HEADERS frame.
 TEST(OgHttp2AdapterTest, DISABLED_ClientHandlesInvalidTrailers) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -1891,7 +2137,8 @@ TEST(OgHttp2AdapterTest, DISABLED_ClientHandlesInvalidTrailers) {
 
 TEST(OgHttp2AdapterTest, ClientStartsShutdown) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   EXPECT_FALSE(adapter->want_write());
@@ -1915,7 +2162,8 @@ TEST(OgHttp2AdapterTest, ClientStartsShutdown) {
 
 TEST(OgHttp2AdapterTest, ClientReceivesGoAway) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -1996,7 +2244,8 @@ TEST(OgHttp2AdapterTest, ClientReceivesGoAway) {
 
 TEST(OgHttp2AdapterTest, ClientReceivesMultipleGoAways) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -2075,9 +2324,79 @@ TEST(OgHttp2AdapterTest, ClientReceivesMultipleGoAways) {
   EXPECT_THAT(visitor.data(), testing::IsEmpty());
 }
 
+TEST(OgHttp2AdapterTest, ClientReceivesMultipleGoAwaysWithIncreasingStreamId) {
+  DataSavingVisitor visitor;
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
+  auto adapter = OgHttp2Adapter::Create(visitor, options);
+
+  testing::InSequence s;
+
+  const std::vector<Header> headers1 =
+      ToHeaders({{":method", "GET"},
+                 {":scheme", "http"},
+                 {":authority", "example.com"},
+                 {":path", "/this/is/request/one"}});
+
+  const int32_t stream_id1 = adapter->SubmitRequest(headers1, nullptr, nullptr);
+  ASSERT_GT(stream_id1, 0);
+
+  EXPECT_CALL(visitor, OnBeforeFrameSent(SETTINGS, 0, _, 0x0));
+  EXPECT_CALL(visitor, OnFrameSent(SETTINGS, 0, _, 0x0, 0));
+  EXPECT_CALL(visitor, OnBeforeFrameSent(HEADERS, stream_id1, _, 0x5));
+  EXPECT_CALL(visitor, OnFrameSent(HEADERS, stream_id1, _, 0x5, 0));
+
+  int result = adapter->Send();
+  EXPECT_EQ(0, result);
+  absl::string_view data = visitor.data();
+  EXPECT_THAT(data, testing::StartsWith(spdy::kHttp2ConnectionHeaderPrefix));
+  data.remove_prefix(strlen(spdy::kHttp2ConnectionHeaderPrefix));
+  EXPECT_THAT(data,
+              EqualsFrames({SpdyFrameType::SETTINGS, SpdyFrameType::HEADERS}));
+  visitor.Clear();
+
+  const std::string frames =
+      TestFrameSequence()
+          .ServerPreface()
+          .GoAway(0, Http2ErrorCode::HTTP2_NO_ERROR, "")
+          .GoAway(0, Http2ErrorCode::ENHANCE_YOUR_CALM, "")
+          .GoAway(1, Http2ErrorCode::INTERNAL_ERROR, "")
+          .Serialize();
+
+  EXPECT_CALL(visitor, OnFrameHeader(0, 0, SETTINGS, 0));
+  EXPECT_CALL(visitor, OnSettingsStart());
+  EXPECT_CALL(visitor, OnSettingsEnd());
+  EXPECT_CALL(visitor, OnFrameHeader(0, _, GOAWAY, 0));
+  EXPECT_CALL(visitor, OnGoAway(0, Http2ErrorCode::HTTP2_NO_ERROR, ""));
+  EXPECT_CALL(visitor, OnCloseStream(1, Http2ErrorCode::REFUSED_STREAM));
+  EXPECT_CALL(visitor, OnFrameHeader(0, _, GOAWAY, 0));
+  EXPECT_CALL(visitor, OnGoAway(0, Http2ErrorCode::ENHANCE_YOUR_CALM, ""));
+  EXPECT_CALL(visitor, OnFrameHeader(0, _, GOAWAY, 0));
+  EXPECT_CALL(
+      visitor,
+      OnInvalidFrame(0, Http2VisitorInterface::InvalidFrameError::kProtocol));
+  // The oghttp2 stack also signals the error via OnConnectionError().
+  EXPECT_CALL(visitor,
+              OnConnectionError(ConnectionError::kInvalidGoAwayLastStreamId));
+
+  const int64_t frames_result = adapter->ProcessBytes(frames);
+  EXPECT_EQ(frames.size(), static_cast<size_t>(frames_result));
+
+  EXPECT_CALL(visitor, OnBeforeFrameSent(GOAWAY, 0, _, 0x0));
+  EXPECT_CALL(visitor,
+              OnFrameSent(GOAWAY, 0, _, 0x0,
+                          static_cast<int>(Http2ErrorCode::PROTOCOL_ERROR)));
+
+  EXPECT_TRUE(adapter->want_write());
+  result = adapter->Send();
+  EXPECT_EQ(0, result);
+  EXPECT_THAT(visitor.data(), EqualsFrames({SpdyFrameType::GOAWAY}));
+}
+
 TEST(OgHttp2AdapterTest, ClientReceivesGoAwayWithPendingStreams) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -2095,7 +2414,7 @@ TEST(OgHttp2AdapterTest, ClientReceivesGoAwayWithPendingStreams) {
 
   const std::string initial_frames =
       TestFrameSequence()
-          .ServerPreface({{.id = MAX_CONCURRENT_STREAMS, .value = 1}})
+          .ServerPreface({{MAX_CONCURRENT_STREAMS, 1}})
           .Serialize();
 
   // Server preface (SETTINGS with MAX_CONCURRENT_STREAMS)
@@ -2192,7 +2511,8 @@ TEST(OgHttp2AdapterTest, ClientReceivesGoAwayWithPendingStreams) {
 
 TEST(OgHttp2AdapterTest, ClientFailsOnGoAway) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -2269,7 +2589,8 @@ TEST(OgHttp2AdapterTest, ClientFailsOnGoAway) {
 
 TEST(OgHttp2AdapterTest, ClientRejects101Response) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -2340,7 +2661,8 @@ TEST(OgHttp2AdapterTest, ClientRejects101Response) {
 
 TEST(OgHttp2AdapterTest, ClientObeysMaxConcurrentStreams) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   EXPECT_FALSE(adapter->want_write());
@@ -2362,7 +2684,7 @@ TEST(OgHttp2AdapterTest, ClientObeysMaxConcurrentStreams) {
 
   const std::string initial_frames =
       TestFrameSequence()
-          .ServerPreface({{.id = MAX_CONCURRENT_STREAMS, .value = 1}})
+          .ServerPreface({{MAX_CONCURRENT_STREAMS, 1}})
           .Serialize();
   testing::InSequence s;
 
@@ -2468,7 +2790,8 @@ TEST(OgHttp2AdapterTest, ClientObeysMaxConcurrentStreams) {
 
 TEST(OgHttp2AdapterTest, ClientReceivesInitialWindowSetting) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   const std::string initial_frames =
@@ -2534,7 +2857,8 @@ TEST(OgHttp2AdapterTest, ClientReceivesInitialWindowSetting) {
 
 TEST(OgHttp2AdapterTest, ClientReceivesInitialWindowSettingAfterStreamStart) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   const std::string initial_frames =
@@ -2618,7 +2942,8 @@ TEST(OgHttp2AdapterTest, ClientReceivesInitialWindowSettingAfterStreamStart) {
 
 TEST(OgHttp2AdapterTest, InvalidInitialWindowSetting) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   const uint32_t kTooLargeInitialWindow = 1u << 31;
@@ -2661,7 +2986,8 @@ TEST(OgHttp2AdapterTest, InvalidInitialWindowSetting) {
 
 TEST(OggHttp2AdapterClientTest, InitialWindowSettingCausesOverflow) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -2742,7 +3068,8 @@ TEST(OggHttp2AdapterClientTest, InitialWindowSettingCausesOverflow) {
 
 TEST(OgHttp2AdapterTest, FailureSendingConnectionPreface) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   visitor.set_has_write_error();
@@ -2754,7 +3081,8 @@ TEST(OgHttp2AdapterTest, FailureSendingConnectionPreface) {
 
 TEST(OgHttp2AdapterTest, MaxFrameSizeSettingNotAppliedBeforeAck) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   const uint32_t large_frame_size = kDefaultFramePayloadSizeLimit + 42;
@@ -2824,7 +3152,8 @@ TEST(OgHttp2AdapterTest, MaxFrameSizeSettingNotAppliedBeforeAck) {
 
 TEST(OgHttp2AdapterTest, MaxFrameSizeSettingAppliedAfterAck) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   const uint32_t large_frame_size = kDefaultFramePayloadSizeLimit + 42;
@@ -2895,7 +3224,8 @@ TEST(OgHttp2AdapterTest, MaxFrameSizeSettingAppliedAfterAck) {
 
 TEST(OgHttp2AdapterTest, ClientForbidsPushPromise) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -2968,7 +3298,8 @@ TEST(OgHttp2AdapterTest, ClientForbidsPushPromise) {
 
 TEST(OgHttp2AdapterTest, ClientForbidsPushStream) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -3041,7 +3372,8 @@ TEST(OgHttp2AdapterTest, ClientForbidsPushStream) {
 
 TEST(OgHttp2AdapterTest, ClientReceivesDataOnClosedStream) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   EXPECT_CALL(visitor, OnBeforeFrameSent(SETTINGS, 0, _, 0x0));
@@ -3133,7 +3465,8 @@ TEST(OgHttp2AdapterTest, ClientReceivesDataOnClosedStream) {
 
 TEST(OgHttp2AdapterTest, ClientEncountersFlowControlBlock) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -3215,7 +3548,8 @@ TEST(OgHttp2AdapterTest, ClientEncountersFlowControlBlock) {
 
 TEST(OgHttp2AdapterTest, ClientSendsTrailersAfterFlowControlBlock) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -3278,7 +3612,8 @@ TEST(OgHttp2AdapterTest, ClientSendsTrailersAfterFlowControlBlock) {
 
 TEST(OgHttp2AdapterTest, ClientSendsMetadataAfterFlowControlBlock) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -3323,7 +3658,8 @@ TEST(OgHttp2AdapterTest, ClientSendsMetadataAfterFlowControlBlock) {
 
 TEST(OgHttp2AdapterTest, ClientQueuesRequests) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kClient;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -3404,7 +3740,8 @@ TEST(OgHttp2AdapterTest, ClientQueuesRequests) {
 
 TEST(OgHttp2AdapterTest, SubmitMetadata) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   auto source = absl::make_unique<TestMetadataSource>(ToHeaderBlock(ToHeaders(
@@ -3427,7 +3764,8 @@ TEST(OgHttp2AdapterTest, SubmitMetadata) {
 
 TEST(OgHttp2AdapterTest, SubmitMetadataMultipleFrames) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   const auto kLargeValue = std::string(63 * 1024, 'a');
@@ -3462,7 +3800,8 @@ TEST(OgHttp2AdapterTest, SubmitMetadataMultipleFrames) {
 
 TEST(OgHttp2AdapterTest, SubmitConnectionMetadata) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   auto source = absl::make_unique<TestMetadataSource>(ToHeaderBlock(ToHeaders(
@@ -3485,7 +3824,8 @@ TEST(OgHttp2AdapterTest, SubmitConnectionMetadata) {
 
 TEST(OgHttp2AdapterTest, GetSendWindowSize) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   const int peer_window = adapter->GetSendWindowSize();
@@ -3494,7 +3834,8 @@ TEST(OgHttp2AdapterTest, GetSendWindowSize) {
 
 TEST(OgHttp2AdapterTest, MarkDataConsumedForNonexistentStream) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   // Send some data on stream 1 so the connection window manager doesn't
@@ -3531,7 +3872,8 @@ TEST(OgHttp2AdapterTest, MarkDataConsumedForNonexistentStream) {
 
 TEST(OgHttp2AdapterTest, TestSerialize) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   EXPECT_TRUE(adapter->want_read());
@@ -3576,7 +3918,8 @@ TEST(OgHttp2AdapterTest, TestSerialize) {
 
 TEST(OgHttp2AdapterTest, TestPartialSerialize) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   EXPECT_FALSE(adapter->want_write());
@@ -3611,7 +3954,8 @@ TEST(OgHttp2AdapterTest, TestPartialSerialize) {
 
 TEST(OgHttp2AdapterTest, TestStreamInitialWindowSizeUpdates) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   adapter->SubmitSettings({{INITIAL_WINDOW_SIZE, 80000}});
@@ -3684,7 +4028,8 @@ TEST(OgHttp2AdapterTest, TestStreamInitialWindowSizeUpdates) {
 
 TEST(OgHttp2AdapterTest, ConnectionErrorOnControlFrameSent) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   const std::string frames =
@@ -3724,7 +4069,8 @@ TEST(OgHttp2AdapterTest, ConnectionErrorOnControlFrameSent) {
 
 TEST(OgHttp2AdapterTest, ConnectionErrorOnDataFrameSent) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   const std::string frames = TestFrameSequence()
@@ -3787,7 +4133,8 @@ TEST(OgHttp2AdapterTest, ConnectionErrorOnDataFrameSent) {
 
 TEST(OgHttp2AdapterTest, ClientSendsContinuation) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
   EXPECT_FALSE(adapter->want_write());
 
@@ -3824,7 +4171,8 @@ TEST(OgHttp2AdapterTest, ClientSendsContinuation) {
 
 TEST(OgHttp2AdapterTest, ClientSendsMetadataWithContinuation) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
   EXPECT_FALSE(adapter->want_write());
 
@@ -3886,7 +4234,8 @@ TEST(OgHttp2AdapterTest, ClientSendsMetadataWithContinuation) {
 
 TEST(OgHttp2AdapterTest, RepeatedHeaderNames) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
   EXPECT_FALSE(adapter->want_write());
 
@@ -3950,7 +4299,8 @@ TEST(OgHttp2AdapterTest, RepeatedHeaderNames) {
 
 TEST(OgHttp2AdapterTest, ServerRespondsToRequestWithTrailers) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
   EXPECT_FALSE(adapter->want_write());
 
@@ -4035,8 +4385,9 @@ TEST(OgHttp2AdapterTest, ServerRespondsToRequestWithTrailers) {
 
 TEST(OgHttp2AdapterTest, ServerReceivesMoreHeaderBytesThanConfigured) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer,
-                                  .max_header_list_bytes = 42};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
+  options.max_header_list_bytes = 42;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
   EXPECT_FALSE(adapter->want_write());
 
@@ -4087,7 +4438,8 @@ TEST(OgHttp2AdapterTest, ServerReceivesMoreHeaderBytesThanConfigured) {
 
 TEST(OgHttp2AdapterTest, ServerSubmitsResponseWithDataSourceError) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
   EXPECT_FALSE(adapter->want_write());
 
@@ -4154,7 +4506,8 @@ TEST(OgHttp2AdapterTest, ServerSubmitsResponseWithDataSourceError) {
 
 TEST(OgHttp2AdapterTest, CompleteRequestWithServerResponse) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
   EXPECT_FALSE(adapter->want_write());
 
@@ -4211,7 +4564,8 @@ TEST(OgHttp2AdapterTest, CompleteRequestWithServerResponse) {
 
 TEST(OgHttp2AdapterTest, IncompleteRequestWithServerResponse) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
   EXPECT_FALSE(adapter->want_write());
 
@@ -4262,8 +4616,9 @@ TEST(OgHttp2AdapterTest, IncompleteRequestWithServerResponse) {
 
 TEST(OgHttp2AdapterTest, IncompleteRequestWithServerResponseRstStreamEnabled) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer,
-                                  .rst_stream_no_error_when_incomplete = true};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
+  options.rst_stream_no_error_when_incomplete = true;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
   EXPECT_FALSE(adapter->want_write());
 
@@ -4315,9 +4670,67 @@ TEST(OgHttp2AdapterTest, IncompleteRequestWithServerResponseRstStreamEnabled) {
   EXPECT_FALSE(adapter->want_write());
 }
 
+TEST(OgHttp2AdapterTest, ServerHandlesMultipleContentLength) {
+  DataSavingVisitor visitor;
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
+  auto adapter = OgHttp2Adapter::Create(visitor, options);
+  EXPECT_FALSE(adapter->want_write());
+
+  const std::string frames = TestFrameSequence()
+                                 .ClientPreface()
+                                 .Headers(1,
+                                          {{":method", "POST"},
+                                           {":scheme", "https"},
+                                           {":authority", "example.com"},
+                                           {":path", "/1"},
+                                           {"content-length", "7"},
+                                           {"content-length", "7"}},
+                                          /*fin=*/false)
+                                 .Headers(3,
+                                          {{":method", "POST"},
+                                           {":scheme", "https"},
+                                           {":authority", "example.com"},
+                                           {":path", "/3"},
+                                           {"content-length", "11"},
+                                           {"content-length", "13"}},
+                                          /*fin=*/false)
+                                 .Serialize();
+  testing::InSequence s;
+
+  // Client preface (empty SETTINGS)
+  EXPECT_CALL(visitor, OnFrameHeader(0, 0, SETTINGS, 0));
+  EXPECT_CALL(visitor, OnSettingsStart());
+  EXPECT_CALL(visitor, OnSettingsEnd());
+  // Stream 1
+  EXPECT_CALL(visitor, OnFrameHeader(1, _, HEADERS, 4));
+  EXPECT_CALL(visitor, OnBeginHeadersForStream(1));
+  EXPECT_CALL(visitor, OnHeaderForStream(1, ":method", "POST"));
+  EXPECT_CALL(visitor, OnHeaderForStream(1, ":scheme", "https"));
+  EXPECT_CALL(visitor, OnHeaderForStream(1, ":authority", "example.com"));
+  EXPECT_CALL(visitor, OnHeaderForStream(1, ":path", "/1"));
+  EXPECT_CALL(visitor, OnHeaderForStream(1, "content-length", "7"));
+  EXPECT_CALL(visitor, OnEndHeadersForStream(1));
+  // Stream 3
+  EXPECT_CALL(visitor, OnFrameHeader(3, _, HEADERS, 4));
+  EXPECT_CALL(visitor, OnBeginHeadersForStream(3));
+  EXPECT_CALL(visitor, OnHeaderForStream(3, ":method", "POST"));
+  EXPECT_CALL(visitor, OnHeaderForStream(3, ":scheme", "https"));
+  EXPECT_CALL(visitor, OnHeaderForStream(3, ":authority", "example.com"));
+  EXPECT_CALL(visitor, OnHeaderForStream(3, ":path", "/3"));
+  EXPECT_CALL(visitor, OnHeaderForStream(3, "content-length", "11"));
+  EXPECT_CALL(
+      visitor,
+      OnInvalidFrame(3, Http2VisitorInterface::InvalidFrameError::kHttpHeader));
+
+  const int64_t result = adapter->ProcessBytes(frames);
+  EXPECT_EQ(frames.size(), static_cast<size_t>(result));
+}
+
 TEST(OgHttp2AdapterTest, ServerSendsInvalidTrailers) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
   EXPECT_FALSE(adapter->want_write());
 
@@ -4394,9 +4807,97 @@ TEST(OgHttp2AdapterTest, ServerSendsInvalidTrailers) {
   EXPECT_THAT(visitor.data(), EqualsFrames({SpdyFrameType::HEADERS}));
 }
 
+TEST(OgHttp2AdapterTest, ServerQueuesMetadataThenTrailers) {
+  DataSavingVisitor visitor;
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
+  auto adapter = OgHttp2Adapter::Create(visitor, options);
+  EXPECT_FALSE(adapter->want_write());
+
+  const std::string frames = TestFrameSequence()
+                                 .ClientPreface()
+                                 .Headers(1,
+                                          {{":method", "GET"},
+                                           {":scheme", "https"},
+                                           {":authority", "example.com"},
+                                           {":path", "/"}},
+                                          /*fin=*/true)
+                                 .Serialize();
+  testing::InSequence s;
+
+  // Client preface (empty SETTINGS)
+  EXPECT_CALL(visitor, OnFrameHeader(0, 0, SETTINGS, 0));
+  EXPECT_CALL(visitor, OnSettingsStart());
+  EXPECT_CALL(visitor, OnSettingsEnd());
+  // Stream 1
+  EXPECT_CALL(visitor, OnFrameHeader(1, _, HEADERS, 5));
+  EXPECT_CALL(visitor, OnBeginHeadersForStream(1));
+  EXPECT_CALL(visitor, OnHeaderForStream(1, _, _)).Times(4);
+  EXPECT_CALL(visitor, OnEndHeadersForStream(1));
+  EXPECT_CALL(visitor, OnEndStream(1));
+
+  const int64_t result = adapter->ProcessBytes(frames);
+  EXPECT_EQ(frames.size(), static_cast<size_t>(result));
+
+  const absl::string_view kBody = "This is an example response body.";
+
+  // The body source must indicate that the end of the body is not the end of
+  // the stream.
+  auto body1 = absl::make_unique<TestDataFrameSource>(visitor, false);
+  body1->AppendPayload(kBody);
+  body1->EndData();
+  int submit_result = adapter->SubmitResponse(
+      1, ToHeaders({{":status", "200"}, {"x-comment", "Sure, sounds good."}}),
+      std::move(body1));
+  EXPECT_EQ(submit_result, 0);
+  EXPECT_TRUE(adapter->want_write());
+
+  EXPECT_CALL(visitor, OnBeforeFrameSent(SETTINGS, 0, _, 0x0));
+  EXPECT_CALL(visitor, OnFrameSent(SETTINGS, 0, _, 0x0, 0));
+  EXPECT_CALL(visitor, OnBeforeFrameSent(SETTINGS, 0, _, 0x1));
+  EXPECT_CALL(visitor, OnFrameSent(SETTINGS, 0, _, 0x1, 0));
+  EXPECT_CALL(visitor, OnBeforeFrameSent(HEADERS, 1, _, 0x4));
+  EXPECT_CALL(visitor, OnFrameSent(HEADERS, 1, _, 0x4, 0));
+  EXPECT_CALL(visitor, OnFrameSent(DATA, 1, _, 0x0, 0));
+
+  int send_result = adapter->Send();
+  EXPECT_EQ(0, send_result);
+  EXPECT_THAT(visitor.data(),
+              EqualsFrames({SpdyFrameType::SETTINGS, SpdyFrameType::SETTINGS,
+                            SpdyFrameType::HEADERS, SpdyFrameType::DATA}));
+  EXPECT_THAT(visitor.data(), testing::HasSubstr(kBody));
+  visitor.Clear();
+  EXPECT_FALSE(adapter->want_write());
+
+  spdy::Http2HeaderBlock block;
+  block["key"] = "wild value!";
+  adapter->SubmitMetadata(
+      1, 16384u, absl::make_unique<TestMetadataSource>(std::move(block)));
+
+  int trailer_result =
+      adapter->SubmitTrailer(1, ToHeaders({{":final-status", "a-ok"}}));
+  ASSERT_EQ(trailer_result, 0);
+  EXPECT_TRUE(adapter->want_write());
+
+  EXPECT_CALL(visitor, OnBeforeFrameSent(kMetadataFrameType, 1, _, 0x4));
+  EXPECT_CALL(visitor, OnFrameSent(kMetadataFrameType, 1, _, 0x4, 0));
+
+  EXPECT_CALL(visitor, OnBeforeFrameSent(HEADERS, 1, _, 0x5));
+  EXPECT_CALL(visitor, OnFrameSent(HEADERS, 1, _, 0x5, 0));
+
+  EXPECT_CALL(visitor, OnCloseStream(1, Http2ErrorCode::HTTP2_NO_ERROR));
+
+  send_result = adapter->Send();
+  EXPECT_EQ(0, send_result);
+  EXPECT_THAT(visitor.data(),
+              EqualsFrames({static_cast<SpdyFrameType>(kMetadataFrameType),
+                            SpdyFrameType::HEADERS}));
+}
+
 TEST(OgHttp2AdapterTest, ServerHandlesDataWithPadding) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   const std::string frames = TestFrameSequence()
@@ -4457,7 +4958,8 @@ TEST(OgHttp2AdapterTest, ServerHandlesDataWithPadding) {
 
 TEST(OgHttp2AdapterTest, ServerHandlesHostHeader) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   const std::string frames = TestFrameSequence()
@@ -4535,9 +5037,9 @@ TEST(OgHttp2AdapterTest, ServerHandlesHostHeader) {
 TEST(OgHttp2AdapterTest, ServerSubmitsTrailersWhileDataDeferred) {
   DataSavingVisitor visitor;
   for (const bool queue_trailers : {true, false}) {
-    OgHttp2Adapter::Options options{
-        .perspective = Perspective::kServer,
-        .trailers_require_end_data = queue_trailers};
+    OgHttp2Adapter::Options options;
+    options.perspective = Perspective::kServer;
+    options.trailers_require_end_data = queue_trailers;
     auto adapter = OgHttp2Adapter::Create(visitor, options);
 
     const std::string frames = TestFrameSequence()
@@ -4641,7 +5143,8 @@ TEST(OgHttp2AdapterTest, ServerSubmitsTrailersWhileDataDeferred) {
 
 TEST(OgHttp2AdapterTest, ClientDisobeysConnectionFlowControl) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   const std::string frames = TestFrameSequence()
@@ -4705,7 +5208,8 @@ TEST(OgHttp2AdapterTest, ClientDisobeysConnectionFlowControl) {
 
 TEST(OgHttp2AdapterTest, ClientDisobeysConnectionFlowControlWithOneDataFrame) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   // Allow the client to send a DATA frame that exceeds the connection flow
@@ -4785,7 +5289,8 @@ TEST(OgHttp2AdapterTest, ClientDisobeysConnectionFlowControlWithOneDataFrame) {
 
 TEST(OgHttp2AdapterTest, ClientDisobeysConnectionFlowControlAcrossReads) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   // Allow the client to send a DATA frame that exceeds the connection flow
@@ -4867,7 +5372,8 @@ TEST(OgHttp2AdapterTest, ClientDisobeysConnectionFlowControlAcrossReads) {
 
 TEST(OgHttp2AdapterTest, ClientDisobeysStreamFlowControl) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   const std::string frames = TestFrameSequence()
@@ -4949,7 +5455,8 @@ TEST(OgHttp2AdapterTest, ClientDisobeysStreamFlowControl) {
 
 TEST(OgHttp2AdapterTest, ServerErrorWhileHandlingHeaders) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   const std::string frames = TestFrameSequence()
@@ -5010,7 +5517,8 @@ TEST(OgHttp2AdapterTest, ServerErrorWhileHandlingHeaders) {
 
 TEST(OgHttp2AdapterTest, ServerErrorWhileHandlingHeadersDropsFrames) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   const std::string frames = TestFrameSequence()
@@ -5098,7 +5606,8 @@ TEST(OgHttp2AdapterTest, ServerErrorWhileHandlingHeadersDropsFrames) {
 
 TEST(OgHttp2AdapterTest, ServerConnectionErrorWhileHandlingHeaders) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   const std::string frames = TestFrameSequence()
@@ -5160,7 +5669,8 @@ TEST(OgHttp2AdapterTest, ServerConnectionErrorWhileHandlingHeaders) {
 
 TEST(OgHttp2AdapterTest, ServerErrorAfterHandlingHeaders) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   const std::string frames = TestFrameSequence()
@@ -5215,7 +5725,8 @@ TEST(OgHttp2AdapterTest, ServerErrorAfterHandlingHeaders) {
 // the frame header, which is a fatal error for the connection.
 TEST(OgHttp2AdapterTest, ServerRejectsFrameHeader) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   const std::string frames = TestFrameSequence()
@@ -5263,7 +5774,8 @@ TEST(OgHttp2AdapterTest, ServerRejectsFrameHeader) {
 
 TEST(OgHttp2AdapterTest, ServerRejectsBeginningOfData) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   const std::string frames = TestFrameSequence()
@@ -5324,9 +5836,10 @@ TEST(OgHttp2AdapterTest, ServerRejectsBeginningOfData) {
 
 TEST(OgHttp2AdapterTest, ServerReceivesTooLargeHeader) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer,
-                                  .max_header_list_bytes = 64 * 1024,
-                                  .max_header_field_size = 64 * 1024};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
+  options.max_header_list_bytes = 64 * 1024;
+  options.max_header_field_size = 64 * 1024;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   // Due to configuration, the library will accept a maximum of 64kB of huffman
@@ -5395,7 +5908,8 @@ TEST(OgHttp2AdapterTest, ServerReceivesTooLargeHeader) {
 
 TEST(OgHttp2AdapterTest, ServerReceivesInvalidAuthority) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   const std::string frames = TestFrameSequence()
@@ -5446,7 +5960,8 @@ TEST(OgHttp2AdapterTest, ServerReceivesInvalidAuthority) {
 
 TEST(OgHttpAdapterTest, ServerReceivesGoAway) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   const std::string frames = TestFrameSequence()
@@ -5501,9 +6016,189 @@ TEST(OgHttpAdapterTest, ServerReceivesGoAway) {
                             SpdyFrameType::HEADERS}));
 }
 
+TEST(OgHttp2AdapterTest, ServerSubmitResponse) {
+  DataSavingVisitor visitor;
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
+  auto adapter = OgHttp2Adapter::Create(visitor, options);
+  EXPECT_FALSE(adapter->want_write());
+
+  const std::string frames = TestFrameSequence()
+                                 .ClientPreface()
+                                 .Headers(1,
+                                          {{":method", "GET"},
+                                           {":scheme", "https"},
+                                           {":authority", "example.com"},
+                                           {":path", "/this/is/request/one"}},
+                                          /*fin=*/true)
+                                 .Serialize();
+  testing::InSequence s;
+
+  const char* kSentinel1 = "arbitrary pointer 1";
+
+  // Client preface (empty SETTINGS)
+  EXPECT_CALL(visitor, OnFrameHeader(0, 0, SETTINGS, 0));
+  EXPECT_CALL(visitor, OnSettingsStart());
+  EXPECT_CALL(visitor, OnSettingsEnd());
+  // Stream 1
+  EXPECT_CALL(visitor, OnFrameHeader(1, _, HEADERS, 5));
+  EXPECT_CALL(visitor, OnBeginHeadersForStream(1));
+  EXPECT_CALL(visitor, OnHeaderForStream(1, ":method", "GET"));
+  EXPECT_CALL(visitor, OnHeaderForStream(1, ":scheme", "https"));
+  EXPECT_CALL(visitor, OnHeaderForStream(1, ":authority", "example.com"));
+  EXPECT_CALL(visitor, OnHeaderForStream(1, ":path", "/this/is/request/one"));
+  EXPECT_CALL(visitor, OnEndHeadersForStream(1))
+      .WillOnce(testing::InvokeWithoutArgs([&adapter, kSentinel1]() {
+        adapter->SetStreamUserData(1, const_cast<char*>(kSentinel1));
+        return true;
+      }));
+  EXPECT_CALL(visitor, OnEndStream(1));
+
+  const int64_t result = adapter->ProcessBytes(frames);
+  EXPECT_EQ(frames.size(), result);
+
+  EXPECT_EQ(1, adapter->GetHighestReceivedStreamId());
+
+  // Server will want to send a SETTINGS and a SETTINGS ack.
+  EXPECT_TRUE(adapter->want_write());
+
+  EXPECT_CALL(visitor, OnBeforeFrameSent(SETTINGS, 0, 6, 0x0));
+  EXPECT_CALL(visitor, OnFrameSent(SETTINGS, 0, 6, 0x0, 0));
+  EXPECT_CALL(visitor, OnBeforeFrameSent(SETTINGS, 0, 0, 0x1));
+  EXPECT_CALL(visitor, OnFrameSent(SETTINGS, 0, 0, 0x1, 0));
+
+  int send_result = adapter->Send();
+  EXPECT_EQ(0, send_result);
+  EXPECT_THAT(visitor.data(),
+              EqualsFrames({SpdyFrameType::SETTINGS, SpdyFrameType::SETTINGS}));
+  visitor.Clear();
+
+  EXPECT_EQ(0, adapter->GetHpackEncoderDynamicTableSize());
+
+  EXPECT_FALSE(adapter->want_write());
+  const absl::string_view kBody = "This is an example response body.";
+  // A data fin is not sent so that the stream remains open, and the flow
+  // control state can be verified.
+  auto body1 = absl::make_unique<TestDataFrameSource>(visitor, false);
+  body1->AppendPayload(kBody);
+  int submit_result = adapter->SubmitResponse(
+      1,
+      ToHeaders({{":status", "404"},
+                 {"x-comment", "I have no idea what you're talking about."}}),
+      std::move(body1));
+  EXPECT_EQ(submit_result, 0);
+  EXPECT_TRUE(adapter->want_write());
+
+  // Stream user data should have been set successfully after receiving headers.
+  EXPECT_EQ(kSentinel1, adapter->GetStreamUserData(1));
+  adapter->SetStreamUserData(1, nullptr);
+  EXPECT_EQ(nullptr, adapter->GetStreamUserData(1));
+
+  EXPECT_CALL(visitor, OnBeforeFrameSent(HEADERS, 1, _, 0x4));
+  EXPECT_CALL(visitor, OnFrameSent(HEADERS, 1, _, 0x4, 0));
+  EXPECT_CALL(visitor, OnFrameSent(DATA, 1, _, 0x0, 0));
+
+  send_result = adapter->Send();
+  EXPECT_EQ(0, send_result);
+
+  EXPECT_THAT(visitor.data(),
+              EqualsFrames({SpdyFrameType::HEADERS, SpdyFrameType::DATA}));
+  EXPECT_THAT(visitor.data(), testing::HasSubstr(kBody));
+  EXPECT_FALSE(adapter->want_write());
+
+  // Some data was sent, so the remaining send window size should be less than
+  // the default.
+  EXPECT_LT(adapter->GetStreamSendWindowSize(1), kInitialFlowControlWindowSize);
+  EXPECT_GT(adapter->GetStreamSendWindowSize(1), 0);
+  // Send window for a nonexistent stream is not available.
+  EXPECT_EQ(adapter->GetStreamSendWindowSize(3), -1);
+
+  EXPECT_GT(adapter->GetHpackEncoderDynamicTableSize(), 0);
+}
+
+TEST(OgHttp2AdapterTest, ServerSubmitResponseWithResetFromClient) {
+  DataSavingVisitor visitor;
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
+  auto adapter = OgHttp2Adapter::Create(visitor, options);
+  EXPECT_FALSE(adapter->want_write());
+
+  const std::string frames = TestFrameSequence()
+                                 .ClientPreface()
+                                 .Headers(1,
+                                          {{":method", "GET"},
+                                           {":scheme", "https"},
+                                           {":authority", "example.com"},
+                                           {":path", "/this/is/request/one"}},
+                                          /*fin=*/true)
+                                 .Serialize();
+  testing::InSequence s;
+
+  // Client preface (empty SETTINGS)
+  EXPECT_CALL(visitor, OnFrameHeader(0, 0, SETTINGS, 0));
+  EXPECT_CALL(visitor, OnSettingsStart());
+  EXPECT_CALL(visitor, OnSettingsEnd());
+  // Stream 1
+  EXPECT_CALL(visitor, OnFrameHeader(1, _, HEADERS, 5));
+  EXPECT_CALL(visitor, OnBeginHeadersForStream(1));
+  EXPECT_CALL(visitor, OnHeaderForStream).Times(4);
+  EXPECT_CALL(visitor, OnEndHeadersForStream(1));
+  EXPECT_CALL(visitor, OnEndStream(1));
+
+  const int64_t result = adapter->ProcessBytes(frames);
+  EXPECT_EQ(frames.size(), result);
+
+  EXPECT_EQ(1, adapter->GetHighestReceivedStreamId());
+
+  // Server will want to send a SETTINGS and a SETTINGS ack.
+  EXPECT_TRUE(adapter->want_write());
+
+  EXPECT_CALL(visitor, OnBeforeFrameSent(SETTINGS, 0, 6, 0x0));
+  EXPECT_CALL(visitor, OnFrameSent(SETTINGS, 0, 6, 0x0, 0));
+  EXPECT_CALL(visitor, OnBeforeFrameSent(SETTINGS, 0, 0, 0x1));
+  EXPECT_CALL(visitor, OnFrameSent(SETTINGS, 0, 0, 0x1, 0));
+
+  int send_result = adapter->Send();
+  EXPECT_EQ(0, send_result);
+  EXPECT_THAT(visitor.data(),
+              EqualsFrames({SpdyFrameType::SETTINGS, SpdyFrameType::SETTINGS}));
+  visitor.Clear();
+
+  EXPECT_FALSE(adapter->want_write());
+  const absl::string_view kBody = "This is an example response body.";
+  auto body1 = absl::make_unique<TestDataFrameSource>(visitor, true);
+  body1->AppendPayload(kBody);
+  int submit_result = adapter->SubmitResponse(
+      1,
+      ToHeaders({{":status", "404"},
+                 {"x-comment", "I have no idea what you're talking about."}}),
+      std::move(body1));
+  EXPECT_EQ(submit_result, 0);
+  EXPECT_TRUE(adapter->want_write());
+
+  // Client resets the stream before the server can send the response.
+  const std::string reset =
+      TestFrameSequence().RstStream(1, Http2ErrorCode::CANCEL).Serialize();
+  EXPECT_CALL(visitor, OnFrameHeader(1, 4, RST_STREAM, 0));
+  EXPECT_CALL(visitor, OnRstStream(1, Http2ErrorCode::CANCEL));
+  EXPECT_CALL(visitor, OnCloseStream(1, Http2ErrorCode::CANCEL));
+  const int64_t reset_result = adapter->ProcessBytes(reset);
+  EXPECT_EQ(reset.size(), static_cast<size_t>(reset_result));
+
+  EXPECT_CALL(visitor, OnBeforeFrameSent(HEADERS, 1, _, _)).Times(0);
+  EXPECT_CALL(visitor, OnFrameSent(HEADERS, 1, _, _, _)).Times(0);
+  EXPECT_CALL(visitor, OnFrameSent(DATA, 1, _, _, _)).Times(0);
+
+  send_result = adapter->Send();
+  EXPECT_EQ(0, send_result);
+
+  EXPECT_THAT(visitor.data(), testing::IsEmpty());
+}
+
 TEST(OgHttp2AdapterTest, ServerRejectsStreamData) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   const std::string frames = TestFrameSequence()
@@ -5565,12 +6260,14 @@ TEST(OgHttp2AdapterTest, ServerRejectsStreamData) {
 // Exercises a naive mutually recursive test client and server. This test fails
 // without recursion guards in OgHttp2Session.
 TEST(OgHttp2AdapterInteractionTest, ClientServerInteractionTest) {
-  MockHttp2Visitor client_visitor;
-  auto client_adapter = OgHttp2Adapter::Create(
-      client_visitor, {.perspective = Perspective::kClient});
-  MockHttp2Visitor server_visitor;
-  auto server_adapter = OgHttp2Adapter::Create(
-      server_visitor, {.perspective = Perspective::kServer});
+  testing::NiceMock<MockHttp2Visitor> client_visitor;
+  OgHttp2Adapter::Options client_options;
+  client_options.perspective = Perspective::kClient;
+  auto client_adapter = OgHttp2Adapter::Create(client_visitor, client_options);
+  testing::NiceMock<MockHttp2Visitor> server_visitor;
+  OgHttp2Adapter::Options server_options;
+  server_options.perspective = Perspective::kServer;
+  auto server_adapter = OgHttp2Adapter::Create(server_visitor, server_options);
 
   // Feeds bytes sent from the client into the server's ProcessBytes.
   EXPECT_CALL(client_visitor, OnReadyToSend(_))
@@ -5627,7 +6324,8 @@ TEST(OgHttp2AdapterInteractionTest, ClientServerInteractionTest) {
 TEST(OgHttp2AdapterInteractionTest,
      ClientServerInteractionRepeatedHeaderNames) {
   DataSavingVisitor client_visitor;
-  OgHttp2Adapter::Options client_options{.perspective = Perspective::kClient};
+  OgHttp2Adapter::Options client_options;
+  client_options.perspective = Perspective::kClient;
   auto client_adapter = OgHttp2Adapter::Create(client_visitor, client_options);
 
   const std::vector<Header> headers1 =
@@ -5650,7 +6348,8 @@ TEST(OgHttp2AdapterInteractionTest,
   EXPECT_EQ(0, send_result);
 
   DataSavingVisitor server_visitor;
-  OgHttp2Adapter::Options server_options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options server_options;
+  server_options.perspective = Perspective::kServer;
   auto server_adapter = OgHttp2Adapter::Create(server_visitor, server_options);
 
   testing::InSequence s;
@@ -5680,7 +6379,8 @@ TEST(OgHttp2AdapterInteractionTest,
 
 TEST(OgHttp2AdapterTest, ServerForbidsNewStreamBelowWatermark) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   EXPECT_EQ(0, adapter->GetHighestReceivedStreamId());
@@ -5744,7 +6444,8 @@ TEST(OgHttp2AdapterTest, ServerForbidsNewStreamBelowWatermark) {
 
 TEST(OgHttp2AdapterTest, ServerForbidsWindowUpdateOnIdleStream) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   EXPECT_EQ(0, adapter->GetHighestReceivedStreamId());
@@ -5785,7 +6486,8 @@ TEST(OgHttp2AdapterTest, ServerForbidsWindowUpdateOnIdleStream) {
 
 TEST(OgHttp2AdapterTest, ServerForbidsDataOnIdleStream) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   EXPECT_EQ(0, adapter->GetHighestReceivedStreamId());
@@ -5828,7 +6530,8 @@ TEST(OgHttp2AdapterTest, ServerForbidsDataOnIdleStream) {
 
 TEST(OgHttp2AdapterTest, ServerForbidsRstStreamOnIdleStream) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   EXPECT_EQ(0, adapter->GetHighestReceivedStreamId());
@@ -5872,7 +6575,8 @@ TEST(OgHttp2AdapterTest, ServerForbidsRstStreamOnIdleStream) {
 
 TEST(OgHttp2AdapterTest, ServerForbidsNewStreamAboveStreamLimit) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
   adapter->SubmitSettings({{MAX_CONCURRENT_STREAMS, 1}});
 
@@ -5955,7 +6659,8 @@ TEST(OgHttp2AdapterTest, ServerForbidsNewStreamAboveStreamLimit) {
 
 TEST(OgHttp2AdapterTest, ServerRstStreamsNewStreamAboveStreamLimitBeforeAck) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
   adapter->SubmitSettings({{MAX_CONCURRENT_STREAMS, 1}});
 
@@ -6032,8 +6737,9 @@ TEST(OgHttp2AdapterTest, ServerRstStreamsNewStreamAboveStreamLimitBeforeAck) {
 
 TEST(OgHttp2AdapterTest, ServerForbidsProtocolPseudoheaderBeforeAck) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer,
-                                  .allow_extended_connect = false};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
+  options.allow_extended_connect = false;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   const std::string initial_frames =
@@ -6128,7 +6834,8 @@ TEST(OgHttp2AdapterTest, ServerForbidsProtocolPseudoheaderBeforeAck) {
 
 TEST(OgHttp2AdapterTest, ServerAllowsProtocolPseudoheaderAfterAck) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
   adapter->SubmitSettings({{ENABLE_CONNECT_PROTOCOL, 1}});
 
@@ -6185,7 +6892,8 @@ TEST(OgHttp2AdapterTest, ServerAllowsProtocolPseudoheaderAfterAck) {
 
 TEST(OgHttp2AdapterTest, SkipsSendingFramesForRejectedStream) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   const std::string initial_frames =
@@ -6251,7 +6959,8 @@ TEST(OgHttp2AdapterTest, SkipsSendingFramesForRejectedStream) {
 
 TEST(OgHttpAdapterServerTest, ServerStartsShutdown) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   EXPECT_FALSE(adapter->want_write());
@@ -6272,7 +6981,8 @@ TEST(OgHttpAdapterServerTest, ServerStartsShutdown) {
 
 TEST(OgHttp2AdapterTest, ServerStartsShutdownAfterGoaway) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   EXPECT_FALSE(adapter->want_write());
@@ -6301,8 +7011,9 @@ TEST(OgHttp2AdapterTest, ServerStartsShutdownAfterGoaway) {
 // when the blackhole option is enabled.
 TEST(OgHttp2AdapterTest, ConnectionErrorWithBlackholingData) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer,
-                                  .blackhole_data_on_connection_error = true};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
+  options.blackhole_data_on_connection_error = true;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   const std::string frames =
@@ -6332,8 +7043,9 @@ TEST(OgHttp2AdapterTest, ConnectionErrorWithBlackholingData) {
 // negative value for ProcessBytes() when the blackhole option is disabled.
 TEST(OgHttp2AdapterTest, ConnectionErrorWithoutBlackholingData) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer,
-                                  .blackhole_data_on_connection_error = false};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
+  options.blackhole_data_on_connection_error = false;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   const std::string frames =
@@ -6361,7 +7073,8 @@ TEST(OgHttp2AdapterTest, ConnectionErrorWithoutBlackholingData) {
 
 TEST(OgHttp2AdapterTest, ServerDoesNotSendFramesAfterImmediateGoAway) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   // Submit a custom initial SETTINGS frame with one setting.
@@ -6449,7 +7162,8 @@ TEST(OgHttp2AdapterTest, ServerDoesNotSendFramesAfterImmediateGoAway) {
 
 TEST(OgHttp2AdapterTest, ServerHandlesContentLength) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -6518,7 +7232,8 @@ TEST(OgHttp2AdapterTest, ServerHandlesContentLength) {
 
 TEST(OgHttp2AdapterTest, ServerHandlesContentLengthMismatch) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -6646,7 +7361,8 @@ TEST(OgHttp2AdapterTest, ServerHandlesContentLengthMismatch) {
 
 TEST(OgHttp2AdapterTest, ServerHandlesAsteriskPathForOptions) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -6689,7 +7405,8 @@ TEST(OgHttp2AdapterTest, ServerHandlesAsteriskPathForOptions) {
 
 TEST(OgHttp2AdapterTest, ServerHandlesInvalidPath) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -6778,7 +7495,8 @@ TEST(OgHttp2AdapterTest, ServerHandlesInvalidPath) {
 
 TEST(OgHttp2AdapterTest, ServerHandlesTeHeader) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -6844,7 +7562,8 @@ TEST(OgHttp2AdapterTest, ServerHandlesTeHeader) {
 
 TEST(OgHttp2AdapterTest, ServerHandlesConnectionSpecificHeaders) {
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{.perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   testing::InSequence s;
@@ -6973,10 +7692,10 @@ TEST(OgHttp2AdapterTest, ServerHandlesConnectionSpecificHeaders) {
 TEST(OgHttp2AdapterTest, ServerUsesCustomWindowUpdateStrategy) {
   // Test the use of a custom WINDOW_UPDATE strategy.
   DataSavingVisitor visitor;
-  OgHttp2Adapter::Options options{
-      .should_window_update_fn = [](int64_t /*limit*/, int64_t /*size*/,
-                                    int64_t /*delta*/) { return true; },
-      .perspective = Perspective::kServer};
+  OgHttp2Adapter::Options options;
+  options.should_window_update_fn = [](int64_t /*limit*/, int64_t /*size*/,
+                                       int64_t /*delta*/) { return true; };
+  options.perspective = Perspective::kServer;
   auto adapter = OgHttp2Adapter::Create(visitor, options);
 
   const std::string frames = TestFrameSequence()
@@ -7030,6 +7749,223 @@ TEST(OgHttp2AdapterTest, ServerUsesCustomWindowUpdateStrategy) {
               EqualsFrames({SpdyFrameType::SETTINGS, SpdyFrameType::SETTINGS,
                             SpdyFrameType::WINDOW_UPDATE,
                             SpdyFrameType::WINDOW_UPDATE}));
+}
+
+// Verifies that NoopHeaderValidator allows several header combinations that
+// would otherwise be invalid.
+TEST(OgHttp2AdapterTest, NoopHeaderValidatorTest) {
+  DataSavingVisitor visitor;
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
+  options.validate_http_headers = false;
+  auto adapter = OgHttp2Adapter::Create(visitor, options);
+
+  const std::string frames = TestFrameSequence()
+                                 .ClientPreface()
+                                 .Headers(1,
+                                          {{":method", "POST"},
+                                           {":scheme", "https"},
+                                           {":authority", "example.com"},
+                                           {":path", "/1"},
+                                           {"content-length", "7"},
+                                           {"content-length", "7"}},
+                                          /*fin=*/false)
+                                 .Headers(3,
+                                          {{":method", "POST"},
+                                           {":scheme", "https"},
+                                           {":authority", "example.com"},
+                                           {":path", "/3"},
+                                           {"content-length", "11"},
+                                           {"content-length", "13"}},
+                                          /*fin=*/false)
+                                 .Headers(5,
+                                          {{":method", "POST"},
+                                           {":scheme", "https"},
+                                           {":authority", "foo.com"},
+                                           {":path", "/"},
+                                           {"host", "bar.com"}},
+                                          /*fin=*/true)
+                                 .Headers(7,
+                                          {{":method", "POST"},
+                                           {":scheme", "https"},
+                                           {":authority", "example.com"},
+                                           {":path", "/"},
+                                           {"Accept", "uppercase, oh boy!"}},
+                                          /*fin=*/false)
+                                 .Headers(9,
+                                          {{":method", "POST"},
+                                           {":scheme", "https"},
+                                           {":authority", "ex|ample.com"},
+                                           {":path", "/"}},
+                                          /*fin=*/false)
+                                 .Headers(11,
+                                          {{":method", "GET"},
+                                           {":scheme", "https"},
+                                           {":authority", "example.com"},
+                                           {":path", "/"},
+                                           {"content-length", "nan"}},
+                                          /*fin=*/true)
+                                 .Serialize();
+  testing::InSequence s;
+
+  // Client preface (empty SETTINGS)
+  EXPECT_CALL(visitor, OnFrameHeader(0, 0, SETTINGS, 0));
+  EXPECT_CALL(visitor, OnSettingsStart());
+  EXPECT_CALL(visitor, OnSettingsEnd());
+  // Stream 1
+  EXPECT_CALL(visitor, OnFrameHeader(1, _, HEADERS, 4));
+  EXPECT_CALL(visitor, OnBeginHeadersForStream(1));
+  EXPECT_CALL(visitor, OnHeaderForStream(1, ":method", "POST"));
+  EXPECT_CALL(visitor, OnHeaderForStream(1, ":scheme", "https"));
+  EXPECT_CALL(visitor, OnHeaderForStream(1, ":authority", "example.com"));
+  EXPECT_CALL(visitor, OnHeaderForStream(1, ":path", "/1"));
+  EXPECT_CALL(visitor, OnHeaderForStream(1, "content-length", "7"));
+  EXPECT_CALL(visitor, OnHeaderForStream(1, "content-length", "7"));
+  EXPECT_CALL(visitor, OnEndHeadersForStream(1));
+  // Stream 3
+  EXPECT_CALL(visitor, OnFrameHeader(3, _, HEADERS, 4));
+  EXPECT_CALL(visitor, OnBeginHeadersForStream(3));
+  EXPECT_CALL(visitor, OnHeaderForStream(3, ":method", "POST"));
+  EXPECT_CALL(visitor, OnHeaderForStream(3, ":scheme", "https"));
+  EXPECT_CALL(visitor, OnHeaderForStream(3, ":authority", "example.com"));
+  EXPECT_CALL(visitor, OnHeaderForStream(3, ":path", "/3"));
+  EXPECT_CALL(visitor, OnHeaderForStream(3, "content-length", "11"));
+  EXPECT_CALL(visitor, OnHeaderForStream(3, "content-length", "13"));
+  EXPECT_CALL(visitor, OnEndHeadersForStream(3));
+  // Stream 5
+  EXPECT_CALL(visitor, OnFrameHeader(5, _, HEADERS, 5));
+  EXPECT_CALL(visitor, OnBeginHeadersForStream(5));
+  EXPECT_CALL(visitor, OnHeaderForStream(5, ":method", "POST"));
+  EXPECT_CALL(visitor, OnHeaderForStream(5, ":scheme", "https"));
+  EXPECT_CALL(visitor, OnHeaderForStream(5, ":authority", "foo.com"));
+  EXPECT_CALL(visitor, OnHeaderForStream(5, ":path", "/"));
+  EXPECT_CALL(visitor, OnHeaderForStream(5, "host", "bar.com"));
+  EXPECT_CALL(visitor, OnEndHeadersForStream(5));
+  EXPECT_CALL(visitor, OnEndStream(5));
+  // Stream 7
+  EXPECT_CALL(visitor, OnFrameHeader(7, _, HEADERS, 4));
+  EXPECT_CALL(visitor, OnBeginHeadersForStream(7));
+  EXPECT_CALL(visitor, OnHeaderForStream(7, ":method", "POST"));
+  EXPECT_CALL(visitor, OnHeaderForStream(7, ":scheme", "https"));
+  EXPECT_CALL(visitor, OnHeaderForStream(7, ":authority", "example.com"));
+  EXPECT_CALL(visitor, OnHeaderForStream(7, ":path", "/"));
+  EXPECT_CALL(visitor, OnHeaderForStream(7, "Accept", "uppercase, oh boy!"));
+  EXPECT_CALL(visitor, OnEndHeadersForStream(7));
+  // Stream 9
+  EXPECT_CALL(visitor, OnFrameHeader(9, _, HEADERS, 4));
+  EXPECT_CALL(visitor, OnBeginHeadersForStream(9));
+  EXPECT_CALL(visitor, OnHeaderForStream(9, ":method", "POST"));
+  EXPECT_CALL(visitor, OnHeaderForStream(9, ":scheme", "https"));
+  EXPECT_CALL(visitor, OnHeaderForStream(9, ":authority", "ex|ample.com"));
+  EXPECT_CALL(visitor, OnHeaderForStream(9, ":path", "/"));
+  EXPECT_CALL(visitor, OnEndHeadersForStream(9));
+  // Stream 11
+  EXPECT_CALL(visitor, OnFrameHeader(11, _, HEADERS, 5));
+  EXPECT_CALL(visitor, OnBeginHeadersForStream(11));
+  EXPECT_CALL(visitor, OnHeaderForStream(11, ":method", "GET"));
+  EXPECT_CALL(visitor, OnHeaderForStream(11, ":scheme", "https"));
+  EXPECT_CALL(visitor, OnHeaderForStream(11, ":authority", "example.com"));
+  EXPECT_CALL(visitor, OnHeaderForStream(11, ":path", "/"));
+  EXPECT_CALL(visitor, OnHeaderForStream(11, "content-length", "nan"));
+  EXPECT_CALL(visitor, OnEndHeadersForStream(11));
+  EXPECT_CALL(visitor, OnEndStream(11));
+
+  const int64_t result = adapter->ProcessBytes(frames);
+  EXPECT_EQ(frames.size(), static_cast<size_t>(result));
+}
+
+TEST(OgHttp2AdapterTest, NegativeFlowControlStreamResumption) {
+  DataSavingVisitor visitor;
+  OgHttp2Adapter::Options options;
+  options.perspective = Perspective::kServer;
+  auto adapter = OgHttp2Adapter::Create(visitor, options);
+
+  const std::string frames =
+      TestFrameSequence()
+          .ClientPreface({{INITIAL_WINDOW_SIZE, 128u * 1024u}})
+          .WindowUpdate(0, 1 << 20)
+          .Headers(1,
+                   {{":method", "GET"},
+                    {":scheme", "https"},
+                    {":authority", "example.com"},
+                    {":path", "/this/is/request/one"}},
+                   /*fin=*/true)
+          .Serialize();
+  testing::InSequence s;
+
+  // Client preface (empty SETTINGS)
+  EXPECT_CALL(visitor, OnFrameHeader(0, 6, SETTINGS, 0));
+  EXPECT_CALL(visitor, OnSettingsStart());
+  EXPECT_CALL(visitor,
+              OnSetting(Http2Setting{Http2KnownSettingsId::INITIAL_WINDOW_SIZE,
+                                     128u * 1024u}));
+  EXPECT_CALL(visitor, OnSettingsEnd());
+
+  EXPECT_CALL(visitor, OnFrameHeader(0, 4, WINDOW_UPDATE, 0));
+  EXPECT_CALL(visitor, OnWindowUpdate(0, 1 << 20));
+
+  // Stream 1
+  EXPECT_CALL(visitor, OnFrameHeader(1, _, HEADERS, 0x5));
+  EXPECT_CALL(visitor, OnBeginHeadersForStream(1));
+  EXPECT_CALL(visitor, OnHeaderForStream(1, _, _)).Times(4);
+  EXPECT_CALL(visitor, OnEndHeadersForStream(1));
+  EXPECT_CALL(visitor, OnEndStream(1));
+
+  const int64_t read_result = adapter->ProcessBytes(frames);
+  EXPECT_EQ(static_cast<size_t>(read_result), frames.size());
+
+  // Submit a response for the stream.
+  auto body = absl::make_unique<TestDataFrameSource>(visitor, true);
+  TestDataFrameSource& body_ref = *body;
+  body_ref.AppendPayload(std::string(70000, 'a'));
+  int submit_result = adapter->SubmitResponse(
+      1, ToHeaders({{":status", "200"}}), std::move(body));
+  ASSERT_EQ(0, submit_result);
+
+  EXPECT_CALL(visitor, OnBeforeFrameSent(SETTINGS, 0, _, 0x0));
+  EXPECT_CALL(visitor, OnFrameSent(SETTINGS, 0, _, 0x0, 0));
+
+  EXPECT_CALL(visitor, OnBeforeFrameSent(SETTINGS, 0, _, 0x1));
+  EXPECT_CALL(visitor, OnFrameSent(SETTINGS, 0, _, 0x1, 0));
+  EXPECT_CALL(visitor, OnBeforeFrameSent(HEADERS, 1, _, 0x4));
+  EXPECT_CALL(visitor, OnFrameSent(HEADERS, 1, _, 0x4, 0));
+  EXPECT_CALL(visitor, OnFrameSent(DATA, 1, _, 0x0, 0)).Times(5);
+
+  adapter->Send();
+  EXPECT_FALSE(adapter->want_write());
+
+  EXPECT_CALL(visitor, OnFrameHeader(0, 6, SETTINGS, 0));
+  EXPECT_CALL(visitor, OnSettingsStart());
+  EXPECT_CALL(visitor,
+              OnSetting(Http2Setting{Http2KnownSettingsId::INITIAL_WINDOW_SIZE,
+                                     64u * 1024u}));
+  EXPECT_CALL(visitor, OnSettingsEnd());
+
+  // Processing these SETTINGS will cause stream 1's send window to become
+  // negative.
+  adapter->ProcessBytes(TestFrameSequence()
+                            .Settings({{INITIAL_WINDOW_SIZE, 64u * 1024u}})
+                            .Serialize());
+  EXPECT_TRUE(adapter->want_write());
+  EXPECT_LT(adapter->GetStreamSendWindowSize(1), 0);
+
+  body_ref.AppendPayload("Stream should be resumed.");
+  adapter->ResumeStream(1);
+
+  EXPECT_CALL(visitor, OnBeforeFrameSent(SETTINGS, 0, _, 0x1));
+  EXPECT_CALL(visitor, OnFrameSent(SETTINGS, 0, _, 0x1, 0));
+  adapter->Send();
+  EXPECT_FALSE(adapter->want_write());
+
+  // Upon receiving the WINDOW_UPDATE, stream 1 should be ready to write.
+  EXPECT_CALL(visitor, OnFrameHeader(1, 4, WINDOW_UPDATE, 0));
+  EXPECT_CALL(visitor, OnWindowUpdate(1, 10000));
+  adapter->ProcessBytes(TestFrameSequence().WindowUpdate(1, 10000).Serialize());
+  EXPECT_TRUE(adapter->want_write());
+  EXPECT_GT(adapter->GetStreamSendWindowSize(1), 0);
+
+  EXPECT_CALL(visitor, OnFrameSent(DATA, 1, _, 0x0, 0));
+  adapter->Send();
 }
 
 }  // namespace

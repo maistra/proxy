@@ -16,17 +16,17 @@ namespace quic {
 
 struct QUIC_EXPORT_PRIVATE QuicCryptoFrame {
   QuicCryptoFrame() = default;
-  QuicCryptoFrame(EncryptionLevel level,
-                  QuicStreamOffset offset,
+  QuicCryptoFrame(EncryptionLevel level, QuicStreamOffset offset,
                   QuicPacketLength data_length);
-  QuicCryptoFrame(EncryptionLevel level,
-                  QuicStreamOffset offset,
+  QuicCryptoFrame(EncryptionLevel level, QuicStreamOffset offset,
                   absl::string_view data);
   ~QuicCryptoFrame();
 
   friend QUIC_EXPORT_PRIVATE std::ostream& operator<<(std::ostream& os,
                                                       const QuicCryptoFrame& s);
 
+  // TODO(haoyuewang) Consider replace the EncryptionLevel here with
+  // PacketNumberSpace.
   // When writing a crypto frame to a packet, the packet must be encrypted at
   // |level|. When a crypto frame is read, the encryption level of the packet it
   // was received in is put in |level|.
@@ -37,10 +37,8 @@ struct QUIC_EXPORT_PRIVATE QuicCryptoFrame {
   const char* data_buffer = nullptr;
   QuicStreamOffset offset = 0;  // Location of this data in the stream.
 
-  QuicCryptoFrame(EncryptionLevel level,
-                  QuicStreamOffset offset,
-                  const char* data_buffer,
-                  QuicPacketLength data_length);
+  QuicCryptoFrame(EncryptionLevel level, QuicStreamOffset offset,
+                  const char* data_buffer, QuicPacketLength data_length);
 };
 static_assert(sizeof(QuicCryptoFrame) <= 64,
               "Keep the QuicCryptoFrame size to a cacheline.");

@@ -25,9 +25,11 @@ class FakeGarbageCollector : public GarbageCollector {
   void CollectGarbage(GarbageCollector::Config config) override {
     stats_collector_->NotifyMarkingStarted(
         GarbageCollector::Config::CollectionType::kMajor,
+        GarbageCollector::Config::MarkingType::kAtomic,
         GarbageCollector::Config::IsForcedGC::kNotForced);
     stats_collector_->NotifyMarkingCompleted(live_bytes_);
-    stats_collector_->NotifySweepingCompleted();
+    stats_collector_->NotifySweepingCompleted(
+        GarbageCollector::Config::SweepingType::kAtomic);
     callcount_++;
   }
 
@@ -37,6 +39,9 @@ class FakeGarbageCollector : public GarbageCollector {
   }
 
   size_t epoch() const override { return callcount_; }
+  const EmbedderStackState* override_stack_state() const override {
+    return nullptr;
+  }
 
  private:
   StatsCollector* stats_collector_;
@@ -50,6 +55,8 @@ class MockGarbageCollector : public GarbageCollector {
   MOCK_METHOD(void, StartIncrementalGarbageCollection,
               (GarbageCollector::Config), (override));
   MOCK_METHOD(size_t, epoch, (), (const, override));
+  MOCK_METHOD(const EmbedderStackState*, override_stack_state, (),
+              (const, override));
 };
 
 void FakeAllocate(StatsCollector* stats_collector, size_t bytes) {

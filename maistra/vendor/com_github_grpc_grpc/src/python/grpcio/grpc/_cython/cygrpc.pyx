@@ -56,8 +56,6 @@ include "_cygrpc/time.pyx.pxi"
 include "_cygrpc/vtable.pyx.pxi"
 include "_cygrpc/_hooks.pyx.pxi"
 
-include "_cygrpc/iomgr.pyx.pxi"
-
 include "_cygrpc/grpc_gevent.pyx.pxi"
 
 include "_cygrpc/thread.pyx.pxi"
@@ -68,10 +66,6 @@ ELSE:
     include "_cygrpc/fork_posix.pyx.pxi"
 
 # Following pxi files are part of the Aio module
-include "_cygrpc/aio/iomgr/iomgr.pyx.pxi"
-include "_cygrpc/aio/iomgr/socket.pyx.pxi"
-include "_cygrpc/aio/iomgr/timer.pyx.pxi"
-include "_cygrpc/aio/iomgr/resolver.pyx.pxi"
 include "_cygrpc/aio/common.pyx.pxi"
 include "_cygrpc/aio/rpc_status.pyx.pxi"
 include "_cygrpc/aio/completion_queue.pyx.pxi"

@@ -44,6 +44,7 @@ go_test(
         "//pkg/v1:pkg",
         "//pkg/v1/empty",
         "//pkg/v1/match",
+        "//pkg/v1/partial",
         "//pkg/v1/random",
         "//pkg/v1/types",
         "//pkg/v1/validate",

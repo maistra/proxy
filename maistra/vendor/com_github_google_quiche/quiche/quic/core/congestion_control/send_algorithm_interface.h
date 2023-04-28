@@ -39,13 +39,11 @@ class QUIC_EXPORT_PRIVATE SendAlgorithmInterface {
         : bandwidth(bandwidth),
           rtt(rtt),
           allow_cwnd_to_decrease(allow_cwnd_to_decrease) {}
-    explicit NetworkParams(int burst_token) : burst_token(burst_token) {}
 
     bool operator==(const NetworkParams& other) const {
       return bandwidth == other.bandwidth && rtt == other.rtt &&
              max_initial_congestion_window ==
                  other.max_initial_congestion_window &&
-             burst_token == other.burst_token &&
              allow_cwnd_to_decrease == other.allow_cwnd_to_decrease &&
              is_rtt_trusted == other.is_rtt_trusted;
     }
@@ -53,18 +51,14 @@ class QUIC_EXPORT_PRIVATE SendAlgorithmInterface {
     QuicBandwidth bandwidth = QuicBandwidth::Zero();
     QuicTime::Delta rtt = QuicTime::Delta::Zero();
     int max_initial_congestion_window = 0;
-    int burst_token = 0;
     bool allow_cwnd_to_decrease = false;
     bool is_rtt_trusted = false;
   };
 
   static SendAlgorithmInterface* Create(
-      const QuicClock* clock,
-      const RttStats* rtt_stats,
-      const QuicUnackedPacketMap* unacked_packets,
-      CongestionControlType type,
-      QuicRandom* random,
-      QuicConnectionStats* stats,
+      const QuicClock* clock, const RttStats* rtt_stats,
+      const QuicUnackedPacketMap* unacked_packets, CongestionControlType type,
+      QuicRandom* random, QuicConnectionStats* stats,
       QuicPacketCount initial_congestion_window,
       SendAlgorithmInterface* old_send_algorithm);
 
@@ -95,10 +89,8 @@ class QUIC_EXPORT_PRIVATE SendAlgorithmInterface {
   // retransmittable.  |bytes_in_flight| is the number of bytes in flight before
   // the packet was sent.
   // Note: this function must be called for every packet sent to the wire.
-  virtual void OnPacketSent(QuicTime sent_time,
-                            QuicByteCount bytes_in_flight,
-                            QuicPacketNumber packet_number,
-                            QuicByteCount bytes,
+  virtual void OnPacketSent(QuicTime sent_time, QuicByteCount bytes_in_flight,
+                            QuicPacketNumber packet_number, QuicByteCount bytes,
                             HasRetransmittableData is_retransmittable) = 0;
 
   // Inform that |packet_number| has been neutered.
@@ -136,12 +128,6 @@ class QUIC_EXPORT_PRIVATE SendAlgorithmInterface {
 
   // Whether the send algorithm is currently in recovery.
   virtual bool InRecovery() const = 0;
-
-  // True when the congestion control is probing for more bandwidth and needs
-  // enough data to not be app-limited to do so.
-  // TODO(ianswett): In the future, this API may want to indicate the size of
-  // the probing packet.
-  virtual bool ShouldSendProbingPacket() const = 0;
 
   // Returns the size of the slow start congestion window in bytes,
   // aka ssthresh.  Only defined for Cubic and Reno, other algorithms return 0.

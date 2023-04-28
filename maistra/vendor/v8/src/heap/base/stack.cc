@@ -10,7 +10,6 @@
 #include "src/base/sanitizer/asan.h"
 #include "src/base/sanitizer/msan.h"
 #include "src/base/sanitizer/tsan.h"
-#include "src/heap/cppgc/globals.h"
 
 namespace heap {
 namespace base {
@@ -162,18 +161,6 @@ void Stack::IteratePointers(StackVisitor* visitor) const {
 void Stack::IteratePointersUnsafe(StackVisitor* visitor,
                                   uintptr_t stack_end) const {
   IteratePointersImpl(this, visitor, reinterpret_cast<intptr_t*>(stack_end));
-}
-
-const void* Stack::GetCurrentStackPointerForLocalVariables() {
-#if defined(__has_feature)
-#if __has_feature(safe_stack)
-  return __builtin___get_unsafe_stack_ptr();
-#else   // __has_feature(safe_stack)
-  return v8::base::Stack::GetCurrentStackPosition();
-#endif  // __has_feature(safe_stack)
-#else   // defined(__has_feature)
-  return v8::base::Stack::GetCurrentStackPosition();
-#endif  // defined(__has_feature)
 }
 
 }  // namespace base

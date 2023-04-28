@@ -16,6 +16,7 @@
 #include "src/objects/option-utils.h"
 #include "unicode/locid.h"
 #include "unicode/numberformatter.h"
+#include "unicode/numberrangeformatter.h"
 #include "unicode/plurrule.h"
 #include "unicode/unumberformatter.h"
 
@@ -191,6 +192,31 @@ MaybeHandle<String> JSPluralRules::ResolvePlural(
 
   icu::UnicodeString result =
       icu_plural_rules->select(formatted_number, status);
+  DCHECK(U_SUCCESS(status));
+
+  return Intl::ToString(isolate, result);
+}
+
+MaybeHandle<String> JSPluralRules::ResolvePluralRange(
+    Isolate* isolate, Handle<JSPluralRules> plural_rules, double x, double y) {
+  icu::PluralRules* icu_plural_rules = plural_rules->icu_plural_rules().raw();
+  DCHECK_NOT_NULL(icu_plural_rules);
+
+  Maybe<icu::number::LocalizedNumberRangeFormatter> maybe_range_formatter =
+      JSNumberFormat::GetRangeFormatter(
+          isolate, plural_rules->locale(),
+          *plural_rules->icu_number_formatter().raw());
+  MAYBE_RETURN(maybe_range_formatter, MaybeHandle<String>());
+
+  icu::number::LocalizedNumberRangeFormatter nrfmt =
+      maybe_range_formatter.FromJust();
+
+  UErrorCode status = U_ZERO_ERROR;
+  icu::number::FormattedNumberRange formatted = nrfmt.formatFormattableRange(
+      icu::Formattable(x), icu::Formattable(y), status);
+
+  DCHECK(U_SUCCESS(status));
+  icu::UnicodeString result = icu_plural_rules->select(formatted, status);
   DCHECK(U_SUCCESS(status));
 
   return Intl::ToString(isolate, result);

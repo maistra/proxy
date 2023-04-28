@@ -1,31 +1,35 @@
 #include "eval/public/cel_attribute.h"
 
+#include <string>
+
 #include "google/protobuf/arena.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "eval/public/cel_value.h"
 #include "eval/public/structs/cel_proto_wrapper.h"
+#include "internal/status_macros.h"
 #include "internal/testing.h"
 
-namespace google {
-namespace api {
-namespace expr {
-namespace runtime {
+namespace google::api::expr::runtime {
+namespace {
+
+using google::api::expr::v1alpha1::Expr;
 
 using ::google::protobuf::Duration;
 using ::google::protobuf::Timestamp;
-
 using testing::Eq;
 using testing::IsEmpty;
 using testing::SizeIs;
-
-namespace {
+using cel::internal::StatusIs;
 
 class DummyMap : public CelMap {
  public:
   absl::optional<CelValue> operator[](CelValue value) const override {
     return CelValue::CreateNull();
   }
-  const CelList* ListKeys() const override { return nullptr; }
+  absl::StatusOr<const CelList*> ListKeys() const override {
+    return absl::UnimplementedError("CelMap::ListKeys is not implemented");
+  }
 
   int size() const override { return 0; }
 };
@@ -313,9 +317,90 @@ TEST(CreateCelAttributePattern, Wildcards) {
   EXPECT_TRUE(pattern.qualifier_path()[2].IsWildcard());
 }
 
-}  // namespace
+TEST(CelAttribute, AsStringBasic) {
+  Expr expr;
+  expr.mutable_ident_expr()->set_name("var");
+  CelAttribute attr(
+      expr,
+      {
+          CelAttributeQualifier::Create(CelValue::CreateStringView("qual1")),
+          CelAttributeQualifier::Create(CelValue::CreateStringView("qual2")),
+          CelAttributeQualifier::Create(CelValue::CreateStringView("qual3")),
+      });
 
-}  // namespace runtime
-}  // namespace expr
-}  // namespace api
-}  // namespace google
+  ASSERT_OK_AND_ASSIGN(std::string string_format, attr.AsString());
+
+  EXPECT_EQ(string_format, "var.qual1.qual2.qual3");
+}
+
+TEST(CelAttribute, AsStringInvalidRoot) {
+  Expr expr;
+  expr.mutable_const_expr()->set_int64_value(1);
+
+  CelAttribute attr(
+      expr,
+      {
+          CelAttributeQualifier::Create(CelValue::CreateStringView("qual1")),
+          CelAttributeQualifier::Create(CelValue::CreateStringView("qual2")),
+          CelAttributeQualifier::Create(CelValue::CreateStringView("qual3")),
+      });
+
+  EXPECT_EQ(attr.AsString().status().code(),
+            absl::StatusCode::kInvalidArgument);
+}
+
+TEST(CelAttribute, InvalidQualifiers) {
+  Expr expr;
+  expr.mutable_ident_expr()->set_name("var");
+  google::protobuf::Arena arena;
+
+  CelAttribute attr1(expr, {
+                               CelAttributeQualifier::Create(
+                                   CelValue::CreateDuration(absl::Minutes(2))),
+                           });
+  CelAttribute attr2(expr,
+                     {
+                         CelAttributeQualifier::Create(
+                             CelProtoWrapper::CreateMessage(&expr, &arena)),
+                     });
+  CelAttribute attr3(
+      expr, {
+                CelAttributeQualifier::Create(CelValue::CreateBool(false)),
+            });
+
+  // Implementation detail: Messages as attribute qualifiers are unsupported,
+  // so the implementation treats them inequal to any other. This is included
+  // for coverage.
+  EXPECT_FALSE(attr1 == attr2);
+  EXPECT_FALSE(attr2 == attr1);
+  EXPECT_FALSE(attr2 == attr2);
+  EXPECT_FALSE(attr1 == attr3);
+  EXPECT_FALSE(attr3 == attr1);
+  EXPECT_FALSE(attr2 == attr3);
+  EXPECT_FALSE(attr3 == attr2);
+
+  // If the attribute includes an unsupported qualifier, return invalid argument
+  // error.
+  EXPECT_THAT(attr1.AsString(), StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(attr2.AsString(), StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(CelAttribute, AsStringQualiferTypes) {
+  Expr expr;
+  expr.mutable_ident_expr()->set_name("var");
+  CelAttribute attr(
+      expr,
+      {
+          CelAttributeQualifier::Create(CelValue::CreateStringView("qual1")),
+          CelAttributeQualifier::Create(CelValue::CreateUint64(1)),
+          CelAttributeQualifier::Create(CelValue::CreateInt64(-1)),
+          CelAttributeQualifier::Create(CelValue::CreateBool(false)),
+      });
+
+  ASSERT_OK_AND_ASSIGN(std::string string_format, attr.AsString());
+
+  EXPECT_EQ(string_format, "var.qual1[1][-1][false]");
+}
+
+}  // namespace
+}  // namespace google::api::expr::runtime

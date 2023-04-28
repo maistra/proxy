@@ -77,6 +77,7 @@ public:
     envoy::type::v3::Int64Range range_;
     Matchers::StringMatcherPtr string_match_;
     const bool invert_match_;
+    const bool treat_missing_as_empty_;
     bool present_;
 
     // HeaderMatcher
@@ -136,6 +137,13 @@ public:
    * @return bool true if the header values are valid, according to the aforementioned RFC.
    */
   static bool headerValueIsValid(const absl::string_view header_value);
+
+  /**
+   * Validates that a header name is valid, according to RFC 7230, section 3.2.
+   * http://tools.ietf.org/html/rfc7230#section-3.2
+   * @return bool true if the header name is valid, according to the aforementioned RFC.
+   */
+  static bool headerNameIsValid(const absl::string_view header_key);
 
   /**
    * Checks if header name contains underscore characters.
@@ -229,6 +237,14 @@ public:
    */
   static Http::Status checkRequiredResponseHeaders(const Http::ResponseHeaderMap& headers);
 
+  /* Does a common header check ensuring that header keys and values are valid and do not contain
+   * forbidden characters (e.g. valid HTTP header keys/values should never contain embedded NULLs
+   * or new lines.)
+   * @return Status containing the result. If failed, message includes details on which header key
+   * or value was invalid.
+   */
+  static Http::Status checkValidRequestHeaders(const Http::RequestHeaderMap& headers);
+
   /**
    * Returns true if a header may be safely removed without causing additional
    * problems. Effectively, header names beginning with ":" and the "host" header
@@ -289,6 +305,11 @@ public:
    */
   static std::string addEncodingToAcceptEncoding(absl::string_view accept_encoding_header,
                                                  absl::string_view encoding);
+
+  /**
+   * Return true if the given header name is a pseudo header.
+   */
+  static bool isPseudoHeader(absl::string_view header_name);
 };
 
 } // namespace Http

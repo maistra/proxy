@@ -1,5 +1,16 @@
-# Description
-#   Implementation of the conformance test server
+# Copyright 2021 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 package(default_visibility = ["//visibility:public"])
 
@@ -45,8 +56,8 @@ cc_binary(
         "@com_google_absl//absl/strings",
         "@com_google_cel_spec//proto/test/v1/proto2:test_all_types_cc_proto",
         "@com_google_cel_spec//proto/test/v1/proto3:test_all_types_cc_proto",
+        "@com_google_googleapis//google/api/expr/conformance/v1alpha1:conformance_cc_proto",
         "@com_google_googleapis//google/api/expr/v1alpha1:checked_cc_proto",
-        "@com_google_googleapis//google/api/expr/v1alpha1:conformance_service_cc_proto",
         "@com_google_googleapis//google/api/expr/v1alpha1:syntax_cc_proto",
         "@com_google_googleapis//google/rpc:code_cc_proto",
         "@com_google_protobuf//:protobuf",
@@ -66,38 +77,19 @@ cc_binary(
             # Tests which require spec changes.
             # TODO(issues/93): Deprecate Duration.getMilliseconds.
             "--skip_test=timestamps/duration_converters/get_milliseconds",
-            # TODO(issues/128): Remove +-0 handling from spec as it is not handled consistently between Go, Java, and C++
-            "--skip_test=dynamic/float/field_assign_proto2_round_to_zero,field_assign_proto3_round_to_zero",
-            # TODO(issues/110): Tune parse limits to mirror those for proto deserialization and C++ safety limits.
-            "--skip_test=parse/nest/list_index,message_literal,funcall,list_literal,map_literal;repeat/conditional,add_sub,mul_div,select,index,map_literal,message_literal",
 
             # Broken test cases which should be supported.
-            # TODO(issues/111): Byte literal decoding of invalid UTF-8 results in incorrect bytes output.
-            "--skip_test=basic/self_eval_nonzeroish/self_eval_bytes_invalid_utf8",
-            "--skip_test=string/bytes_concat/left_unit",
             # TODO(issues/112): Unbound functions result in empty eval response.
             "--skip_test=basic/functions/unbound",
             "--skip_test=basic/functions/unbound_is_runtime_error",
-            # TODO(issues/113): Aggregate values must logically AND element equality results.
-            "--skip_test=comparisons/eq_literal/not_eq_list_false_vs_types",
-            "--skip_test=comparisons/eq_literal/not_eq_map_false_vs_types",
-            # TODO(issues/114): Ensure the 'in' operator is a logical OR of element equality results.
-            "--skip_test=comparisons/in_list_literal/elem_in_mixed_type_list_error",
-            "--skip_test=comparisons/in_map_literal/key_in_mixed_key_type_map_error",
+            # TODO(issues/116): Debug why dynamic/list/var fails to JSON parse correctly.
+            "--skip_test=dynamic/list/var",
             # TODO(issues/97): Parse-only qualified variable lookup "x.y" wtih binding "x.y" or "y" within container "x" fails
             "--skip_test=fields/qualified_identifier_resolution/qualified_ident,map_field_select,ident_with_longest_prefix_check,qualified_identifier_resolution_unchecked",
             "--skip_test=namespace/qualified/self_eval_qualified_lookup",
             "--skip_test=namespace/namespace/self_eval_container_lookup,self_eval_container_lookup_unchecked",
-            # TODO(issues/116): Debug why dynamic/list/var fails to JSON parse correctly.
-            "--skip_test=dynamic/list/var",
-            # TODO(issues/109): Ensure that unset wrapper fields return 'null' rather than the default value of the wrapper.
-            "--skip_test=dynamic/int32/field_read_proto2_unset,field_read_proto3_unset;uint32/field_read_proto2_unset;uint64/field_read_proto2_unset;float/field_read_proto2_unset,field_read_proto3_unset;double/field_read_proto2_unset,field_read_proto3_unset",
-            "--skip_test=proto2/empty_field/wkt",
-            "--skip_test=proto3/empty_field/wkt",
             # TODO(issues/117): Integer overflow on enum assignments should error.
             "--skip_test=enums/legacy_proto2/select_big,select_neg",
-            # TODO(issues/127): Ensure overflow occurs on conversions of double values which might not work properly on all platforms.
-            "--skip_test=conversions/int/double_int_min_range",
 
             # Future features for CEL 1.0
             # TODO(issues/119): Strong typing support for enums, specified but not implemented.

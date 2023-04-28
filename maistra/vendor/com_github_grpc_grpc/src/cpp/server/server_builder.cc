@@ -16,21 +16,41 @@
  *
  */
 
-#include <grpcpp/server_builder.h>
+#include <limits.h>
+#include <stdint.h>
+#include <string.h>
 
-#include <grpc/support/cpu.h>
+#include <algorithm>
+#include <iterator>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include <grpc/grpc.h>
+#include <grpc/impl/codegen/compression_types.h>
+#include <grpc/impl/codegen/grpc_types.h>
 #include <grpc/support/log.h>
+#include <grpc/support/sync.h>
+#include <grpc/support/workaround_list.h>
+#include <grpcpp/completion_queue.h>
+#include <grpcpp/impl/codegen/server_interface.h>
+#include <grpcpp/impl/server_builder_option.h>
+#include <grpcpp/impl/server_builder_plugin.h>
 #include <grpcpp/impl/service_type.h>
 #include <grpcpp/resource_quota.h>
+#include <grpcpp/security/authorization_policy_provider.h>
+#include <grpcpp/security/server_credentials.h>
 #include <grpcpp/server.h>
+#include <grpcpp/server_builder.h>
+#include <grpcpp/server_context.h>
+#include <grpcpp/support/channel_arguments.h>
+#include <grpcpp/support/config.h>
+#include <grpcpp/support/server_interceptor.h>
 
-#include <utility>
-
-#include "src/core/lib/channel/channel_args.h"
 #include "src/core/lib/gpr/string.h"
 #include "src/core/lib/gpr/useful.h"
 #include "src/cpp/server/external_connection_acceptor_impl.h"
-#include "src/cpp/server/thread_pool_interface.h"
 
 namespace grpc {
 
@@ -102,7 +122,6 @@ ServerBuilder& ServerBuilder::RegisterAsyncGenericService(
   return *this;
 }
 
-#ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
 ServerBuilder& ServerBuilder::RegisterCallbackGenericService(
     CallbackGenericService* service) {
   if (generic_service_ || callback_generic_service_) {
@@ -121,26 +140,6 @@ ServerBuilder& ServerBuilder::SetContextAllocator(
   context_allocator_ = std::move(context_allocator);
   return *this;
 }
-#else
-ServerBuilder& ServerBuilder::experimental_type::RegisterCallbackGenericService(
-    experimental::CallbackGenericService* service) {
-  if (builder_->generic_service_ || builder_->callback_generic_service_) {
-    gpr_log(GPR_ERROR,
-            "Adding multiple generic services is unsupported for now. "
-            "Dropping the service %p",
-            service);
-  } else {
-    builder_->callback_generic_service_ = service;
-  }
-  return *builder_;
-}
-
-ServerBuilder& ServerBuilder::experimental_type::SetContextAllocator(
-    std::unique_ptr<grpc::ContextAllocator> context_allocator) {
-  builder_->context_allocator_ = std::move(context_allocator);
-  return *builder_;
-}
-#endif
 
 std::unique_ptr<grpc::experimental::ExternalConnectionAcceptor>
 ServerBuilder::experimental_type::AddExternalConnectionAcceptor(
@@ -189,9 +188,9 @@ ServerBuilder& ServerBuilder::SetSyncServerOption(
 ServerBuilder& ServerBuilder::SetCompressionAlgorithmSupportStatus(
     grpc_compression_algorithm algorithm, bool enabled) {
   if (enabled) {
-    GPR_BITSET(&enabled_compression_algorithms_bitset_, algorithm);
+    grpc_core::SetBit(&enabled_compression_algorithms_bitset_, algorithm);
   } else {
-    GPR_BITCLEAR(&enabled_compression_algorithms_bitset_, algorithm);
+    grpc_core::ClearBit(&enabled_compression_algorithms_bitset_, algorithm);
   }
   return *this;
 }
@@ -358,11 +357,18 @@ std::unique_ptr<grpc::Server> ServerBuilder::BuildAndStart() {
     gpr_log(GPR_INFO, "Callback server.");
   }
 
+  // Merge the application and internal interceptors together.
+  // Internal interceptors go first.
+  auto creators = std::move(internal_interceptor_creators_);
+  creators.insert(creators.end(),
+                  std::make_move_iterator(interceptor_creators_.begin()),
+                  std::make_move_iterator(interceptor_creators_.end()));
+
   std::unique_ptr<grpc::Server> server(new grpc::Server(
       &args, sync_server_cqs, sync_server_settings_.min_pollers,
       sync_server_settings_.max_pollers, sync_server_settings_.cq_timeout_msec,
       std::move(acceptors_), server_config_fetcher_, resource_quota_,
-      std::move(interceptor_creators_)));
+      std::move(creators)));
 
   ServerInitializer* initializer = server->initializer();
 
@@ -399,12 +405,7 @@ std::unique_ptr<grpc::Server> ServerBuilder::BuildAndStart() {
     return nullptr;
   }
 
-#ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
   server->RegisterContextAllocator(std::move(context_allocator_));
-#else
-  server->experimental_registration()->RegisterContextAllocator(
-      std::move(context_allocator_));
-#endif
 
   for (const auto& value : services_) {
     if (!server->RegisterService(value->host.get(), value->service)) {

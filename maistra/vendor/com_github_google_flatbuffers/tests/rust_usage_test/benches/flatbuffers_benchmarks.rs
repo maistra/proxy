@@ -14,18 +14,11 @@
  * limitations under the License.
  */
 
-use bencher::Bencher;
+use bencher::{benchmark_group, Bencher};
+use flatbuffers;
 
 #[allow(dead_code, unused_imports)]
-#[path = "../../include_test/include_test1_generated.rs"]
-pub mod include_test1_generated;
-
-#[allow(dead_code, unused_imports)]
-#[path = "../../include_test/sub/include_test2_generated.rs"]
-pub mod include_test2_generated;
-
-#[allow(dead_code, unused_imports)]
-#[path = "../../monster_test_generated.rs"]
+#[path = "../../monster_test/mod.rs"]
 mod monster_test_generated;
 pub use monster_test_generated::my_game;
 
@@ -93,8 +86,8 @@ fn create_serialized_example_with_generated_code(
     let mon = {
         let name = builder.create_string("MyMonster");
         let fred_name = builder.create_string("Fred");
-        let inventory = builder.create_vector_direct(&[0u8, 1, 2, 3, 4]);
-        let test4 = builder.create_vector_direct(&[
+        let inventory = builder.create_vector(&[0u8, 1, 2, 3, 4]);
+        let test4 = builder.create_vector(&[
             my_game::example::Test::new(10, 20),
             my_game::example::Test::new(30, 40),
         ]);
@@ -148,7 +141,7 @@ fn blackbox<T>(t: T) -> T {
 
 #[inline(always)]
 fn traverse_serialized_example_with_generated_code(bytes: &[u8]) {
-    let m = my_game::example::get_root_as_monster(bytes);
+    let m = unsafe { my_game::example::root_as_monster_unchecked(bytes) };
     blackbox(m.hp());
     blackbox(m.mana());
     blackbox(m.name());
@@ -163,7 +156,7 @@ fn traverse_serialized_example_with_generated_code(bytes: &[u8]) {
     blackbox(pos_test3.b());
     blackbox(m.test_type());
     let table2 = m.test().unwrap();
-    let monster2 = my_game::example::Monster::init_from_table(table2);
+    let monster2 = unsafe { my_game::example::Monster::init_from_table(table2) };
     blackbox(monster2.name());
     blackbox(m.inventory());
     blackbox(m.test4());
@@ -178,7 +171,7 @@ fn traverse_serialized_example_with_generated_code(bytes: &[u8]) {
 }
 
 fn create_string_10(bench: &mut Bencher) {
-    let builder = &mut flatbuffers::FlatBufferBuilder::new_with_capacity(1 << 20);
+    let builder = &mut flatbuffers::FlatBufferBuilder::with_capacity(1 << 20);
     let mut i = 0;
     bench.iter(|| {
         builder.create_string("foobarbaz"); // zero-terminated -> 10 bytes
@@ -193,7 +186,7 @@ fn create_string_10(bench: &mut Bencher) {
 }
 
 fn create_string_100(bench: &mut Bencher) {
-    let builder = &mut flatbuffers::FlatBufferBuilder::new_with_capacity(1 << 20);
+    let builder = &mut flatbuffers::FlatBufferBuilder::with_capacity(1 << 20);
     let s_owned = (0..99).map(|_| "x").collect::<String>();
     let s: &str = &s_owned;
 
@@ -211,7 +204,7 @@ fn create_string_100(bench: &mut Bencher) {
 }
 
 fn create_byte_vector_100_naive(bench: &mut Bencher) {
-    let builder = &mut flatbuffers::FlatBufferBuilder::new_with_capacity(1 << 20);
+    let builder = &mut flatbuffers::FlatBufferBuilder::with_capacity(1 << 20);
     let v_owned = (0u8..100).map(|i| i).collect::<Vec<u8>>();
     let v: &[u8] = &v_owned;
 
@@ -229,13 +222,13 @@ fn create_byte_vector_100_naive(bench: &mut Bencher) {
 }
 
 fn create_byte_vector_100_optimal(bench: &mut Bencher) {
-    let builder = &mut flatbuffers::FlatBufferBuilder::new_with_capacity(1 << 20);
+    let builder = &mut flatbuffers::FlatBufferBuilder::with_capacity(1 << 20);
     let v_owned = (0u8..100).map(|i| i).collect::<Vec<u8>>();
     let v: &[u8] = &v_owned;
 
     let mut i = 0;
     bench.iter(|| {
-        builder.create_vector_direct(v);
+        builder.create_vector(v);
         i += 1;
         if i == 10000 {
             builder.reset();
@@ -246,6 +239,24 @@ fn create_byte_vector_100_optimal(bench: &mut Bencher) {
     bench.bytes = v.len() as u64;
 }
 
+fn create_many_tables(bench: &mut Bencher) {
+    let builder = &mut flatbuffers::FlatBufferBuilder::with_capacity(1 << 20);
+    // We test vtable overhead by making many unique tables of up to 16 fields of u8s.
+    bench.iter(|| {
+        for i in 0..(1u16 << 10) {
+            let t = builder.start_table();
+            for j in 0..15 {
+                if i & (1 << j) == 1 {
+                    builder.push_slot_always(i * 2, 42u8);
+                }
+            }
+            builder.end_table(t);
+        }
+        builder.reset();
+    });
+    bench.bytes = 1 << 15;
+}
+
 benchmark_group!(
     benches,
     create_byte_vector_100_naive,
@@ -253,5 +264,6 @@ benchmark_group!(
     traverse_canonical_buffer,
     create_canonical_buffer_then_reset,
     create_string_10,
-    create_string_100
+    create_string_100,
+    create_many_tables,
 );

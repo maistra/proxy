@@ -20,11 +20,11 @@ go get github.com/antlr/antlr4/runtime/Go/antlr
 
 `go get` has no native way to specify a branch or commit. So, when you run it, you'll download the latest commits. This may or may not be your preference.
 
-You'll need to use git to set the release. For example, to set the release tag for release 4.6.0:
+You'll need to use git to set the release. For example, to set the release tag for release 4.9.3:
 
 ```bash
 cd $GOPATH/src/github.com/antlr/antlr4 # enter the antlr4 source directory
-git checkout tags/4.6.0 # the go runtime was added in release 4.6.0
+git checkout tags/4.9.3 # the go runtime was added in release 4.9.3
 ```
 
 A complete list of releases can be found on [the release page](https://github.com/antlr/antlr4/releases).
@@ -65,7 +65,7 @@ Another common option to the ANTLR tool is `-visitor`, which generates a parse t
 
 We'll write a small main func to call the generated parser/lexer (assuming they are separate). This one writes out the encountered `ParseTreeContext`'s. Suppose the gen'ed parser code is in the `parser` directory relative to this code:
 
-```
+```golang
 package main
 
 import (

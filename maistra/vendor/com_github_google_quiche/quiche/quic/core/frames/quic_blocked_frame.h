@@ -20,13 +20,11 @@ namespace quic {
 struct QUIC_EXPORT_PRIVATE QuicBlockedFrame
     : public QuicInlinedFrame<QuicBlockedFrame> {
   QuicBlockedFrame();
-  QuicBlockedFrame(QuicControlFrameId control_frame_id, QuicStreamId stream_id);
   QuicBlockedFrame(QuicControlFrameId control_frame_id, QuicStreamId stream_id,
                    QuicStreamOffset offset);
 
   friend QUIC_EXPORT_PRIVATE std::ostream& operator<<(
-      std::ostream& os,
-      const QuicBlockedFrame& b);
+      std::ostream& os, const QuicBlockedFrame& b);
 
   QuicFrameType type;
 

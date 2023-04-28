@@ -18,14 +18,15 @@
 
 #include "test/cpp/interop/server_helper.h"
 
-#include <grpcpp/security/server_credentials.h>
-
 #include <memory>
 
 #include "absl/flags/declare.h"
 #include "absl/flags/flag.h"
+
+#include <grpcpp/security/server_credentials.h>
+
 #include "src/core/lib/surface/call_test_only.h"
-#include "src/core/lib/transport/byte_stream.h"
+#include "src/core/lib/transport/transport.h"
 #include "test/cpp/util/test_credentials_provider.h"
 
 ABSL_DECLARE_FLAG(bool, use_alts);
@@ -50,7 +51,7 @@ std::shared_ptr<ServerCredentials> CreateInteropServerCredentials() {
 }
 
 InteropServerContextInspector::InteropServerContextInspector(
-    const ::grpc::ServerContext& context)
+    const grpc::ServerContext& context)
     : context_(context) {}
 
 grpc_compression_algorithm

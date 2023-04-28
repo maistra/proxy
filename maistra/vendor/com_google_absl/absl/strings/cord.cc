@@ -20,6 +20,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <iomanip>
+#include <ios>
 #include <iostream>
 #include <limits>
 #include <ostream>
@@ -34,6 +35,7 @@
 #include "absl/base/port.h"
 #include "absl/container/fixed_array.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/strings/cord_buffer.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/internal/cord_data_edge.h"
 #include "absl/strings/internal/cord_internal.h"
@@ -159,7 +161,9 @@ static CordRep* CordRepFromString(std::string&& src) {
 // --------------------------------------------------------------------
 // Cord::InlineRep functions
 
+#ifdef ABSL_INTERNAL_NEED_REDUNDANT_CONSTEXPR_DECL
 constexpr unsigned char Cord::InlineRep::kMaxInline;
+#endif
 
 inline void Cord::InlineRep::set_data(const char* data, size_t n) {
   static_assert(kMaxInline == 15, "set_data is hard-coded for a length of 15");
@@ -181,7 +185,7 @@ inline void Cord::InlineRep::reduce_size(size_t n) {
   assert(tag >= n);
   tag -= n;
   memset(data_.as_chars() + tag, 0, n);
-  set_inline_size(static_cast<char>(tag));
+  set_inline_size(tag);
 }
 
 inline void Cord::InlineRep::remove_prefix(size_t n) {
@@ -520,6 +524,52 @@ inline void Cord::AppendImpl(C&& src) {
   contents_.AppendTree(rep, CordzUpdateTracker::kAppendCord);
 }
 
+static CordRep::ExtractResult ExtractAppendBuffer(CordRep* rep,
+                                                  size_t min_capacity) {
+  switch (rep->tag) {
+    case cord_internal::BTREE:
+      return CordRepBtree::ExtractAppendBuffer(rep->btree(), min_capacity);
+    default:
+      if (rep->IsFlat() && rep->refcount.IsOne() &&
+          rep->flat()->Capacity() - rep->length >= min_capacity) {
+        return {nullptr, rep};
+      }
+      return {rep, nullptr};
+  }
+}
+
+static CordBuffer CreateAppendBuffer(InlineData& data, size_t block_size,
+                                     size_t capacity) {
+  // Watch out for overflow, people can ask for size_t::max().
+  const size_t size = data.inline_size();
+  const size_t max_capacity = std::numeric_limits<size_t>::max() - size;
+  capacity = (std::min)(max_capacity, capacity) + size;
+  CordBuffer buffer =
+      block_size ? CordBuffer::CreateWithCustomLimit(block_size, capacity)
+                 : CordBuffer::CreateWithDefaultLimit(capacity);
+  cord_internal::SmallMemmove(buffer.data(), data.as_chars(), size);
+  buffer.SetLength(size);
+  data = {};
+  return buffer;
+}
+
+CordBuffer Cord::GetAppendBufferSlowPath(size_t block_size, size_t capacity,
+                                         size_t min_capacity) {
+  auto constexpr method = CordzUpdateTracker::kGetAppendBuffer;
+  CordRep* tree = contents_.tree();
+  if (tree != nullptr) {
+    CordzUpdateScope scope(contents_.cordz_info(), method);
+    CordRep::ExtractResult result = ExtractAppendBuffer(tree, min_capacity);
+    if (result.extracted != nullptr) {
+      contents_.SetTreeOrEmpty(result.tree, scope);
+      return CordBuffer(result.extracted->flat());
+    }
+    return block_size ? CordBuffer::CreateWithCustomLimit(block_size, capacity)
+                      : CordBuffer::CreateWithDefaultLimit(capacity);
+  }
+  return CreateAppendBuffer(contents_.data_, block_size, capacity);
+}
+
 void Cord::Append(const Cord& src) {
   AppendImpl(src);
 }
@@ -560,16 +610,43 @@ void Cord::PrependArray(absl::string_view src, MethodIdentifier method) {
     size_t cur_size = contents_.inline_size();
     if (cur_size + src.size() <= InlineRep::kMaxInline) {
       // Use embedded storage.
-      char data[InlineRep::kMaxInline + 1] = {0};
-      memcpy(data, src.data(), src.size());
-      memcpy(data + src.size(), contents_.data(), cur_size);
-      memcpy(contents_.data_.as_chars(), data, InlineRep::kMaxInline + 1);
-      contents_.set_inline_size(cur_size + src.size());
+      InlineData data;
+      memcpy(data.as_chars(), src.data(), src.size());
+      memcpy(data.as_chars() + src.size(), contents_.data(), cur_size);
+      data.set_inline_size(cur_size + src.size());
+      contents_.data_ = data;
       return;
     }
   }
   CordRep* rep = NewTree(src.data(), src.size(), 0);
   contents_.PrependTree(rep, method);
+}
+
+void Cord::AppendPrecise(absl::string_view src, MethodIdentifier method) {
+  assert(!src.empty());
+  assert(src.size() <= cord_internal::kMaxFlatLength);
+  if (contents_.remaining_inline_capacity() >= src.size()) {
+    const size_t inline_length = contents_.inline_size();
+    memcpy(contents_.data_.as_chars() + inline_length, src.data(), src.size());
+    contents_.set_inline_size(inline_length + src.size());
+  } else {
+    contents_.AppendTree(CordRepFlat::Create(src), method);
+  }
+}
+
+void Cord::PrependPrecise(absl::string_view src, MethodIdentifier method) {
+  assert(!src.empty());
+  assert(src.size() <= cord_internal::kMaxFlatLength);
+  if (contents_.remaining_inline_capacity() >= src.size()) {
+    const size_t cur_size = contents_.inline_size();
+    InlineData data;
+    memcpy(data.as_chars(), src.data(), src.size());
+    memcpy(data.as_chars() + src.size(), contents_.data(), cur_size);
+    data.set_inline_size(cur_size + src.size());
+    contents_.data_ = data;
+  } else {
+    contents_.PrependTree(CordRepFlat::Create(src), method);
+  }
 }
 
 template <typename T, Cord::EnableIfString<T>>
@@ -1022,7 +1099,7 @@ Cord Cord::ChunkIterator::AdvanceAndReadBytes(size_t n) {
                          : current_leaf_;
   const char* data = payload->IsExternal() ? payload->external()->base
                                            : payload->flat()->Data();
-  const size_t offset = current_chunk_.data() - data;
+  const size_t offset = static_cast<size_t>(current_chunk_.data() - data);
 
   auto* tree = CordRepSubstring::Substring(payload, offset, n);
   subcord.contents_.EmplaceTree(VerifyTree(tree), method);
@@ -1232,7 +1309,7 @@ static bool VerifyNode(CordRep* root, CordRep* start_node,
 
 std::ostream& operator<<(std::ostream& out, const Cord& cord) {
   for (absl::string_view chunk : cord.Chunks()) {
-    out.write(chunk.data(), chunk.size());
+    out.write(chunk.data(), static_cast<std::streamsize>(chunk.size()));
   }
   return out;
 }

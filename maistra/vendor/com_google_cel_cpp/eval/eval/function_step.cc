@@ -26,16 +26,23 @@
 #include "eval/public/unknown_attribute_set.h"
 #include "eval/public/unknown_function_result_set.h"
 #include "eval/public/unknown_set.h"
+#include "extensions/protobuf/memory_manager.h"
+#include "internal/status_macros.h"
 
 namespace google::api::expr::runtime {
 
 namespace {
 
-// Non-strict functions are allowed to consume errors and UnknownSets. Currently
-// only the special function "@not_strictly_false" is allowed to do this.
-bool IsNonStrict(const std::string& name) {
-  return (name == builtin::kNotStrictlyFalse ||
-          name == builtin::kNotStrictlyFalseDeprecated);
+using cel::extensions::ProtoMemoryManager;
+
+// Only non-strict functions are allowed to consume errors and unknown sets.
+bool IsNonStrict(const CelFunction& function) {
+  const CelFunctionDescriptor& descriptor = function.descriptor();
+  // Special case: built-in function "@not_strictly_false" is treated as
+  // non-strict.
+  return !descriptor.is_strict() ||
+         descriptor.name() == builtin::kNotStrictlyFalse ||
+         descriptor.name() == builtin::kNotStrictlyFalseDeprecated;
 }
 
 // Determine if the overload should be considered. Overloads that can consume
@@ -47,7 +54,7 @@ bool ShouldAcceptOverload(const CelFunction* function,
   }
   for (size_t i = 0; i < arguments.size(); i++) {
     if (arguments[i].IsUnknownSet() || arguments[i].IsError()) {
-      return IsNonStrict(function->descriptor().name());
+      return IsNonStrict(*function);
     }
   }
   return true;
@@ -67,8 +74,9 @@ std::vector<CelValue> CheckForPartialUnknowns(
     auto attr_set = frame->attribute_utility().CheckForUnknowns(
         attrs.subspan(i, 1), /*use_partial=*/true);
     if (!attr_set.attributes().empty()) {
-      auto unknown_set = google::protobuf::Arena::Create<UnknownSet>(frame->arena(),
-                                                           std::move(attr_set));
+      auto unknown_set = frame->memory_manager()
+                             .New<UnknownSet>(std::move(attr_set))
+                             .release();
       result.push_back(CelValue::CreateUnknownSet(unknown_set));
     } else {
       result.push_back(args.at(i));
@@ -92,6 +100,12 @@ class AbstractFunctionStep : public ExpressionStepBase {
 
   absl::Status Evaluate(ExecutionFrame* frame) const override;
 
+  // Handles overload resolution and updating result appropriately.
+  // Shouldn't update frame state.
+  //
+  // A non-ok result is an unrecoverable error, either from an illegal
+  // evaluation state or forwarded from an extension function. Errors where
+  // evaluation can reasonably condition are returned in the result.
   absl::Status DoEvaluate(ExecutionFrame* frame, CelValue* result) const;
 
   virtual absl::StatusOr<const CelFunction*> ResolveFunction(
@@ -117,27 +131,19 @@ absl::Status AbstractFunctionStep::DoEvaluate(ExecutionFrame* frame,
   }
 
   // Derived class resolves to a single function overload or none.
-  auto status = ResolveFunction(input_args, frame);
-  if (!status.ok()) {
-    return status.status();
-  }
-  const CelFunction* matched_function = status.value();
+  CEL_ASSIGN_OR_RETURN(const CelFunction* matched_function,
+                       ResolveFunction(input_args, frame));
 
   // Overload found and is allowed to consume the arguments.
   if (ShouldAcceptOverload(matched_function, input_args)) {
-    absl::Status status =
-        matched_function->Evaluate(input_args, result, frame->arena());
-    if (!status.ok()) {
-      return status;
-    }
+    google::protobuf::Arena* arena =
+        ProtoMemoryManager::CastToProtoArena(frame->memory_manager());
+    CEL_RETURN_IF_ERROR(matched_function->Evaluate(input_args, result, arena));
+
     if (frame->enable_unknown_function_results() &&
         IsUnknownFunctionResult(*result)) {
-      const auto* function_result =
-          google::protobuf::Arena::Create<UnknownFunctionResult>(
-              frame->arena(), matched_function->descriptor(), id(),
-              std::vector<CelValue>(input_args.begin(), input_args.end()));
-      const auto* unknown_set = google::protobuf::Arena::Create<UnknownSet>(
-          frame->arena(), UnknownFunctionResultSet(function_result));
+      auto unknown_set = frame->attribute_utility().CreateUnknownSet(
+          matched_function->descriptor(), id(), input_args);
       *result = CelValue::CreateUnknownSet(unknown_set);
     }
   } else {
@@ -164,7 +170,7 @@ absl::Status AbstractFunctionStep::DoEvaluate(ExecutionFrame* frame,
     }
 
     // If no errors or unknowns in input args, create new CelError.
-    *result = CreateNoMatchingOverloadError(frame->arena());
+    *result = CreateNoMatchingOverloadError(frame->memory_manager());
   }
 
   return absl::OkStatus();
@@ -176,9 +182,30 @@ absl::Status AbstractFunctionStep::Evaluate(ExecutionFrame* frame) const {
   }
 
   CelValue result;
+
+  // DoEvaluate may return a status for non-recoverable errors  (e.g.
+  // unexpected typing, illegal expression state). Application errors that can
+  // reasonably be handled as a cel error will appear in the result value.
   auto status = DoEvaluate(frame, &result);
   if (!status.ok()) {
     return status;
+  }
+
+  // Handle legacy behavior where nullptr messages match the same overloads as
+  // null_type.
+  if (CheckNoMatchingOverloadError(result) && frame->enable_null_coercion() &&
+      frame->value_stack().CoerceNullValues(num_arguments_)) {
+    status = DoEvaluate(frame, &result);
+    if (!status.ok()) {
+      return status;
+    }
+
+    // If one of the arguments is returned, possible for a nullptr message to
+    // escape the backwards compatible call. Cast back to NullType.
+    if (const google::protobuf::Message * value;
+        result.GetValue(&value) && value == nullptr) {
+      result = CelValue::CreateNull();
+    }
   }
 
   frame->value_stack().Pop(num_arguments_);

@@ -292,6 +292,10 @@ Enums
         (``0x0c``) 
         The ORIGIN frame, which is defined by `RFC 8336
         <https://tools.ietf.org/html/rfc8336>`_.
+    .. enum:: NGHTTP2_PRIORITY_UPDATE
+
+        (``0x10``) 
+        The PRIORITY_UPDATE frame, which is defined by :rfc:`9218`.
 
 .. type:: nghttp2_flag
 
@@ -357,6 +361,10 @@ Enums
         (``0x08``) 
         SETTINGS_ENABLE_CONNECT_PROTOCOL
         (`RFC 8441 <https://tools.ietf.org/html/rfc8441>`_)
+    .. enum:: NGHTTP2_SETTINGS_NO_RFC7540_PRIORITIES
+
+        (``0x09``) 
+        SETTINGS_NO_RFC7540_PRIORITIES (:rfc:`9218`)
 
 .. type:: nghttp2_error_code
 

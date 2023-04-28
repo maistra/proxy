@@ -19,6 +19,11 @@ load(
     "apple_product_type",
 )
 load(
+    "@build_bazel_rules_apple//apple/internal:apple_toolchains.bzl",
+    "AppleMacToolsToolchainInfo",
+    "AppleXPlatToolsToolchainInfo",
+)
+load(
     "@build_bazel_rules_apple//apple/internal:bundling_support.bzl",
     "bundling_support",
 )
@@ -63,10 +68,13 @@ load(
     "rule_support",
 )
 load(
+    "@build_bazel_rules_apple//apple/internal/utils:clang_rt_dylibs.bzl",
+    "clang_rt_dylibs",
+)
+load(
     "@build_bazel_rules_apple//apple:providers.bzl",
     "AppleBundleInfo",
     "AppleExtraOutputsInfo",
-    "AppleSupportToolchainInfo",
     "AppleTestInfo",
 )
 load(
@@ -264,7 +272,8 @@ def _apple_test_bundle_impl(ctx):
              "them.")
 
     actions = ctx.actions
-    apple_toolchain_info = ctx.attr._toolchain[AppleSupportToolchainInfo]
+    apple_mac_toolchain_info = ctx.attr._mac_toolchain[AppleMacToolsToolchainInfo]
+    apple_xplat_toolchain_info = ctx.attr._xplat_toolchain[AppleXPlatToolsToolchainInfo]
     bin_root_path = ctx.bin_dir.path
     bundle_name, bundle_extension = bundling_support.bundle_full_name_from_rule_ctx(ctx)
     executable_name = bundling_support.executable_name(ctx)
@@ -301,18 +310,38 @@ def _apple_test_bundle_impl(ctx):
     else:
         bundle_loader = None
 
-    link_result = linking_support.register_linking_action(
+    extra_linkopts = ["-bundle"]
+    extra_link_inputs = []
+
+    if "apple.swizzle_absolute_xcttestsourcelocation" in features:
+        # `linking_support.register_binary_linking_action` uses
+        # `apple_common.link_multi_arch_binary`, which doesn't allow specifying
+        # dependencies (it reads them from `ctx.attr.deps`). So we have to
+        # manually link the `_swizzle_absolute_xcttestsourcelocation` library.
+        swizzle_lib = ctx.attr._swizzle_absolute_xcttestsourcelocation
+        for linker_input in swizzle_lib[CcInfo].linking_context.linker_inputs.to_list():
+            for library in linker_input.libraries:
+                static_library = library.static_library
+                extra_link_inputs.append(static_library)
+                extra_linkopts.append(
+                    "-Wl,-force_load,{}".format(static_library.path),
+                )
+            extra_link_inputs.extend(linker_input.additional_inputs)
+            extra_linkopts.extend(linker_input.user_link_flags)
+
+    link_result = linking_support.register_binary_linking_action(
         ctx,
         avoid_deps = getattr(ctx.attr, "frameworks", []),
         bundle_loader = bundle_loader,
         # Unit/UI tests do not use entitlements.
         entitlements = None,
-        extra_linkopts = ["-bundle"],
+        extra_linkopts = extra_linkopts,
+        extra_link_inputs = extra_link_inputs,
         platform_prerequisites = platform_prerequisites,
         stamp = ctx.attr.stamp,
     )
     binary_artifact = link_result.binary
-    debug_outputs_provider = link_result.debug_outputs_provider
+    debug_outputs = linking_support.debug_outputs_by_architecture(link_result.outputs)
 
     if hasattr(ctx.attr, "additional_contents"):
         debug_dependencies = ctx.attr.additional_contents.keys()
@@ -349,11 +378,12 @@ def _apple_test_bundle_impl(ctx):
         ),
         partials.clang_rt_dylibs_partial(
             actions = actions,
-            apple_toolchain_info = apple_toolchain_info,
+            apple_mac_toolchain_info = apple_mac_toolchain_info,
             binary_artifact = binary_artifact,
             features = features,
             label_name = label.name,
             platform_prerequisites = platform_prerequisites,
+            dylibs = clang_rt_dylibs.get_from_toolchain(ctx),
         ),
         partials.debug_symbols_partial(
             actions = actions,
@@ -361,9 +391,10 @@ def _apple_test_bundle_impl(ctx):
             bundle_extension = bundle_extension,
             bundle_name = bundle_name,
             debug_dependencies = debug_dependencies,
-            debug_outputs_provider = debug_outputs_provider,
-            dsym_info_plist_template = apple_toolchain_info.dsym_info_plist_template,
+            dsym_binaries = debug_outputs.dsym_binaries,
+            dsym_info_plist_template = apple_mac_toolchain_info.dsym_info_plist_template,
             executable_name = executable_name,
+            linkmaps = debug_outputs.linkmaps,
             platform_prerequisites = platform_prerequisites,
             rule_label = label,
         ),
@@ -374,7 +405,7 @@ def _apple_test_bundle_impl(ctx):
         ),
         partials.framework_import_partial(
             actions = actions,
-            apple_toolchain_info = apple_toolchain_info,
+            apple_mac_toolchain_info = apple_mac_toolchain_info,
             features = features,
             label_name = label.name,
             platform_prerequisites = platform_prerequisites,
@@ -385,7 +416,7 @@ def _apple_test_bundle_impl(ctx):
         ),
         partials.resources_partial(
             actions = actions,
-            apple_toolchain_info = apple_toolchain_info,
+            apple_mac_toolchain_info = apple_mac_toolchain_info,
             bundle_extension = bundle_extension,
             bundle_id = bundle_id,
             bundle_name = bundle_name,
@@ -404,7 +435,7 @@ def _apple_test_bundle_impl(ctx):
         ),
         partials.swift_dylibs_partial(
             actions = actions,
-            apple_toolchain_info = apple_toolchain_info,
+            apple_mac_toolchain_info = apple_mac_toolchain_info,
             binary_artifact = binary_artifact,
             bundle_dylibs = True,
             label_name = label.name,
@@ -421,7 +452,8 @@ def _apple_test_bundle_impl(ctx):
 
     processor_result = processor.process(
         actions = actions,
-        apple_toolchain_info = apple_toolchain_info,
+        apple_mac_toolchain_info = apple_mac_toolchain_info,
+        apple_xplat_toolchain_info = apple_xplat_toolchain_info,
         bundle_extension = bundle_extension,
         bundle_name = bundle_name,
         codesign_inputs = ctx.files.codesign_inputs,
@@ -432,7 +464,7 @@ def _apple_test_bundle_impl(ctx):
         partials = processor_partials,
         platform_prerequisites = platform_prerequisites,
         predeclared_outputs = predeclared_outputs,
-        process_and_sign_template = apple_toolchain_info.process_and_sign_template,
+        process_and_sign_template = apple_mac_toolchain_info.process_and_sign_template,
         provisioning_profile = provisioning_profile,
         rule_descriptor = rule_descriptor,
         rule_label = label,
@@ -493,6 +525,8 @@ def _apple_test_bundle_impl(ctx):
                 processor_result.output_groups,
             )
         ),
+        # TODO(b/228856372): Remove when downstream users are migrated off this provider.
+        link_result.debug_outputs_provider,
     ])
 
     return providers

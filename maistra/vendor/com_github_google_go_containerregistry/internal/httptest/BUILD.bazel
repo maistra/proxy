@@ -1,0 +1,14 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "httptest",
+    srcs = ["httptest.go"],
+    importpath = "github.com/google/go-containerregistry/internal/httptest",
+    visibility = ["//:__subpackages__"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":httptest",
+    visibility = ["//:__subpackages__"],
+)

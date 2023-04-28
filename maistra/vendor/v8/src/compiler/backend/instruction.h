@@ -11,7 +11,7 @@
 #include "src/base/compiler-specific.h"
 #include "src/base/numbers/double.h"
 #include "src/codegen/external-reference.h"
-#include "src/codegen/register-arch.h"
+#include "src/codegen/register.h"
 #include "src/codegen/source-position.h"
 #include "src/common/globals.h"
 #include "src/compiler/backend/instruction-codes.h"
@@ -139,6 +139,13 @@ class V8_EXPORT_PRIVATE INSTRUCTION_OPERAND_ALIGN InstructionOperand {
 
   // APIs to aid debugging. For general-stream APIs, use operator<<.
   void Print() const;
+
+  bool operator==(const InstructionOperand& other) const {
+    return Equals(other);
+  }
+  bool operator!=(const InstructionOperand& other) const {
+    return !Equals(other);
+  }
 
  protected:
   explicit InstructionOperand(Kind kind) : value_(KindField::encode(kind)) {}
@@ -357,23 +364,22 @@ class UnallocatedOperand final : public InstructionOperand {
   // The slot index is a signed value which requires us to decode it manually
   // instead of using the base::BitField utility class.
 
-  STATIC_ASSERT(KindField::kSize == 3);
-
-  using VirtualRegisterField = base::BitField64<uint32_t, 3, 32>;
+  using VirtualRegisterField = KindField::Next<uint32_t, 32>;
 
   // base::BitFields for all unallocated operands.
-  using BasicPolicyField = base::BitField64<BasicPolicy, 35, 1>;
+  using BasicPolicyField = VirtualRegisterField::Next<BasicPolicy, 1>;
 
   // BitFields specific to BasicPolicy::FIXED_SLOT.
-  using FixedSlotIndexField = base::BitField64<int, 36, 28>;
+  using FixedSlotIndexField = BasicPolicyField::Next<int, 28>;
+  static_assert(FixedSlotIndexField::kLastUsedBit == 63);
 
   // BitFields specific to BasicPolicy::EXTENDED_POLICY.
-  using ExtendedPolicyField = base::BitField64<ExtendedPolicy, 36, 3>;
-  using LifetimeField = base::BitField64<Lifetime, 39, 1>;
-  using HasSecondaryStorageField = base::BitField64<bool, 40, 1>;
-  using FixedRegisterField = base::BitField64<int, 41, 6>;
-  using SecondaryStorageField = base::BitField64<int, 47, 3>;
-  using InputIndexField = base::BitField64<int, 50, 3>;
+  using ExtendedPolicyField = BasicPolicyField::Next<ExtendedPolicy, 3>;
+  using LifetimeField = ExtendedPolicyField::Next<Lifetime, 1>;
+  using HasSecondaryStorageField = LifetimeField::Next<bool, 1>;
+  using FixedRegisterField = HasSecondaryStorageField::Next<int, 6>;
+  using SecondaryStorageField = FixedRegisterField::Next<int, 3>;
+  using InputIndexField = SecondaryStorageField::Next<int, 3>;
 
  private:
   explicit UnallocatedOperand(int virtual_register)
@@ -401,8 +407,7 @@ class ConstantOperand : public InstructionOperand {
 
   INSTRUCTION_OPERAND_CASTS(ConstantOperand, CONSTANT)
 
-  STATIC_ASSERT(KindField::kSize == 3);
-  using VirtualRegisterField = base::BitField64<uint32_t, 3, 32>;
+  using VirtualRegisterField = KindField::Next<uint32_t, 32>;
 };
 
 class ImmediateOperand : public InstructionOperand {
@@ -439,8 +444,8 @@ class ImmediateOperand : public InstructionOperand {
 
   INSTRUCTION_OPERAND_CASTS(ImmediateOperand, IMMEDIATE)
 
-  STATIC_ASSERT(KindField::kSize == 3);
-  using TypeField = base::BitField64<ImmediateType, 3, 2>;
+  using TypeField = KindField::Next<ImmediateType, 2>;
+  static_assert(TypeField::kLastUsedBit < 32);
   using ValueField = base::BitField64<int32_t, 32, 32>;
 };
 
@@ -476,10 +481,10 @@ class PendingOperand : public InstructionOperand {
   // Operands are uint64_t values and so are aligned to 8 byte boundaries,
   // therefore we can shift off the bottom three zeros without losing data.
   static const uint64_t kPointerShift = 3;
-  STATIC_ASSERT(alignof(InstructionOperand) >= (1 << kPointerShift));
+  static_assert(alignof(InstructionOperand) >= (1 << kPointerShift));
 
-  STATIC_ASSERT(KindField::kSize == 3);
-  using NextOperandField = base::BitField64<uint64_t, 3, 61>;
+  using NextOperandField = KindField::Next<uint64_t, 61>;
+  static_assert(NextOperandField::kLastUsedBit == 63);
 };
 
 class LocationOperand : public InstructionOperand {
@@ -546,6 +551,7 @@ class LocationOperand : public InstructionOperand {
       case MachineRepresentation::kFloat32:
       case MachineRepresentation::kFloat64:
       case MachineRepresentation::kSimd128:
+      case MachineRepresentation::kSimd256:
       case MachineRepresentation::kTaggedSigned:
       case MachineRepresentation::kTaggedPointer:
       case MachineRepresentation::kTagged:
@@ -582,10 +588,10 @@ class LocationOperand : public InstructionOperand {
     return *static_cast<const LocationOperand*>(&op);
   }
 
-  STATIC_ASSERT(KindField::kSize == 3);
-  using LocationKindField = base::BitField64<LocationKind, 3, 2>;
-  using RepresentationField = base::BitField64<MachineRepresentation, 5, 8>;
-  using IndexField = base::BitField64<int32_t, 35, 29>;
+  using LocationKindField = KindField::Next<LocationKind, 1>;
+  using RepresentationField = LocationKindField::Next<MachineRepresentation, 8>;
+  static_assert(RepresentationField::kLastUsedBit < 32);
+  using IndexField = base::BitField64<int32_t, 32, 32>;
 };
 
 class AllocatedOperand : public LocationOperand {
@@ -692,12 +698,19 @@ uint64_t InstructionOperand::GetCanonicalizedValue() const {
   if (IsAnyLocationOperand()) {
     MachineRepresentation canonical = MachineRepresentation::kNone;
     if (IsFPRegister()) {
-      if (kSimpleFPAliasing) {
+      if (kFPAliasing == AliasingKind::kOverlap) {
         // We treat all FP register operands the same for simple aliasing.
         canonical = MachineRepresentation::kFloat64;
+      } else if (kFPAliasing == AliasingKind::kIndependent) {
+        if (IsSimd128Register()) {
+          canonical = MachineRepresentation::kSimd128;
+        } else {
+          canonical = MachineRepresentation::kFloat64;
+        }
       } else {
         // We need to distinguish FP register operands of different reps when
-        // aliasing is not simple (e.g. ARM).
+        // aliasing is AliasingKind::kCombine (e.g. ARM).
+        DCHECK_EQ(kFPAliasing, AliasingKind::kCombine);
         canonical = LocationOperand::cast(this)->representation();
       }
     }
@@ -969,7 +982,7 @@ class V8_EXPORT_PRIVATE Instruction final {
   }
   bool HasCallDescriptorFlag(CallDescriptor::Flag flag) const {
     DCHECK(IsCallWithDescriptorFlags());
-    STATIC_ASSERT(CallDescriptor::kFlagsBitsEncodedInInstructionCode == 10);
+    static_assert(CallDescriptor::kFlagsBitsEncodedInInstructionCode == 10);
 #ifdef DEBUG
     static constexpr int kInstructionCodeFlagsMask =
         ((1 << CallDescriptor::kFlagsBitsEncodedInInstructionCode) - 1);
@@ -1097,22 +1110,22 @@ class V8_EXPORT_PRIVATE Constant final {
     kExternalReference,
     kCompressedHeapObject,
     kHeapObject,
-    kRpoNumber,
-    kDelayedStringConstant
+    kRpoNumber
   };
 
   explicit Constant(int32_t v);
   explicit Constant(int64_t v) : type_(kInt64), value_(v) {}
-  explicit Constant(float v) : type_(kFloat32), value_(bit_cast<int32_t>(v)) {}
-  explicit Constant(double v) : type_(kFloat64), value_(bit_cast<int64_t>(v)) {}
+  explicit Constant(float v)
+      : type_(kFloat32), value_(base::bit_cast<int32_t>(v)) {}
+  explicit Constant(double v)
+      : type_(kFloat64), value_(base::bit_cast<int64_t>(v)) {}
   explicit Constant(ExternalReference ref)
-      : type_(kExternalReference), value_(bit_cast<intptr_t>(ref.address())) {}
+      : type_(kExternalReference),
+        value_(base::bit_cast<intptr_t>(ref.address())) {}
   explicit Constant(Handle<HeapObject> obj, bool is_compressed = false)
       : type_(is_compressed ? kCompressedHeapObject : kHeapObject),
-        value_(bit_cast<intptr_t>(obj)) {}
+        value_(base::bit_cast<intptr_t>(obj)) {}
   explicit Constant(RpoNumber rpo) : type_(kRpoNumber), value_(rpo.ToInt()) {}
-  explicit Constant(const StringConstantBase* str)
-      : type_(kDelayedStringConstant), value_(bit_cast<intptr_t>(str)) {}
   explicit Constant(RelocatablePtrConstantInfo info);
 
   Type type() const { return type_; }
@@ -1144,17 +1157,17 @@ class V8_EXPORT_PRIVATE Constant final {
     // representation of a signalling NaN, then returning it as float can cause
     // the signalling bit to flip, and value_ is returned as a quiet NaN.
     DCHECK_EQ(kFloat32, type());
-    return bit_cast<float>(static_cast<int32_t>(value_));
+    return base::bit_cast<float>(static_cast<int32_t>(value_));
   }
 
   uint32_t ToFloat32AsInt() const {
     DCHECK_EQ(kFloat32, type());
-    return bit_cast<uint32_t>(static_cast<int32_t>(value_));
+    return base::bit_cast<uint32_t>(static_cast<int32_t>(value_));
   }
 
   base::Double ToFloat64() const {
     DCHECK_EQ(kFloat64, type());
-    return base::Double(bit_cast<uint64_t>(value_));
+    return base::Double(base::bit_cast<uint64_t>(value_));
   }
 
   ExternalReference ToExternalReference() const {
@@ -1169,7 +1182,6 @@ class V8_EXPORT_PRIVATE Constant final {
 
   Handle<HeapObject> ToHeapObject() const;
   Handle<CodeT> ToCode() const;
-  const StringConstantBase* ToDelayedStringConstant() const;
 
  private:
   Type type_;
@@ -1691,6 +1703,12 @@ class V8_EXPORT_PRIVATE InstructionSequence final
         RepresentationBit(MachineRepresentation::kFloat64) |
         RepresentationBit(MachineRepresentation::kSimd128);
     return (representation_mask() & kFPRepMask) != 0;
+  }
+
+  bool HasSimd128VirtualRegisters() const {
+    constexpr int kSimd128RepMask =
+        RepresentationBit(MachineRepresentation::kSimd128);
+    return (representation_mask() & kSimd128RepMask) != 0;
   }
 
   Instruction* GetBlockStart(RpoNumber rpo) const;

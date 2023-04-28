@@ -19,14 +19,18 @@
 #include <grpc/support/port_platform.h>
 
 #include "src/core/ext/transport/chttp2/transport/frame_goaway.h"
-#include "src/core/ext/transport/chttp2/transport/internal.h"
 
 #include <string.h>
 
+#include "absl/base/attributes.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 
+#include <grpc/slice_buffer.h>
 #include <grpc/support/alloc.h>
 #include <grpc/support/log.h>
+
+#include "src/core/ext/transport/chttp2/transport/internal.h"
 
 void grpc_chttp2_goaway_parser_init(grpc_chttp2_goaway_parser* p) {
   p->debug_data = nullptr;
@@ -39,8 +43,8 @@ void grpc_chttp2_goaway_parser_destroy(grpc_chttp2_goaway_parser* p) {
 grpc_error_handle grpc_chttp2_goaway_parser_begin_frame(
     grpc_chttp2_goaway_parser* p, uint32_t length, uint8_t /*flags*/) {
   if (length < 8) {
-    return GRPC_ERROR_CREATE_FROM_COPIED_STRING(
-        absl::StrFormat("goaway frame too short (%d bytes)", length).c_str());
+    return GRPC_ERROR_CREATE_FROM_CPP_STRING(
+        absl::StrFormat("goaway frame too short (%d bytes)", length));
   }
 
   gpr_free(p->debug_data);
@@ -70,7 +74,7 @@ grpc_error_handle grpc_chttp2_goaway_parser_parse(void* parser,
       }
       p->last_stream_id = (static_cast<uint32_t>(*cur)) << 24;
       ++cur;
-    /* fallthrough */
+      ABSL_FALLTHROUGH_INTENDED;
     case GRPC_CHTTP2_GOAWAY_LSI1:
       if (cur == end) {
         p->state = GRPC_CHTTP2_GOAWAY_LSI1;
@@ -78,7 +82,7 @@ grpc_error_handle grpc_chttp2_goaway_parser_parse(void* parser,
       }
       p->last_stream_id |= (static_cast<uint32_t>(*cur)) << 16;
       ++cur;
-    /* fallthrough */
+      ABSL_FALLTHROUGH_INTENDED;
     case GRPC_CHTTP2_GOAWAY_LSI2:
       if (cur == end) {
         p->state = GRPC_CHTTP2_GOAWAY_LSI2;
@@ -86,7 +90,7 @@ grpc_error_handle grpc_chttp2_goaway_parser_parse(void* parser,
       }
       p->last_stream_id |= (static_cast<uint32_t>(*cur)) << 8;
       ++cur;
-    /* fallthrough */
+      ABSL_FALLTHROUGH_INTENDED;
     case GRPC_CHTTP2_GOAWAY_LSI3:
       if (cur == end) {
         p->state = GRPC_CHTTP2_GOAWAY_LSI3;
@@ -94,7 +98,7 @@ grpc_error_handle grpc_chttp2_goaway_parser_parse(void* parser,
       }
       p->last_stream_id |= (static_cast<uint32_t>(*cur));
       ++cur;
-    /* fallthrough */
+      ABSL_FALLTHROUGH_INTENDED;
     case GRPC_CHTTP2_GOAWAY_ERR0:
       if (cur == end) {
         p->state = GRPC_CHTTP2_GOAWAY_ERR0;
@@ -102,7 +106,7 @@ grpc_error_handle grpc_chttp2_goaway_parser_parse(void* parser,
       }
       p->error_code = (static_cast<uint32_t>(*cur)) << 24;
       ++cur;
-    /* fallthrough */
+      ABSL_FALLTHROUGH_INTENDED;
     case GRPC_CHTTP2_GOAWAY_ERR1:
       if (cur == end) {
         p->state = GRPC_CHTTP2_GOAWAY_ERR1;
@@ -110,7 +114,7 @@ grpc_error_handle grpc_chttp2_goaway_parser_parse(void* parser,
       }
       p->error_code |= (static_cast<uint32_t>(*cur)) << 16;
       ++cur;
-    /* fallthrough */
+      ABSL_FALLTHROUGH_INTENDED;
     case GRPC_CHTTP2_GOAWAY_ERR2:
       if (cur == end) {
         p->state = GRPC_CHTTP2_GOAWAY_ERR2;
@@ -118,7 +122,7 @@ grpc_error_handle grpc_chttp2_goaway_parser_parse(void* parser,
       }
       p->error_code |= (static_cast<uint32_t>(*cur)) << 8;
       ++cur;
-    /* fallthrough */
+      ABSL_FALLTHROUGH_INTENDED;
     case GRPC_CHTTP2_GOAWAY_ERR3:
       if (cur == end) {
         p->state = GRPC_CHTTP2_GOAWAY_ERR3;
@@ -126,7 +130,7 @@ grpc_error_handle grpc_chttp2_goaway_parser_parse(void* parser,
       }
       p->error_code |= (static_cast<uint32_t>(*cur));
       ++cur;
-    /* fallthrough */
+      ABSL_FALLTHROUGH_INTENDED;
     case GRPC_CHTTP2_GOAWAY_DEBUG:
       if (end != cur) {
         memcpy(p->debug_data + p->debug_pos, cur,
@@ -138,7 +142,8 @@ grpc_error_handle grpc_chttp2_goaway_parser_parse(void* parser,
       if (is_last) {
         grpc_chttp2_add_incoming_goaway(
             t, p->error_code, p->last_stream_id,
-            grpc_slice_new(p->debug_data, p->debug_length, gpr_free));
+            absl::string_view(p->debug_data, p->debug_length));
+        gpr_free(p->debug_data);
         p->debug_data = nullptr;
       }
       return GRPC_ERROR_NONE;

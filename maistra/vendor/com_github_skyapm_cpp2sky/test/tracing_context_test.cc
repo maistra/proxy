@@ -145,6 +145,7 @@ TEST_F(TracingContextTest, ChildSegmentContext) {
 
   span->startSpan("sample1", t1);
   span->setPeer("localhost:9000");
+  span->setOperationName("sample11");
   span->endSpan(t2);
 
   std::string json = R"EOF(
@@ -168,7 +169,7 @@ TEST_F(TracingContextTest, ChildSegmentContext) {
     "spanLayer": "Http",
     "componentId": "9000",
     "skipAnalysis": "false",
-    "operationName": "sample1",
+    "operationName": "sample11",
   }
   )EOF";
   skywalking::v3::SpanObject expected_obj;
@@ -329,7 +330,7 @@ TEST_F(TracingContextTest, SW8CreateTest) {
   std::string target_address("10.0.0.1:443");
 
   // Entry span should be rejected as propagation context
-  EXPECT_FALSE(sc.createSW8HeaderValue(span, target_address).has_value());
+  EXPECT_FALSE(sc.createSW8HeaderValue(target_address).has_value());
 
   auto span2 = sc.createExitSpan(span);
 
@@ -341,7 +342,27 @@ TEST_F(TracingContextTest, SW8CreateTest) {
   std::string expect_sw8(
       "1-MQ==-dXVpZA==-1-bWVzaA==-c2VydmljZV8w-c2FtcGxlMQ==-MTAuMC4wLjE6NDQz");
 
-  EXPECT_EQ(expect_sw8, *sc.createSW8HeaderValue(span2, target_address));
+  EXPECT_EQ(expect_sw8, *sc.createSW8HeaderValue(target_address));
+
+  std::vector<char> target_address_based_vector;
+  target_address_based_vector.reserve(target_address.size() * 2);
+
+  target_address_based_vector = {'1', '0', '.', '0', '.', '0',
+                                 '.', '1', ':', '4', '4', '3'};
+
+  std::string_view target_address_based_vector_view{
+      target_address_based_vector.data(), target_address_based_vector.size()};
+
+  EXPECT_EQ(target_address_based_vector.size(), target_address.size());
+  EXPECT_EQ(expect_sw8,
+            *sc.createSW8HeaderValue(target_address_based_vector_view));
+
+  // Make sure that the end of target_address_based_vector_view is not '\0'. We
+  // reserve enough memory for target_address_based_vector, so push back will
+  // not cause content to be re-allocated.
+  target_address_based_vector.push_back('x');
+  EXPECT_EQ(expect_sw8,
+            *sc.createSW8HeaderValue(target_address_based_vector_view));
 }
 
 TEST_F(TracingContextTest, ReadyToSendTest) {

@@ -193,7 +193,18 @@ Connections
     If a request scheme is "https", then Secure attribute is
     set.  Otherwise, it  is not set.  If  <SECURE> is "yes",
     the  Secure attribute  is  always set.   If <SECURE>  is
-    "no", the Secure attribute is always omitted.
+    "no",   the   Secure   attribute  is   always   omitted.
+    "affinity-cookie-stickiness=<STICKINESS>"       controls
+    stickiness  of   this  affinity.   If   <STICKINESS>  is
+    "loose", removing or adding a backend server might break
+    the affinity  and the  request might  be forwarded  to a
+    different backend server.   If <STICKINESS> is "strict",
+    removing the designated  backend server breaks affinity,
+    but adding  new backend server does  not cause breakage.
+    If  the designated  backend server  becomes unavailable,
+    new backend server is chosen  as if the request does not
+    have  an  affinity  cookie.   <STICKINESS>  defaults  to
+    "loose".
 
     By default, name resolution of backend host name is done
     at  start  up,  or reloading  configuration.   If  "dns"
@@ -628,7 +639,7 @@ SSL/TLS
     This option  sets cipher suites for  TLSv1.2 or earlier.
     Use :option:`--tls13-ciphers` for TLSv1.3.
 
-    Default: ``ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256``
+    Default: ``ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384``
 
 .. option:: --tls13-ciphers=<SUITE>
 
@@ -637,7 +648,7 @@ SSL/TLS
     This  option  sets  cipher   suites  for  TLSv1.3.   Use
     :option:`--ciphers` for TLSv1.2 or earlier.
 
-    Default: ``TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256``
+    Default: ``TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256``
 
 .. option:: --client-ciphers=<SUITE>
 
@@ -646,7 +657,7 @@ SSL/TLS
     This option  sets cipher suites for  TLSv1.2 or earlier.
     Use :option:`--tls13-client-ciphers` for TLSv1.3.
 
-    Default: ``ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256``
+    Default: ``ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384``
 
 .. option:: --tls13-client-ciphers=<SUITE>
 
@@ -655,7 +666,7 @@ SSL/TLS
     This  option  sets  cipher   suites  for  TLSv1.3.   Use
     :option:`--tls13-client-ciphers` for TLSv1.2 or earlier.
 
-    Default: ``TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256``
+    Default: ``TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256``
 
 .. option:: --ecdh-curves=<LIST>
 
@@ -1026,6 +1037,11 @@ SSL/TLS
 
     Default: ``16K``
 
+.. option:: --tls-ktls
+
+    Enable   ktls.    For   server,  ktls   is   enable   if
+    :option:`--tls-session-cache-memcached` is not configured.
+
 
 HTTP/2
 ~~~~~~
@@ -1376,7 +1392,7 @@ HTTP
     advertised  in alt-svc  header  field  only in  HTTP/1.1
     frontend.   This option  can be  used multiple  times to
     specify multiple alternative services.
-    Example: :option:`--altsvc`\="h2,443,,,ma=3600; persist=1'
+    Example: :option:`--altsvc`\="h2,443,,,ma=3600; persist=1"
 
 .. option:: --http2-altsvc=<PROTOID,PORT[,HOST,[ORIGIN[,PARAMS]]]>
 
@@ -1461,6 +1477,15 @@ HTTP
     "redirect-if-not-tls" parameter in :option:`--backend` option.
 
     Default: ``443``
+
+.. option:: --require-http-scheme
+
+    Always require http or https scheme in HTTP request.  It
+    also  requires that  https scheme  must be  used for  an
+    encrypted  connection.  Otherwise,  http scheme  must be
+    used.   This   option  is   recommended  for   a  server
+    deployment which directly faces clients and the services
+    it provides only require http or https scheme.
 
 
 API
@@ -1637,7 +1662,7 @@ HTTP/3 and QUIC
     frontend QUIC  connections.  A qlog file  is created per
     each QUIC  connection.  The  file name is  ISO8601 basic
     format, followed by "-", server Source Connection ID and
-    ".qlog".
+    ".sqlog".
 
 .. option:: --frontend-quic-require-token
 
@@ -1648,8 +1673,8 @@ HTTP/3 and QUIC
 .. option:: --frontend-quic-congestion-controller=<CC>
 
     Specify a congestion controller algorithm for a frontend
-    QUIC  connection.   <CC>  should be  either  "cubic"  or
-    "bbr".
+    QUIC connection.  <CC> should  be one of "cubic", "bbr",
+    and "bbr2".
 
     Default: ``cubic``
 

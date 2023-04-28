@@ -18,6 +18,8 @@
 
 #include <thread>
 
+#include <gtest/gtest.h>
+
 #include <grpc/grpc.h>
 #include <grpc/support/log.h>
 #include <grpc/support/sync.h>
@@ -34,15 +36,13 @@
 #include "test/core/util/test_config.h"
 #include "test/cpp/util/test_credentials_provider.h"
 
-#include <gtest/gtest.h>
-
 using grpc::testing::EchoRequest;
 using grpc::testing::EchoResponse;
 
 namespace grpc {
 namespace testing {
 
-class TestServiceImpl : public ::grpc::testing::EchoTestService::Service {
+class TestServiceImpl : public grpc::testing::EchoTestService::Service {
  public:
   explicit TestServiceImpl(gpr_event* ev) : ev_(ev) {}
 
@@ -86,7 +86,7 @@ class ShutdownTest : public ::testing::TestWithParam<string> {
     ChannelArguments args;
     auto channel_creds =
         GetCredentialsProvider()->GetChannelCredentials(GetParam(), &args);
-    channel_ = ::grpc::CreateCustomChannel(target, channel_creds, args);
+    channel_ = grpc::CreateCustomChannel(target, channel_creds, args);
     stub_ = grpc::testing::EchoTestService::NewStub(channel_);
   }
 
@@ -164,7 +164,7 @@ TEST_P(ShutdownTest, ShutdownTest) {
 }  // namespace grpc
 
 int main(int argc, char** argv) {
-  grpc::testing::TestEnvironment env(argc, argv);
+  grpc::testing::TestEnvironment env(&argc, argv);
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

@@ -20,11 +20,11 @@
 
 #include "src/core/tsi/transport_security.h"
 
-#include <grpc/support/alloc.h>
-#include <grpc/support/string_util.h>
-
 #include <stdlib.h>
 #include <string.h>
+
+#include <grpc/support/alloc.h>
+#include <grpc/support/string_util.h>
 
 /* --- Tracing. --- */
 
@@ -216,14 +216,26 @@ tsi_result tsi_handshaker_next(
     tsi_handshaker* self, const unsigned char* received_bytes,
     size_t received_bytes_size, const unsigned char** bytes_to_send,
     size_t* bytes_to_send_size, tsi_handshaker_result** handshaker_result,
-    tsi_handshaker_on_next_done_cb cb, void* user_data) {
-  if (self == nullptr || self->vtable == nullptr) return TSI_INVALID_ARGUMENT;
-  if (self->handshaker_result_created) return TSI_FAILED_PRECONDITION;
-  if (self->handshake_shutdown) return TSI_HANDSHAKE_SHUTDOWN;
-  if (self->vtable->next == nullptr) return TSI_UNIMPLEMENTED;
+    tsi_handshaker_on_next_done_cb cb, void* user_data, std::string* error) {
+  if (self == nullptr || self->vtable == nullptr) {
+    if (error != nullptr) *error = "invalid argument";
+    return TSI_INVALID_ARGUMENT;
+  }
+  if (self->handshaker_result_created) {
+    if (error != nullptr) *error = "handshaker already returned a result";
+    return TSI_FAILED_PRECONDITION;
+  }
+  if (self->handshake_shutdown) {
+    if (error != nullptr) *error = "handshaker shutdown";
+    return TSI_HANDSHAKE_SHUTDOWN;
+  }
+  if (self->vtable->next == nullptr) {
+    if (error != nullptr) *error = "TSI handshaker does not implement next()";
+    return TSI_UNIMPLEMENTED;
+  }
   return self->vtable->next(self, received_bytes, received_bytes_size,
                             bytes_to_send, bytes_to_send_size,
-                            handshaker_result, cb, user_data);
+                            handshaker_result, cb, user_data, error);
 }
 
 void tsi_handshaker_shutdown(tsi_handshaker* self) {
@@ -249,6 +261,18 @@ tsi_result tsi_handshaker_result_extract_peer(const tsi_handshaker_result* self,
   memset(peer, 0, sizeof(tsi_peer));
   if (self->vtable->extract_peer == nullptr) return TSI_UNIMPLEMENTED;
   return self->vtable->extract_peer(self, peer);
+}
+
+tsi_result tsi_handshaker_result_get_frame_protector_type(
+    const tsi_handshaker_result* self,
+    tsi_frame_protector_type* frame_protector_type) {
+  if (self == nullptr || frame_protector_type == nullptr) {
+    return TSI_INVALID_ARGUMENT;
+  }
+  if (self->vtable->get_frame_protector_type == nullptr) {
+    return TSI_UNIMPLEMENTED;
+  }
+  return self->vtable->get_frame_protector_type(self, frame_protector_type);
 }
 
 tsi_result tsi_handshaker_result_create_frame_protector(

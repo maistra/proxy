@@ -22,16 +22,16 @@
 #include <condition_variable>
 #include <memory>
 #include <mutex>
+#include <string>
+#include <thread>
+
+#include <gtest/gtest.h>
 
 #include <grpc/grpc.h>
 #include <grpc/support/log.h>
 #include <grpcpp/alarm.h>
 #include <grpcpp/security/credentials.h>
 #include <grpcpp/server_context.h>
-#include <gtest/gtest.h>
-
-#include <string>
-#include <thread>
 
 #include "src/proto/grpc/testing/echo.grpc.pb.h"
 #include "test/cpp/util/string_ref_helper.h"
@@ -161,6 +161,11 @@ class TestMultipleServiceImpl : public RpcService {
     internal::MaybeEchoDeadline(context, request, response);
     if (host_) {
       response->mutable_param()->set_host(*host_);
+    } else if (request->has_param() &&
+               request->param().echo_host_from_authority_header()) {
+      auto authority = context->ExperimentalGetAuthority();
+      std::string authority_str(authority.data(), authority.size());
+      response->mutable_param()->set_host(std::move(authority_str));
     }
     if (request->has_param() && request->param().client_cancel_after_us()) {
       {
@@ -377,6 +382,9 @@ class TestMultipleServiceImpl : public RpcService {
     int server_try_cancel = internal::GetIntValueFromMetadata(
         kServerTryCancelRequest, context->client_metadata(), DO_NOT_CANCEL);
 
+    int client_try_cancel = static_cast<bool>(internal::GetIntValueFromMetadata(
+        kClientTryCancelRequest, context->client_metadata(), 0));
+
     EchoRequest request;
     EchoResponse response;
 
@@ -403,9 +411,14 @@ class TestMultipleServiceImpl : public RpcService {
       response.set_message(request.message());
       if (read_counts == server_write_last) {
         stream->WriteLast(response, WriteOptions());
+        break;
       } else {
         stream->Write(response);
       }
+    }
+
+    if (client_try_cancel) {
+      EXPECT_TRUE(context->IsCancelled());
     }
 
     if (server_try_cancel_thd != nullptr) {
@@ -443,7 +456,7 @@ class TestMultipleServiceImpl : public RpcService {
 };
 
 class CallbackTestServiceImpl
-    : public ::grpc::testing::EchoTestService::CallbackService {
+    : public grpc::testing::EchoTestService::CallbackService {
  public:
   CallbackTestServiceImpl() : signal_client_(false), host_() {}
   explicit CallbackTestServiceImpl(const std::string& host)
@@ -482,7 +495,7 @@ class CallbackTestServiceImpl
 };
 
 using TestServiceImpl =
-    TestMultipleServiceImpl<::grpc::testing::EchoTestService::Service>;
+    TestMultipleServiceImpl<grpc::testing::EchoTestService::Service>;
 
 }  // namespace testing
 }  // namespace grpc

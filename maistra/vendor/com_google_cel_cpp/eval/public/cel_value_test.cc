@@ -1,23 +1,36 @@
 #include "eval/public/cel_value.h"
 
+#include <string>
+
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "base/memory_manager.h"
+#include "eval/public/cel_value_internal.h"
+#include "eval/public/structs/legacy_type_info_apis.h"
+#include "eval/public/structs/trivial_legacy_type_info.h"
+#include "eval/public/testing/matchers.h"
 #include "eval/public/unknown_attribute_set.h"
 #include "eval/public/unknown_set.h"
+#include "eval/testutil/test_message.pb.h"
+#include "extensions/protobuf/memory_manager.h"
+#include "internal/status_macros.h"
 #include "internal/testing.h"
 
 namespace google::api::expr::runtime {
 
 using testing::Eq;
+using cel::internal::StatusIs;
 
 class DummyMap : public CelMap {
  public:
   absl::optional<CelValue> operator[](CelValue value) const override {
     return CelValue::CreateNull();
   }
-  const CelList* ListKeys() const override { return nullptr; }
+  absl::StatusOr<const CelList*> ListKeys() const override {
+    return absl::UnimplementedError("CelMap::ListKeys is not implemented");
+  }
 
   int size() const override { return 0; }
 };
@@ -33,6 +46,9 @@ class DummyList : public CelList {
 
 TEST(CelValueTest, TestType) {
   ::google::protobuf::Arena arena;
+
+  CelValue value_null = CelValue::CreateNull();
+  EXPECT_THAT(value_null.type(), Eq(CelValue::Type::kNullType));
 
   CelValue value_bool = CelValue::CreateBool(false);
   EXPECT_THAT(value_bool.type(), Eq(CelValue::Type::kBool));
@@ -230,6 +246,10 @@ TEST(CelValueTest, TestMap) {
 TEST(CelValueTest, TestCelType) {
   ::google::protobuf::Arena arena;
 
+  CelValue value_null = CelValue::CreateNullTypedValue();
+  EXPECT_THAT(value_null.ObtainCelType().CelTypeOrDie().value(),
+              Eq("null_type"));
+
   CelValue value_bool = CelValue::CreateBool(false);
   EXPECT_THAT(value_bool.ObtainCelType().CelTypeOrDie().value(), Eq("bool"));
 
@@ -263,11 +283,6 @@ TEST(CelValueTest, TestCelType) {
   CelValue value_unknown = CelValue::CreateUnknownSet(&unknown_set);
   EXPECT_THAT(value_unknown.type(), Eq(CelValue::Type::kUnknownSet));
   EXPECT_TRUE(value_unknown.ObtainCelType().IsUnknownSet());
-
-  CelValue missing_attribute_error =
-      CreateMissingAttributeError(&arena, "destination.ip");
-  EXPECT_TRUE(IsMissingAttributeError(missing_attribute_error));
-  EXPECT_TRUE(missing_attribute_error.ObtainCelType().IsError());
 }
 
 // This test verifies CelValue support of Unknown type.
@@ -285,15 +300,60 @@ TEST(CelValueTest, TestUnknownSet) {
   EXPECT_THAT(CountTypeMatch(value), Eq(1));
 }
 
-TEST(CelValueTest, UnknownFunctionResultErrors) {
-  ::google::protobuf::Arena arena;
+TEST(CelValueTest, SpecialErrorFactories) {
+  google::protobuf::Arena arena;
+  cel::extensions::ProtoMemoryManager manager(&arena);
+
+  CelValue error = CreateNoSuchKeyError(manager, "key");
+  EXPECT_THAT(error, test::IsCelError(StatusIs(absl::StatusCode::kNotFound)));
+  EXPECT_TRUE(CheckNoSuchKeyError(error));
+
+  error = CreateNoSuchFieldError(manager, "field");
+  EXPECT_THAT(error, test::IsCelError(StatusIs(absl::StatusCode::kNotFound)));
+
+  error = CreateNoMatchingOverloadError(manager, "function");
+  EXPECT_THAT(error, test::IsCelError(StatusIs(absl::StatusCode::kUnknown)));
+  EXPECT_TRUE(CheckNoMatchingOverloadError(error));
+}
+
+TEST(CelValueTest, MissingAttributeErrorsDeprecated) {
+  google::protobuf::Arena arena;
+
+  CelValue missing_attribute_error =
+      CreateMissingAttributeError(&arena, "destination.ip");
+  EXPECT_TRUE(IsMissingAttributeError(missing_attribute_error));
+  EXPECT_TRUE(missing_attribute_error.ObtainCelType().IsError());
+}
+
+TEST(CelValueTest, MissingAttributeErrors) {
+  google::protobuf::Arena arena;
+  cel::extensions::ProtoMemoryManager manager(&arena);
+
+  CelValue missing_attribute_error =
+      CreateMissingAttributeError(manager, "destination.ip");
+  EXPECT_TRUE(IsMissingAttributeError(missing_attribute_error));
+  EXPECT_TRUE(missing_attribute_error.ObtainCelType().IsError());
+}
+
+TEST(CelValueTest, UnknownFunctionResultErrorsDeprecated) {
+  google::protobuf::Arena arena;
 
   CelValue value = CreateUnknownFunctionResultError(&arena, "message");
   EXPECT_TRUE(value.IsError());
   EXPECT_TRUE(IsUnknownFunctionResult(value));
 }
 
+TEST(CelValueTest, UnknownFunctionResultErrors) {
+  google::protobuf::Arena arena;
+  cel::extensions::ProtoMemoryManager manager(&arena);
+
+  CelValue value = CreateUnknownFunctionResultError(manager, "message");
+  EXPECT_TRUE(value.IsError());
+  EXPECT_TRUE(IsUnknownFunctionResult(value));
+}
+
 TEST(CelValueTest, DebugString) {
+  EXPECT_EQ(CelValue::CreateNull().DebugString(), "null_type: null");
   EXPECT_EQ(CelValue::CreateBool(true).DebugString(), "bool: 1");
   EXPECT_EQ(CelValue::CreateInt64(-12345).DebugString(), "int64: -12345");
   EXPECT_EQ(CelValue::CreateUint64(12345).DebugString(), "uint64: 12345");
@@ -319,6 +379,43 @@ TEST(CelValueTest, DebugString) {
             "CelError: INTERNAL: Blah...");
 
   // List and map DebugString() test coverage is in cel_proto_wrapper_test.cc.
+}
+
+TEST(CelValueTest, Message) {
+  TestMessage message;
+  auto value = CelValue::CreateMessageWrapper(
+      CelValue::MessageWrapper(&message, TrivialTypeInfo::GetInstance()));
+  EXPECT_TRUE(value.IsMessage());
+  CelValue::MessageWrapper held;
+  ASSERT_TRUE(value.GetValue(&held));
+  EXPECT_TRUE(held.HasFullProto());
+  EXPECT_EQ(held.message_ptr(),
+            static_cast<const google::protobuf::MessageLite*>(&message));
+  EXPECT_EQ(held.legacy_type_info(), TrivialTypeInfo::GetInstance());
+  // TrivialTypeInfo doesn't provide any details about the specific message.
+  EXPECT_EQ(value.ObtainCelType().CelTypeOrDie().value(), "opaque type");
+  EXPECT_EQ(value.DebugString(), "Message: opaque");
+}
+
+TEST(CelValueTest, MessageLite) {
+  TestMessage message;
+  // Upcast to message lite.
+  const google::protobuf::MessageLite* ptr = &message;
+  auto value = CelValue::CreateMessageWrapper(
+      CelValue::MessageWrapper(ptr, TrivialTypeInfo::GetInstance()));
+  EXPECT_TRUE(value.IsMessage());
+  CelValue::MessageWrapper held;
+  ASSERT_TRUE(value.GetValue(&held));
+  EXPECT_FALSE(held.HasFullProto());
+  EXPECT_EQ(held.message_ptr(), &message);
+  EXPECT_EQ(held.legacy_type_info(), TrivialTypeInfo::GetInstance());
+  EXPECT_EQ(value.ObtainCelType().CelTypeOrDie().value(), "opaque type");
+  EXPECT_EQ(value.DebugString(), "Message: opaque");
+}
+
+TEST(CelValueTest, Size) {
+  // CelValue performance degrades when it becomes larger.
+  static_assert(sizeof(CelValue) <= 3 * sizeof(uintptr_t));
 }
 
 }  // namespace google::api::expr::runtime

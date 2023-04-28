@@ -11,28 +11,52 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Generate the reference documentation.
+
+How to:
+   bazel build //doc_build:reference
+   cp bazel-bin/doc_build/reference.md docs/latest.md
+   git commit -m 'update docs' docs/latest.md
+"""
 
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@bazel_stardoc//stardoc:stardoc.bzl", "stardoc")
+load("@rules_python//python:defs.bzl", "py_library")
 load("//:version.bzl", "version")
 
-# HOW TO:
-#   bazel build //doc_build:reference
-#   cp bazel-bin/doc_build/reference.md docs/latest.md
-#   git commit -m 'update docs' docs/latest.md
+package(default_applicable_licenses = ["//:license"])
 
+filegroup(
+    name = "standard_package",
+    srcs = [
+        "BUILD",
+    ] + glob([
+        "*.bzl",
+        "*.py",
+    ]),
+    visibility = ["//distro:__pkg__"],
+)
+
+exports_files(
+    glob([
+        "*.bzl",
+    ]),
+    visibility = [
+        "//distro:__pkg__",
+        "//doc_build:__pkg__",
+    ],
+)
 
 # pairs of rule name and the source file to get it from
-# buildifier: leave-alone
+# buildifier: leave-alone, do not sort
 ORDER = [
-    # buildifier: do not sort
     ("toc",            None),
     ("common",         None),
     ("pkg_deb",        "//pkg/private/deb:deb.bzl"),
     ("pkg_deb_impl",   "//pkg/private/deb:deb.bzl"),
     ("pkg_rpm",        "//pkg:rpm_pfg.bzl"),
-    ("pkg_tar",        "//pkg:pkg.bzl"),
-    ("pkg_tar_impl",   "//pkg:pkg.bzl"),
+    ("pkg_tar",        "//pkg/private/tar:tar.bzl"),
+    ("pkg_tar_impl",   "//pkg/private/tar:tar.bzl"),
     ("pkg_zip",        "//pkg/private/zip:zip.bzl"),
     ("pkg_zip_impl",   "//pkg/private/zip:zip.bzl"),
     ("mappings",       None),
@@ -43,7 +67,8 @@ genrule(
     name = "reference",
     srcs = ["%s.md" % rule for rule, _ in ORDER],
     outs = ["reference.md"],
-    cmd = "cat $(SRCS) >$@",
+    cmd = "$(location :merge) $(SRCS) >$@",
+    exec_tools = [":merge"],
 )
 
 [
@@ -90,19 +115,16 @@ bzl_library(
     name = "rules_pkg_lib",
     srcs = [
         "//:version.bzl",
-        "//pkg:mappings.bzl",
-        "//pkg:package_variables.bzl",
-        "//pkg:path.bzl",
-        "//pkg:pkg.bzl",
-        "//pkg:providers.bzl",
-        "//pkg:rpm.bzl",
-        "//pkg:rpm_pfg.bzl",
-        "//pkg/legacy:rpm.bzl",
-        "//pkg/private:pkg_files.bzl",
-        "//pkg/private:util.bzl",
-        "//pkg/private/deb:deb.bzl",
-        "//pkg/private/zip:zip.bzl",
+        "//pkg:bzl_srcs",
         "@bazel_skylib//lib:paths",
     ],
+    visibility = ["//visibility:public"],
+)
+
+py_binary(
+    name = "merge",
+    srcs = ["merge.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
     visibility = ["//visibility:private"],
 )

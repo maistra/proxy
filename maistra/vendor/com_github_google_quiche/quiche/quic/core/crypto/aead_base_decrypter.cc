@@ -15,30 +15,12 @@
 #include "quiche/quic/core/quic_utils.h"
 #include "quiche/quic/platform/api/quic_bug_tracker.h"
 #include "quiche/quic/platform/api/quic_logging.h"
+#include "quiche/common/quiche_crypto_logging.h"
 
 namespace quic {
-
+using ::quiche::ClearOpenSslErrors;
+using ::quiche::DLogOpenSslErrors;
 namespace {
-
-// Clear OpenSSL error stack.
-void ClearOpenSslErrors() {
-  while (ERR_get_error()) {
-  }
-}
-
-// In debug builds only, log OpenSSL error stack. Then clear OpenSSL error
-// stack.
-void DLogOpenSslErrors() {
-#ifdef NDEBUG
-  ClearOpenSslErrors();
-#else
-  while (uint32_t error = ERR_get_error()) {
-    char buf[120];
-    ERR_error_string_n(error, buf, ABSL_ARRAYSIZE(buf));
-    QUIC_DLOG(ERROR) << "OpenSSL error: " << buf;
-  }
-#endif
-}
 
 const EVP_AEAD* InitAndCall(const EVP_AEAD* (*aead_getter)()) {
   // Ensure BoringSSL is initialized before calling |aead_getter|. In Chromium,
@@ -50,8 +32,7 @@ const EVP_AEAD* InitAndCall(const EVP_AEAD* (*aead_getter)()) {
 }  // namespace
 
 AeadBaseDecrypter::AeadBaseDecrypter(const EVP_AEAD* (*aead_getter)(),
-                                     size_t key_size,
-                                     size_t auth_tag_size,
+                                     size_t key_size, size_t auth_tag_size,
                                      size_t nonce_size,
                                      bool use_ietf_nonce_construction)
     : aead_alg_(InitAndCall(aead_getter)),
@@ -151,8 +132,7 @@ bool AeadBaseDecrypter::SetDiversificationNonce(
 bool AeadBaseDecrypter::DecryptPacket(uint64_t packet_number,
                                       absl::string_view associated_data,
                                       absl::string_view ciphertext,
-                                      char* output,
-                                      size_t* output_length,
+                                      char* output, size_t* output_length,
                                       size_t max_output_length) {
   if (ciphertext.length() < auth_tag_size_) {
     return false;
@@ -190,17 +170,13 @@ bool AeadBaseDecrypter::DecryptPacket(uint64_t packet_number,
   return true;
 }
 
-size_t AeadBaseDecrypter::GetKeySize() const {
-  return key_size_;
-}
+size_t AeadBaseDecrypter::GetKeySize() const { return key_size_; }
 
 size_t AeadBaseDecrypter::GetNoncePrefixSize() const {
   return nonce_size_ - sizeof(QuicPacketNumber);
 }
 
-size_t AeadBaseDecrypter::GetIVSize() const {
-  return nonce_size_;
-}
+size_t AeadBaseDecrypter::GetIVSize() const { return nonce_size_; }
 
 absl::string_view AeadBaseDecrypter::GetKey() const {
   return absl::string_view(reinterpret_cast<const char*>(key_), key_size_);

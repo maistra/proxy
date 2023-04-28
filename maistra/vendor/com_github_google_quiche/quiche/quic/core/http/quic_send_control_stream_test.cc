@@ -107,7 +107,7 @@ INSTANTIATE_TEST_SUITE_P(Tests, QuicSendControlStreamTest,
                          ::testing::PrintToStringParamName());
 
 TEST_P(QuicSendControlStreamTest, WriteSettings) {
-  SetQuicFlag(FLAGS_quic_enable_http3_grease_randomness, false);
+  SetQuicFlag(quic_enable_http3_grease_randomness, false);
   session_.set_qpack_maximum_dynamic_table_capacity(255);
   session_.set_qpack_maximum_blocked_streams(16);
   session_.set_max_inbound_header_list_size(1024);
@@ -133,11 +133,11 @@ TEST_P(QuicSendControlStreamTest, WriteSettings) {
   if ((!GetQuicReloadableFlag(quic_verify_request_headers_2) ||
        perspective() == Perspective::IS_CLIENT) &&
       QuicSpdySessionPeer::LocalHttpDatagramSupport(&session_) ==
-          HttpDatagramSupport::kDraft00And04) {
+          HttpDatagramSupport::kDraft04) {
     expected_write_data = absl::HexStringToBytes(
         "00"         // stream type: control stream
         "04"         // frame type: SETTINGS frame
-        "0e"         // frame length
+        "0b"         // frame length
         "01"         // SETTINGS_QPACK_MAX_TABLE_CAPACITY
         "40ff"       // 255
         "06"         // SETTINGS_MAX_HEADER_LIST_SIZE
@@ -146,8 +146,6 @@ TEST_P(QuicSendControlStreamTest, WriteSettings) {
         "10"         // 16
         "4040"       // 0x40 as the reserved settings id
         "14"         // 20
-        "4276"       // SETTINGS_H3_DATAGRAM_DRAFT00
-        "01"         // 1
         "800ffd277"  // SETTINGS_H3_DATAGRAM_DRAFT04
         "01"         // 1
         "4040"       // 0x40 as the reserved frame type
@@ -183,7 +181,7 @@ TEST_P(QuicSendControlStreamTest, WriteSettings) {
     expected_write_data = absl::HexStringToBytes(
         "00"         // stream type: control stream
         "04"         // frame type: SETTINGS frame
-        "11"         // frame length
+        "0e"         // frame length
         "01"         // SETTINGS_QPACK_MAX_TABLE_CAPACITY
         "40ff"       // 255
         "06"         // SETTINGS_MAX_HEADER_LIST_SIZE
@@ -194,8 +192,6 @@ TEST_P(QuicSendControlStreamTest, WriteSettings) {
         "01"         // 1
         "4040"       // 0x40 as the reserved settings id
         "14"         // 20
-        "4276"       // SETTINGS_H3_DATAGRAM_DRAFT00
-        "01"         // 1
         "800ffd277"  // SETTINGS_H3_DATAGRAM_DRAFT04
         "01"         // 1
         "4040"       // 0x40 as the reserved frame type

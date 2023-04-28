@@ -65,9 +65,9 @@ public class Vocabulary: Hashable {
     /// 
     /// 
     public init(_ literalNames: [String?]?, _ symbolicNames: [String?]?, _ displayNames: [String?]?) {
-        self.literalNames = literalNames != nil ? literalNames! : Vocabulary.EMPTY_NAMES
-        self.symbolicNames = symbolicNames != nil ? symbolicNames! : Vocabulary.EMPTY_NAMES
-        self.displayNames = displayNames != nil ? displayNames! : Vocabulary.EMPTY_NAMES
+        self.literalNames = literalNames ?? Vocabulary.EMPTY_NAMES
+        self.symbolicNames = symbolicNames ?? Vocabulary.EMPTY_NAMES
+        self.displayNames = displayNames ?? Vocabulary.EMPTY_NAMES
     }
 
     /// 
@@ -155,11 +155,9 @@ public class Vocabulary: Hashable {
         return String(tokenType)
     }
 
-    public var hashValue: Int {
-        return Unmanaged.passUnretained(self).toOpaque().hashValue
-//        return unsafeAddress(of: self).hashValue
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(ObjectIdentifier(self))
     }
-
 }
 
 public func ==(lhs: Vocabulary, rhs: Vocabulary) -> Bool {

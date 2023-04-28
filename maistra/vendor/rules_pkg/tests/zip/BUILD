@@ -13,13 +13,26 @@
 # limitations under the License.
 # -*- coding: utf-8 -*-
 
-load("//pkg:mappings.bzl", "pkg_attributes", "pkg_mkdirs")
+load("//pkg:mappings.bzl", "pkg_attributes", "pkg_mkdirs", "pkg_mklink")
 load("//pkg:zip.bzl", "pkg_zip")
 load("//tests/util:defs.bzl", "directory", "fake_artifact")
-load("@rules_python//python:defs.bzl", "py_test")
+load("@rules_python//python:defs.bzl", "py_library", "py_test")
 load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 
+package(default_applicable_licenses = ["//:license"])
+
 licenses(["notice"])
+
+py_library(
+    name = "zip_test_lib",
+    srcs = [
+        "zip_test_lib.py",
+    ],
+    srcs_version = "PY3",
+    deps = [
+        "@bazel_tools//tools/python/runfiles",
+    ],
+)
 
 genrule(
     name = "generate_files",
@@ -40,6 +53,15 @@ pkg_mkdirs(
     dirs = [
         "foodir",
     ],
+)
+
+pkg_mklink(
+    name = "link",
+    attributes = pkg_attributes(
+        mode = "555",
+    ),
+    link_name = "/usr/bin/foo",
+    target = "/usr/local/foo/foo.real",
 )
 
 directory(
@@ -68,18 +90,33 @@ pkg_zip(
 
 # The contents of this file should equal test_zip_empty
 pkg_zip(
-    name = "test_zip_empty_different_extension",
-    srcs = [],
-    extension = "otherkindofzip",
+    name = "test_zip_basic_renamed",
+    srcs = [
+        ":dirs",
+        ":link",
+        "//tests:testdata/hello.txt",
+        "//tests:testdata/loremipsum.txt",
+    ],
+    package_file_name = "test_zip_basic_renamed.foo",
 )
 
 pkg_zip(
     name = "test_zip_basic",
     srcs = [
+        ":dirs",
+        ":link",
         "//tests:testdata/hello.txt",
         "//tests:testdata/loremipsum.txt",
-        ":dirs",
     ],
+)
+
+pkg_zip(
+    name = "test_zip_out",
+    srcs = [
+        "//tests:testdata/hello.txt",
+        "//tests:testdata/loremipsum.txt",
+    ],
+    out = "test_zip_out.foo",
 )
 
 pkg_zip(
@@ -88,6 +125,11 @@ pkg_zip(
         "//tests:testdata/hello.txt",
     ],
     timestamp = 1234567890,
+)
+
+pkg_zip(
+    name = "test_zip_tree",
+    srcs = [":generate_tree"],
 )
 
 pkg_zip(
@@ -104,9 +146,10 @@ pkg_zip(
 pkg_zip(
     name = "test_zip_basic_timestamp_before_epoch",
     srcs = [
+        ":dirs",
+        ":link",
         "//tests:testdata/hello.txt",
         "//tests:testdata/loremipsum.txt",
-        ":dirs",
     ],
     timestamp = 0,
 )
@@ -172,24 +215,43 @@ py_test(
         "zip_test.py",
     ],
     data = [
-        "test_zip_empty.zip",
-        "test_zip_basic.zip",
-        "test_zip_package_dir0.zip",
-        "test_zip_timestamp.zip",
-        "test_zip_permissions.zip",
-        "test-zip-strip_prefix-empty.zip",
-        "test-zip-strip_prefix-none.zip",
-        "test-zip-strip_prefix-zipcontent.zip",
-        "test-zip-strip_prefix-dot.zip",
-
-        # these could be replaced with diff_test() rules (from skylib)
-        "test_zip_basic_timestamp_before_epoch.zip",
-        "test_zip_empty_different_extension.otherkindofzip",
-        "test_zip_package_dir1.zip",
-        "test_zip_package_dir2.zip",
+        ":test-zip-strip_prefix-dot.zip",
+        ":test-zip-strip_prefix-empty.zip",
+        ":test-zip-strip_prefix-none.zip",
+        ":test-zip-strip_prefix-zipcontent.zip",
+        ":test_zip_basic.zip",
+        ":test_zip_empty.zip",
+        ":test_zip_package_dir0.zip",
+        ":test_zip_permissions.zip",
+        ":test_zip_timestamp.zip",
+        ":test_zip_tree.zip",
     ],
     python_version = "PY3",
     deps = [
+        ":zip_test_lib",
         "@bazel_tools//tools/python/runfiles",
+    ],
+)
+
+py_test(
+    name = "zip_byte_for_byte_test",
+    srcs = [
+        "zip_byte_for_byte_test.py",
+    ],
+    data = [
+        ":test_zip_basic.zip",
+        ":test_zip_basic_renamed",
+        # We do not actually use this file, we just want to make sure we build
+        # it with this name.
+        ":test_zip_out.foo",
+        ":test_zip_package_dir0.zip",
+        # these could be replaced with diff_test() rules (from skylib)
+        ":test_zip_basic_timestamp_before_epoch.zip",
+        ":test_zip_package_dir1.zip",
+        ":test_zip_package_dir2.zip",
+    ],
+    python_version = "PY3",
+    deps = [
+        ":zip_test_lib",
     ],
 )

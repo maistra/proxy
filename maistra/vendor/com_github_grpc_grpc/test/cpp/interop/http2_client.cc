@@ -18,17 +18,17 @@
 
 #include "test/cpp/interop/http2_client.h"
 
+#include <thread>
+
+#include "absl/flags/flag.h"
+
 #include <grpc/support/alloc.h>
 #include <grpc/support/log.h>
 #include <grpcpp/channel.h>
 #include <grpcpp/client_context.h>
 
-#include <thread>
-
-#include "absl/flags/flag.h"
 #include "src/core/lib/gpr/string.h"
 #include "src/core/lib/gpr/useful.h"
-#include "src/core/lib/transport/byte_stream.h"
 #include "src/proto/grpc/testing/messages.pb.h"
 #include "src/proto/grpc/testing/test.grpc.pb.h"
 #include "test/cpp/util/create_test_channel.h"

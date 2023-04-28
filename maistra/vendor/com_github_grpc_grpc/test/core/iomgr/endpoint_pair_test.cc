@@ -17,6 +17,9 @@
  */
 
 #include "src/core/lib/iomgr/endpoint_pair.h"
+
+#include <gtest/gtest.h>
+
 #include <grpc/grpc.h>
 #include <grpc/support/alloc.h>
 #include <grpc/support/log.h>
@@ -41,7 +44,6 @@ static grpc_endpoint_test_fixture create_fixture_endpoint_pair(
   a[0].value.integer = static_cast<int>(slice_size);
   grpc_channel_args args = {GPR_ARRAY_SIZE(a), a};
   grpc_endpoint_pair p = grpc_iomgr_create_endpoint_pair("test", &args);
-
   f.client_ep = p.client;
   f.server_ep = p.server;
   grpc_endpoint_add_to_pollset(f.client_ep, g_pollset);
@@ -58,9 +60,8 @@ static void destroy_pollset(void* p, grpc_error_handle /*error*/) {
   grpc_pollset_destroy(static_cast<grpc_pollset*>(p));
 }
 
-int main(int argc, char** argv) {
+TEST(EndpointPairTest, MainTest) {
   grpc_closure destroyed;
-  grpc::testing::TestEnvironment env(argc, argv);
   grpc_init();
   {
     grpc_core::ExecCtx exec_ctx;
@@ -73,6 +74,10 @@ int main(int argc, char** argv) {
   }
   grpc_shutdown();
   gpr_free(g_pollset);
+}
 
-  return 0;
+int main(int argc, char** argv) {
+  grpc::testing::TestEnvironment env(&argc, argv);
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
 }

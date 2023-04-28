@@ -5,6 +5,8 @@ and registries.
 
 <img src="../../images/crane.png" width="40%">
 
+A collection of useful things you can do with `crane` is [here](recipes.md).
+
 ## Installation
 
 Download [latest release](https://github.com/google/go-containerregistry/releases/latest).
@@ -23,25 +25,35 @@ If you're macOS user and using [Homebrew](https://brew.sh/), you can install via
 $ brew install crane
 ```
 
+### Install on arch
+
+If you're arch linux user and use [some AUR
+helper](https://wiki.archlinux.org/index.php/AUR_helpers) you can install it with one of
+your favourite command:
+
+```sh
+$ yay -S go-crane-bin
+```
+
 ## Images
 
 You can also use crane as docker image
 
 ```sh
 $ docker run --rm gcr.io/go-containerregistry/crane ls ubuntu
-
-2019/12/03 09:33:01 No matching credentials were found, falling back on anonymous
 10.04
 12.04.5
 12.04
 12.10
 ```
 
-And it's also available with a shell, which uses the `debug` tag
+And it's also available with a shell, at the `:debug` tag:
 
 ```sh
 docker run --rm -it --entrypoint "/busybox/sh" gcr.io/go-containerregistry/crane:debug
 ```
+
+Tagged debug images are available at `gcr.io/go-containerregistry/crane/debug:[tag]`.
 
 ### Using with GitLab
 

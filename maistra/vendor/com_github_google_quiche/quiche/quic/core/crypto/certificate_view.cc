@@ -79,8 +79,12 @@ PublicKeyType PublicKeyTypeFromKey(EVP_PKEY* public_key) {
   }
 }
 
+}  // namespace
+
 PublicKeyType PublicKeyTypeFromSignatureAlgorithm(
     uint16_t signature_algorithm) {
+  // This should be kept in sync with the list in
+  // SupportedSignatureAlgorithmsForQuic().
   switch (signature_algorithm) {
     case SSL_SIGN_RSA_PSS_RSAE_SHA256:
       return PublicKeyType::kRsa;
@@ -94,6 +98,17 @@ PublicKeyType PublicKeyTypeFromSignatureAlgorithm(
       return PublicKeyType::kUnknown;
   }
 }
+
+QUIC_EXPORT_PRIVATE QuicSignatureAlgorithmVector
+SupportedSignatureAlgorithmsForQuic() {
+  // This should be kept in sync with the list in
+  // PublicKeyTypeFromSignatureAlgorithm().
+  return QuicSignatureAlgorithmVector{
+      SSL_SIGN_ED25519, SSL_SIGN_ECDSA_SECP256R1_SHA256,
+      SSL_SIGN_ECDSA_SECP384R1_SHA384, SSL_SIGN_RSA_PSS_RSAE_SHA256};
+}
+
+namespace {
 
 std::string AttributeNameToString(const CBS& oid_cbs) {
   absl::string_view oid = CbsToStringPiece(oid_cbs);
@@ -137,8 +152,7 @@ absl::optional<std::string> X509NameAttributeToString(CBS input) {
 
 namespace {
 
-template <unsigned inner_tag,
-          char separator,
+template <unsigned inner_tag, char separator,
           absl::optional<std::string> (*parser)(CBS)>
 absl::optional<std::string> ParseAndJoin(CBS input) {
   std::vector<std::string> pieces;

@@ -16,15 +16,17 @@
  *
  */
 
+#include "src/core/tsi/ssl/session_cache/ssl_session_cache.h"
+
 #include <string>
 #include <unordered_set>
 
-#include "src/core/tsi/ssl/session_cache/ssl_session_cache.h"
-#include "test/core/util/test_config.h"
+#include <gtest/gtest.h>
 
 #include <grpc/grpc.h>
 #include <grpc/support/log.h>
-#include <gtest/gtest.h>
+
+#include "test/core/util/test_config.h"
 
 namespace grpc_core {
 
@@ -145,7 +147,7 @@ TEST(SslSessionCacheTest, LruCache) {
 
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  grpc::testing::TestEnvironment env(argc, argv);
+  grpc::testing::TestEnvironment env(&argc, argv);
   grpc_init();
   int ret = RUN_ALL_TESTS();
   grpc_shutdown();

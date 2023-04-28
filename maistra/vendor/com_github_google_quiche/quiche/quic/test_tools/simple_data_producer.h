@@ -9,7 +9,6 @@
 #include "absl/strings/string_view.h"
 #include "quiche/quic/core/quic_stream_frame_data_producer.h"
 #include "quiche/quic/core/quic_stream_send_buffer.h"
-#include "quiche/quic/platform/api/quic_containers.h"
 #include "quiche/common/simple_buffer_allocator.h"
 
 namespace quic {
@@ -28,8 +27,7 @@ class SimpleDataProducer : public QuicStreamFrameDataProducer {
   // that stream.
   void SaveStreamData(QuicStreamId id, absl::string_view data);
 
-  void SaveCryptoData(EncryptionLevel level,
-                      QuicStreamOffset offset,
+  void SaveCryptoData(EncryptionLevel level, QuicStreamOffset offset,
                       absl::string_view data);
 
   // QuicStreamFrameDataProducer
@@ -37,8 +35,7 @@ class SimpleDataProducer : public QuicStreamFrameDataProducer {
                                         QuicStreamOffset offset,
                                         QuicByteCount data_length,
                                         QuicDataWriter* writer) override;
-  bool WriteCryptoData(EncryptionLevel level,
-                       QuicStreamOffset offset,
+  bool WriteCryptoData(EncryptionLevel level, QuicStreamOffset offset,
                        QuicByteCount data_length,
                        QuicDataWriter* writer) override;
 

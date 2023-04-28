@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 #include "quiche/quic/core/quic_unacked_packet_map.h"
+
 #include <cstddef>
 #include <limits>
 
@@ -47,8 +48,7 @@ class QuicUnackedPacketMapTest : public QuicTestWithParam<Perspective> {
   }
 
   SerializedPacket CreateRetransmittablePacketForStream(
-      uint64_t packet_number,
-      QuicStreamId stream_id) {
+      uint64_t packet_number, QuicStreamId stream_id) {
     SerializedPacket packet(QuicPacketNumber(packet_number),
                             PACKET_1BYTE_PACKET_NUMBER, nullptr, kDefaultLength,
                             false, false);
@@ -163,8 +163,7 @@ class QuicUnackedPacketMapTest : public QuicTestWithParam<Perspective> {
   StrictMock<MockSessionNotifier> notifier_;
 };
 
-INSTANTIATE_TEST_SUITE_P(Tests,
-                         QuicUnackedPacketMapTest,
+INSTANTIATE_TEST_SUITE_P(Tests, QuicUnackedPacketMapTest,
                          ::testing::ValuesIn({Perspective::IS_CLIENT,
                                               Perspective::IS_SERVER}),
                          ::testing::PrintToStringParamName());
@@ -403,8 +402,8 @@ TEST_P(QuicUnackedPacketMapTest, RetransmitFourTimes) {
   std::vector<uint64_t> retransmittable2 = {1, 3};
   VerifyRetransmittablePackets(&retransmittable2[0], retransmittable2.size());
 
-  // TLP 3 (formerly 1) as 4, and don't remove 1 from unacked.
-  RetransmitAndSendPacket(3, 4, TLP_RETRANSMISSION);
+  // PTO 3 (formerly 1) as 4, and don't remove 1 from unacked.
+  RetransmitAndSendPacket(3, 4, PTO_RETRANSMISSION);
   SerializedPacket packet5(CreateRetransmittablePacket(5));
   unacked_packets_.AddSentPacket(&packet5, NOT_RETRANSMISSION, now_, true,
                                  true);
@@ -552,7 +551,7 @@ TEST_P(QuicUnackedPacketMapTest, CannotAggregateAckedControlFrames) {
   QuicWindowUpdateFrame window_update(1, 5, 100);
   QuicStreamFrame stream_frame1(3, false, 0, 100);
   QuicStreamFrame stream_frame2(3, false, 100, 100);
-  QuicBlockedFrame blocked(2, 5);
+  QuicBlockedFrame blocked(2, 5, 0);
   QuicGoAwayFrame go_away(3, QUIC_PEER_GOING_AWAY, 5, "Going away.");
 
   QuicTransmissionInfo info1;

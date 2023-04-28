@@ -1,3 +1,5 @@
+c: Copyright (C) 1998 - 2022, Daniel Stenberg, <daniel@haxx.se>, et al.
+SPDX-License-Identifier: curl
 Long: write-out
 Short: w
 Arg: <format>
@@ -6,6 +8,7 @@ Category: verbose
 Example: -w '%{http_code}\\n' $URL
 Added: 6.5
 See-also: verbose head
+Multi: single
 ---
 Make curl display information on stdout after a completed transfer. The format
 is a string that may contain plain text mixed with any number of
@@ -21,6 +24,11 @@ output a newline by using \\n, a carriage return with \\r and a tab space with
 
 The output will be written to standard output, but this can be switched to
 standard error by using %{stderr}.
+
+Output HTTP headers from the most recent request by using \fB%header{name}\fP
+where \fBname\fP is the case insensitive name of the header (without the
+trailing colon). The header contents are exactly as sent over the network,
+with leading and trailing whitespace trimmed. Added in curl 7.84.0.
 
 .B NOTE:
 The %-symbol is a special symbol in the win32-environment, where all
@@ -47,6 +55,15 @@ option. (Added in 7.26.0)
 .B ftp_entry_path
 The initial path curl ended up in when logging on to the remote FTP
 server. (Added in 7.15.4)
+.TP
+.B header_json
+A JSON object with all HTTP response headers from the recent transfer. Values
+are provided as arrays, since in the case of multiple headers there can be
+multiple values.
+
+The header names provided in lowercase, listed in order of appearance over the
+wire. Except for duplicated headers. They are grouped on the first occurrence
+of that header, each value is presented in the JSON array.
 .TP
 .B http_code
 The numerical response code that was found in the last retrieved HTTP(S) or
@@ -190,4 +207,3 @@ The URL that was fetched last. This is most meaningful if you have told curl
 to follow location: headers.
 .RE
 .IP
-If this option is used several times, the last one will be used.

@@ -7,7 +7,7 @@ import * as flatbuffers from 'flatbuffers';
 export class Referrable {
   bb: flatbuffers.ByteBuffer|null = null;
   bb_pos = 0;
-__init(i:number, bb:flatbuffers.ByteBuffer):Referrable {
+  __init(i:number, bb:flatbuffers.ByteBuffer):Referrable {
   this.bb_pos = i;
   this.bb = bb;
   return this;
@@ -22,12 +22,12 @@ static getSizePrefixedRootAsReferrable(bb:flatbuffers.ByteBuffer, obj?:Referrabl
   return (obj || new Referrable()).__init(bb.readInt32(bb.position()) + bb.position(), bb);
 }
 
-id():flatbuffers.Long {
+id():bigint {
   const offset = this.bb!.__offset(this.bb_pos, 4);
-  return offset ? this.bb!.readUint64(this.bb_pos + offset) : this.bb!.createLong(0, 0);
+  return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
 
-mutate_id(value:flatbuffers.Long):boolean {
+mutate_id(value:bigint):boolean {
   const offset = this.bb!.__offset(this.bb_pos, 4);
 
   if (offset === 0) {
@@ -39,15 +39,15 @@ mutate_id(value:flatbuffers.Long):boolean {
 }
 
 static getFullyQualifiedName():string {
-  return 'MyGame.Example.Referrable';
+  return 'MyGame_Example_Referrable';
 }
 
 static startReferrable(builder:flatbuffers.Builder) {
   builder.startObject(1);
 }
 
-static addId(builder:flatbuffers.Builder, id:flatbuffers.Long) {
-  builder.addFieldInt64(0, id, builder.createLong(0, 0));
+static addId(builder:flatbuffers.Builder, id:bigint) {
+  builder.addFieldInt64(0, id, BigInt('0'));
 }
 
 static endReferrable(builder:flatbuffers.Builder):flatbuffers.Offset {
@@ -55,7 +55,7 @@ static endReferrable(builder:flatbuffers.Builder):flatbuffers.Offset {
   return offset;
 }
 
-static createReferrable(builder:flatbuffers.Builder, id:flatbuffers.Long):flatbuffers.Offset {
+static createReferrable(builder:flatbuffers.Builder, id:bigint):flatbuffers.Offset {
   Referrable.startReferrable(builder);
   Referrable.addId(builder, id);
   return Referrable.endReferrable(builder);
@@ -83,7 +83,7 @@ unpackTo(_o: ReferrableT): void {
 
 export class ReferrableT {
 constructor(
-  public id: flatbuffers.Long = flatbuffers.createLong(0, 0)
+  public id: bigint = BigInt('0')
 ){}
 
 

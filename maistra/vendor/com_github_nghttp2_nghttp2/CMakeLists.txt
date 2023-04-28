@@ -24,13 +24,13 @@
 
 cmake_minimum_required(VERSION 3.0)
 # XXX using 1.8.90 instead of 1.9.0-DEV
-project(nghttp2 VERSION 1.46.0)
+project(nghttp2 VERSION 1.50.0)
 
 # See versioning rule:
 #  https://www.gnu.org/software/libtool/manual/html_node/Updating-version-info.html
-set(LT_CURRENT  35)
-set(LT_REVISION 1)
-set(LT_AGE      21)
+set(LT_CURRENT  38)
+set(LT_REVISION 0)
+set(LT_AGE      24)
 
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
 include(Version)
@@ -67,7 +67,12 @@ if(LIBNGTCP2_CRYPTO_OPENSSL_FOUND)
   set(HAVE_LIBNGTCP2_CRYPTO_OPENSSL 1)
 endif()
 find_package(Libnghttp3 0.0.0)
-find_package(Libbpf 0.4.0)
+if(WITH_LIBBPF)
+  find_package(Libbpf 0.4.0)
+  if(NOT LIBBPF_FOUND)
+    message(FATAL_ERROR "libbpf was requested (WITH_LIBBPF=1) but not found.")
+  endif()
+endif()
 if(OPENSSL_FOUND AND LIBEV_FOUND AND ZLIB_FOUND)
   set(ENABLE_APP_DEFAULT ON)
 else()
@@ -174,7 +179,7 @@ endif()
 # case "$host" in
 #   *android*)
 #     android_build=yes
-#     # android does not need -pthread, but needs followng 3 libs for C++
+#     # android does not need -pthread, but needs following 3 libs for C++
 #     APPLDFLAGS="$APPLDFLAGS -lstdc++ -latomic -lsupc++"
 
 # dl: openssl requires libdl when it is statically linked.
@@ -196,9 +201,12 @@ if(OPENSSL_FOUND)
   cmake_push_check_state()
   set(CMAKE_REQUIRED_INCLUDES   "${OPENSSL_INCLUDE_DIR}")
   set(CMAKE_REQUIRED_LIBRARIES  "${OPENSSL_LIBRARIES}")
+  if(WIN32)
+    set(CMAKE_REQUIRED_LIBRARIES "${CMAKE_REQUIRED_LIBRARIES}" "ws2_32" "bcrypt")
+  endif()
   check_symbol_exists(SSL_is_quic "openssl/ssl.h" HAVE_SSL_IS_QUIC)
   if(NOT HAVE_SSL_IS_QUIC)
-    message(WARNING "OpenSSL in ${OPENSSL_LIBRARIES} dose not have SSL_is_quic.  HTTP/3 support cannot be enabled")
+    message(WARNING "OpenSSL in ${OPENSSL_LIBRARIES} does not have SSL_is_quic.  HTTP/3 support cannot be enabled")
   endif()
   cmake_pop_check_state()
 else()
@@ -511,7 +519,9 @@ add_subdirectory(python)
 add_subdirectory(tests)
 #add_subdirectory(tests/testdata)
 add_subdirectory(integration-tests)
-add_subdirectory(doc)
+if(ENABLE_DOC)
+  add_subdirectory(doc)
+endif()
 add_subdirectory(contrib)
 add_subdirectory(script)
 add_subdirectory(bpf)

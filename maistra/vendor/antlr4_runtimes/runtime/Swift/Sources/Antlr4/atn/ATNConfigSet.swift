@@ -42,7 +42,7 @@ public final class ATNConfigSet: Hashable, CustomStringConvertible {
 
     // TODO: these fields make me pretty uncomfortable but nice to pack up info together, saves recomputation
     // TODO: can we track conflicts as they are added to save scanning configs later?
-    public internal(set) var uniqueAlt = 0
+    public internal(set) var uniqueAlt = ATN.INVALID_ALT_NUMBER
     //TODO no default
     /// 
     /// Currently this is only used when we detect SLL conflict; this does
@@ -203,16 +203,16 @@ public final class ATNConfigSet: Hashable, CustomStringConvertible {
         return false
     }
 
-    public var hashValue: Int {
+    public func hash(into hasher: inout Hasher) {
         if isReadonly() {
             if cachedHashCode == -1 {
-                cachedHashCode = configsHashValue//configs.hashValue ;
+                cachedHashCode = configsHashValue
             }
-
-            return cachedHashCode
+            hasher.combine(cachedHashCode)
         }
-
-        return configsHashValue // configs.hashValue;
+        else {
+            hasher.combine(configsHashValue)
+        }
     }
 
     private var configsHashValue: Int {
@@ -292,11 +292,10 @@ public final class ATNConfigSet: Hashable, CustomStringConvertible {
     }
 
     public func getConflictingAltSubsets() -> [BitSet] {
-        let length = configs.count
         var configToAlts = [Int: BitSet]()
 
-        for i in 0..<length {
-            let hash = configHash(configs[i].state.stateNumber, configs[i].context)
+        for cfg in configs {
+            let hash = configHash(cfg.state.stateNumber, cfg.context)
             var alts: BitSet
             if let configToAlt = configToAlts[hash] {
                 alts = configToAlt
@@ -305,26 +304,25 @@ public final class ATNConfigSet: Hashable, CustomStringConvertible {
                 configToAlts[hash] = alts
             }
 
-            try! alts.set(configs[i].alt)
+            try! alts.set(cfg.alt)
         }
 
         return Array(configToAlts.values)
     }
 
     public func getStateToAltMap() -> [Int: BitSet] {
-        let length = configs.count
         var m = [Int: BitSet]()
 
-        for i in 0..<length {
+        for cfg in configs {
             var alts: BitSet
-            if let mAlts =  m[configs[i].state.stateNumber] {
+            if let mAlts =  m[cfg.state.stateNumber] {
                 alts = mAlts
             } else {
                 alts = BitSet()
-                m[configs[i].state.stateNumber] = alts
+                m[cfg.state.stateNumber] = alts
             }
 
-            try! alts.set(configs[i].alt)
+            try! alts.set(cfg.alt)
         }
         return m
     }

@@ -16,19 +16,22 @@
  *
  */
 
+#include "src/core/lib/gpr/env.h"
+
 #include <stdio.h>
 #include <string.h>
+
+#include <gtest/gtest.h>
 
 #include <grpc/support/alloc.h>
 #include <grpc/support/log.h>
 
-#include "src/core/lib/gpr/env.h"
 #include "src/core/lib/gpr/string.h"
 #include "test/core/util/test_config.h"
 
 #define LOG_TEST_NAME(x) gpr_log(GPR_INFO, "%s", x)
 
-static void test_setenv_getenv(void) {
+TEST(EnvTest, SetenvGetenv) {
   const char* name = "FOO";
   const char* value = "BAR";
   char* retrieved_value;
@@ -37,12 +40,12 @@ static void test_setenv_getenv(void) {
 
   gpr_setenv(name, value);
   retrieved_value = gpr_getenv(name);
-  GPR_ASSERT(retrieved_value != nullptr);
-  GPR_ASSERT(strcmp(value, retrieved_value) == 0);
+  ASSERT_NE(retrieved_value, nullptr);
+  ASSERT_STREQ(value, retrieved_value);
   gpr_free(retrieved_value);
 }
 
-static void test_unsetenv(void) {
+TEST(EnvTest, Unsetenv) {
   const char* name = "FOO";
   const char* value = "BAR";
   char* retrieved_value;
@@ -52,12 +55,11 @@ static void test_unsetenv(void) {
   gpr_setenv(name, value);
   gpr_unsetenv(name);
   retrieved_value = gpr_getenv(name);
-  GPR_ASSERT(retrieved_value == nullptr);
+  ASSERT_EQ(retrieved_value, nullptr);
 }
 
 int main(int argc, char** argv) {
-  grpc::testing::TestEnvironment env(argc, argv);
-  test_setenv_getenv();
-  test_unsetenv();
-  return 0;
+  grpc::testing::TestEnvironment env(&argc, argv);
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
 }

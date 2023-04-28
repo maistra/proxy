@@ -18,6 +18,7 @@
 
 #include "test/core/bad_client/bad_client.h"
 
+#include <limits.h>
 #include <stdio.h>
 
 #include <grpc/support/alloc.h>
@@ -31,6 +32,7 @@
 #include "src/core/lib/gpr/string.h"
 #include "src/core/lib/gprpp/thd.h"
 #include "src/core/lib/iomgr/endpoint_pair.h"
+#include "src/core/lib/resource_quota/api.h"
 #include "src/core/lib/slice/slice_internal.h"
 #include "src/core/lib/surface/completion_queue.h"
 #include "src/core/lib/surface/server.h"
@@ -65,8 +67,12 @@ static void set_done_write(void* arg, grpc_error_handle /*error*/) {
 static void server_setup_transport(void* ts, grpc_transport* transport) {
   thd_args* a = static_cast<thd_args*>(ts);
   grpc_core::ExecCtx exec_ctx;
-  a->server->core_server->SetupTransport(
-      transport, nullptr, a->server->core_server->channel_args(), nullptr);
+  grpc_core::Server* core_server = grpc_core::Server::FromC(a->server);
+  GPR_ASSERT(GRPC_LOG_IF_ERROR(
+      "SetupTransport",
+      core_server->SetupTransport(transport, /*accepting_pollset=*/nullptr,
+                                  core_server->channel_args(),
+                                  /*socket_node=*/nullptr)));
 }
 
 /* Sets the read_done event */
@@ -115,7 +121,8 @@ void grpc_run_client_side_validator(grpc_bad_client_arg* arg, uint32_t flags,
                     grpc_schedule_on_exec_ctx);
 
   /* Write data */
-  grpc_endpoint_write(sfd->client, &outgoing, &done_write_closure, nullptr);
+  grpc_endpoint_write(sfd->client, &outgoing, &done_write_closure, nullptr,
+                      /*max_frame_size=*/INT_MAX);
   grpc_core::ExecCtx::Get()->Flush();
 
   /* Await completion, unless the request is large and write may not finish
@@ -144,7 +151,7 @@ void grpc_run_client_side_validator(grpc_bad_client_arg* arg, uint32_t flags,
         GRPC_CLOSURE_INIT(&read_done_closure, set_read_done, &read_done_event,
                           grpc_schedule_on_exec_ctx);
         grpc_endpoint_read(sfd->client, &incoming, &read_done_closure,
-                           /*urgent=*/true);
+                           /*urgent=*/true, /*min_progress_size=*/1);
         grpc_core::ExecCtx::Get()->Flush();
         do {
           GPR_ASSERT(gpr_time_cmp(deadline, gpr_now(deadline.clock_type)) > 0);
@@ -196,21 +203,22 @@ void grpc_run_bad_client_test(
   /* Init grpc */
   grpc_init();
 
-  /* Create endpoints */
   sfd = grpc_iomgr_create_endpoint_pair("fixture", nullptr);
-
   /* Create server, completion events */
   a.server = grpc_server_create(nullptr, nullptr);
   a.cq = grpc_completion_queue_create_for_next(nullptr);
   client_cq = grpc_completion_queue_create_for_next(nullptr);
-
   grpc_server_register_completion_queue(a.server, a.cq, nullptr);
   a.registered_method =
       grpc_server_register_method(a.server, GRPC_BAD_CLIENT_REGISTERED_METHOD,
                                   GRPC_BAD_CLIENT_REGISTERED_HOST,
                                   GRPC_SRM_PAYLOAD_READ_INITIAL_BYTE_BUFFER, 0);
   grpc_server_start(a.server);
-  transport = grpc_create_chttp2_transport(nullptr, sfd.server, false);
+  transport =
+      grpc_create_chttp2_transport(grpc_core::CoreConfiguration::Get()
+                                       .channel_args_preconditioning()
+                                       .PreconditionChannelArgs(nullptr),
+                                   sfd.server, false);
   server_setup_transport(&a, transport);
   grpc_chttp2_transport_start_reading(transport, nullptr, nullptr, nullptr);
 
@@ -219,7 +227,7 @@ void grpc_run_bad_client_test(
   grpc_endpoint_add_to_pollset(sfd.server, grpc_cq_pollset(a.cq));
 
   /* Check a ground truth */
-  GPR_ASSERT(a.server->core_server->HasOpenConnections());
+  GPR_ASSERT(grpc_core::Server::FromC(a.server)->HasOpenConnections());
 
   gpr_event_init(&a.done_thd);
   a.validator = server_validator;
@@ -237,7 +245,6 @@ void grpc_run_bad_client_test(
   /* Shutdown. */
   shutdown_client(&sfd.client);
   server_validator_thd.Join();
-
   shutdown_cq = grpc_completion_queue_create_for_pluck(nullptr);
   grpc_server_shutdown_and_notify(a.server, shutdown_cq, nullptr);
   GPR_ASSERT(grpc_completion_queue_pluck(shutdown_cq, nullptr,
@@ -277,9 +284,12 @@ grpc_bad_client_arg connection_preface_arg = {
 
 bool rst_stream_client_validator(grpc_slice_buffer* incoming, void* /*arg*/) {
   // Get last frame from incoming slice buffer.
+  constexpr int kExpectedFrameLength = 13;
+  if (incoming->length < kExpectedFrameLength) return false;
   grpc_slice_buffer last_frame_buffer;
   grpc_slice_buffer_init(&last_frame_buffer);
-  grpc_slice_buffer_trim_end(incoming, 13, &last_frame_buffer);
+  grpc_slice_buffer_trim_end(incoming, kExpectedFrameLength,
+                             &last_frame_buffer);
   GPR_ASSERT(last_frame_buffer.count == 1);
   grpc_slice last_frame = last_frame_buffer.slices[0];
 
@@ -312,7 +322,7 @@ void server_verifier_request_call(grpc_server* server,
   grpc_call_error error;
   grpc_call* s;
   grpc_call_details call_details;
-  cq_verifier* cqv = cq_verifier_create(cq);
+  grpc_core::CqVerifier cqv(cq);
   grpc_metadata_array request_metadata_recv;
 
   grpc_call_details_init(&call_details);
@@ -321,8 +331,8 @@ void server_verifier_request_call(grpc_server* server,
   error = grpc_server_request_call(server, &s, &call_details,
                                    &request_metadata_recv, cq, cq, tag(101));
   GPR_ASSERT(GRPC_CALL_OK == error);
-  CQ_EXPECT_COMPLETION(cqv, tag(101), 1);
-  cq_verify(cqv);
+  cqv.Expect(tag(101), true);
+  cqv.Verify();
 
   GPR_ASSERT(0 == grpc_slice_str_cmp(call_details.host, "localhost"));
   GPR_ASSERT(0 == grpc_slice_str_cmp(call_details.method, "/foo/bar"));
@@ -330,5 +340,4 @@ void server_verifier_request_call(grpc_server* server,
   grpc_metadata_array_destroy(&request_metadata_recv);
   grpc_call_details_destroy(&call_details);
   grpc_call_unref(s);
-  cq_verifier_destroy(cqv);
 }

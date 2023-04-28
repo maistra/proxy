@@ -23,10 +23,14 @@
 
 #include <grpc/support/port_platform.h>
 
-#include <grpc/grpc.h>
+#include <stdint.h>
+
+#include <grpc/impl/codegen/grpc_types.h>
 
 #include "src/core/lib/debug/trace.h"
 #include "src/core/lib/gprpp/manual_constructor.h"
+#include "src/core/lib/gprpp/mpscq.h"
+#include "src/core/lib/iomgr/error.h"
 #include "src/core/lib/iomgr/pollset.h"
 
 /* These trace flags default to 1. The corresponding lines are only traced
@@ -37,7 +41,8 @@ extern grpc_core::DebugOnlyTraceFlag grpc_trace_pending_tags;
 extern grpc_core::DebugOnlyTraceFlag grpc_trace_cq_refcount;
 
 typedef struct grpc_cq_completion {
-  grpc_core::ManualConstructor<grpc_core::MultiProducerSingleConsumerQueue>
+  grpc_core::ManualConstructor<
+      grpc_core::MultiProducerSingleConsumerQueue::Node>
       node;
 
   /** user supplied tag */
@@ -66,9 +71,6 @@ void grpc_cq_internal_unref(grpc_completion_queue* cq);
 #define GRPC_CQ_INTERNAL_UNREF(cq, reason) grpc_cq_internal_unref(cq)
 #endif
 
-/* Initializes global variables used by completion queues */
-void grpc_cq_global_init();
-
 /* Flag that an operation is beginning: the completion channel will not finish
    shutdown until a corrensponding grpc_cq_end_* call is made.
    \a tag is currently used only in debug builds. Return true on success, and
@@ -93,6 +95,6 @@ int grpc_get_cq_poll_num(grpc_completion_queue* cq);
 
 grpc_completion_queue* grpc_completion_queue_create_internal(
     grpc_cq_completion_type completion_type, grpc_cq_polling_type polling_type,
-    grpc_experimental_completion_queue_functor* shutdown_callback);
+    grpc_completion_queue_functor* shutdown_callback);
 
 #endif /* GRPC_CORE_LIB_SURFACE_COMPLETION_QUEUE_H */

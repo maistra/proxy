@@ -34,12 +34,9 @@ const float kRenoBeta = 0.7f;  // Reno backoff factor.
 class TcpCubicSenderBytesPeer : public TcpCubicSenderBytes {
  public:
   TcpCubicSenderBytesPeer(const QuicClock* clock, bool reno)
-      : TcpCubicSenderBytes(clock,
-                            &rtt_stats_,
-                            reno,
+      : TcpCubicSenderBytes(clock, &rtt_stats_, reno,
                             kInitialCongestionWindowPackets,
-                            kMaxCongestionWindowPackets,
-                            &stats_) {}
+                            kMaxCongestionWindowPackets, &stats_) {}
 
   const HybridSlowStart& hybrid_slow_start() const {
     return hybrid_slow_start_;
@@ -548,7 +545,6 @@ TEST_F(TcpCubicSenderBytesTest, MultipleLossesInOneWindow) {
 }
 
 TEST_F(TcpCubicSenderBytesTest, ConfigureMaxInitialWindow) {
-  SetQuicReloadableFlag(quic_unified_iw_options, false);
   QuicConfig config;
 
   // Verify that kCOPT: kIW10 forces the congestion window to the default of 10.
@@ -791,7 +787,7 @@ TEST_F(TcpCubicSenderBytesTest, DefaultMaxCwnd) {
   AckedPacketVector acked_packets;
   LostPacketVector missing_packets;
   QuicPacketCount max_congestion_window =
-      GetQuicFlag(FLAGS_quic_max_congestion_window);
+      GetQuicFlag(quic_max_congestion_window);
   for (uint64_t i = 1; i < max_congestion_window; ++i) {
     acked_packets.clear();
     acked_packets.push_back(

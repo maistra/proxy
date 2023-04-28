@@ -379,7 +379,7 @@ HeaderRefs::value_type parse_header(BlockAllocator &balloc,
                 make_string_ref(balloc, StringRef{value, std::end(optarg)}));
 
   if (!nghttp2_check_header_name(nv.name.byte(), nv.name.size()) ||
-      !nghttp2_check_header_value(nv.value.byte(), nv.value.size())) {
+      !nghttp2_check_header_value_rfc9113(nv.value.byte(), nv.value.size())) {
     return {};
   }
 
@@ -422,26 +422,6 @@ int parse_uint_with_unit(T *dest, const StringRef &opt,
   return 0;
 }
 } // namespace
-
-// Parses |optarg| as signed integer.  This requires |optarg| to be
-// NULL-terminated string.
-template <typename T>
-int parse_int(T *dest, const StringRef &opt, const char *optarg) {
-  char *end = nullptr;
-
-  errno = 0;
-
-  auto val = strtol(optarg, &end, 10);
-
-  if (!optarg[0] || errno != 0 || *end) {
-    LOG(ERROR) << opt << ": bad value.  Specify an integer.";
-    return -1;
-  }
-
-  *dest = val;
-
-  return 0;
-}
 
 namespace {
 int parse_altsvc(AltSvc &altsvc, const StringRef &opt,
@@ -1098,6 +1078,19 @@ int parse_downstream_params(DownstreamParams &out,
                       "auto, yes, and no";
         return -1;
       }
+    } else if (util::istarts_with_l(param, "affinity-cookie-stickiness=")) {
+      auto valstr =
+          StringRef{first + str_size("affinity-cookie-stickiness="), end};
+      if (util::strieq_l("loose", valstr)) {
+        out.affinity.cookie.stickiness = SessionAffinityCookieStickiness::LOOSE;
+      } else if (util::strieq_l("strict", valstr)) {
+        out.affinity.cookie.stickiness =
+            SessionAffinityCookieStickiness::STRICT;
+      } else {
+        LOG(ERROR) << "backend: affinity-cookie-stickiness: value must be "
+                      "either loose or strict";
+        return -1;
+      }
     } else if (util::strieq_l("dns", param)) {
       out.dns = true;
     } else if (util::strieq_l("redirect-if-not-tls", param)) {
@@ -1276,7 +1269,9 @@ int parse_mapping(Config *config, DownstreamAddrConfig &addr,
         } else if (g.affinity.type != params.affinity.type ||
                    g.affinity.cookie.name != params.affinity.cookie.name ||
                    g.affinity.cookie.path != params.affinity.cookie.path ||
-                   g.affinity.cookie.secure != params.affinity.cookie.secure) {
+                   g.affinity.cookie.secure != params.affinity.cookie.secure ||
+                   g.affinity.cookie.stickiness !=
+                       params.affinity.cookie.stickiness) {
           LOG(ERROR) << "backend: affinity: multiple different affinity "
                         "configurations found in a single group";
           return -1;
@@ -1350,6 +1345,7 @@ int parse_mapping(Config *config, DownstreamAddrConfig &addr,
             make_string_ref(downstreamconf.balloc, params.affinity.cookie.path);
       }
       g.affinity.cookie.secure = params.affinity.cookie.secure;
+      g.affinity.cookie.stickiness = params.affinity.cookie.stickiness;
     }
     g.redirect_if_not_tls = params.redirect_if_not_tls;
     g.mruby_file = make_string_ref(downstreamconf.balloc, params.mruby);
@@ -1887,6 +1883,11 @@ int option_lookup_token(const char *name, size_t namelen) {
         return SHRPX_OPTID_FASTOPEN;
       }
       break;
+    case 's':
+      if (util::strieq_l("tls-ktl", name, 7)) {
+        return SHRPX_OPTID_TLS_KTLS;
+      }
+      break;
     case 't':
       if (util::strieq_l("npn-lis", name, 7)) {
         return SHRPX_OPTID_NPN_LIST;
@@ -2209,6 +2210,9 @@ int option_lookup_token(const char *name, size_t namelen) {
     case 'e':
       if (util::strieq_l("no-location-rewrit", name, 18)) {
         return SHRPX_OPTID_NO_LOCATION_REWRITE;
+      }
+      if (util::strieq_l("require-http-schem", name, 18)) {
+        return SHRPX_OPTID_REQUIRE_HTTP_SCHEME;
       }
       if (util::strieq_l("tls-ticket-key-fil", name, 18)) {
         return SHRPX_OPTID_TLS_TICKET_KEY_FILE;
@@ -4111,8 +4115,10 @@ int parse_config(Config *config, int optid, const StringRef &opt,
       config->quic.upstream.congestion_controller = NGTCP2_CC_ALGO_CUBIC;
     } else if (util::strieq_l("bbr", optarg)) {
       config->quic.upstream.congestion_controller = NGTCP2_CC_ALGO_BBR;
+    } else if (util::strieq_l("bbr2", optarg)) {
+      config->quic.upstream.congestion_controller = NGTCP2_CC_ALGO_BBR2;
     } else {
-      LOG(ERROR) << opt << ": must be either cubic or bbr";
+      LOG(ERROR) << opt << ": must be one of cubic, bbr, and bbr2";
       return -1;
     }
 #endif // ENABLE_HTTP3
@@ -4164,6 +4170,12 @@ int parse_config(Config *config, int optid, const StringRef &opt,
 
     return 0;
   }
+  case SHRPX_OPTID_REQUIRE_HTTP_SCHEME:
+    config->http.require_http_scheme = util::strieq_l("yes", optarg);
+    return 0;
+  case SHRPX_OPTID_TLS_KTLS:
+    config->tls.ktls = util::strieq_l("yes", optarg);
+    return 0;
   case SHRPX_OPTID_CONF:
     LOG(WARN) << "conf: ignored";
 
@@ -4463,7 +4475,7 @@ int configure_downstream_group(Config *config, bool http2_proxy,
     if (!g.mruby_file.empty()) {
       if (mruby::create_mruby_context(g.mruby_file) == nullptr) {
         LOG(config->ignore_per_pattern_mruby_error ? ERROR : FATAL)
-            << "backend: Could not compile mruby flie for pattern "
+            << "backend: Could not compile mruby file for pattern "
             << g.pattern;
         if (!config->ignore_per_pattern_mruby_error) {
           return -1;
@@ -4592,6 +4604,12 @@ int configure_downstream_group(Config *config, bool http2_proxy,
         rv = compute_affinity_hash(g.affinity_hash, idx, key);
         if (rv != 0) {
           return -1;
+        }
+
+        if (g.affinity.cookie.stickiness ==
+            SessionAffinityCookieStickiness::STRICT) {
+          addr.affinity_hash = util::hash32(key);
+          g.affinity_hash_map.emplace(addr.affinity_hash, idx);
         }
 
         ++idx;

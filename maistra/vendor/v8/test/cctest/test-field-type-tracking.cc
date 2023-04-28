@@ -8,10 +8,7 @@
 
 #include "src/base/logging.h"
 #include "src/execution/execution.h"
-#include "src/handles/global-handles.h"
 #include "src/heap/factory-inl.h"
-#include "src/ic/stub-cache.h"
-#include "src/init/v8.h"
 #include "src/objects/field-type.h"
 #include "src/objects/heap-number-inl.h"
 #include "src/objects/internal-index.h"
@@ -22,7 +19,7 @@
 #include "src/objects/struct-inl.h"
 #include "src/objects/transitions.h"
 #include "src/utils/ostreams.h"
-#include "test/cctest/test-api.h"
+#include "test/cctest/cctest.h"
 
 namespace v8 {
 namespace internal {
@@ -70,7 +67,7 @@ static void CheckMigrationTarget(Isolate* isolate, Map old_map, Map new_map) {
   if (target.is_null()) return;
   CHECK_EQ(new_map, target);
   CHECK_EQ(MapUpdater::TryUpdateNoLock(isolate, old_map,
-                                       ConcurrencyMode::kNotConcurrent),
+                                       ConcurrencyMode::kSynchronous),
            target);
 }
 
@@ -778,7 +775,7 @@ void TestGeneralizeField(const CRFTData& from, const CRFTData& to,
                          ChangeAlertMechanism expected_alert) {
   // Check the cases when the map being reconfigured is a part of the
   // transition tree.
-  STATIC_ASSERT(kPropCount > 4);
+  static_assert(kPropCount > 4);
   int indices[] = {0, 2, kPropCount - 1};
   for (int i = 0; i < static_cast<int>(arraysize(indices)); i++) {
     TestGeneralizeField(-1, indices[i], from, to, expected, expected_alert);
@@ -1751,9 +1748,8 @@ static void TestReconfigureElementsKind_GeneralizeFieldInPlace(
   Expectations expectations(isolate, PACKED_SMI_ELEMENTS);
 
   // Create a map, add required properties to it and initialize expectations.
-  Handle<Map> initial_map = Map::Create(isolate, 0);
-  initial_map->set_instance_type(JS_ARRAY_TYPE);
-  initial_map->set_elements_kind(PACKED_SMI_ELEMENTS);
+  Handle<Map> initial_map = isolate->factory()->NewMap(
+      JS_ARRAY_TYPE, JSArray::kHeaderSize, PACKED_SMI_ELEMENTS);
 
   Handle<Map> map = initial_map;
   map = expectations.AsElementsKind(map, PACKED_ELEMENTS);
@@ -1837,7 +1833,7 @@ static void TestReconfigureElementsKind_GeneralizeFieldInPlace(
     MapHandles map_list;
     map_list.push_back(updated_map);
     Map transitioned_map = map2->FindElementsKindTransitionedMap(
-        isolate, map_list, ConcurrencyMode::kNotConcurrent);
+        isolate, map_list, ConcurrencyMode::kSynchronous);
     CHECK_EQ(*updated_map, transitioned_map);
   }
 }
@@ -2898,12 +2894,13 @@ void TestStoreToConstantField_NaN(const char* store_func_source,
   CompileRun(store_func_source);
 
   uint64_t nan_bits = uint64_t{0x7FF8000000000001};
-  double nan_double1 = bit_cast<double>(nan_bits);
-  double nan_double2 = bit_cast<double>(nan_bits | 0x12300);
+  double nan_double1 = base::bit_cast<double>(nan_bits);
+  double nan_double2 = base::bit_cast<double>(nan_bits | 0x12300);
   CHECK(std::isnan(nan_double1));
   CHECK(std::isnan(nan_double2));
   CHECK_NE(nan_double1, nan_double2);
-  CHECK_NE(bit_cast<uint64_t>(nan_double1), bit_cast<uint64_t>(nan_double2));
+  CHECK_NE(base::bit_cast<uint64_t>(nan_double1),
+           base::bit_cast<uint64_t>(nan_double2));
 
   Handle<Object> nan1 = isolate->factory()->NewNumber(nan_double1);
   Handle<Object> nan2 = isolate->factory()->NewNumber(nan_double2);
@@ -3011,7 +3008,7 @@ TEST(NormalizeToMigrationTarget) {
 }
 
 TEST(RepresentationPredicatesAreInSync) {
-  STATIC_ASSERT(Representation::kNumRepresentations == 6);
+  static_assert(Representation::kNumRepresentations == 6);
   static Representation reps[] = {
       Representation::None(),   Representation::Smi(),
       Representation::Double(), Representation::HeapObject(),
@@ -3113,7 +3110,7 @@ TEST(DeletePropertyGeneralizesConstness) {
   std::vector<Handle<Map>> transitions;
   Handle<Object> value = handle(Smi::FromInt(0), isolate);
   for (int i = 0; i < kPropertyAttributesCombinationsCount; i++) {
-    PropertyAttributes attributes = static_cast<PropertyAttributes>(i);
+    auto attributes = PropertyAttributesFromInt(i);
 
     Handle<Map> tmp;
     // Add some transitions to "x" and "y".

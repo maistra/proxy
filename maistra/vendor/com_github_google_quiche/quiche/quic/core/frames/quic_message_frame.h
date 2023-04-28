@@ -8,7 +8,6 @@
 #include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
 #include "quiche/quic/core/quic_types.h"
-#include "quiche/quic/platform/api/quic_containers.h"
 #include "quiche/quic/platform/api/quic_export.h"
 #include "quiche/common/platform/api/quiche_mem_slice.h"
 
@@ -33,8 +32,7 @@ struct QUIC_EXPORT_PRIVATE QuicMessageFrame {
   ~QuicMessageFrame();
 
   friend QUIC_EXPORT_PRIVATE std::ostream& operator<<(
-      std::ostream& os,
-      const QuicMessageFrame& s);
+      std::ostream& os, const QuicMessageFrame& s);
 
   // message_id is only used on the sender side and does not get serialized on
   // wire.

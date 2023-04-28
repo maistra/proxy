@@ -245,12 +245,23 @@ class TestGevent(setuptools.Command):
         pass
 
     def run(self):
+        import gevent
         from gevent import monkey
         monkey.patch_all()
 
-        import tests
+        threadpool = gevent.hub.get_hub().threadpool
+
+        # Currently, each channel corresponds to a single native thread in the
+        # gevent threadpool. Thus, when the unit test suite spins up hundreds of
+        # channels concurrently, some will be starved out, causing the test to
+        # increase in duration. We increase the max size here so this does not
+        # happen.
+        threadpool.maxsize = 1024
+        threadpool.size = 32
 
         import grpc.experimental.gevent
+
+        import tests
         grpc.experimental.gevent.init_gevent()
 
         import gevent
@@ -308,6 +319,7 @@ class RunInterop(test.test):
         # edit the Python system path.
         if self.use_asyncio:
             import asyncio
+
             from tests_aio.interop import server
             sys.argv[1:] = self.args.split()
             asyncio.get_event_loop().run_until_complete(server.serve())

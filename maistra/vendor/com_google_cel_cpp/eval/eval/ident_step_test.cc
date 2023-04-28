@@ -1,7 +1,12 @@
 #include "eval/eval/ident_step.h"
 
+#include <string>
+#include <utility>
+
 #include "google/api/expr/v1alpha1/syntax.pb.h"
+#include "google/protobuf/descriptor.h"
 #include "eval/eval/evaluator_core.h"
+#include "eval/eval/test_type_registry.h"
 #include "eval/public/activation.h"
 #include "internal/status_macros.h"
 #include "internal/testing.h"
@@ -11,7 +16,6 @@ namespace google::api::expr::runtime {
 namespace {
 
 using ::google::api::expr::v1alpha1::Expr;
-using ::google::protobuf::FieldMask;
 using testing::Eq;
 
 using google::protobuf::Arena;
@@ -28,7 +32,8 @@ TEST(IdentStepTest, TestIdentStep) {
 
   auto dummy_expr = absl::make_unique<google::api::expr::v1alpha1::Expr>();
 
-  CelExpressionFlatImpl impl(dummy_expr.get(), std::move(path), 0, {});
+  CelExpressionFlatImpl impl(dummy_expr.get(), std::move(path),
+                             &TestTypeRegistry(), 0, {});
 
   Activation activation;
   Arena arena;
@@ -56,7 +61,8 @@ TEST(IdentStepTest, TestIdentStepNameNotFound) {
 
   auto dummy_expr = absl::make_unique<google::api::expr::v1alpha1::Expr>();
 
-  CelExpressionFlatImpl impl(dummy_expr.get(), std::move(path), 0, {});
+  CelExpressionFlatImpl impl(dummy_expr.get(), std::move(path),
+                             &TestTypeRegistry(), 0, {});
 
   Activation activation;
   Arena arena;
@@ -81,7 +87,8 @@ TEST(IdentStepTest, DisableMissingAttributeErrorsOK) {
 
   auto dummy_expr = absl::make_unique<google::api::expr::v1alpha1::Expr>();
 
-  CelExpressionFlatImpl impl(dummy_expr.get(), std::move(path), 0, {},
+  CelExpressionFlatImpl impl(dummy_expr.get(), std::move(path),
+                             &TestTypeRegistry(), 0, {},
                              /*enable_unknowns=*/false);
 
   Activation activation;
@@ -118,8 +125,9 @@ TEST(IdentStepTest, TestIdentStepMissingAttributeErrors) {
 
   auto dummy_expr = absl::make_unique<google::api::expr::v1alpha1::Expr>();
 
-  CelExpressionFlatImpl impl(dummy_expr.get(), std::move(path), 0, {}, false,
-                             false, /*enable_missing_attribute_errors=*/true);
+  CelExpressionFlatImpl impl(dummy_expr.get(), std::move(path),
+                             &TestTypeRegistry(), 0, {}, false, false,
+                             /*enable_missing_attribute_errors=*/true);
 
   Activation activation;
   Arena arena;
@@ -144,48 +152,6 @@ TEST(IdentStepTest, TestIdentStepMissingAttributeErrors) {
   EXPECT_EQ(status0->ErrorOrDie()->message(), "MissingAttributeError: name0");
 }
 
-TEST(IdentStepTest, TestIdentStepUnknownValueError) {
-  Expr expr;
-  auto ident_expr = expr.mutable_ident_expr();
-  ident_expr->set_name("name0");
-
-  ASSERT_OK_AND_ASSIGN(auto step, CreateIdentStep(ident_expr, expr.id()));
-
-  ExecutionPath path;
-  path.push_back(std::move(step));
-
-  auto dummy_expr = absl::make_unique<google::api::expr::v1alpha1::Expr>();
-
-  CelExpressionFlatImpl impl(dummy_expr.get(), std::move(path), 0, {});
-
-  Activation activation;
-  Arena arena;
-  std::string value("test");
-
-  activation.InsertValue("name0", CelValue::CreateString(&value));
-  auto status0 = impl.Evaluate(activation, &arena);
-  ASSERT_OK(status0);
-
-  CelValue result = status0.value();
-
-  ASSERT_TRUE(result.IsString());
-  EXPECT_THAT(result.StringOrDie().value(), Eq("test"));
-
-  FieldMask unknown_mask;
-  unknown_mask.add_paths("name0");
-
-  activation.set_unknown_paths(unknown_mask);
-  status0 = impl.Evaluate(activation, &arena);
-  ASSERT_OK(status0);
-
-  result = status0.value();
-
-  ASSERT_TRUE(result.IsError());
-  ASSERT_TRUE(IsUnknownValueError(result));
-  EXPECT_THAT(GetUnknownPathsSetOrDie(result),
-              Eq(std::set<std::string>({"name0"})));
-}
-
 TEST(IdentStepTest, TestIdentStepUnknownAttribute) {
   Expr expr;
   auto ident_expr = expr.mutable_ident_expr();
@@ -199,7 +165,8 @@ TEST(IdentStepTest, TestIdentStepUnknownAttribute) {
   auto dummy_expr = absl::make_unique<google::api::expr::v1alpha1::Expr>();
 
   // Expression with unknowns enabled.
-  CelExpressionFlatImpl impl(dummy_expr.get(), std::move(path), 0, {}, true);
+  CelExpressionFlatImpl impl(dummy_expr.get(), std::move(path),
+                             &TestTypeRegistry(), 0, {}, true);
 
   Activation activation;
   Arena arena;

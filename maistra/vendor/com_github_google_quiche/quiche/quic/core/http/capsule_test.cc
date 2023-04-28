@@ -13,6 +13,7 @@
 #include "absl/strings/string_view.h"
 #include "quiche/quic/platform/api/quic_test.h"
 #include "quiche/quic/test_tools/quic_test_utils.h"
+#include "quiche/common/quiche_ip_address.h"
 #include "quiche/common/test_tools/quiche_test_utils.h"
 
 using ::testing::_;
@@ -30,11 +31,6 @@ class CapsuleParserPeer {
 };
 
 namespace {
-
-constexpr DatagramFormatType kFakeFormatType =
-    static_cast<DatagramFormatType>(0x123456);
-constexpr ContextCloseCode kFakeCloseCode =
-    static_cast<ContextCloseCode>(0x654321);
 
 class MockCapsuleParserVisitor : public CapsuleParser::Visitor {
  public:
@@ -79,27 +75,7 @@ TEST_F(CapsuleTest, LegacyDatagramCapsule) {
       "a1a2a3a4a5a6a7a8"  // HTTP Datagram payload
   );
   std::string datagram_payload = absl::HexStringToBytes("a1a2a3a4a5a6a7a8");
-  Capsule expected_capsule =
-      Capsule::LegacyDatagram(/*context_id=*/absl::nullopt, datagram_payload);
-  {
-    EXPECT_CALL(visitor_, OnCapsule(expected_capsule));
-    ASSERT_TRUE(capsule_parser_.IngestCapsuleFragment(capsule_fragment));
-  }
-  ValidateParserIsEmpty();
-  TestSerialization(expected_capsule, capsule_fragment);
-}
-
-TEST_F(CapsuleTest, LegacyDatagramCapsuleWithContext) {
-  std::string capsule_fragment = absl::HexStringToBytes(
-      "80ff37a0"          // LEGACY_DATAGRAM capsule type
-      "09"                // capsule length
-      "04"                // context ID
-      "a1a2a3a4a5a6a7a8"  // HTTP Datagram payload
-  );
-  capsule_parser_.set_datagram_context_id_present(true);
-  std::string datagram_payload = absl::HexStringToBytes("a1a2a3a4a5a6a7a8");
-  Capsule expected_capsule =
-      Capsule::LegacyDatagram(/*context_id=*/4, datagram_payload);
+  Capsule expected_capsule = Capsule::LegacyDatagram(datagram_payload);
   {
     EXPECT_CALL(visitor_, OnCapsule(expected_capsule));
     ASSERT_TRUE(capsule_parser_.IngestCapsuleFragment(capsule_fragment));
@@ -124,82 +100,6 @@ TEST_F(CapsuleTest, DatagramWithoutContextCapsule) {
   TestSerialization(expected_capsule, capsule_fragment);
 }
 
-TEST_F(CapsuleTest, DatagramWithContextCapsule) {
-  std::string capsule_fragment = absl::HexStringToBytes(
-      "80ff37a4"          // DATAGRAM_WITH_CONTEXT capsule type
-      "09"                // capsule length
-      "04"                // context ID
-      "a1a2a3a4a5a6a7a8"  // HTTP Datagram payload
-  );
-  std::string datagram_payload = absl::HexStringToBytes("a1a2a3a4a5a6a7a8");
-  Capsule expected_capsule =
-      Capsule::DatagramWithContext(/*context_id=*/4, datagram_payload);
-  {
-    EXPECT_CALL(visitor_, OnCapsule(expected_capsule));
-    ASSERT_TRUE(capsule_parser_.IngestCapsuleFragment(capsule_fragment));
-  }
-  ValidateParserIsEmpty();
-  TestSerialization(expected_capsule, capsule_fragment);
-}
-
-TEST_F(CapsuleTest, RegisterContextCapsule) {
-  std::string capsule_fragment = absl::HexStringToBytes(
-      "80ff37a1"          // REGISTER_DATAGRAM_CONTEXT capsule type
-      "0d"                // capsule length
-      "04"                // context ID
-      "80123456"          // 0x123456 datagram format type
-      "f1f2f3f4f5f6f7f8"  // format additional data
-  );
-  std::string format_additional_data =
-      absl::HexStringToBytes("f1f2f3f4f5f6f7f8");
-  Capsule expected_capsule = Capsule::RegisterDatagramContext(
-      /*context_id=*/4, kFakeFormatType, format_additional_data);
-  {
-    EXPECT_CALL(visitor_, OnCapsule(expected_capsule));
-    ASSERT_TRUE(capsule_parser_.IngestCapsuleFragment(capsule_fragment));
-  }
-  ValidateParserIsEmpty();
-  TestSerialization(expected_capsule, capsule_fragment);
-}
-
-TEST_F(CapsuleTest, RegisterNoContextCapsule) {
-  std::string capsule_fragment = absl::HexStringToBytes(
-      "80ff37a2"          // REGISTER_DATAGRAM_NO_CONTEXT capsule type
-      "0c"                // capsule length
-      "80123456"          // 0x123456 datagram format type
-      "f1f2f3f4f5f6f7f8"  // format additional data
-  );
-  std::string format_additional_data =
-      absl::HexStringToBytes("f1f2f3f4f5f6f7f8");
-  Capsule expected_capsule = Capsule::RegisterDatagramNoContext(
-      kFakeFormatType, format_additional_data);
-  {
-    EXPECT_CALL(visitor_, OnCapsule(expected_capsule));
-    ASSERT_TRUE(capsule_parser_.IngestCapsuleFragment(capsule_fragment));
-  }
-  ValidateParserIsEmpty();
-  TestSerialization(expected_capsule, capsule_fragment);
-}
-
-TEST_F(CapsuleTest, CloseContextCapsule) {
-  std::string capsule_fragment = absl::HexStringToBytes(
-      "80ff37a3"  // CLOSE_DATAGRAM_CONTEXT capsule type
-      "27"        // capsule length
-      "04"        // context ID
-      "80654321"  // 0x654321 close code
-  );
-  std::string close_details = "All your contexts are belong to us";
-  capsule_fragment += close_details;
-  Capsule expected_capsule = Capsule::CloseDatagramContext(
-      /*context_id=*/4, kFakeCloseCode, close_details);
-  {
-    EXPECT_CALL(visitor_, OnCapsule(expected_capsule));
-    ASSERT_TRUE(capsule_parser_.IngestCapsuleFragment(capsule_fragment));
-  }
-  ValidateParserIsEmpty();
-  TestSerialization(expected_capsule, capsule_fragment);
-}
-
 TEST_F(CapsuleTest, CloseWebTransportStreamCapsule) {
   std::string capsule_fragment = absl::HexStringToBytes(
       "6843"        // CLOSE_WEBTRANSPORT_STREAM capsule type
@@ -209,6 +109,123 @@ TEST_F(CapsuleTest, CloseWebTransportStreamCapsule) {
   );
   Capsule expected_capsule = Capsule::CloseWebTransportSession(
       /*error_code=*/0x1234, /*error_message=*/"hello");
+  {
+    EXPECT_CALL(visitor_, OnCapsule(expected_capsule));
+    ASSERT_TRUE(capsule_parser_.IngestCapsuleFragment(capsule_fragment));
+  }
+  ValidateParserIsEmpty();
+  TestSerialization(expected_capsule, capsule_fragment);
+}
+
+TEST_F(CapsuleTest, AddressAssignCapsule) {
+  std::string capsule_fragment = absl::HexStringToBytes(
+      "9ECA6A00"  // ADDRESS_ASSIGN capsule type
+      "1A"        // capsule length = 26
+      // first assigned address
+      "00"        // request ID = 0
+      "04"        // IP version = 4
+      "C000022A"  // 192.0.2.42
+      "1F"        // prefix length = 31
+      // second assigned address
+      "01"                                // request ID = 1
+      "06"                                // IP version = 6
+      "20010db8123456780000000000000000"  // 2001:db8:1234:5678::
+      "40"                                // prefix length = 64
+  );
+  Capsule expected_capsule = Capsule::AddressAssign();
+  quiche::QuicheIpAddress ip_address1;
+  ip_address1.FromString("192.0.2.42");
+  PrefixWithId assigned_address1;
+  assigned_address1.request_id = 0;
+  assigned_address1.ip_prefix =
+      quiche::QuicheIpPrefix(ip_address1, /*prefix_length=*/31);
+  expected_capsule.address_assign_capsule().assigned_addresses.push_back(
+      assigned_address1);
+  quiche::QuicheIpAddress ip_address2;
+  ip_address2.FromString("2001:db8:1234:5678::");
+  PrefixWithId assigned_address2;
+  assigned_address2.request_id = 1;
+  assigned_address2.ip_prefix =
+      quiche::QuicheIpPrefix(ip_address2, /*prefix_length=*/64);
+  expected_capsule.address_assign_capsule().assigned_addresses.push_back(
+      assigned_address2);
+  {
+    EXPECT_CALL(visitor_, OnCapsule(expected_capsule));
+    ASSERT_TRUE(capsule_parser_.IngestCapsuleFragment(capsule_fragment));
+  }
+  ValidateParserIsEmpty();
+  TestSerialization(expected_capsule, capsule_fragment);
+}
+
+TEST_F(CapsuleTest, AddressRequestCapsule) {
+  std::string capsule_fragment = absl::HexStringToBytes(
+      "9ECA6A01"  // ADDRESS_REQUEST capsule type
+      "1A"        // capsule length = 26
+      // first requested address
+      "00"        // request ID = 0
+      "04"        // IP version = 4
+      "C000022A"  // 192.0.2.42
+      "1F"        // prefix length = 31
+      // second requested address
+      "01"                                // request ID = 1
+      "06"                                // IP version = 6
+      "20010db8123456780000000000000000"  // 2001:db8:1234:5678::
+      "40"                                // prefix length = 64
+  );
+  Capsule expected_capsule = Capsule::AddressRequest();
+  quiche::QuicheIpAddress ip_address1;
+  ip_address1.FromString("192.0.2.42");
+  PrefixWithId requested_address1;
+  requested_address1.request_id = 0;
+  requested_address1.ip_prefix =
+      quiche::QuicheIpPrefix(ip_address1, /*prefix_length=*/31);
+  expected_capsule.address_request_capsule().requested_addresses.push_back(
+      requested_address1);
+  quiche::QuicheIpAddress ip_address2;
+  ip_address2.FromString("2001:db8:1234:5678::");
+  PrefixWithId requested_address2;
+  requested_address2.request_id = 1;
+  requested_address2.ip_prefix =
+      quiche::QuicheIpPrefix(ip_address2, /*prefix_length=*/64);
+  expected_capsule.address_request_capsule().requested_addresses.push_back(
+      requested_address2);
+  {
+    EXPECT_CALL(visitor_, OnCapsule(expected_capsule));
+    ASSERT_TRUE(capsule_parser_.IngestCapsuleFragment(capsule_fragment));
+  }
+  ValidateParserIsEmpty();
+  TestSerialization(expected_capsule, capsule_fragment);
+}
+
+TEST_F(CapsuleTest, RouteAdvertisementCapsule) {
+  std::string capsule_fragment = absl::HexStringToBytes(
+      "9ECA6A02"  // ROUTE_ADVERTISEMENT capsule type
+      "2C"        // capsule length = 44
+      // first IP address range
+      "04"        // IP version = 4
+      "C0000218"  // 192.0.2.24
+      "C000022A"  // 192.0.2.42
+      "00"        // ip protocol = 0
+      // second IP address range
+      "06"                                // IP version = 6
+      "00000000000000000000000000000000"  // ::
+      "ffffffffffffffffffffffffffffffff"  // all ones IPv6 address
+      "01"                                // ip protocol = 1 (ICMP)
+  );
+  Capsule expected_capsule = Capsule::RouteAdvertisement();
+  IpAddressRange ip_address_range1;
+  ip_address_range1.start_ip_address.FromString("192.0.2.24");
+  ip_address_range1.end_ip_address.FromString("192.0.2.42");
+  ip_address_range1.ip_protocol = 0;
+  expected_capsule.route_advertisement_capsule().ip_address_ranges.push_back(
+      ip_address_range1);
+  IpAddressRange ip_address_range2;
+  ip_address_range2.start_ip_address.FromString("::");
+  ip_address_range2.end_ip_address.FromString(
+      "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff");
+  ip_address_range2.ip_protocol = 1;
+  expected_capsule.route_advertisement_capsule().ip_address_ranges.push_back(
+      ip_address_range2);
   {
     EXPECT_CALL(visitor_, OnCapsule(expected_capsule));
     ASSERT_TRUE(capsule_parser_.IngestCapsuleFragment(capsule_fragment));

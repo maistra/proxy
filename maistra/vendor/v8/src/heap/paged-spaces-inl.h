@@ -45,146 +45,48 @@ HeapObject PagedSpaceObjectIterator::FromCurrentPage() {
   return HeapObject();
 }
 
-bool PagedSpace::Contains(Address addr) const {
+bool PagedSpaceBase::Contains(Address addr) const {
   if (V8_ENABLE_THIRD_PARTY_HEAP_BOOL) {
     return true;
   }
   return Page::FromAddress(addr)->owner() == this;
 }
 
-bool PagedSpace::Contains(Object o) const {
+bool PagedSpaceBase::Contains(Object o) const {
   if (!o.IsHeapObject()) return false;
   return Page::FromAddress(o.ptr())->owner() == this;
 }
 
-void PagedSpace::UnlinkFreeListCategories(Page* page) {
-  DCHECK_EQ(this, page->owner());
-  page->ForAllFreeListCategories([this](FreeListCategory* category) {
-    free_list()->RemoveCategory(category);
-  });
-}
-
-size_t PagedSpace::RelinkFreeListCategories(Page* page) {
-  DCHECK_EQ(this, page->owner());
-  size_t added = 0;
-  page->ForAllFreeListCategories([this, &added](FreeListCategory* category) {
-    added += category->available();
-    category->Relink(free_list());
-  });
-
-  DCHECK_IMPLIES(!page->IsFlagSet(Page::NEVER_ALLOCATE_ON_PAGE),
-                 page->AvailableInFreeList() ==
-                     page->AvailableInFreeListFromAllocatedBytes());
-  return added;
-}
-
-bool PagedSpace::TryFreeLast(Address object_address, int object_size) {
-  if (allocation_info_->top() != kNullAddress) {
-    return allocation_info_->DecrementTopIfAdjacent(object_address,
-                                                    object_size);
+bool PagedSpaceBase::TryFreeLast(Address object_address, int object_size) {
+  if (allocation_info_.top() != kNullAddress) {
+    return allocation_info_.DecrementTopIfAdjacent(object_address, object_size);
   }
   return false;
 }
 
-bool PagedSpace::EnsureLabMain(int size_in_bytes, AllocationOrigin origin) {
-  if (allocation_info_->top() + size_in_bytes <= allocation_info_->limit()) {
+V8_INLINE bool PagedSpaceBase::EnsureAllocation(int size_in_bytes,
+                                                AllocationAlignment alignment,
+                                                AllocationOrigin origin,
+                                                int* out_max_aligned_size) {
+  if ((identity() != NEW_SPACE) && !is_compaction_space()) {
+    // Start incremental marking before the actual allocation, this allows the
+    // allocation function to mark the object black when incremental marking is
+    // running.
+    heap()->StartIncrementalMarkingIfAllocationLimitIsReached(
+        heap()->GCFlagsForIncrementalMarking(),
+        kGCCallbackScheduleIdleGarbageCollection);
+  }
+
+  // We don't know exactly how much filler we need to align until space is
+  // allocated, so assume the worst case.
+  size_in_bytes += Heap::GetMaximumFillToAlign(alignment);
+  if (out_max_aligned_size) {
+    *out_max_aligned_size = size_in_bytes;
+  }
+  if (allocation_info_.top() + size_in_bytes <= allocation_info_.limit()) {
     return true;
   }
   return RefillLabMain(size_in_bytes, origin);
-}
-
-AllocationResult PagedSpace::AllocateFastUnaligned(int size_in_bytes) {
-  if (!allocation_info_->CanIncrementTop(size_in_bytes)) {
-    return AllocationResult::Failure(identity());
-  }
-  return AllocationResult::FromObject(
-      HeapObject::FromAddress(allocation_info_->IncrementTop(size_in_bytes)));
-}
-
-AllocationResult PagedSpace::AllocateFastAligned(
-    int size_in_bytes, int* aligned_size_in_bytes,
-    AllocationAlignment alignment) {
-  Address current_top = allocation_info_->top();
-  int filler_size = Heap::GetFillToAlign(current_top, alignment);
-  int aligned_size = filler_size + size_in_bytes;
-  if (!allocation_info_->CanIncrementTop(aligned_size)) {
-    return AllocationResult::Failure(identity());
-  }
-  HeapObject obj =
-      HeapObject::FromAddress(allocation_info_->IncrementTop(aligned_size));
-  if (aligned_size_in_bytes) *aligned_size_in_bytes = aligned_size;
-  if (filler_size > 0) {
-    obj = heap()->PrecedeWithFiller(obj, filler_size);
-  }
-  return AllocationResult::FromObject(obj);
-}
-
-AllocationResult PagedSpace::AllocateRawUnaligned(int size_in_bytes,
-                                                  AllocationOrigin origin) {
-  DCHECK(!FLAG_enable_third_party_heap);
-  if (!EnsureLabMain(size_in_bytes, origin)) {
-    return AllocationResult::Failure(identity());
-  }
-
-  AllocationResult result = AllocateFastUnaligned(size_in_bytes);
-  DCHECK(!result.IsFailure());
-  MSAN_ALLOCATED_UNINITIALIZED_MEMORY(result.ToObjectChecked().address(),
-                                      size_in_bytes);
-
-  if (FLAG_trace_allocations_origins) {
-    UpdateAllocationOrigins(origin);
-  }
-
-  InvokeAllocationObservers(result.ToAddress(), size_in_bytes, size_in_bytes,
-                            size_in_bytes);
-
-  return result;
-}
-
-AllocationResult PagedSpace::AllocateRawAligned(int size_in_bytes,
-                                                AllocationAlignment alignment,
-                                                AllocationOrigin origin) {
-  DCHECK(!FLAG_enable_third_party_heap);
-  DCHECK_EQ(identity(), OLD_SPACE);
-  int allocation_size = size_in_bytes;
-  // We don't know exactly how much filler we need to align until space is
-  // allocated, so assume the worst case.
-  int filler_size = Heap::GetMaximumFillToAlign(alignment);
-  allocation_size += filler_size;
-  if (!EnsureLabMain(allocation_size, origin)) {
-    return AllocationResult::Failure(identity());
-  }
-  int aligned_size_in_bytes;
-  AllocationResult result =
-      AllocateFastAligned(size_in_bytes, &aligned_size_in_bytes, alignment);
-  DCHECK(!result.IsFailure());
-  MSAN_ALLOCATED_UNINITIALIZED_MEMORY(result.ToObjectChecked().address(),
-                                      size_in_bytes);
-
-  if (FLAG_trace_allocations_origins) {
-    UpdateAllocationOrigins(origin);
-  }
-
-  InvokeAllocationObservers(result.ToAddress(), size_in_bytes,
-                            aligned_size_in_bytes, allocation_size);
-
-  return result;
-}
-
-AllocationResult PagedSpace::AllocateRaw(int size_in_bytes,
-                                         AllocationAlignment alignment,
-                                         AllocationOrigin origin) {
-  DCHECK(!FLAG_enable_third_party_heap);
-  AllocationResult result;
-
-  if (USE_ALLOCATION_ALIGNMENT_BOOL && alignment != kTaggedAligned) {
-    result = AllocateFastAligned(size_in_bytes, nullptr, alignment);
-  } else {
-    result = AllocateFastUnaligned(size_in_bytes);
-  }
-
-  return result.IsFailure() ? AllocateRawSlow(size_in_bytes, alignment, origin)
-                            : result;
 }
 
 }  // namespace internal

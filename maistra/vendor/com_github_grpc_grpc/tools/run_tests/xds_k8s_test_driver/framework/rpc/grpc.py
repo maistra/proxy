@@ -13,13 +13,11 @@
 # limitations under the License.
 import logging
 import re
-from typing import ClassVar, Dict, Optional
+from typing import Any, Dict, Optional
 
-# Workaround: `grpc` must be imported before `google.protobuf.json_format`,
-# to prevent "Segmentation fault". Ref https://github.com/grpc/grpc/issues/24897
-import grpc
 from google.protobuf import json_format
 import google.protobuf.message
+import grpc
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +29,7 @@ class GrpcClientHelper:
     channel: grpc.Channel
     DEFAULT_RPC_DEADLINE_SEC = 90
 
-    def __init__(self, channel: grpc.Channel, stub_class: ClassVar):
+    def __init__(self, channel: grpc.Channel, stub_class: Any):
         self.channel = channel
         self.stub = stub_class(channel)
         # This is purely cosmetic to make RPC logs look like method calls.

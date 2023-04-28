@@ -1,4 +1,3 @@
-load("@rules_cc//cc:defs.bzl", "cc_library")
 load("//bazel:envoy_build_system.bzl", "envoy_cmake", "envoy_package")
 load("@rules_foreign_cc//foreign_cc:configure.bzl", "configure_make")
 
@@ -12,7 +11,10 @@ configure_make(
     name = "liburing",
     configure_in_place = True,
     lib_source = "@com_github_axboe_liburing//:all",
-    tags = ["skip_on_windows"],
+    tags = [
+        "nocompdb",
+        "skip_on_windows",
+    ],
 )
 
 # autotools packages are unusable on Windows as-is
@@ -113,7 +115,37 @@ configure_make(
 )
 
 configure_make(
+    name = "colm",
+    autogen = True,
+    configure_in_place = True,
+    configure_options = [
+        "AUTOMAKE=automake",
+        "ACLOCAL=aclocal",
+        "--disable-shared",
+        "--enable-static",
+    ],
+    # Workaround for the issue with statically linked libstdc++
+    # using -l:libstdc++.a.
+    env = {
+        "CXXFLAGS": "-lstdc++ -Wno-unused-command-line-argument",
+    },
+    lib_source = "@net_colm_open_source_colm//:all",
+    out_binaries = ["colm"],
+    tags = ["skip_on_windows"],
+)
+
+configure_make(
     name = "ragel",
+    autogen = True,
+    configure_in_place = True,
+    configure_options = [
+        "AUTOMAKE=automake",
+        "ACLOCAL=aclocal",
+        "--disable-manual",
+        "--disable-shared",
+        "--enable-static",
+        "--with-colm=$EXT_BUILD_DEPS/colm",
+    ],
     # Workaround for the issue with statically linked libstdc++
     # using -l:libstdc++.a.
     env = {
@@ -122,6 +154,7 @@ configure_make(
     lib_source = "@net_colm_open_source_ragel//:all",
     out_binaries = ["ragel"],
     tags = ["skip_on_windows"],
+    deps = [":colm"],
 )
 
 # ICU used by the language detection filter (i18n).
@@ -151,7 +184,6 @@ configure_make(
         "ICU_DATA_FILTER_FILE": "$(execpath //bazel/foreign_cc:icu_data_filter.json)",
     },
     lib_source = "@com_github_unicode_org_icu//:all",
-    linkopts = ["-lstdc++"],
     out_static_libs = [
         "libicuuc.a",
         "libicudata.a",
@@ -385,7 +417,7 @@ envoy_cmake(
         # Workaround for the -DDEBUG flag added in fastbuild on macOS,
         # which conflicts with DEBUG macro used in LLVM.
         "CFLAGS": "-UDEBUG",
-        "CXXFLAGS": "-UDEBUG",
+        "CXXFLAGS": "-UDEBUG -Wno-error=unused-but-set-variable",
         "ASMFLAGS": "-UDEBUG",
     },
     lib_source = "@com_github_wavm_wavm//:all",

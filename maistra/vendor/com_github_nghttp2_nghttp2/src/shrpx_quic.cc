@@ -57,8 +57,8 @@ ngtcp2_tstamp quic_timestamp() {
 
 int quic_send_packet(const UpstreamAddr *faddr, const sockaddr *remote_sa,
                      size_t remote_salen, const sockaddr *local_sa,
-                     size_t local_salen, const uint8_t *data, size_t datalen,
-                     size_t gso_size) {
+                     size_t local_salen, const ngtcp2_pkt_info &pi,
+                     const uint8_t *data, size_t datalen, size_t gso_size) {
   iovec msg_iov = {const_cast<uint8_t *>(data), datalen};
   msghdr msg{};
   msg.msg_name = const_cast<sockaddr *>(remote_sa);
@@ -123,6 +123,8 @@ int quic_send_packet(const UpstreamAddr *faddr, const sockaddr *remote_sa,
 
   msg.msg_controllen = controllen;
 
+  util::fd_set_send_ecn(faddr->fd, local_sa->sa_family, pi.ecn);
+
   ssize_t nwrite;
 
   do {
@@ -142,7 +144,8 @@ int quic_send_packet(const UpstreamAddr *faddr, const sockaddr *remote_sa,
     LOG(INFO) << "QUIC sent packet: local="
               << util::to_numeric_addr(local_sa, local_salen)
               << " remote=" << util::to_numeric_addr(remote_sa, remote_salen)
-              << " " << nwrite << " bytes";
+              << " ecn=" << log::hex << pi.ecn << log::dec << " " << nwrite
+              << " bytes";
   }
 
   return 0;
@@ -267,16 +270,16 @@ int generate_quic_stateless_reset_token(uint8_t *token, const ngtcp2_cid &cid,
   return 0;
 }
 
-int generate_retry_token(uint8_t *token, size_t &tokenlen, const sockaddr *sa,
-                         socklen_t salen, const ngtcp2_cid &retry_scid,
-                         const ngtcp2_cid &odcid, const uint8_t *secret,
-                         size_t secretlen) {
+int generate_retry_token(uint8_t *token, size_t &tokenlen, uint32_t version,
+                         const sockaddr *sa, socklen_t salen,
+                         const ngtcp2_cid &retry_scid, const ngtcp2_cid &odcid,
+                         const uint8_t *secret, size_t secretlen) {
   auto t = std::chrono::duration_cast<std::chrono::nanoseconds>(
                std::chrono::system_clock::now().time_since_epoch())
                .count();
 
   auto stokenlen = ngtcp2_crypto_generate_retry_token(
-      token, secret, secretlen, sa, salen, &retry_scid, &odcid, t);
+      token, secret, secretlen, version, sa, salen, &retry_scid, &odcid, t);
   if (stokenlen < 0) {
     return -1;
   }
@@ -287,16 +290,16 @@ int generate_retry_token(uint8_t *token, size_t &tokenlen, const sockaddr *sa,
 }
 
 int verify_retry_token(ngtcp2_cid &odcid, const uint8_t *token, size_t tokenlen,
-                       const ngtcp2_cid &dcid, const sockaddr *sa,
-                       socklen_t salen, const uint8_t *secret,
-                       size_t secretlen) {
+                       uint32_t version, const ngtcp2_cid &dcid,
+                       const sockaddr *sa, socklen_t salen,
+                       const uint8_t *secret, size_t secretlen) {
 
   auto t = std::chrono::duration_cast<std::chrono::nanoseconds>(
                std::chrono::system_clock::now().time_since_epoch())
                .count();
 
   if (ngtcp2_crypto_verify_retry_token(&odcid, token, tokenlen, secret,
-                                       secretlen, sa, salen, &dcid,
+                                       secretlen, version, sa, salen, &dcid,
                                        10 * NGTCP2_SECONDS, t) != 0) {
     return -1;
   }
@@ -355,10 +358,9 @@ int generate_quic_connection_id_encryption_key(uint8_t *key, size_t keylen,
 }
 
 const QUICKeyingMaterial *
-select_quic_keying_material(const QUICKeyingMaterials &qkms,
-                            const uint8_t *cid) {
+select_quic_keying_material(const QUICKeyingMaterials &qkms, uint8_t km_id) {
   for (auto &qkm : qkms.keying_materials) {
-    if (((*cid) & 0xc0) == qkm.id) {
+    if (km_id == qkm.id) {
       return &qkm;
     }
   }

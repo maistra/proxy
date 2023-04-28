@@ -16,12 +16,13 @@
  *
  */
 
-#include <gtest/gtest.h>
-
 #include <fstream>
 #include <sstream>
 
+#include <gtest/gtest.h>
+
 #include "absl/flags/flag.h"
+
 #include "test/core/util/test_config.h"
 #include "test/cpp/util/test_config.h"
 
@@ -63,7 +64,7 @@ TEST(GoldenMockFileTest, TestGeneratedMockFile) {
 }
 
 int main(int argc, char** argv) {
-  grpc::testing::TestEnvironment env(argc, argv);
+  grpc::testing::TestEnvironment env(&argc, argv);
   ::testing::InitGoogleTest(&argc, argv);
   grpc::testing::InitTest(&argc, &argv, true);
   if (absl::GetFlag(FLAGS_generated_file_path).empty()) {

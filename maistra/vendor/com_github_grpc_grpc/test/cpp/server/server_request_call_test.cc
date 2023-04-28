@@ -18,21 +18,18 @@
 
 #include <thread>
 
-#include <grpcpp/impl/codegen/config.h>
-
-#include <grpcpp/server.h>
-#include <grpcpp/server_builder.h>
-
-#include <grpcpp/create_channel.h>
-#include <grpcpp/security/credentials.h>
+#include <gtest/gtest.h>
 
 #include <grpc/support/log.h>
+#include <grpcpp/create_channel.h>
+#include <grpcpp/impl/codegen/config.h>
+#include <grpcpp/security/credentials.h>
+#include <grpcpp/server.h>
+#include <grpcpp/server_builder.h>
 
 #include "src/proto/grpc/testing/echo.grpc.pb.h"
 #include "test/core/util/port.h"
 #include "test/core/util/test_config.h"
-
-#include <gtest/gtest.h>
 
 namespace grpc {
 namespace {
@@ -96,7 +93,7 @@ TEST(ServerRequestCallTest, ShortDeadlineDoesNotCauseOkayFalse) {
       response.set_message("foobar");
       // A bit of sleep to make sure the deadline elapses.
       gpr_sleep_until(gpr_time_add(gpr_now(GPR_CLOCK_MONOTONIC),
-                                   gpr_time_from_millis(50, GPR_TIMESPAN)));
+                                   gpr_time_from_seconds(1, GPR_TIMESPAN)));
       {
         std::lock_guard<std::mutex> lock(mu);
         if (shutting_down) {
@@ -133,7 +130,7 @@ TEST(ServerRequestCallTest, ShortDeadlineDoesNotCauseOkayFalse) {
     // deadline, whether due to the sleep or because the server was unable to
     // even fetch the request from the CQ before the deadline elapsed.
     testing::EchoResponse response;
-    ::grpc::ClientContext ctx;
+    grpc::ClientContext ctx;
     ctx.set_fail_fast(false);
     ctx.set_deadline(std::chrono::system_clock::now() +
                      std::chrono::milliseconds(1));
@@ -160,7 +157,7 @@ TEST(ServerRequestCallTest, ShortDeadlineDoesNotCauseOkayFalse) {
 }  // namespace grpc
 
 int main(int argc, char** argv) {
-  grpc::testing::TestEnvironment env(argc, argv);
+  grpc::testing::TestEnvironment env(&argc, argv);
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

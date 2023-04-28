@@ -18,15 +18,15 @@
 
 #include <grpc/support/port_platform.h>
 
+#include <stdio.h>
+#include <string.h>
+
 #include <grpc/support/alloc.h>
 #include <grpc/support/atm.h>
 #include <grpc/support/log.h>
 
 #include "src/core/lib/gpr/string.h"
 #include "src/core/lib/gprpp/global_config.h"
-
-#include <stdio.h>
-#include <string.h>
 
 #ifndef GPR_DEFAULT_LOG_VERBOSITY_STRING
 #define GPR_DEFAULT_LOG_VERBOSITY_STRING "ERROR"
@@ -46,6 +46,11 @@ void gpr_default_log(gpr_log_func_args* args);
 static gpr_atm g_log_func = reinterpret_cast<gpr_atm>(gpr_default_log);
 static gpr_atm g_min_severity_to_print = GPR_LOG_SEVERITY_UNSET;
 static gpr_atm g_min_severity_to_print_stacktrace = GPR_LOG_SEVERITY_UNSET;
+
+void gpr_unreachable_code(const char* reason, const char* file, int line) {
+  gpr_log(file, line, GPR_LOG_SEVERITY_ERROR, "UNREACHABLE CODE: %s", reason);
+  abort();
+}
 
 const char* gpr_log_severity_string(gpr_log_severity severity) {
   switch (severity) {

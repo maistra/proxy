@@ -16,12 +16,28 @@
  *
  */
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include <grpc/grpc.h>
+#include <grpc/slice.h>
+#include <grpc/support/log.h>
+#include <grpc/support/time.h>
 
 #include "src/core/ext/transport/chttp2/transport/chttp2_transport.h"
+#include "src/core/lib/channel/channel_args.h"
+#include "src/core/lib/channel/channel_args_preconditioning.h"
+#include "src/core/lib/channel/channelz.h"
+#include "src/core/lib/config/core_configuration.h"
+#include "src/core/lib/gprpp/time.h"
+#include "src/core/lib/iomgr/endpoint.h"
+#include "src/core/lib/iomgr/error.h"
+#include "src/core/lib/iomgr/exec_ctx.h"
 #include "src/core/lib/iomgr/executor.h"
+#include "src/core/lib/resource_quota/api.h"
 #include "src/core/lib/slice/slice_internal.h"
 #include "src/core/lib/surface/server.h"
+#include "src/core/lib/transport/transport_fwd.h"
 #include "test/core/util/mock_endpoint.h"
 
 bool squelch = true;
@@ -40,24 +56,26 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   {
     grpc_core::ExecCtx exec_ctx;
     grpc_core::Executor::SetThreadingAll(false);
-
     grpc_resource_quota* resource_quota =
-        grpc_resource_quota_create("server_fuzzer");
-    grpc_endpoint* mock_endpoint =
-        grpc_mock_endpoint_create(discard_write, resource_quota);
-    grpc_resource_quota_unref_internal(resource_quota);
+        grpc_resource_quota_create("context_list_test");
+    grpc_endpoint* mock_endpoint = grpc_mock_endpoint_create(discard_write);
     grpc_mock_endpoint_put_read(
         mock_endpoint, grpc_slice_from_copied_buffer((const char*)data, size));
-
     grpc_server* server = grpc_server_create(nullptr, nullptr);
     grpc_completion_queue* cq = grpc_completion_queue_create_for_next(nullptr);
     grpc_server_register_completion_queue(server, cq, nullptr);
     // TODO(ctiller): add more registered methods (one for POST, one for PUT)
     grpc_server_register_method(server, "/reg", nullptr, {}, 0);
     grpc_server_start(server);
+    grpc_core::ChannelArgs channel_args = grpc_core::CoreConfiguration::Get()
+                                              .channel_args_preconditioning()
+                                              .PreconditionChannelArgs(nullptr);
     grpc_transport* transport =
-        grpc_create_chttp2_transport(nullptr, mock_endpoint, false);
-    server->core_server->SetupTransport(transport, nullptr, nullptr, nullptr);
+        grpc_create_chttp2_transport(channel_args, mock_endpoint, false);
+    grpc_resource_quota_unref(resource_quota);
+    GPR_ASSERT(GRPC_LOG_IF_ERROR(
+        "SetupTransport", grpc_core::Server::FromC(server)->SetupTransport(
+                              transport, nullptr, channel_args, nullptr)));
     grpc_chttp2_transport_start_reading(transport, nullptr, nullptr, nullptr);
 
     grpc_call* call1 = nullptr;
@@ -97,7 +115,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     grpc_metadata_array_destroy(&request_metadata1);
     grpc_server_shutdown_and_notify(server, cq, tag(0xdead));
     grpc_server_cancel_all_calls(server);
-    grpc_millis deadline = grpc_core::ExecCtx::Get()->Now() + 5000;
+    grpc_core::Timestamp deadline =
+        grpc_core::ExecCtx::Get()->Now() + grpc_core::Duration::Seconds(5);
     for (int i = 0; i <= requested_calls; i++) {
       // A single grpc_completion_queue_next might not be sufficient for getting
       // the tag from shutdown, because we might potentially get blocked by

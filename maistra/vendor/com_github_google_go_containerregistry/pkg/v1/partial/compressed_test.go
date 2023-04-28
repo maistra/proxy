@@ -19,7 +19,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-containerregistry/pkg/internal/compare"
+	"github.com/google/go-containerregistry/internal/compare"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/registry"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -78,6 +78,14 @@ func TestRemote(t *testing.T) {
 
 	if diff := cmp.Diff(d, m.Layers[0].Digest); diff != "" {
 		t.Errorf("mismatched digest: %v", diff)
+	}
+
+	ok, err := partial.Exists(layer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := ok, true; got != want {
+		t.Errorf("Exists() = %t != %t", got, want)
 	}
 }
 

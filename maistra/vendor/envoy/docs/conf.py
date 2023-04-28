@@ -19,7 +19,9 @@ from datetime import datetime
 import yaml
 
 from sphinx.directives.code import CodeBlock
-import sphinx_rtd_theme
+
+# TODO(phlax): move the pygments style to envoy.docs.sphinx_runner and remove this
+sys.path.append(os.path.abspath("./_pygments"))
 
 
 class SphinxConfigError(Exception):
@@ -91,22 +93,29 @@ def _config(key):
 sys.path.append(os.path.abspath("./_ext"))
 
 extensions = [
-    'sphinxcontrib.httpdomain', 'sphinx.ext.extlinks', 'sphinx.ext.ifconfig',
-    'sphinx.ext.intersphinx', 'sphinx_tabs.tabs', 'sphinx_copybutton', 'validating_code_block',
-    'sphinxext.rediraffe', 'powershell_lexer'
+    'envoy.docs.sphinx_runner.ext.httpdomain',
+    'sphinx.ext.extlinks',
+    'sphinx.ext.ifconfig',
+    'sphinx.ext.intersphinx',
+    'envoy.docs.sphinx_runner.sphinx_tabs.tabs',
+    'sphinx_copybutton',
+    'envoy.docs.sphinx_runner.ext.validating_code_block',
+    'sphinxext.rediraffe',
+    'envoy.docs.sphinx_runner.ext.powershell_lexer',
+    'sphinxcontrib.jquery',
 ]
 
 release_level = _config('release_level')
 blob_sha = _config('blob_sha')
 
 extlinks = {
-    'repo': ('https://github.com/envoyproxy/envoy/blob/{}/%s'.format(blob_sha), ''),
-    'api': ('https://github.com/envoyproxy/envoy/blob/{}/api/%s'.format(blob_sha), ''),
+    'repo': ('https://github.com/envoyproxy/envoy/blob/{}/%s'.format(blob_sha), '%s'),
+    'api': ('https://github.com/envoyproxy/envoy/blob/{}/api/%s'.format(blob_sha), '%s'),
 }
 
 # Only lookup intersphinx for explicitly prefixed in cross-references
 # This makes docs versioning work
-intersphinx_disabled_domains = ['std']
+intersphinx_disabled_reftypes = ['*']
 
 # Setup global substitutions
 if 'pre-release' in release_level:
@@ -160,7 +169,7 @@ rst_epilog = """
 #
 # This is also used if you do content translation via gettext catalogs.
 # Usually you set "language" from the command line for these cases.
-language = None
+language = "en"
 
 # There are two options for replacing |today|: either, you set today to some
 # non-false value, then it is used:
@@ -220,7 +229,7 @@ html_theme_options = {
 }
 
 # Add any paths that contain custom themes here, relative to this directory.
-html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
+# html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 
 # The name for this set of Sphinx documents.
 # "<project> v<release> documentation" by default.
@@ -313,24 +322,8 @@ htmlhelp_basename = 'envoydoc'
 # TODO(phlax): add redirect diff (`rediraffe_branch` setting)
 #  - not sure how diffing will work with main merging in PRs - might need
 #    to be injected dynamically, somehow
-rediraffe_redirects = "envoy-redirects.txt"
+rediraffe_redirects = "redirects.txt"
 
-intersphinx_mapping = {
-    'v1.5': ('https://www.envoyproxy.io/docs/envoy/v1.5.0', None),
-    'v1.6': ('https://www.envoyproxy.io/docs/envoy/v1.6.0', None),
-    'v1.7': ('https://www.envoyproxy.io/docs/envoy/v1.7.1', None),
-    'v1.8': ('https://www.envoyproxy.io/docs/envoy/v1.8.0', None),
-    'v1.9': ('https://www.envoyproxy.io/docs/envoy/v1.9.1', None),
-    'v1.10': ('https://www.envoyproxy.io/docs/envoy/v1.10.0', None),
-    'v1.11': ('https://www.envoyproxy.io/docs/envoy/v1.11.2', None),
-    'v1.12': ('https://www.envoyproxy.io/docs/envoy/v1.12.6', None),
-    'v1.13': ('https://www.envoyproxy.io/docs/envoy/v1.13.3', None),
-    'v1.14': ('https://www.envoyproxy.io/docs/envoy/v1.14.7', None),
-    'v1.15': ('https://www.envoyproxy.io/docs/envoy/v1.15.5', None),
-    'v1.16': ('https://www.envoyproxy.io/docs/envoy/v1.16.5', None),
-    'v1.17': ('https://www.envoyproxy.io/docs/envoy/v1.17.4', None),
-    'v1.18': ('https://www.envoyproxy.io/docs/envoy/v1.18.4', None),
-    'v1.19': ('https://www.envoyproxy.io/docs/envoy/v1.19.5', None),
-    'v1.20': ('https://www.envoyproxy.io/docs/envoy/v1.20.7', None),
-    'v1.21': ('https://www.envoyproxy.io/docs/envoy/v1.21.5', None),
-}
+intersphinx_mapping = _config("intersphinx_mapping")
+
+pygments_style = "style.EnvoyCodeStyle"

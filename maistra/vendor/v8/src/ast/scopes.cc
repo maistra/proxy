@@ -12,16 +12,13 @@
 #include "src/builtins/accessors.h"
 #include "src/common/message-template.h"
 #include "src/heap/local-factory-inl.h"
-#include "src/init/bootstrapper.h"
 #include "src/logging/runtime-call-stats-scope.h"
-#include "src/objects/module-inl.h"
-#include "src/objects/objects-inl.h"
 #include "src/objects/scope-info.h"
-#include "src/objects/string-set-inl.h"
+#include "src/objects/string-inl.h"
+#include "src/objects/string-set.h"
 #include "src/parsing/parse-info.h"
 #include "src/parsing/parser.h"
 #include "src/parsing/preparse-data.h"
-#include "src/zone/zone-list-inl.h"
 #include "src/zone/zone.h"
 
 namespace v8 {
@@ -255,7 +252,7 @@ Scope::Scope(Zone* zone, ScopeType scope_type,
   must_use_preparsed_scope_data_ = true;
 
   if (scope_type == BLOCK_SCOPE) {
-    // Set is_block_scope_for_object_literal_ based on the existince of the home
+    // Set is_block_scope_for_object_literal_ based on the existence of the home
     // object variable (we don't store it explicitly).
     DCHECK_NOT_NULL(ast_value_factory);
     int home_object_index = scope_info->ContextSlotIndex(
@@ -747,14 +744,28 @@ void DeclarationScope::DeclareArguments(AstValueFactory* ast_value_factory) {
   DCHECK(is_function_scope());
   DCHECK(!is_arrow_scope());
 
+  // Because when arguments_ is not nullptr, we already declared
+  // "arguments exotic object" to add it into parameters before
+  // impl()->InsertShadowingVarBindingInitializers, so here
+  // only declare "arguments exotic object" when arguments_
+  // is nullptr
+  if (arguments_ != nullptr) {
+    return;
+  }
+
   // Declare 'arguments' variable which exists in all non arrow functions.  Note
   // that it might never be accessed, in which case it won't be allocated during
   // variable allocation.
-  bool was_added;
+  bool was_added = false;
+
   arguments_ =
       Declare(zone(), ast_value_factory->arguments_string(), VariableMode::kVar,
               NORMAL_VARIABLE, kCreatedInitialized, kNotAssigned, &was_added);
-  if (!was_added && IsLexicalVariableMode(arguments_->mode())) {
+  // According to ES#sec-functiondeclarationinstantiation step 18
+  // we should set argumentsObjectNeeded to false if has lexical
+  // declared arguments only when hasParameterExpressions is false
+  if (!was_added && IsLexicalVariableMode(arguments_->mode()) &&
+      has_simple_parameters_) {
     // Check if there's lexically declared variable named arguments to avoid
     // redeclaration. See ES#sec-functiondeclarationinstantiation, step 20.
     arguments_ = nullptr;
@@ -2283,7 +2294,7 @@ void UpdateNeedsHoleCheck(Variable* var, VariableProxy* proxy, Scope* scope) {
     // Dynamically introduced variables never need a hole check (since they're
     // VariableMode::kVar bindings, either from var or function declarations),
     // but the variable they shadow might need a hole check, which we want to do
-    // if we decide that no shadowing variable was dynamically introoduced.
+    // if we decide that no shadowing variable was dynamically introduced.
     DCHECK_EQ(kCreatedInitialized, var->initialization_flag());
     return UpdateNeedsHoleCheck(var->local_if_not_shadowed(), proxy, scope);
   }
@@ -2784,7 +2795,7 @@ bool IsComplementaryAccessorPair(VariableMode a, VariableMode b) {
 void ClassScope::FinalizeReparsedClassScope(
     Isolate* isolate, MaybeHandle<ScopeInfo> maybe_scope_info,
     AstValueFactory* ast_value_factory, bool needs_allocation_fixup) {
-  // Set this bit so that DelcarationScope::Analyze recognizes
+  // Set this bit so that DeclarationScope::Analyze recognizes
   // the reparsed instance member initializer scope.
 #ifdef DEBUG
   is_reparsed_class_scope_ = true;
@@ -2935,7 +2946,7 @@ Variable* ClassScope::LookupPrivateName(VariableProxy* proxy) {
        scope_iter.Next()) {
     ClassScope* scope = scope_iter.GetScope();
     // Try finding it in the private name map first, if it can't be found,
-    // try the deseralized scope info.
+    // try the deserialized scope info.
     Variable* var = scope->LookupLocalPrivateName(proxy->raw_name());
     if (var == nullptr && !scope->scope_info_.is_null()) {
       var = scope->LookupPrivateNameInScopeInfo(proxy->raw_name());
@@ -3027,7 +3038,7 @@ VariableProxy* ClassScope::ResolvePrivateNamesPartially() {
       }
 
       // The private name may be found later in the outer private name scope, so
-      // push it to the outer sopce.
+      // push it to the outer scope.
       private_name_scope_iter.AddUnresolvedPrivateName(proxy);
     }
 

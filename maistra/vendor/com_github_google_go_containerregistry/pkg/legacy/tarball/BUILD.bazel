@@ -28,7 +28,7 @@ go_test(
     srcs = ["write_test.go"],
     embed = [":tarball"],
     deps = [
-        "//pkg/internal/compare",
+        "//internal/compare",
         "//pkg/name",
         "//pkg/v1:pkg",
         "//pkg/v1/mutate",

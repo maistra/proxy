@@ -1,3 +1,4 @@
+option(ANTLR_BUILD_CPP_TESTS "Build C++ tests." ON)
 
 include_directories(
   ${PROJECT_SOURCE_DIR}/runtime/src
@@ -35,6 +36,38 @@ add_custom_target(make_lib_output_dir ALL
 
 add_dependencies(antlr4_shared make_lib_output_dir)
 add_dependencies(antlr4_static make_lib_output_dir)
+
+if (ANTLR_BUILD_CPP_TESTS)
+  include(FetchContent)
+
+  FetchContent_Declare(
+    googletest
+    URL https://github.com/google/googletest/archive/e2239ee6043f73722e7aa812a459f54a28552929.zip
+  )
+
+  set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+
+  FetchContent_MakeAvailable(googletest)
+
+  file(GLOB libantlrcpp_TESTS
+    "${PROJECT_SOURCE_DIR}/runtime/tests/*.cpp"
+  )
+
+  add_executable(
+    antlr4_tests
+    ${libantlrcpp_TESTS}
+  )
+
+  target_link_libraries(
+    antlr4_tests
+    antlr4_static
+    gtest_main
+  )
+
+  include(GoogleTest)
+
+  gtest_discover_tests(antlr4_tests)
+endif()
 
 if(CMAKE_SYSTEM_NAME MATCHES "Linux")
   target_link_libraries(antlr4_shared ${UUID_LIBRARIES})
@@ -102,17 +135,19 @@ set_target_properties(antlr4_static
                                  COMPILE_FLAGS "${disabled_compile_warnings} ${extra_static_compile_flags}")
 
 install(TARGETS antlr4_shared
-        DESTINATION lib 
-        EXPORT antlr4-targets)
-install(TARGETS antlr4_static
-        DESTINATION lib
-        EXPORT antlr4-targets)
+        EXPORT antlr4-targets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-install(DIRECTORY "${PROJECT_SOURCE_DIR}/runtime/src/" 
+install(TARGETS antlr4_static
+        EXPORT antlr4-targets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+install(DIRECTORY "${PROJECT_SOURCE_DIR}/runtime/src/"
         DESTINATION "include/antlr4-runtime"
-        COMPONENT dev 
+        COMPONENT dev
         FILES_MATCHING PATTERN "*.h"
         )
-
-
-

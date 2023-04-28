@@ -69,13 +69,11 @@ BbrSender::DebugState::DebugState(const BbrSender& sender)
 
 BbrSender::DebugState::DebugState(const DebugState& state) = default;
 
-BbrSender::BbrSender(QuicTime now,
-                     const RttStats* rtt_stats,
+BbrSender::BbrSender(QuicTime now, const RttStats* rtt_stats,
                      const QuicUnackedPacketMap* unacked_packets,
                      QuicPacketCount initial_tcp_congestion_window,
                      QuicPacketCount max_tcp_congestion_window,
-                     QuicRandom* random,
-                     QuicConnectionStats* stats)
+                     QuicRandom* random, QuicConnectionStats* stats)
     : rtt_stats_(rtt_stats),
       unacked_packets_(unacked_packets),
       random_(random),
@@ -100,7 +98,7 @@ BbrSender::BbrSender(QuicTime now,
       pacing_gain_(1),
       congestion_window_gain_(1),
       congestion_window_gain_constant_(
-          static_cast<float>(GetQuicFlag(FLAGS_quic_bbr_cwnd_gain))),
+          static_cast<float>(GetQuicFlag(quic_bbr_cwnd_gain))),
       num_startup_rtts_(kRoundTripsWithoutGrowthBeforeExitingStartup),
       cycle_current_offset_(0),
       last_cycle_start_(QuicTime::Zero()),
@@ -147,12 +145,9 @@ void BbrSender::SetInitialCongestionWindowInPackets(
   }
 }
 
-bool BbrSender::InSlowStart() const {
-  return mode_ == STARTUP;
-}
+bool BbrSender::InSlowStart() const { return mode_ == STARTUP; }
 
-void BbrSender::OnPacketSent(QuicTime sent_time,
-                             QuicByteCount bytes_in_flight,
+void BbrSender::OnPacketSent(QuicTime sent_time, QuicByteCount bytes_in_flight,
                              QuicPacketNumber packet_number,
                              QuicByteCount bytes,
                              HasRetransmittableData is_retransmittable) {
@@ -203,22 +198,10 @@ QuicByteCount BbrSender::GetCongestionWindow() const {
   return congestion_window_;
 }
 
-QuicByteCount BbrSender::GetSlowStartThreshold() const {
-  return 0;
-}
+QuicByteCount BbrSender::GetSlowStartThreshold() const { return 0; }
 
 bool BbrSender::InRecovery() const {
   return recovery_state_ != NOT_IN_RECOVERY;
-}
-
-bool BbrSender::ShouldSendProbingPacket() const {
-  if (pacing_gain_ <= 1) {
-    return false;
-  }
-
-  // TODO(b/77975811): If the pipe is highly under-utilized, consider not
-  // sending a probing transmission, because the extra bandwidth is not needed.
-  return true;
 }
 
 void BbrSender::SetFromConfig(const QuicConfig& config,
@@ -247,7 +230,7 @@ void BbrSender::SetFromConfig(const QuicConfig& config,
   if (config.HasClientRequestedIndependentOption(kBBQ1, perspective)) {
     set_high_gain(kDerivedHighGain);
     set_high_cwnd_gain(kDerivedHighGain);
-    set_drain_gain(1.f / kDerivedHighGain);
+    set_drain_gain(1.0 / kDerivedHighCWNDGain);
   }
   if (config.HasClientRequestedIndependentOption(kBBQ3, perspective)) {
     enable_ack_aggregation_during_startup_ = true;
@@ -620,7 +603,7 @@ void BbrSender::OnExitStartup(QuicTime now) {
 bool BbrSender::ShouldExitStartupDueToLoss(
     const SendTimeState& last_packet_send_state) const {
   if (num_loss_events_in_round_ <
-          GetQuicFlag(FLAGS_quic_bbr2_default_startup_full_loss_count) ||
+          GetQuicFlag(quic_bbr2_default_startup_full_loss_count) ||
       !last_packet_send_state.is_valid) {
     return false;
   }
@@ -629,8 +612,7 @@ bool BbrSender::ShouldExitStartupDueToLoss(
 
   if (inflight_at_send > 0 && bytes_lost_in_round_ > 0) {
     if (bytes_lost_in_round_ >
-        inflight_at_send *
-            GetQuicFlag(FLAGS_quic_bbr2_default_loss_threshold)) {
+        inflight_at_send * GetQuicFlag(quic_bbr2_default_loss_threshold)) {
       stats_->bbr_exit_startup_due_to_loss = true;
       return true;
     }
@@ -640,8 +622,7 @@ bool BbrSender::ShouldExitStartupDueToLoss(
   return false;
 }
 
-void BbrSender::MaybeEnterOrExitProbeRtt(QuicTime now,
-                                         bool is_round_start,
+void BbrSender::MaybeEnterOrExitProbeRtt(QuicTime now, bool is_round_start,
                                          bool min_rtt_expired) {
   if (min_rtt_expired && !exiting_quiescence_ && mode_ != PROBE_RTT) {
     if (InSlowStart()) {
@@ -686,8 +667,7 @@ void BbrSender::MaybeEnterOrExitProbeRtt(QuicTime now,
 }
 
 void BbrSender::UpdateRecoveryState(QuicPacketNumber last_acked_packet,
-                                    bool has_losses,
-                                    bool is_round_start) {
+                                    bool has_losses, bool is_round_start) {
   // Disable recovery in startup, if loss-based exit is enabled.
   if (!is_at_full_bandwidth_) {
     return;

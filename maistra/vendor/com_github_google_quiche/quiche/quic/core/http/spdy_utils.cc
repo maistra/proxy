@@ -20,13 +20,13 @@
 #include "quiche/common/quiche_text_utils.h"
 #include "quiche/spdy/core/spdy_protocol.h"
 
-using spdy::SpdyHeaderBlock;
+using spdy::Http2HeaderBlock;
 
 namespace quic {
 
 // static
 bool SpdyUtils::ExtractContentLengthFromHeaders(int64_t* content_length,
-                                                SpdyHeaderBlock* headers) {
+                                                Http2HeaderBlock* headers) {
   auto it = headers->find("content-length");
   if (it == headers->end()) {
     return false;
@@ -61,7 +61,7 @@ bool SpdyUtils::ExtractContentLengthFromHeaders(int64_t* content_length,
 
 bool SpdyUtils::CopyAndValidateHeaders(const QuicHeaderList& header_list,
                                        int64_t* content_length,
-                                       SpdyHeaderBlock* headers) {
+                                       Http2HeaderBlock* headers) {
   for (const auto& p : header_list) {
     const std::string& name = p.first;
     if (name.empty()) {
@@ -90,7 +90,7 @@ bool SpdyUtils::CopyAndValidateHeaders(const QuicHeaderList& header_list,
 bool SpdyUtils::CopyAndValidateTrailers(const QuicHeaderList& header_list,
                                         bool expect_final_byte_offset,
                                         size_t* final_byte_offset,
-                                        SpdyHeaderBlock* trailers) {
+                                        Http2HeaderBlock* trailers) {
   bool found_final_byte_offset = false;
   for (const auto& p : header_list) {
     const std::string& name = p.first;
@@ -135,7 +135,7 @@ bool SpdyUtils::CopyAndValidateTrailers(const QuicHeaderList& header_list,
 // static
 // TODO(danzh): Move it to quic/tools/ and switch to use GURL.
 bool SpdyUtils::PopulateHeaderBlockFromUrl(const std::string url,
-                                           SpdyHeaderBlock* headers) {
+                                           Http2HeaderBlock* headers) {
   (*headers)[":method"] = "GET";
   size_t pos = url.find("://");
   if (pos == std::string::npos) {
@@ -152,47 +152,6 @@ bool SpdyUtils::PopulateHeaderBlockFromUrl(const std::string url,
   (*headers)[":authority"] = url.substr(start, pos - start);
   (*headers)[":path"] = url.substr(pos);
   return true;
-}
-
-// static
-absl::optional<QuicDatagramStreamId> SpdyUtils::ParseDatagramFlowIdHeader(
-    const spdy::SpdyHeaderBlock& headers) {
-  auto flow_id_pair = headers.find("datagram-flow-id");
-  if (flow_id_pair == headers.end()) {
-    return absl::nullopt;
-  }
-  std::vector<absl::string_view> flow_id_strings =
-      absl::StrSplit(flow_id_pair->second, ',');
-  absl::optional<QuicDatagramStreamId> first_named_flow_id;
-  for (absl::string_view flow_id_string : flow_id_strings) {
-    std::vector<absl::string_view> flow_id_components =
-        absl::StrSplit(flow_id_string, ';');
-    if (flow_id_components.empty()) {
-      continue;
-    }
-    absl::string_view flow_id_value_string = flow_id_components[0];
-    quiche::QuicheTextUtils::RemoveLeadingAndTrailingWhitespace(
-        &flow_id_value_string);
-    QuicDatagramStreamId flow_id;
-    if (!absl::SimpleAtoi(flow_id_value_string, &flow_id)) {
-      continue;
-    }
-    if (flow_id_components.size() == 1) {
-      // This flow ID is unnamed, return this one.
-      return flow_id;
-    }
-    // Otherwise this is a named flow ID.
-    if (!first_named_flow_id.has_value()) {
-      first_named_flow_id = flow_id;
-    }
-  }
-  return first_named_flow_id;
-}
-
-// static
-void SpdyUtils::AddDatagramFlowIdHeader(spdy::SpdyHeaderBlock* headers,
-                                        QuicDatagramStreamId flow_id) {
-  (*headers)["datagram-flow-id"] = absl::StrCat(flow_id);
 }
 
 // static

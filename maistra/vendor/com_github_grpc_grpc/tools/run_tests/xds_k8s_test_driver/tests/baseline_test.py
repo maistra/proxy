@@ -45,7 +45,7 @@ class BaselineTest(xds_k8s_testcase.RegularXdsKubernetesTestCase):
             self.td.create_forwarding_rule(self.server_xds_port)
 
         with self.subTest('5_start_test_server'):
-            test_server: _XdsTestServer = self.startTestServer()
+            test_server: _XdsTestServer = self.startTestServers()[0]
 
         with self.subTest('6_add_server_backends_to_backend_service'):
             self.setupServerBackends()

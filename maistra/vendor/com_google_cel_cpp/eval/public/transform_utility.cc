@@ -1,5 +1,7 @@
 #include "eval/public/transform_utility.h"
 
+#include <string>
+
 #include "google/api/expr/v1alpha1/value.pb.h"
 #include "google/protobuf/any.pb.h"
 #include "google/protobuf/struct.pb.h"
@@ -11,7 +13,7 @@
 #include "eval/public/containers/container_backed_list_impl.h"
 #include "eval/public/containers/container_backed_map_impl.h"
 #include "eval/public/structs/cel_proto_wrapper.h"
-#include "internal/proto_util.h"
+#include "internal/proto_time_encoding.h"
 #include "internal/status_macros.h"
 
 
@@ -45,7 +47,7 @@ absl::Status CelValueToValue(const CelValue& value, Value* result) {
     case CelValue::Type::kDuration: {
       google::protobuf::Duration duration;
       auto status =
-          expr::internal::EncodeDuration(value.DurationOrDie(), &duration);
+          cel::internal::EncodeDuration(value.DurationOrDie(), &duration);
       if (!status.ok()) {
         return status;
       }
@@ -55,13 +57,16 @@ absl::Status CelValueToValue(const CelValue& value, Value* result) {
     case CelValue::Type::kTimestamp: {
       google::protobuf::Timestamp timestamp;
       auto status =
-          expr::internal::EncodeTime(value.TimestampOrDie(), &timestamp);
+          cel::internal::EncodeTime(value.TimestampOrDie(), &timestamp);
       if (!status.ok()) {
         return status;
       }
       result->mutable_object_value()->PackFrom(timestamp);
       break;
     }
+    case CelValue::Type::kNullType:
+      result->set_null_value(google::protobuf::NullValue::NULL_VALUE);
+      break;
     case CelValue::Type::kMessage:
       if (value.IsNull()) {
         result->set_null_value(google::protobuf::NullValue::NULL_VALUE);
@@ -80,9 +85,9 @@ absl::Status CelValueToValue(const CelValue& value, Value* result) {
     case CelValue::Type::kMap: {
       auto* map_value = result->mutable_map_value();
       auto& cel_map = *value.MapOrDie();
-      const auto& keys = *cel_map.ListKeys();
-      for (int i = 0; i < keys.size(); ++i) {
-        CelValue key = keys[i];
+      CEL_ASSIGN_OR_RETURN(const auto* keys, cel_map.ListKeys());
+      for (int i = 0; i < keys->size(); ++i) {
+        CelValue key = (*keys)[i];
         auto* entry = map_value->add_entries();
         CEL_RETURN_IF_ERROR(CelValueToValue(key, entry->mutable_key()));
         auto optional_value = cel_map[key];

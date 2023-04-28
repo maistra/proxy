@@ -16,10 +16,11 @@
 //
 //
 
+#include "src/core/ext/xds/xds_certificate_provider.h"
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include "src/core/ext/xds/xds_certificate_provider.h"
 #include "test/core/util/test_config.h"
 #include "test/core/util/tls_utils.h"
 
@@ -572,7 +573,7 @@ TEST(XdsCertificateProviderTest, UnknownCertName) {
 
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  grpc::testing::TestEnvironment env(argc, argv);
+  grpc::testing::TestEnvironment env(&argc, argv);
   grpc_init();
   auto result = RUN_ALL_TESTS();
   grpc_shutdown();

@@ -4,32 +4,18 @@
 
 #include <memory>
 
+#include "src/api/api-inl.h"
 #include "src/api/api.h"
-#include "src/ast/ast-traversal-visitor.h"
-#include "src/ast/prettyprinter.h"
-#include "src/baseline/baseline-batch-compiler.h"
-#include "src/baseline/baseline.h"
 #include "src/builtins/builtins.h"
-#include "src/codegen/compiler.h"
 #include "src/common/message-template.h"
-#include "src/debug/debug.h"
 #include "src/execution/arguments-inl.h"
-#include "src/execution/frames-inl.h"
 #include "src/execution/isolate-inl.h"
 #include "src/execution/messages.h"
 #include "src/execution/tiering-manager.h"
 #include "src/handles/maybe-handles.h"
-#include "src/init/bootstrapper.h"
 #include "src/logging/counters.h"
 #include "src/numbers/conversions.h"
-#include "src/objects/feedback-vector-inl.h"
-#include "src/objects/js-array-inl.h"
 #include "src/objects/template-objects-inl.h"
-#include "src/parsing/parse-info.h"
-#include "src/parsing/parsing.h"
-#include "src/runtime/runtime-utils.h"
-#include "src/snapshot/snapshot.h"
-#include "src/strings/string-builder-inl.h"
 #include "src/utils/ostreams.h"
 
 #if V8_ENABLE_WEBASSEMBLY
@@ -44,7 +30,7 @@ namespace internal {
 RUNTIME_FUNCTION(Runtime_AccessCheck) {
   HandleScope scope(isolate);
   DCHECK_EQ(1, args.length());
-  CONVERT_ARG_HANDLE_CHECKED(JSObject, object, 0);
+  Handle<JSObject> object = args.at<JSObject>(0);
   if (!isolate->MayAccess(handle(isolate->context(), isolate), object)) {
     isolate->ReportFailedAccessCheck(object);
     RETURN_FAILURE_IF_SCHEDULED_EXCEPTION(isolate);
@@ -97,10 +83,16 @@ RUNTIME_FUNCTION(Runtime_ThrowSymbolAsyncIteratorInvalid) {
       isolate, NewTypeError(MessageTemplate::kSymbolAsyncIteratorInvalid));
 }
 
+RUNTIME_FUNCTION(Runtime_TerminateExecution) {
+  HandleScope scope(isolate);
+  DCHECK_EQ(0, args.length());
+  return isolate->TerminateExecution();
+}
+
 #define THROW_ERROR(isolate, args, call)                               \
   HandleScope scope(isolate);                                          \
   DCHECK_LE(1, args.length());                                         \
-  CONVERT_SMI_ARG_CHECKED(message_id_smi, 0);                          \
+  int message_id_smi = args.smi_value_at(0);                           \
                                                                        \
   Handle<Object> undefined = isolate->factory()->undefined_value();    \
   Handle<Object> arg0 = (args.length() > 1) ? args.at(1) : undefined;  \
@@ -114,7 +106,7 @@ RUNTIME_FUNCTION(Runtime_ThrowSymbolAsyncIteratorInvalid) {
 RUNTIME_FUNCTION(Runtime_ThrowRangeError) {
   if (FLAG_correctness_fuzzer_suppressions) {
     DCHECK_LE(1, args.length());
-    CONVERT_SMI_ARG_CHECKED(message_id_smi, 0);
+    int message_id_smi = args.smi_value_at(0);
 
     // If the result of a BigInt computation is truncated to 64 bit, Turbofan
     // can sometimes truncate intermediate results already, which can prevent
@@ -166,8 +158,8 @@ const char* ElementsKindToType(ElementsKind fixed_elements_kind) {
 RUNTIME_FUNCTION(Runtime_ThrowInvalidTypedArrayAlignment) {
   HandleScope scope(isolate);
   DCHECK_EQ(2, args.length());
-  CONVERT_ARG_HANDLE_CHECKED(Map, map, 0);
-  CONVERT_ARG_HANDLE_CHECKED(String, problem_string, 1);
+  Handle<Map> map = args.at<Map>(0);
+  Handle<String> problem_string = args.at<String>(1);
 
   ElementsKind kind = map->elements_kind();
 
@@ -200,7 +192,7 @@ RUNTIME_FUNCTION(Runtime_PromoteScheduledException) {
 RUNTIME_FUNCTION(Runtime_ThrowReferenceError) {
   HandleScope scope(isolate);
   DCHECK_EQ(1, args.length());
-  CONVERT_ARG_HANDLE_CHECKED(Object, name, 0);
+  Handle<Object> name = args.at(0);
   THROW_NEW_ERROR_RETURN_FAILURE(
       isolate, NewReferenceError(MessageTemplate::kNotDefined, name));
 }
@@ -208,7 +200,7 @@ RUNTIME_FUNCTION(Runtime_ThrowReferenceError) {
 RUNTIME_FUNCTION(Runtime_ThrowAccessedUninitializedVariable) {
   HandleScope scope(isolate);
   DCHECK_EQ(1, args.length());
-  CONVERT_ARG_HANDLE_CHECKED(Object, name, 0);
+  Handle<Object> name = args.at(0);
   THROW_NEW_ERROR_RETURN_FAILURE(
       isolate,
       NewReferenceError(MessageTemplate::kAccessedUninitializedVariable, name));
@@ -217,33 +209,36 @@ RUNTIME_FUNCTION(Runtime_ThrowAccessedUninitializedVariable) {
 RUNTIME_FUNCTION(Runtime_NewError) {
   HandleScope scope(isolate);
   DCHECK_EQ(2, args.length());
-  CONVERT_INT32_ARG_CHECKED(template_index, 0);
-  CONVERT_ARG_HANDLE_CHECKED(Object, arg0, 1);
+  int template_index = args.smi_value_at(0);
+  Handle<Object> arg0 = args.at(1);
   MessageTemplate message_template = MessageTemplateFromInt(template_index);
   return *isolate->factory()->NewError(message_template, arg0);
+}
+
+RUNTIME_FUNCTION(Runtime_NewForeign) {
+  HandleScope scope(isolate);
+  DCHECK_EQ(0, args.length());
+  return *isolate->factory()->NewForeign(kNullAddress);
 }
 
 RUNTIME_FUNCTION(Runtime_NewTypeError) {
   HandleScope scope(isolate);
   DCHECK_LE(args.length(), 4);
   DCHECK_GE(args.length(), 1);
-  CONVERT_INT32_ARG_CHECKED(template_index, 0);
+  int template_index = args.smi_value_at(0);
   MessageTemplate message_template = MessageTemplateFromInt(template_index);
 
   Handle<Object> arg0;
   if (args.length() >= 2) {
-    CHECK(args[1].IsObject());
     arg0 = args.at<Object>(1);
   }
 
   Handle<Object> arg1;
   if (args.length() >= 3) {
-    CHECK(args[2].IsObject());
     arg1 = args.at<Object>(2);
   }
   Handle<Object> arg2;
   if (args.length() >= 4) {
-    CHECK(args[3].IsObject());
     arg2 = args.at<Object>(3);
   }
 
@@ -253,8 +248,8 @@ RUNTIME_FUNCTION(Runtime_NewTypeError) {
 RUNTIME_FUNCTION(Runtime_NewReferenceError) {
   HandleScope scope(isolate);
   DCHECK_EQ(2, args.length());
-  CONVERT_INT32_ARG_CHECKED(template_index, 0);
-  CONVERT_ARG_HANDLE_CHECKED(Object, arg0, 1);
+  int template_index = args.smi_value_at(0);
+  Handle<Object> arg0 = args.at(1);
   MessageTemplate message_template = MessageTemplateFromInt(template_index);
   return *isolate->factory()->NewReferenceError(message_template, arg0);
 }
@@ -262,8 +257,8 @@ RUNTIME_FUNCTION(Runtime_NewReferenceError) {
 RUNTIME_FUNCTION(Runtime_NewSyntaxError) {
   HandleScope scope(isolate);
   DCHECK_EQ(2, args.length());
-  CONVERT_INT32_ARG_CHECKED(template_index, 0);
-  CONVERT_ARG_HANDLE_CHECKED(Object, arg0, 1);
+  int template_index = args.smi_value_at(0);
+  Handle<Object> arg0 = args.at(1);
   MessageTemplate message_template = MessageTemplateFromInt(template_index);
   return *isolate->factory()->NewSyntaxError(message_template, arg0);
 }
@@ -276,7 +271,7 @@ RUNTIME_FUNCTION(Runtime_ThrowInvalidStringLength) {
 RUNTIME_FUNCTION(Runtime_ThrowIteratorResultNotAnObject) {
   HandleScope scope(isolate);
   DCHECK_EQ(1, args.length());
-  CONVERT_ARG_HANDLE_CHECKED(Object, value, 0);
+  Handle<Object> value = args.at(0);
   THROW_NEW_ERROR_RETURN_FAILURE(
       isolate,
       NewTypeError(MessageTemplate::kIteratorResultNotAnObject, value));
@@ -296,10 +291,23 @@ RUNTIME_FUNCTION(Runtime_ThrowSymbolIteratorInvalid) {
       isolate, NewTypeError(MessageTemplate::kSymbolIteratorInvalid));
 }
 
+RUNTIME_FUNCTION(Runtime_ThrowNoAccess) {
+  HandleScope scope(isolate);
+  DCHECK_EQ(0, args.length());
+
+  // TODO(verwaest): We would like to throw using the calling context instead
+  // of the entered context but we don't currently have access to that.
+  HandleScopeImplementer* impl = isolate->handle_scope_implementer();
+  SaveAndSwitchContext save(
+      isolate, impl->LastEnteredOrMicrotaskContext()->native_context());
+  THROW_NEW_ERROR_RETURN_FAILURE(isolate,
+                                 NewTypeError(MessageTemplate::kNoAccess));
+}
+
 RUNTIME_FUNCTION(Runtime_ThrowNotConstructor) {
   HandleScope scope(isolate);
   DCHECK_EQ(1, args.length());
-  CONVERT_ARG_HANDLE_CHECKED(Object, object, 0);
+  Handle<Object> object = args.at(0);
   THROW_NEW_ERROR_RETURN_FAILURE(
       isolate, NewTypeError(MessageTemplate::kNotConstructor, object));
 }
@@ -307,7 +315,7 @@ RUNTIME_FUNCTION(Runtime_ThrowNotConstructor) {
 RUNTIME_FUNCTION(Runtime_ThrowApplyNonFunction) {
   HandleScope scope(isolate);
   DCHECK_EQ(1, args.length());
-  CONVERT_ARG_HANDLE_CHECKED(Object, object, 0);
+  Handle<Object> object = args.at(0);
   Handle<String> type = Object::TypeOf(isolate, object);
   THROW_NEW_ERROR_RETURN_FAILURE(
       isolate, NewTypeError(MessageTemplate::kApplyNonFunction, object, type));
@@ -330,7 +338,7 @@ RUNTIME_FUNCTION(Runtime_StackGuard) {
 RUNTIME_FUNCTION(Runtime_StackGuardWithGap) {
   SealHandleScope shs(isolate);
   DCHECK_EQ(args.length(), 1);
-  CONVERT_UINT32_ARG_CHECKED(gap, 0);
+  uint32_t gap = args.positive_smi_value_at(0);
   TRACE_EVENT0("v8.execute", "V8.StackGuard");
 
   // First check if this is a real stack overflow.
@@ -344,43 +352,12 @@ RUNTIME_FUNCTION(Runtime_StackGuardWithGap) {
 
 namespace {
 
-void BytecodeBudgetInterruptFromBytecode(Isolate* isolate,
-                                         Handle<JSFunction> function) {
-  bool should_mark_for_optimization = function->has_feedback_vector();
-  if (!function->has_feedback_vector()) {
-    IsCompiledScope is_compiled_scope(
-        function->shared().is_compiled_scope(isolate));
-    JSFunction::EnsureFeedbackVector(function, &is_compiled_scope);
-    DCHECK(is_compiled_scope.is_compiled());
-    // Also initialize the invocation count here. This is only really needed for
-    // OSR. When we OSR functions with lazy feedback allocation we want to have
-    // a non zero invocation count so we can inline functions.
-    function->feedback_vector().set_invocation_count(1, kRelaxedStore);
-  } else {
-    function->SetInterruptBudget();
-  }
-  if (CanCompileWithBaseline(isolate, function->shared()) &&
-      !function->ActiveTierIsBaseline()) {
-    if (FLAG_baseline_batch_compilation) {
-      isolate->baseline_batch_compiler()->EnqueueFunction(function);
-    } else {
-      IsCompiledScope is_compiled_scope(
-          function->shared().is_compiled_scope(isolate));
-      Compiler::CompileBaseline(isolate, function, Compiler::CLEAR_EXCEPTION,
-                                &is_compiled_scope);
-    }
-  }
-  if (should_mark_for_optimization) {
-    SealHandleScope shs(isolate);
-    isolate->tiering_manager()->OnInterruptTickFromBytecode();
-  }
-}
-}  // namespace
-
-RUNTIME_FUNCTION(Runtime_BytecodeBudgetInterruptWithStackCheckFromBytecode) {
+Object BytecodeBudgetInterruptWithStackCheck(Isolate* isolate,
+                                             RuntimeArguments& args,
+                                             CodeKind code_kind) {
   HandleScope scope(isolate);
   DCHECK_EQ(1, args.length());
-  CONVERT_ARG_HANDLE_CHECKED(JSFunction, function, 0);
+  Handle<JSFunction> function = args.at<JSFunction>(0);
   TRACE_EVENT0("v8.execute", "V8.BytecodeBudgetInterruptWithStackCheck");
 
   // Check for stack interrupts here so that we can fold the interrupt check
@@ -399,18 +376,43 @@ RUNTIME_FUNCTION(Runtime_BytecodeBudgetInterruptWithStackCheckFromBytecode) {
     }
   }
 
-  BytecodeBudgetInterruptFromBytecode(isolate, function);
+  isolate->tiering_manager()->OnInterruptTick(function, code_kind);
   return ReadOnlyRoots(isolate).undefined_value();
 }
 
-RUNTIME_FUNCTION(Runtime_BytecodeBudgetInterruptFromBytecode) {
+Object BytecodeBudgetInterrupt(Isolate* isolate, RuntimeArguments& args,
+                               CodeKind code_kind) {
   HandleScope scope(isolate);
   DCHECK_EQ(1, args.length());
-  CONVERT_ARG_HANDLE_CHECKED(JSFunction, function, 0);
+  Handle<JSFunction> function = args.at<JSFunction>(0);
   TRACE_EVENT0("v8.execute", "V8.BytecodeBudgetInterrupt");
 
-  BytecodeBudgetInterruptFromBytecode(isolate, function);
+  isolate->tiering_manager()->OnInterruptTick(function, code_kind);
   return ReadOnlyRoots(isolate).undefined_value();
+}
+
+}  // namespace
+
+RUNTIME_FUNCTION(Runtime_BytecodeBudgetInterruptWithStackCheck_Ignition) {
+  return BytecodeBudgetInterruptWithStackCheck(isolate, args,
+                                               CodeKind::INTERPRETED_FUNCTION);
+}
+
+RUNTIME_FUNCTION(Runtime_BytecodeBudgetInterrupt_Ignition) {
+  return BytecodeBudgetInterrupt(isolate, args, CodeKind::INTERPRETED_FUNCTION);
+}
+
+RUNTIME_FUNCTION(Runtime_BytecodeBudgetInterruptWithStackCheck_Sparkplug) {
+  return BytecodeBudgetInterruptWithStackCheck(isolate, args,
+                                               CodeKind::BASELINE);
+}
+
+RUNTIME_FUNCTION(Runtime_BytecodeBudgetInterrupt_Sparkplug) {
+  return BytecodeBudgetInterrupt(isolate, args, CodeKind::BASELINE);
+}
+
+RUNTIME_FUNCTION(Runtime_BytecodeBudgetInterruptWithStackCheck_Maglev) {
+  return BytecodeBudgetInterruptWithStackCheck(isolate, args, CodeKind::MAGLEV);
 }
 
 namespace {
@@ -444,8 +446,8 @@ class SaveAndClearThreadInWasmFlag {};
 RUNTIME_FUNCTION(Runtime_AllocateInYoungGeneration) {
   HandleScope scope(isolate);
   DCHECK_EQ(2, args.length());
-  CONVERT_SMI_ARG_CHECKED(size, 0);
-  CONVERT_SMI_ARG_CHECKED(flags, 1);
+  int size = args.smi_value_at(0);
+  int flags = args.smi_value_at(1);
   AllocationAlignment alignment =
       AllocateDoubleAlignFlag::decode(flags) ? kDoubleAligned : kTaggedAligned;
   bool allow_large_object_allocation =
@@ -476,8 +478,8 @@ RUNTIME_FUNCTION(Runtime_AllocateInYoungGeneration) {
 RUNTIME_FUNCTION(Runtime_AllocateInOldGeneration) {
   HandleScope scope(isolate);
   DCHECK_EQ(2, args.length());
-  CONVERT_SMI_ARG_CHECKED(size, 0);
-  CONVERT_SMI_ARG_CHECKED(flags, 1);
+  int size = args.smi_value_at(0);
+  int flags = args.smi_value_at(1);
   AllocationAlignment alignment =
       AllocateDoubleAlignFlag::decode(flags) ? kDoubleAligned : kTaggedAligned;
   bool allow_large_object_allocation =
@@ -494,7 +496,7 @@ RUNTIME_FUNCTION(Runtime_AllocateInOldGeneration) {
 RUNTIME_FUNCTION(Runtime_AllocateByteArray) {
   HandleScope scope(isolate);
   DCHECK_EQ(1, args.length());
-  CONVERT_SMI_ARG_CHECKED(length, 0);
+  int length = args.smi_value_at(0);
   DCHECK_LT(0, length);
   return *isolate->factory()->NewByteArray(length);
 }
@@ -502,7 +504,7 @@ RUNTIME_FUNCTION(Runtime_AllocateByteArray) {
 RUNTIME_FUNCTION(Runtime_AllocateSeqOneByteString) {
   HandleScope scope(isolate);
   DCHECK_EQ(1, args.length());
-  CONVERT_SMI_ARG_CHECKED(length, 0);
+  int length = args.smi_value_at(0);
   if (length == 0) return ReadOnlyRoots(isolate).empty_string();
   Handle<SeqOneByteString> result;
   ASSIGN_RETURN_FAILURE_ON_EXCEPTION(
@@ -513,7 +515,7 @@ RUNTIME_FUNCTION(Runtime_AllocateSeqOneByteString) {
 RUNTIME_FUNCTION(Runtime_AllocateSeqTwoByteString) {
   HandleScope scope(isolate);
   DCHECK_EQ(1, args.length());
-  CONVERT_SMI_ARG_CHECKED(length, 0);
+  int length = args.smi_value_at(0);
   if (length == 0) return ReadOnlyRoots(isolate).empty_string();
   Handle<SeqTwoByteString> result;
   ASSIGN_RETURN_FAILURE_ON_EXCEPTION(
@@ -524,23 +526,23 @@ RUNTIME_FUNCTION(Runtime_AllocateSeqTwoByteString) {
 RUNTIME_FUNCTION(Runtime_ThrowIteratorError) {
   HandleScope scope(isolate);
   DCHECK_EQ(1, args.length());
-  CONVERT_ARG_HANDLE_CHECKED(Object, object, 0);
+  Handle<Object> object = args.at(0);
   return isolate->Throw(*ErrorUtils::NewIteratorError(isolate, object));
 }
 
 RUNTIME_FUNCTION(Runtime_ThrowSpreadArgError) {
   HandleScope scope(isolate);
   DCHECK_EQ(2, args.length());
-  CONVERT_SMI_ARG_CHECKED(message_id_smi, 0);
+  int message_id_smi = args.smi_value_at(0);
   MessageTemplate message_id = MessageTemplateFromInt(message_id_smi);
-  CONVERT_ARG_HANDLE_CHECKED(Object, object, 1);
+  Handle<Object> object = args.at(1);
   return ErrorUtils::ThrowSpreadArgError(isolate, message_id, object);
 }
 
 RUNTIME_FUNCTION(Runtime_ThrowCalledNonCallable) {
   HandleScope scope(isolate);
   DCHECK_EQ(1, args.length());
-  CONVERT_ARG_HANDLE_CHECKED(Object, object, 0);
+  Handle<Object> object = args.at(0);
   return isolate->Throw(
       *ErrorUtils::NewCalledNonCallableError(isolate, object));
 }
@@ -548,7 +550,7 @@ RUNTIME_FUNCTION(Runtime_ThrowCalledNonCallable) {
 RUNTIME_FUNCTION(Runtime_ThrowConstructedNonConstructable) {
   HandleScope scope(isolate);
   DCHECK_EQ(1, args.length());
-  CONVERT_ARG_HANDLE_CHECKED(Object, object, 0);
+  Handle<Object> object = args.at(0);
   return isolate->Throw(
       *ErrorUtils::NewConstructedNonConstructable(isolate, object));
 }
@@ -556,7 +558,7 @@ RUNTIME_FUNCTION(Runtime_ThrowConstructedNonConstructable) {
 RUNTIME_FUNCTION(Runtime_ThrowPatternAssignmentNonCoercible) {
   HandleScope scope(isolate);
   DCHECK_EQ(1, args.length());
-  CONVERT_ARG_HANDLE_CHECKED(Object, object, 0);
+  Handle<Object> object = args.at(0);
   return ErrorUtils::ThrowLoadFromNullOrUndefined(isolate, object,
                                                   MaybeHandle<Object>());
 }
@@ -574,7 +576,7 @@ RUNTIME_FUNCTION(Runtime_ThrowConstructorReturnedNonObject) {
 RUNTIME_FUNCTION(Runtime_CreateListFromArrayLike) {
   HandleScope scope(isolate);
   DCHECK_EQ(1, args.length());
-  CONVERT_ARG_HANDLE_CHECKED(Object, object, 0);
+  Handle<Object> object = args.at(0);
   RETURN_RESULT_OR_FAILURE(isolate, Object::CreateListFromArrayLike(
                                         isolate, object, ElementTypes::kAll));
 }
@@ -582,15 +584,44 @@ RUNTIME_FUNCTION(Runtime_CreateListFromArrayLike) {
 RUNTIME_FUNCTION(Runtime_IncrementUseCounter) {
   HandleScope scope(isolate);
   DCHECK_EQ(1, args.length());
-  CONVERT_SMI_ARG_CHECKED(counter, 0);
+  int counter = args.smi_value_at(0);
   isolate->CountUsage(static_cast<v8::Isolate::UseCounterFeature>(counter));
   return ReadOnlyRoots(isolate).undefined_value();
+}
+
+RUNTIME_FUNCTION(Runtime_GetAndResetTurboProfilingData) {
+  HandleScope scope(isolate);
+  DCHECK_LE(args.length(), 2);
+  if (!BasicBlockProfiler::Get()->HasData(isolate)) {
+    THROW_NEW_ERROR_RETURN_FAILURE(
+        isolate,
+        NewTypeError(
+            MessageTemplate::kInvalid,
+            isolate->factory()->NewStringFromAsciiChecked("Runtime Call"),
+            isolate->factory()->NewStringFromAsciiChecked(
+                "V8 was not built with v8_enable_builtins_profiling=true")));
+  }
+
+  std::stringstream stats_stream;
+  BasicBlockProfiler::Get()->Log(isolate, stats_stream);
+  Handle<String> result =
+      isolate->factory()->NewStringFromAsciiChecked(stats_stream.str().c_str());
+  BasicBlockProfiler::Get()->ResetCounts(isolate);
+  return *result;
 }
 
 RUNTIME_FUNCTION(Runtime_GetAndResetRuntimeCallStats) {
   HandleScope scope(isolate);
   DCHECK_LE(args.length(), 2);
 #ifdef V8_RUNTIME_CALL_STATS
+  if (!FLAG_runtime_call_stats) {
+    THROW_NEW_ERROR_RETURN_FAILURE(
+        isolate, NewTypeError(MessageTemplate::kInvalid,
+                              isolate->factory()->NewStringFromAsciiChecked(
+                                  "Runtime Call"),
+                              isolate->factory()->NewStringFromAsciiChecked(
+                                  "--runtime-call-stats is not set")));
+  }
   // Append any worker thread runtime call stats to the main table before
   // printing.
   isolate->counters()->worker_thread_runtime_call_stats()->AddToMainTable(
@@ -609,18 +640,18 @@ RUNTIME_FUNCTION(Runtime_GetAndResetRuntimeCallStats) {
   std::FILE* f;
   if (args[0].IsString()) {
     // With a string argument, the results are appended to that file.
-    CONVERT_ARG_HANDLE_CHECKED(String, filename, 0);
+    Handle<String> filename = args.at<String>(0);
     f = std::fopen(filename->ToCString().get(), "a");
     DCHECK_NOT_NULL(f);
   } else {
     // With an integer argument, the results are written to stdout/stderr.
-    CONVERT_SMI_ARG_CHECKED(fd, 0);
+    int fd = args.smi_value_at(0);
     DCHECK(fd == 1 || fd == 2);
     f = fd == 1 ? stdout : stderr;
   }
   // The second argument (if any) is a message header to be printed.
   if (args.length() >= 2) {
-    CONVERT_ARG_HANDLE_CHECKED(String, message, 1);
+    Handle<String> message = args.at<String>(1);
     message->PrintOn(f);
     std::fputc('\n', f);
     std::fflush(f);
@@ -633,15 +664,22 @@ RUNTIME_FUNCTION(Runtime_GetAndResetRuntimeCallStats) {
   } else {
     std::fflush(f);
   }
-#endif  // V8_RUNTIME_CALL_STATS
   return ReadOnlyRoots(isolate).undefined_value();
+#else   // V8_RUNTIME_CALL_STATS
+  THROW_NEW_ERROR_RETURN_FAILURE(
+      isolate, NewTypeError(MessageTemplate::kInvalid,
+                            isolate->factory()->NewStringFromAsciiChecked(
+                                "Runtime Call"),
+                            isolate->factory()->NewStringFromAsciiChecked(
+                                "RCS was disabled at compile-time")));
+#endif  // V8_RUNTIME_CALL_STATS
 }
 
 RUNTIME_FUNCTION(Runtime_OrdinaryHasInstance) {
   HandleScope scope(isolate);
   DCHECK_EQ(2, args.length());
-  CONVERT_ARG_HANDLE_CHECKED(Object, callable, 0);
-  CONVERT_ARG_HANDLE_CHECKED(Object, object, 1);
+  Handle<Object> callable = args.at(0);
+  Handle<Object> object = args.at(1);
   RETURN_RESULT_OR_FAILURE(
       isolate, Object::OrdinaryHasInstance(isolate, callable, object));
 }
@@ -649,14 +687,14 @@ RUNTIME_FUNCTION(Runtime_OrdinaryHasInstance) {
 RUNTIME_FUNCTION(Runtime_Typeof) {
   HandleScope scope(isolate);
   DCHECK_EQ(1, args.length());
-  CONVERT_ARG_HANDLE_CHECKED(Object, object, 0);
+  Handle<Object> object = args.at(0);
   return *Object::TypeOf(isolate, object);
 }
 
 RUNTIME_FUNCTION(Runtime_AllowDynamicFunction) {
   HandleScope scope(isolate);
   DCHECK_EQ(1, args.length());
-  CONVERT_ARG_HANDLE_CHECKED(JSFunction, target, 0);
+  Handle<JSFunction> target = args.at<JSFunction>(0);
   Handle<JSObject> global_proxy(target->global_proxy(), isolate);
   return *isolate->factory()->ToBoolean(
       Builtins::AllowDynamicFunction(isolate, target, global_proxy));
@@ -666,7 +704,7 @@ RUNTIME_FUNCTION(Runtime_CreateAsyncFromSyncIterator) {
   HandleScope scope(isolate);
   DCHECK_EQ(1, args.length());
 
-  CONVERT_ARG_HANDLE_CHECKED(Object, sync_iterator, 0);
+  Handle<Object> sync_iterator = args.at(0);
 
   if (!sync_iterator->IsJSReceiver()) {
     THROW_NEW_ERROR_RETURN_FAILURE(
@@ -686,9 +724,10 @@ RUNTIME_FUNCTION(Runtime_CreateAsyncFromSyncIterator) {
 RUNTIME_FUNCTION(Runtime_GetTemplateObject) {
   HandleScope scope(isolate);
   DCHECK_EQ(3, args.length());
-  CONVERT_ARG_HANDLE_CHECKED(TemplateObjectDescription, description, 0);
-  CONVERT_ARG_HANDLE_CHECKED(SharedFunctionInfo, shared_info, 1);
-  CONVERT_SMI_ARG_CHECKED(slot_id, 2);
+  Handle<TemplateObjectDescription> description =
+      args.at<TemplateObjectDescription>(0);
+  Handle<SharedFunctionInfo> shared_info = args.at<SharedFunctionInfo>(1);
+  int slot_id = args.smi_value_at(2);
 
   Handle<NativeContext> native_context(isolate->context().native_context(),
                                        isolate);
@@ -703,7 +742,7 @@ RUNTIME_FUNCTION(Runtime_ReportMessageFromMicrotask) {
   HandleScope scope(isolate);
   DCHECK_EQ(1, args.length());
 
-  CONVERT_ARG_HANDLE_CHECKED(Object, exception, 0);
+  Handle<Object> exception = args.at(0);
 
   DCHECK(!isolate->has_pending_exception());
   isolate->set_pending_exception(*exception);
@@ -719,22 +758,34 @@ RUNTIME_FUNCTION(Runtime_GetInitializerFunction) {
   HandleScope scope(isolate);
   DCHECK_EQ(1, args.length());
 
-  CONVERT_ARG_HANDLE_CHECKED(JSReceiver, constructor, 0);
+  Handle<JSReceiver> constructor = args.at<JSReceiver>(0);
   Handle<Symbol> key = isolate->factory()->class_fields_symbol();
-  Handle<Object> initializer = JSReceiver::GetDataProperty(constructor, key);
+  Handle<Object> initializer =
+      JSReceiver::GetDataProperty(isolate, constructor, key);
   return *initializer;
 }
 
 RUNTIME_FUNCTION(Runtime_DoubleToStringWithRadix) {
   HandleScope scope(isolate);
   DCHECK_EQ(2, args.length());
-  CONVERT_DOUBLE_ARG_CHECKED(number, 0);
-  CONVERT_INT32_ARG_CHECKED(radix, 1);
+  double number = args.number_value_at(0);
+  int32_t radix = 0;
+  CHECK(args[1].ToInt32(&radix));
 
   char* const str = DoubleToRadixCString(number, radix);
   Handle<String> result = isolate->factory()->NewStringFromAsciiChecked(str);
   DeleteArray(str);
   return *result;
+}
+
+RUNTIME_FUNCTION(Runtime_SharedValueBarrierSlow) {
+  HandleScope scope(isolate);
+  DCHECK_EQ(1, args.length());
+  Handle<HeapObject> value = args.at<HeapObject>(0);
+  Handle<Object> shared_value;
+  ASSIGN_RETURN_FAILURE_ON_EXCEPTION(
+      isolate, shared_value, Object::ShareSlow(isolate, value, kThrowOnError));
+  return *shared_value;
 }
 
 }  // namespace internal
