@@ -9,7 +9,7 @@
 #ifndef ENVOY_CONFIG_CORE_V3_PROXY_PROTOCOL_PROTO_UPB_H_
 #define ENVOY_CONFIG_CORE_V3_PROXY_PROTOCOL_PROTO_UPB_H_
 
-#include "upb/msg.h"
+#include "upb/msg_internal.h"
 #include "upb/decode.h"
 #include "upb/decode_fast.h"
 #include "upb/encode.h"
@@ -22,7 +22,7 @@ extern "C" {
 
 struct envoy_config_core_v3_ProxyProtocolConfig;
 typedef struct envoy_config_core_v3_ProxyProtocolConfig envoy_config_core_v3_ProxyProtocolConfig;
-extern const upb_msglayout envoy_config_core_v3_ProxyProtocolConfig_msginit;
+extern const upb_MiniTable envoy_config_core_v3_ProxyProtocolConfig_msginit;
 
 typedef enum {
   envoy_config_core_v3_ProxyProtocolConfig_V1 = 0,
@@ -30,31 +30,54 @@ typedef enum {
 } envoy_config_core_v3_ProxyProtocolConfig_Version;
 
 
+
 /* envoy.config.core.v3.ProxyProtocolConfig */
 
-UPB_INLINE envoy_config_core_v3_ProxyProtocolConfig *envoy_config_core_v3_ProxyProtocolConfig_new(upb_arena *arena) {
-  return (envoy_config_core_v3_ProxyProtocolConfig *)_upb_msg_new(&envoy_config_core_v3_ProxyProtocolConfig_msginit, arena);
+UPB_INLINE envoy_config_core_v3_ProxyProtocolConfig* envoy_config_core_v3_ProxyProtocolConfig_new(upb_Arena* arena) {
+  return (envoy_config_core_v3_ProxyProtocolConfig*)_upb_Message_New(&envoy_config_core_v3_ProxyProtocolConfig_msginit, arena);
 }
-UPB_INLINE envoy_config_core_v3_ProxyProtocolConfig *envoy_config_core_v3_ProxyProtocolConfig_parse(const char *buf, size_t size,
-                        upb_arena *arena) {
-  envoy_config_core_v3_ProxyProtocolConfig *ret = envoy_config_core_v3_ProxyProtocolConfig_new(arena);
-  return (ret && upb_decode(buf, size, ret, &envoy_config_core_v3_ProxyProtocolConfig_msginit, arena)) ? ret : NULL;
+UPB_INLINE envoy_config_core_v3_ProxyProtocolConfig* envoy_config_core_v3_ProxyProtocolConfig_parse(const char* buf, size_t size, upb_Arena* arena) {
+  envoy_config_core_v3_ProxyProtocolConfig* ret = envoy_config_core_v3_ProxyProtocolConfig_new(arena);
+  if (!ret) return NULL;
+  if (upb_Decode(buf, size, ret, &envoy_config_core_v3_ProxyProtocolConfig_msginit, NULL, 0, arena) != kUpb_DecodeStatus_Ok) {
+    return NULL;
+  }
+  return ret;
 }
-UPB_INLINE envoy_config_core_v3_ProxyProtocolConfig *envoy_config_core_v3_ProxyProtocolConfig_parse_ex(const char *buf, size_t size,
-                           upb_arena *arena, int options) {
-  envoy_config_core_v3_ProxyProtocolConfig *ret = envoy_config_core_v3_ProxyProtocolConfig_new(arena);
-  return (ret && _upb_decode(buf, size, ret, &envoy_config_core_v3_ProxyProtocolConfig_msginit, arena, options))
-      ? ret : NULL;
+UPB_INLINE envoy_config_core_v3_ProxyProtocolConfig* envoy_config_core_v3_ProxyProtocolConfig_parse_ex(const char* buf, size_t size,
+                           const upb_ExtensionRegistry* extreg,
+                           int options, upb_Arena* arena) {
+  envoy_config_core_v3_ProxyProtocolConfig* ret = envoy_config_core_v3_ProxyProtocolConfig_new(arena);
+  if (!ret) return NULL;
+  if (upb_Decode(buf, size, ret, &envoy_config_core_v3_ProxyProtocolConfig_msginit, extreg, options, arena) !=
+      kUpb_DecodeStatus_Ok) {
+    return NULL;
+  }
+  return ret;
 }
-UPB_INLINE char *envoy_config_core_v3_ProxyProtocolConfig_serialize(const envoy_config_core_v3_ProxyProtocolConfig *msg, upb_arena *arena, size_t *len) {
-  return upb_encode(msg, &envoy_config_core_v3_ProxyProtocolConfig_msginit, arena, len);
+UPB_INLINE char* envoy_config_core_v3_ProxyProtocolConfig_serialize(const envoy_config_core_v3_ProxyProtocolConfig* msg, upb_Arena* arena, size_t* len) {
+  char* ptr;
+  (void)upb_Encode(msg, &envoy_config_core_v3_ProxyProtocolConfig_msginit, 0, arena, &ptr, len);
+  return ptr;
 }
-
-UPB_INLINE int32_t envoy_config_core_v3_ProxyProtocolConfig_version(const envoy_config_core_v3_ProxyProtocolConfig *msg) { return *UPB_PTR_AT(msg, UPB_SIZE(0, 0), int32_t); }
+UPB_INLINE char* envoy_config_core_v3_ProxyProtocolConfig_serialize_ex(const envoy_config_core_v3_ProxyProtocolConfig* msg, int options,
+                                 upb_Arena* arena, size_t* len) {
+  char* ptr;
+  (void)upb_Encode(msg, &envoy_config_core_v3_ProxyProtocolConfig_msginit, options, arena, &ptr, len);
+  return ptr;
+}
+UPB_INLINE void envoy_config_core_v3_ProxyProtocolConfig_clear_version(const envoy_config_core_v3_ProxyProtocolConfig* msg) {
+  *UPB_PTR_AT(msg, UPB_SIZE(0, 0), int32_t) = 0;
+}
+UPB_INLINE int32_t envoy_config_core_v3_ProxyProtocolConfig_version(const envoy_config_core_v3_ProxyProtocolConfig* msg) {
+  return *UPB_PTR_AT(msg, UPB_SIZE(0, 0), int32_t);
+}
 
 UPB_INLINE void envoy_config_core_v3_ProxyProtocolConfig_set_version(envoy_config_core_v3_ProxyProtocolConfig *msg, int32_t value) {
   *UPB_PTR_AT(msg, UPB_SIZE(0, 0), int32_t) = value;
 }
+
+extern const upb_MiniTable_File envoy_config_core_v3_proxy_protocol_proto_upb_file_layout;
 
 #ifdef __cplusplus
 }  /* extern "C" */

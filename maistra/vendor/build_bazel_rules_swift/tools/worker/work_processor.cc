@@ -14,41 +14,60 @@
 
 #include "tools/worker/work_processor.h"
 
-#include <google/protobuf/text_format.h>
+#if defined(__APPLE__)
+#include <copyfile.h>
+#endif
 #include <sys/stat.h>
 
+#include <filesystem>
 #include <fstream>
 #include <map>
-#include <nlohmann/json.hpp>
 #include <sstream>
 #include <string>
 
-#include "tools/common/file_system.h"
-#include "tools/common/path_utils.h"
 #include "tools/common/temp_file.h"
 #include "tools/worker/output_file_map.h"
 #include "tools/worker/swift_runner.h"
+#include "tools/worker/worker_protocol.h"
 
 namespace {
 
-static void FinalizeWorkRequest(const blaze::worker::WorkRequest &request,
-                                blaze::worker::WorkResponse *response,
-                                int exit_code,
-                                const std::ostringstream &output) {
-  response->set_exit_code(exit_code);
-  response->set_output(output.str());
-  response->set_request_id(request.request_id());
+bool copy_file(const std::filesystem::path &from,
+               const std::filesystem::path &to, std::error_code &ec) noexcept {
+#if defined(__APPLE__)
+  if (copyfile(from.string().c_str(), to.string().c_str(), nullptr,
+               COPYFILE_ALL | COPYFILE_CLONE) < 0) {
+    ec = std::error_code(errno, std::system_category());
+    return false;
+  }
+  ec = std::error_code();
+  return true;
+#else
+  return std::filesystem::copy_file(from, to, ec);
+#endif
+}
+
+static void FinalizeWorkRequest(
+    const bazel_rules_swift::worker_protocol::WorkRequest &request,
+    bazel_rules_swift::worker_protocol::WorkResponse &response, int exit_code,
+    const std::ostringstream &output) {
+  response.exit_code = exit_code;
+  response.output = output.str();
+  response.request_id = request.request_id;
+  response.was_cancelled = false;
 }
 
 };  // end namespace
 
-WorkProcessor::WorkProcessor(const std::vector<std::string> &args) {
+WorkProcessor::WorkProcessor(const std::vector<std::string> &args,
+                             std::string index_import_path)
+    : index_import_path_(index_import_path) {
   universal_args_.insert(universal_args_.end(), args.begin(), args.end());
 }
 
 void WorkProcessor::ProcessWorkRequest(
-    const blaze::worker::WorkRequest &request,
-    blaze::worker::WorkResponse *response) {
+    const bazel_rules_swift::worker_protocol::WorkRequest &request,
+    bazel_rules_swift::worker_protocol::WorkResponse &response) {
   std::vector<std::string> processed_args(universal_args_);
 
   // Bazel's worker spawning strategy reads the arguments from the params file
@@ -67,8 +86,8 @@ void WorkProcessor::ProcessWorkRequest(
   bool is_dump_ast = false;
 
   std::string prev_arg;
-  for (auto arg : request.arguments()) {
-    auto original_arg = arg;
+  for (std::string arg : request.arguments) {
+    std::string original_arg = arg;
     // Peel off the `-output-file-map` argument, so we can rewrite it if
     // necessary later.
     if (arg == "-output-file-map") {
@@ -99,8 +118,9 @@ void WorkProcessor::ProcessWorkRequest(
 
       // Rewrite the output file map to use the incremental storage area and
       // pass the compiler the path to the rewritten file.
-      auto new_path =
-          ReplaceExtension(output_file_map_path, ".incremental.json");
+      std::string new_path = std::filesystem::path(output_file_map_path)
+                                 .replace_extension(".incremental.json")
+                                 .string();
       output_file_map.WriteToPath(new_path);
 
       params_file_stream << "-output-file-map\n";
@@ -129,26 +149,55 @@ void WorkProcessor::ProcessWorkRequest(
       // Bazel creates the intermediate directories for the files declared at
       // analysis time, but we need to manually create the ones for the
       // incremental storage area.
-      auto dir_path = Dirname(expected_object_pair.second);
-      if (!MakeDirs(dir_path, S_IRWXU)) {
+      const std::string dir_path =
+          std::filesystem::path(expected_object_pair.second)
+              .parent_path()
+              .string();
+      std::error_code ec;
+      std::filesystem::create_directories(dir_path, ec);
+      if (ec) {
         stderr_stream << "swift_worker: Could not create directory " << dir_path
-                      << " (errno " << errno << ")\n";
+                      << " (" << ec.message() << ")\n";
         FinalizeWorkRequest(request, response, EXIT_FAILURE, stderr_stream);
         return;
       }
     }
 
     // Copy some input files from the incremental storage area to the locations
-    // where Bazel will generate them.
-    for (const auto &expected_object_pair :
-         output_file_map.incremental_inputs()) {
-      if (FileExists(expected_object_pair.second)) {
-        if (!CopyFile(expected_object_pair.second,
-                      expected_object_pair.first)) {
+    // where Bazel will generate them. swiftc expects all or none of them exist
+    // otherwise the next invocation may not produce all the files. We also need
+    // to remove some files that exist in the incremental storage area.
+    auto inputs = output_file_map.incremental_inputs();
+    bool all_inputs_exist = std::all_of(
+        inputs.cbegin(), inputs.cend(), [](const auto &expected_object_pair) {
+          return std::filesystem::exists(expected_object_pair.second);
+        });
+
+    if (all_inputs_exist) {
+      for (const auto &expected_object_pair : inputs) {
+        std::error_code ec;
+        copy_file(expected_object_pair.second, expected_object_pair.first, ec);
+        if (ec) {
           stderr_stream << "swift_worker: Could not copy "
                         << expected_object_pair.second << " to "
-                        << expected_object_pair.first << " (errno " << errno
+                        << expected_object_pair.first << " (" << ec.message()
                         << ")\n";
+          FinalizeWorkRequest(request, response, EXIT_FAILURE, stderr_stream);
+          return;
+        }
+      }
+    } else {
+      auto cleanup_outputs = output_file_map.incremental_cleanup_outputs();
+      for (const auto &cleanup_output : cleanup_outputs) {
+        if (!std::filesystem::exists(cleanup_output)) {
+          continue;
+        }
+
+        std::error_code ec;
+        std::filesystem::remove(cleanup_output, ec);
+        if (ec) {
+          stderr_stream << "swift_worker: Could not remove " << cleanup_output
+                        << " (" << ec.message() << ")\n";
           FinalizeWorkRequest(request, response, EXIT_FAILURE, stderr_stream);
           return;
         }
@@ -156,18 +205,25 @@ void WorkProcessor::ProcessWorkRequest(
     }
   }
 
-  SwiftRunner swift_runner(processed_args, /*force_response_file=*/true);
+  SwiftRunner swift_runner(processed_args, index_import_path_,
+                           /*force_response_file=*/true);
   int exit_code = swift_runner.Run(&stderr_stream, /*stdout_to_stderr=*/true);
+  if (exit_code != 0) {
+    FinalizeWorkRequest(request, response, exit_code, stderr_stream);
+    return;
+  }
 
   if (is_incremental) {
     // Copy the output files from the incremental storage area back to the
     // locations where Bazel declared the files.
     for (const auto &expected_object_pair :
          output_file_map.incremental_outputs()) {
-      if (!CopyFile(expected_object_pair.second, expected_object_pair.first)) {
+      std::error_code ec;
+      copy_file(expected_object_pair.second, expected_object_pair.first, ec);
+      if (ec) {
         stderr_stream << "swift_worker: Could not copy "
                       << expected_object_pair.second << " to "
-                      << expected_object_pair.first << " (errno " << errno
+                      << expected_object_pair.first << " (" << ec.message()
                       << ")\n";
         FinalizeWorkRequest(request, response, EXIT_FAILURE, stderr_stream);
         return;
@@ -178,16 +234,17 @@ void WorkProcessor::ProcessWorkRequest(
     // next run.
     for (const auto &expected_object_pair :
          output_file_map.incremental_inputs()) {
-      if (FileExists(expected_object_pair.first)) {
-        if (FileExists(expected_object_pair.second)) {
+      if (std::filesystem::exists(expected_object_pair.first)) {
+        if (std::filesystem::exists(expected_object_pair.second)) {
           // CopyFile fails if the file already exists
-          RemoveFile(expected_object_pair.second);
+          std::filesystem::remove(expected_object_pair.second);
         }
-        if (!CopyFile(expected_object_pair.first,
-                      expected_object_pair.second)) {
+        std::error_code ec;
+        copy_file(expected_object_pair.first, expected_object_pair.second, ec);
+        if (ec) {
           stderr_stream << "swift_worker: Could not copy "
                         << expected_object_pair.first << " to "
-                        << expected_object_pair.second << " (errno " << errno
+                        << expected_object_pair.second << " (" << ec.message()
                         << ")\n";
           FinalizeWorkRequest(request, response, EXIT_FAILURE, stderr_stream);
           return;

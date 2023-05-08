@@ -22,14 +22,14 @@
 
 #ifdef GRPC_POSIX_SOCKET_UTILS_COMMON
 
-#include "src/core/lib/iomgr/socket_utils.h"
-#include "src/core/lib/iomgr/socket_utils_posix.h"
-
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <netinet/in.h>
+
+#include "src/core/lib/iomgr/socket_utils.h"
+#include "src/core/lib/iomgr/socket_utils_posix.h"
 #ifdef GRPC_LINUX_TCP_H
 #include <linux/tcp.h>
 #else
@@ -388,17 +388,17 @@ grpc_error_handle grpc_set_socket_tcp_user_timeout(
 }
 
 /* set a socket using a grpc_socket_mutator */
-grpc_error_handle grpc_set_socket_with_mutator(int fd,
+grpc_error_handle grpc_set_socket_with_mutator(int fd, grpc_fd_usage usage,
                                                grpc_socket_mutator* mutator) {
   GPR_ASSERT(mutator);
-  if (!grpc_socket_mutator_mutate_fd(mutator, fd)) {
+  if (!grpc_socket_mutator_mutate_fd(mutator, fd, usage)) {
     return GRPC_ERROR_CREATE_FROM_STATIC_STRING("grpc_socket_mutator failed.");
   }
   return GRPC_ERROR_NONE;
 }
 
 grpc_error_handle grpc_apply_socket_mutator_in_args(
-    int fd, const grpc_channel_args* args) {
+    int fd, grpc_fd_usage usage, const grpc_channel_args* args) {
   const grpc_arg* socket_mutator_arg =
       grpc_channel_args_find(args, GRPC_ARG_SOCKET_MUTATOR);
   if (socket_mutator_arg == nullptr) {
@@ -407,7 +407,7 @@ grpc_error_handle grpc_apply_socket_mutator_in_args(
   GPR_DEBUG_ASSERT(socket_mutator_arg->type == GRPC_ARG_POINTER);
   grpc_socket_mutator* mutator =
       static_cast<grpc_socket_mutator*>(socket_mutator_arg->value.pointer.p);
-  return grpc_set_socket_with_mutator(fd, mutator);
+  return grpc_set_socket_with_mutator(fd, usage, mutator);
 }
 
 static gpr_once g_probe_ipv6_once = GPR_ONCE_INIT;
@@ -441,10 +441,10 @@ int grpc_ipv6_loopback_available(void) {
 static grpc_error_handle error_for_fd(int fd,
                                       const grpc_resolved_address* addr) {
   if (fd >= 0) return GRPC_ERROR_NONE;
-  std::string addr_str = grpc_sockaddr_to_string(addr, false);
+  auto addr_str = grpc_sockaddr_to_string(addr, false);
   grpc_error_handle err = grpc_error_set_str(
       GRPC_OS_ERROR(errno, "socket"), GRPC_ERROR_STR_TARGET_ADDRESS,
-      grpc_slice_from_copied_string(addr_str.c_str()));
+      addr_str.ok() ? addr_str.value() : addr_str.status().ToString());
   return err;
 }
 
@@ -494,23 +494,6 @@ grpc_error_handle grpc_create_dualstack_socket_using_factory(
   *dsmode = family == AF_INET ? GRPC_DSMODE_IPV4 : GRPC_DSMODE_NONE;
   *newfd = create_socket(factory, family, type, protocol);
   return error_for_fd(*newfd, resolved_addr);
-}
-
-uint16_t grpc_htons(uint16_t hostshort) { return htons(hostshort); }
-
-uint16_t grpc_ntohs(uint16_t netshort) { return ntohs(netshort); }
-
-uint32_t grpc_htonl(uint32_t hostlong) { return htonl(hostlong); }
-
-uint32_t grpc_ntohl(uint32_t netlong) { return ntohl(netlong); }
-
-int grpc_inet_pton(int af, const char* src, void* dst) {
-  return inet_pton(af, src, dst);
-}
-
-const char* grpc_inet_ntop(int af, const void* src, char* dst, size_t size) {
-  GPR_ASSERT(size <= (socklen_t)-1);
-  return inet_ntop(af, src, dst, static_cast<socklen_t>(size));
 }
 
 #endif

@@ -1,6 +1,11 @@
 #include "eval/eval/ternary_step.h"
 
+#include <string>
+#include <utility>
+
+#include "google/protobuf/descriptor.h"
 #include "eval/eval/ident_step.h"
+#include "eval/eval/test_type_registry.h"
 #include "eval/public/activation.h"
 #include "eval/public/unknown_attribute_set.h"
 #include "eval/public/unknown_set.h"
@@ -50,8 +55,8 @@ class LogicStepTest : public testing::TestWithParam<bool> {
 
     auto dummy_expr = absl::make_unique<google::api::expr::v1alpha1::Expr>();
 
-    CelExpressionFlatImpl impl(dummy_expr.get(), std::move(path), 0, {},
-                               enable_unknown);
+    CelExpressionFlatImpl impl(dummy_expr.get(), std::move(path),
+                               &TestTypeRegistry(), 0, {}, enable_unknown);
 
     Activation activation;
     std::string value("test");
@@ -140,7 +145,8 @@ TEST_F(LogicStepTest, TestUnknownHandling) {
   auto ident_expr1 = expr1.mutable_ident_expr();
   ident_expr1->set_name("name1");
 
-  CelAttribute attr0(expr0, {}), attr1(expr1, {});
+  CelAttribute attr0(expr0.ident_expr().name(), {}),
+      attr1(expr1.ident_expr().name(), {});
   UnknownAttributeSet unknown_attr_set0({&attr0});
   UnknownAttributeSet unknown_attr_set1({&attr1});
   UnknownSet unknown_set0(unknown_attr_set0);
@@ -156,7 +162,7 @@ TEST_F(LogicStepTest, TestUnknownHandling) {
   const auto& attrs =
       result.UnknownSetOrDie()->unknown_attributes().attributes();
   ASSERT_THAT(attrs, testing::SizeIs(1));
-  EXPECT_THAT(attrs[0]->variable().ident_expr().name(), Eq("name0"));
+  EXPECT_THAT(attrs[0]->variable_name(), Eq("name0"));
 }
 
 INSTANTIATE_TEST_SUITE_P(LogicStepTest, LogicStepTest, testing::Bool());

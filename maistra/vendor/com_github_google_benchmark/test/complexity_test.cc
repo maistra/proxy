@@ -109,7 +109,7 @@ ADD_COMPLEXITY_CASES(one_test_name, big_o_1_test_name, rms_o_1_test_name,
 
 std::vector<int> ConstructRandomVector(int64_t size) {
   std::vector<int> v;
-  v.reserve(static_cast<int>(size));
+  v.reserve(static_cast<size_t>(size));
   for (int i = 0; i < size; ++i) {
     v.push_back(static_cast<int>(std::rand() % size));
   }
@@ -174,7 +174,7 @@ BENCHMARK(BM_Complexity_O_N_log_N)
     ->RangeMultiplier(2)
     ->Range(1 << 10, 1 << 16)
     ->Complexity([](benchmark::IterationCount n) {
-      return kLog2E * n * log(static_cast<double>(n));
+      return kLog2E * static_cast<double>(n) * log(static_cast<double>(n));
     });
 BENCHMARK(BM_Complexity_O_N_log_N)
     ->RangeMultiplier(2)

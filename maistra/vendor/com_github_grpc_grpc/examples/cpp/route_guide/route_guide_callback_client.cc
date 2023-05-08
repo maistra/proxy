@@ -25,13 +25,14 @@
 #include <string>
 #include <thread>
 
+#include "helper.h"
+
 #include <grpc/grpc.h>
 #include <grpcpp/alarm.h>
 #include <grpcpp/channel.h>
 #include <grpcpp/client_context.h>
 #include <grpcpp/create_channel.h>
 #include <grpcpp/security/credentials.h>
-#include "helper.h"
 #ifdef BAZEL_BUILD
 #include "examples/protos/route_guide.grpc.pb.h"
 #else
@@ -137,7 +138,7 @@ class RouteGuideClient {
       bool done_ = false;
     };
     Reader reader(stub_.get(), kCoordFactor_, rect);
-    Status status = std::move(reader.Await());
+    Status status = reader.Await();
     if (status.ok()) {
       std::cout << "ListFeatures rpc succeeded." << std::endl;
     } else {
@@ -216,7 +217,7 @@ class RouteGuideClient {
     };
     Recorder recorder(stub_.get(), kCoordFactor_, &feature_list_);
     RouteSummary stats;
-    Status status = std::move(recorder.Await(&stats));
+    Status status = recorder.Await(&stats);
     if (status.ok()) {
       std::cout << "Finished trip with " << stats.point_count() << " points\n"
                 << "Passed " << stats.feature_count() << " features\n"
@@ -287,7 +288,7 @@ class RouteGuideClient {
     };
 
     Chatter chatter(stub_.get());
-    Status status = std::move(chatter.Await());
+    Status status = chatter.Await();
     if (!status.ok()) {
       std::cout << "RouteChat rpc failed." << std::endl;
     }

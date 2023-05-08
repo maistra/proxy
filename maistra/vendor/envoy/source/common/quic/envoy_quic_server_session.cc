@@ -135,6 +135,7 @@ quic::QuicConnection* EnvoyQuicServerSession::quicConnection() {
 
 void EnvoyQuicServerSession::OnTlsHandshakeComplete() {
   quic::QuicServerSessionBase::OnTlsHandshakeComplete();
+  streamInfo().downstreamTiming().onDownstreamHandshakeComplete(dispatcher_.timeSource());
   raiseConnectionEvent(Network::ConnectionEvent::Connected);
 }
 
@@ -166,7 +167,8 @@ void EnvoyQuicServerSession::setHttp3Options(
       return;
     }
     if (initial_interval > 0) {
-      connection()->set_ping_timeout(quic::QuicTime::Delta::FromMilliseconds(max_interval));
+      connection()->set_keep_alive_ping_timeout(
+          quic::QuicTime::Delta::FromMilliseconds(max_interval));
       connection()->set_initial_retransmittable_on_wire_timeout(
           quic::QuicTime::Delta::FromMilliseconds(initial_interval));
     }
@@ -188,6 +190,17 @@ quic::QuicSSLConfig EnvoyQuicServerSession::GetSSLConfig() const {
                                         .earlyDataEnabled()
                                   : true;
   return config;
+}
+
+void EnvoyQuicServerSession::ProcessUdpPacket(const quic::QuicSocketAddress& self_address,
+                                              const quic::QuicSocketAddress& peer_address,
+                                              const quic::QuicReceivedPacket& packet) {
+  if (quic_connection_->deferSend()) {
+    // If L4 filters causes the connection to be closed early during initialization, now
+    // is the time to actually close the connection.
+    maybeHandleCloseDuringInitialize();
+  }
+  quic::QuicServerSessionBase::ProcessUdpPacket(self_address, peer_address, packet);
 }
 
 } // namespace Quic

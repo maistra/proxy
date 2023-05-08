@@ -129,8 +129,9 @@ class RefcountAndFlags {
   }
 
   // Returns the current reference count using acquire semantics.
-  inline int32_t Get() const {
-    return count_.load(std::memory_order_acquire) >> kNumFlags;
+  inline size_t Get() const {
+    return static_cast<size_t>(count_.load(std::memory_order_acquire) >>
+                               kNumFlags);
   }
 
   // Returns whether the atomic integer is 1.
@@ -411,7 +412,8 @@ struct ConstInitExternalStorage {
 };
 
 template <typename Str>
-CordRepExternal ConstInitExternalStorage<Str>::value(Str::value);
+ABSL_CONST_INIT CordRepExternal
+    ConstInitExternalStorage<Str>::value(Str::value);
 
 enum {
   kMaxInline = 15,
@@ -569,7 +571,7 @@ class InlineData {
   // Requires the current instance to hold inline data.
   size_t inline_size() const {
     assert(!is_tree());
-    return tag() >> 1;
+    return static_cast<size_t>(tag()) >> 1;
   }
 
   // Sets the size of the inlined character data inside this instance.
@@ -578,6 +580,29 @@ class InlineData {
   void set_inline_size(size_t size) {
     ABSL_ASSERT(size <= kMaxInline);
     tag() = static_cast<char>(size << 1);
+  }
+
+  // Compares 'this' inlined data  with rhs. The comparison is a straightforward
+  // lexicographic comparison. `Compare()` returns values as follows:
+  //
+  //   -1  'this' InlineData instance is smaller
+  //    0  the InlineData instances are equal
+  //    1  'this' InlineData instance larger
+  int Compare(const InlineData& rhs) const {
+    uint64_t x, y;
+    memcpy(&x, as_chars(), sizeof(x));
+    memcpy(&y, rhs.as_chars(), sizeof(y));
+    if (x == y) {
+      memcpy(&x, as_chars() + 7, sizeof(x));
+      memcpy(&y, rhs.as_chars() + 7, sizeof(y));
+      if (x == y) {
+        if (inline_size() == rhs.inline_size()) return 0;
+        return inline_size() < rhs.inline_size() ? -1 : 1;
+      }
+    }
+    x = absl::big_endian::FromHost64(x);
+    y = absl::big_endian::FromHost64(y);
+    return x < y ? -1 : 1;
   }
 
  private:
@@ -631,7 +656,9 @@ inline const CordRepExternal* CordRep::external() const {
 }
 
 inline CordRep* CordRep::Ref(CordRep* rep) {
-  assert(rep != nullptr);
+  // ABSL_ASSUME is a workaround for
+  // https://gcc.gnu.org/bugzilla/show_bug.cgi?id=105585
+  ABSL_ASSUME(rep != nullptr);
   rep->refcount.Increment();
   return rep;
 }

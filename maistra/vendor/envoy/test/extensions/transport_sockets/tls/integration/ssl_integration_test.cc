@@ -81,7 +81,7 @@ SslIntegrationTestBase::makeSslClientConnection(const ClientSslTransportOptions&
       createClientSslTransportSocketFactory(options, *context_manager_, *api_);
   return dispatcher_->createClientConnection(
       address, Network::Address::InstanceConstSharedPtr(),
-      client_transport_socket_factory_ptr->createTransportSocket({}), nullptr);
+      client_transport_socket_factory_ptr->createTransportSocket({}, nullptr), nullptr, nullptr);
 }
 
 void SslIntegrationTestBase::checkStats() {
@@ -228,6 +228,37 @@ TEST_P(SslIntegrationTest, RouterRequestAndResponseWithGiantBodyBuffer) {
   checkStats();
 }
 
+TEST_P(SslIntegrationTest, Http1StreamInfoDownstreamHandshakeTiming) {
+  ASSERT_TRUE(downstreamProtocol() == Http::CodecType::HTTP1);
+  config_helper_.prependFilter(fmt::format(R"EOF(
+  name: stream-info-to-headers-filter
+)EOF"));
+
+  initialize();
+  codec_client_ = makeHttpConnection(makeSslClientConnection({}));
+  auto response =
+      sendRequestAndWaitForResponse(default_request_headers_, 0, default_response_headers_, 0);
+
+  ASSERT_FALSE(
+      response->headers().get(Http::LowerCaseString("downstream_handshake_complete")).empty());
+}
+
+TEST_P(SslIntegrationTest, Http2StreamInfoDownstreamHandshakeTiming) {
+  // See MultiplexedIntegrationTest for equivalent test for HTTP/3.
+  setDownstreamProtocol(Http::CodecType::HTTP2);
+  config_helper_.prependFilter(fmt::format(R"EOF(
+  name: stream-info-to-headers-filter
+)EOF"));
+
+  initialize();
+  codec_client_ = makeHttpConnection(makeSslClientConnection({}));
+  auto response =
+      sendRequestAndWaitForResponse(default_request_headers_, 0, default_response_headers_, 0);
+
+  ASSERT_FALSE(
+      response->headers().get(Http::LowerCaseString("downstream_handshake_complete")).empty());
+}
+
 TEST_P(SslIntegrationTest, RouterRequestAndResponseWithBodyNoBuffer) {
   ConnectionCreationFunction creator = [&]() -> Network::ClientConnectionPtr {
     return makeSslClientConnection({});
@@ -363,7 +394,7 @@ protected:
         [&](Network::ClientConnection&, const Buffer::Instance& data) -> void {
           response.append(data.toString());
         },
-        client_transport_socket_factory_ptr->createTransportSocket({}));
+        client_transport_socket_factory_ptr->createTransportSocket({}, nullptr));
 
     // Drive the connection until we get a response.
     while (response.empty()) {
@@ -894,6 +925,11 @@ TEST_P(SslTapIntegrationTest, RequestWithTextProto) {
   ConnectionCreationFunction creator = [&]() -> Network::ClientConnectionPtr {
     return makeSslClientConnection({});
   };
+
+  // Disable for this test because it uses connection IDs, which disrupts the accounting below
+  // leading to the wrong path for the `pb_text` being used.
+  skip_tag_extraction_rule_check_ = true;
+
   const uint64_t id = Network::ConnectionImpl::nextGlobalIdForTest() + 1;
   testRouterRequestAndResponseWithBody(1024, 512, false, false, &creator);
   checkStats();
@@ -920,6 +956,11 @@ TEST_P(SslTapIntegrationTest, RequestWithJsonBodyAsStringUpstreamTap) {
   ConnectionCreationFunction creator = [&]() -> Network::ClientConnectionPtr {
     return makeSslClientConnection({});
   };
+
+  // Disable for this test because it uses connection IDs, which disrupts the accounting below
+  // leading to the wrong path for the `pb_text` being used.
+  skip_tag_extraction_rule_check_ = true;
+
   const uint64_t id = Network::ConnectionImpl::nextGlobalIdForTest() + 2;
   testRouterRequestAndResponseWithBody(512, 1024, false, false, &creator);
   checkStats();
@@ -951,6 +992,11 @@ TEST_P(SslTapIntegrationTest, RequestWithStreamingUpstreamTap) {
   ConnectionCreationFunction creator = [&]() -> Network::ClientConnectionPtr {
     return makeSslClientConnection({});
   };
+
+  // Disable for this test because it uses connection IDs, which disrupts the accounting below
+  // leading to the wrong path for the `pb_text` being used.
+  skip_tag_extraction_rule_check_ = true;
+
   const uint64_t id = Network::ConnectionImpl::nextGlobalIdForTest() + 2;
   testRouterRequestAndResponseWithBody(512, 1024, false, false, &creator);
   checkStats();

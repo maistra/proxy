@@ -1,7 +1,8 @@
-<!-- Generated with Stardoc, Do Not Edit! -->
+<!-- Generated with Stardoc: http://skydoc.bazel.build -->
 
 # Bazel rules for creating watchOS applications and bundles.
-<a id="#watchos_application"></a>
+
+<a id="watchos_application"></a>
 
 ## watchos_application
 
@@ -37,10 +38,10 @@ Builds and bundles an watchOS Application.
 | <a id="watchos_application-resources"></a>resources |  A list of resources or files bundled with the bundle. The resources will be stored in the appropriate resources location within the bundle.   | <a href="https://bazel.build/docs/build-ref.html#labels">List of labels</a> | optional | [] |
 | <a id="watchos_application-storyboards"></a>storyboards |  A list of <code>.storyboard</code> files, often localizable. These files are compiled and placed in the root of the final application bundle, unless a file's immediate containing directory is named <code>*.lproj</code>, in which case it will be placed under a directory with the same name in the bundle.   | <a href="https://bazel.build/docs/build-ref.html#labels">List of labels</a> | optional | [] |
 | <a id="watchos_application-strings"></a>strings |  A list of <code>.strings</code> files, often localizable. These files are converted to binary plists (if they are not already) and placed in the root of the final bundle, unless a file's immediate containing directory is named <code>*.lproj</code>, in which case it will be placed under a directory with the same name in the bundle.   | <a href="https://bazel.build/docs/build-ref.html#labels">List of labels</a> | optional | [] |
-| <a id="watchos_application-version"></a>version |  An <code>apple_bundle_version</code> target that represents the version for this target. See [<code>apple_bundle_version</code>](https://github.com/bazelbuild/rules_apple/blob/master/doc/rules-general.md?cl=head#apple_bundle_version).   | <a href="https://bazel.build/docs/build-ref.html#labels">Label</a> | optional | None |
+| <a id="watchos_application-version"></a>version |  An <code>apple_bundle_version</code> target that represents the version for this target. See [<code>apple_bundle_version</code>](https://github.com/bazelbuild/rules_apple/blob/master/doc/rules-versioning.md#apple_bundle_version).   | <a href="https://bazel.build/docs/build-ref.html#labels">Label</a> | optional | None |
 
 
-<a id="#watchos_build_test"></a>
+<a id="watchos_build_test"></a>
 
 ## watchos_build_test
 
@@ -75,7 +76,7 @@ watchos_build_test(
 | <a id="watchos_build_test-targets"></a>targets |  The targets to check for successful build.   | <a href="https://bazel.build/docs/build-ref.html#labels">List of labels</a> | optional | [] |
 
 
-<a id="#watchos_dynamic_framework"></a>
+<a id="watchos_dynamic_framework"></a>
 
 ## watchos_dynamic_framework
 
@@ -115,18 +116,18 @@ Builds and bundles a watchOS dynamic framework that is consumable by Xcode.
 | <a id="watchos_dynamic_framework-resources"></a>resources |  A list of resources or files bundled with the bundle. The resources will be stored in the appropriate resources location within the bundle.   | <a href="https://bazel.build/docs/build-ref.html#labels">List of labels</a> | optional | [] |
 | <a id="watchos_dynamic_framework-stamp"></a>stamp |  Enable link stamping. Whether to encode build information into the binary. Possible values:<br><br>*   <code>stamp = 1</code>: Stamp the build information into the binary. Stamped binaries are only rebuilt     when their dependencies change. Use this if there are tests that depend on the build     information. *   <code>stamp = 0</code>: Always replace build information by constant values. This gives good build     result caching. *   <code>stamp = -1</code>: Embedding of build information is controlled by the <code>--[no]stamp</code> flag.   | Integer | optional | -1 |
 | <a id="watchos_dynamic_framework-strings"></a>strings |  A list of <code>.strings</code> files, often localizable. These files are converted to binary plists (if they are not already) and placed in the root of the final bundle, unless a file's immediate containing directory is named <code>*.lproj</code>, in which case it will be placed under a directory with the same name in the bundle.   | <a href="https://bazel.build/docs/build-ref.html#labels">List of labels</a> | optional | [] |
-| <a id="watchos_dynamic_framework-version"></a>version |  An <code>apple_bundle_version</code> target that represents the version for this target. See [<code>apple_bundle_version</code>](https://github.com/bazelbuild/rules_apple/blob/master/doc/rules-general.md?cl=head#apple_bundle_version).   | <a href="https://bazel.build/docs/build-ref.html#labels">Label</a> | optional | None |
+| <a id="watchos_dynamic_framework-version"></a>version |  An <code>apple_bundle_version</code> target that represents the version for this target. See [<code>apple_bundle_version</code>](https://github.com/bazelbuild/rules_apple/blob/master/doc/rules-versioning.md#apple_bundle_version).   | <a href="https://bazel.build/docs/build-ref.html#labels">Label</a> | optional | None |
 
 
-<a id="#watchos_extension"></a>
+<a id="watchos_extension"></a>
 
 ## watchos_extension
 
 <pre>
-watchos_extension(<a href="#watchos_extension-name">name</a>, <a href="#watchos_extension-additional_linker_inputs">additional_linker_inputs</a>, <a href="#watchos_extension-bundle_id">bundle_id</a>, <a href="#watchos_extension-bundle_name">bundle_name</a>, <a href="#watchos_extension-codesign_inputs">codesign_inputs</a>,
-                  <a href="#watchos_extension-codesignopts">codesignopts</a>, <a href="#watchos_extension-deps">deps</a>, <a href="#watchos_extension-entitlements">entitlements</a>, <a href="#watchos_extension-entitlements_validation">entitlements_validation</a>, <a href="#watchos_extension-executable_name">executable_name</a>,
-                  <a href="#watchos_extension-exported_symbols_lists">exported_symbols_lists</a>, <a href="#watchos_extension-extensions">extensions</a>, <a href="#watchos_extension-infoplists">infoplists</a>, <a href="#watchos_extension-ipa_post_processor">ipa_post_processor</a>, <a href="#watchos_extension-linkopts">linkopts</a>,
-                  <a href="#watchos_extension-minimum_deployment_os_version">minimum_deployment_os_version</a>, <a href="#watchos_extension-minimum_os_version">minimum_os_version</a>, <a href="#watchos_extension-platform_type">platform_type</a>,
+watchos_extension(<a href="#watchos_extension-name">name</a>, <a href="#watchos_extension-additional_linker_inputs">additional_linker_inputs</a>, <a href="#watchos_extension-application_extension">application_extension</a>, <a href="#watchos_extension-bundle_id">bundle_id</a>, <a href="#watchos_extension-bundle_name">bundle_name</a>,
+                  <a href="#watchos_extension-codesign_inputs">codesign_inputs</a>, <a href="#watchos_extension-codesignopts">codesignopts</a>, <a href="#watchos_extension-deps">deps</a>, <a href="#watchos_extension-entitlements">entitlements</a>, <a href="#watchos_extension-entitlements_validation">entitlements_validation</a>,
+                  <a href="#watchos_extension-executable_name">executable_name</a>, <a href="#watchos_extension-exported_symbols_lists">exported_symbols_lists</a>, <a href="#watchos_extension-extensions">extensions</a>, <a href="#watchos_extension-infoplists">infoplists</a>, <a href="#watchos_extension-ipa_post_processor">ipa_post_processor</a>,
+                  <a href="#watchos_extension-linkopts">linkopts</a>, <a href="#watchos_extension-minimum_deployment_os_version">minimum_deployment_os_version</a>, <a href="#watchos_extension-minimum_os_version">minimum_os_version</a>, <a href="#watchos_extension-platform_type">platform_type</a>,
                   <a href="#watchos_extension-provisioning_profile">provisioning_profile</a>, <a href="#watchos_extension-resources">resources</a>, <a href="#watchos_extension-stamp">stamp</a>, <a href="#watchos_extension-strings">strings</a>, <a href="#watchos_extension-version">version</a>)
 </pre>
 
@@ -143,6 +144,7 @@ so these bundling rules do not support that version of the platform.
 | :------------- | :------------- | :------------- | :------------- | :------------- |
 | <a id="watchos_extension-name"></a>name |  A unique name for this target.   | <a href="https://bazel.build/docs/build-ref.html#name">Name</a> | required |  |
 | <a id="watchos_extension-additional_linker_inputs"></a>additional_linker_inputs |  A list of input files to be passed to the linker.   | <a href="https://bazel.build/docs/build-ref.html#labels">List of labels</a> | optional | [] |
+| <a id="watchos_extension-application_extension"></a>application_extension |  If <code>True</code>, this extension is an App Extension instead of a WatchKit Extension. It links the extension with the application extension point (<code>_NSExtensionMain</code>) instead of the WatchKit extension point (<code>_WKExtensionMain</code>), and has the <code>app_extension</code> <code>product_type</code> instead of <code>watch2_extension</code>.   | Boolean | optional | False |
 | <a id="watchos_extension-bundle_id"></a>bundle_id |  The bundle ID (reverse-DNS path followed by app name) for this target.   | String | required |  |
 | <a id="watchos_extension-bundle_name"></a>bundle_name |  The desired name of the bundle (without the extension). If this attribute is not set, then the name of the target will be used instead.   | String | optional | "" |
 | <a id="watchos_extension-codesign_inputs"></a>codesign_inputs |  A list of dependencies targets that provide inputs that will be used by <code>codesign</code> (referenced with <code>codesignopts</code>).   | <a href="https://bazel.build/docs/build-ref.html#labels">List of labels</a> | optional | [] |
@@ -163,10 +165,10 @@ so these bundling rules do not support that version of the platform.
 | <a id="watchos_extension-resources"></a>resources |  A list of resources or files bundled with the bundle. The resources will be stored in the appropriate resources location within the bundle.   | <a href="https://bazel.build/docs/build-ref.html#labels">List of labels</a> | optional | [] |
 | <a id="watchos_extension-stamp"></a>stamp |  Enable link stamping. Whether to encode build information into the binary. Possible values:<br><br>*   <code>stamp = 1</code>: Stamp the build information into the binary. Stamped binaries are only rebuilt     when their dependencies change. Use this if there are tests that depend on the build     information. *   <code>stamp = 0</code>: Always replace build information by constant values. This gives good build     result caching. *   <code>stamp = -1</code>: Embedding of build information is controlled by the <code>--[no]stamp</code> flag.   | Integer | optional | -1 |
 | <a id="watchos_extension-strings"></a>strings |  A list of <code>.strings</code> files, often localizable. These files are converted to binary plists (if they are not already) and placed in the root of the final bundle, unless a file's immediate containing directory is named <code>*.lproj</code>, in which case it will be placed under a directory with the same name in the bundle.   | <a href="https://bazel.build/docs/build-ref.html#labels">List of labels</a> | optional | [] |
-| <a id="watchos_extension-version"></a>version |  An <code>apple_bundle_version</code> target that represents the version for this target. See [<code>apple_bundle_version</code>](https://github.com/bazelbuild/rules_apple/blob/master/doc/rules-general.md?cl=head#apple_bundle_version).   | <a href="https://bazel.build/docs/build-ref.html#labels">Label</a> | optional | None |
+| <a id="watchos_extension-version"></a>version |  An <code>apple_bundle_version</code> target that represents the version for this target. See [<code>apple_bundle_version</code>](https://github.com/bazelbuild/rules_apple/blob/master/doc/rules-versioning.md#apple_bundle_version).   | <a href="https://bazel.build/docs/build-ref.html#labels">Label</a> | optional | None |
 
 
-<a id="#watchos_static_framework"></a>
+<a id="watchos_static_framework"></a>
 
 ## watchos_static_framework
 
@@ -205,10 +207,10 @@ Builds and bundles a watchOS Static Framework.
 | <a id="watchos_static_framework-stamp"></a>stamp |  Enable link stamping. Whether to encode build information into the binary. Possible values:<br><br>*   <code>stamp = 1</code>: Stamp the build information into the binary. Stamped binaries are only rebuilt     when their dependencies change. Use this if there are tests that depend on the build     information. *   <code>stamp = 0</code>: Always replace build information by constant values. This gives good build     result caching. *   <code>stamp = -1</code>: Embedding of build information is controlled by the <code>--[no]stamp</code> flag.   | Integer | optional | -1 |
 | <a id="watchos_static_framework-strings"></a>strings |  A list of <code>.strings</code> files, often localizable. These files are converted to binary plists (if they are not already) and placed in the root of the final bundle, unless a file's immediate containing directory is named <code>*.lproj</code>, in which case it will be placed under a directory with the same name in the bundle.   | <a href="https://bazel.build/docs/build-ref.html#labels">List of labels</a> | optional | [] |
 | <a id="watchos_static_framework-umbrella_header"></a>umbrella_header |  An optional single .h file to use as the umbrella header for this framework. Usually, this header will have the same name as this target, so that clients can load the header using the #import &lt;MyFramework/MyFramework.h&gt; format. If this attribute is not specified (the common use case), an umbrella header will be generated under the same name as this target.   | <a href="https://bazel.build/docs/build-ref.html#labels">Label</a> | optional | None |
-| <a id="watchos_static_framework-version"></a>version |  An <code>apple_bundle_version</code> target that represents the version for this target. See [<code>apple_bundle_version</code>](https://github.com/bazelbuild/rules_apple/blob/master/doc/rules-general.md?cl=head#apple_bundle_version).   | <a href="https://bazel.build/docs/build-ref.html#labels">Label</a> | optional | None |
+| <a id="watchos_static_framework-version"></a>version |  An <code>apple_bundle_version</code> target that represents the version for this target. See [<code>apple_bundle_version</code>](https://github.com/bazelbuild/rules_apple/blob/master/doc/rules-versioning.md#apple_bundle_version).   | <a href="https://bazel.build/docs/build-ref.html#labels">Label</a> | optional | None |
 
 
-<a id="#watchos_ui_test"></a>
+<a id="watchos_ui_test"></a>
 
 ## watchos_ui_test
 
@@ -232,7 +234,7 @@ watchOS UI Test rule.
 | <a id="watchos_ui_test-test_host"></a>test_host |  -   | <a href="https://bazel.build/docs/build-ref.html#labels">Label</a> | optional | None |
 
 
-<a id="#watchos_unit_test"></a>
+<a id="watchos_unit_test"></a>
 
 ## watchos_unit_test
 

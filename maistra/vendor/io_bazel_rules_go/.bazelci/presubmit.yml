@@ -2,7 +2,7 @@
 tasks:
   ubuntu1804_bazel400:
     platform: ubuntu1804
-    bazel: 4.2.1 # test minimum supported version of bazel
+    bazel: 5.1.0 # test minimum supported version of bazel
     shell_commands:
       - tests/core/cgo/generate_imported_dylib.sh
     build_targets:
@@ -23,6 +23,20 @@ tasks:
     - "//..."
     test_targets:
     - "//..."
+  ubuntu2004_bcr_tests:
+    name: BCR test module
+    platform: ubuntu2004
+    bazel: last_green
+    working_directory: tests/bcr
+    build_flags:
+      - "--experimental_enable_bzlmod"
+    test_flags:
+      - "--experimental_enable_bzlmod"
+    build_targets:
+      - "//..."
+      - "@go_sdk//..."
+    test_targets:
+      - "//..."
   macos:
     shell_commands:
       - tests/core/cgo/generate_imported_dylib.sh
@@ -166,17 +180,6 @@ tasks:
     - "-//tests/core/cgo:generated_versioned_dylib_client"
     - "-//tests/core/cgo:generated_versioned_dylib_test"
     - "-//tests/core/cross:proto_test"
-    - "-//tests/core/go_embed_data:go_default_test"
-    - "-//tests/core/go_embed_data:go_default_library"
-    - "-//tests/core/go_embed_data:unpack"
-    - "-//tests/core/go_embed_data:str"
-    - "-//tests/core/go_embed_data:single"
-    - "-//tests/core/go_embed_data:local"
-    - "-//tests/core/go_embed_data:flat"
-    - "-//tests/core/go_embed_data:ext"
-    - "-//tests/core/go_embed_data:empty"
-    - "-//tests/core/go_embed_data:embedded_zip"
-    - "-//tests/core/go_embed_data:embedded_tar"
     - "-//tests/core/go_path:go_path"
     - "-//tests/core/go_path:go_path_test"
     - "-//tests/core/go_path:nodata_path"
@@ -275,6 +278,7 @@ tasks:
     - "-@org_golang_x_text//language:language_test"
     - "-@org_golang_x_tools//cmd/splitdwarf/internal/macho:macho_test"
     - "-@test_chdir_remote//sub:go_default_test"
+    - "-//go/tools/builders:stdliblist_test" # fails on Windows due to #2491
     - "-//tests:buildifier_test" # requires bash
     - "-//tests/core/cgo:dylib_client"
     - "-//tests/core/cgo:dylib_test"
@@ -288,18 +292,7 @@ tasks:
     - "-//tests/core/coverage:coverage_test"
     - "-//tests/core/cross:proto_test"
     - "-//tests/core/go_binary:go_default_test"
-    - "-//tests/core/go_embed_data:go_default_test"
-    - "-//tests/core/go_embed_data:go_default_test"
-    - "-//tests/core/go_embed_data:go_default_library"
-    - "-//tests/core/go_embed_data:unpack"
-    - "-//tests/core/go_embed_data:str"
-    - "-//tests/core/go_embed_data:single"
-    - "-//tests/core/go_embed_data:local"
-    - "-//tests/core/go_embed_data:flat"
-    - "-//tests/core/go_embed_data:ext"
-    - "-//tests/core/go_embed_data:empty"
-    - "-//tests/core/go_embed_data:embedded_zip"
-    - "-//tests/core/go_embed_data:embedded_tar"
+    - "-//tests/extras/go_embed_data:go_default_test"
     - "-//tests/core/go_path:go_path"
     - "-//tests/core/go_path:go_path_test"
     - "-//tests/core/go_path:link_path"
@@ -316,6 +309,7 @@ tasks:
     - "-//tests/core/go_test:data_test"
     - "-//tests/core/go_test:pwd_test"
     - "-//tests/core/nogo/coverage:coverage_test"
+    - "-//tests/core/nogo/coverage:gen_code_test"
     - "-//tests/core/race:race_test" # fails on Windows due to upstream bug, see issue #2911
     - "-//tests/core/stdlib:buildid_test"
     - "-//tests/examples/executable_name:executable_name"

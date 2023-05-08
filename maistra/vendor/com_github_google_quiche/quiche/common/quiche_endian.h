@@ -23,7 +23,12 @@ enum Endianness {
 class QUICHE_EXPORT_PRIVATE QuicheEndian {
  public:
   // Convert |x| from host order (little endian) to network order (big endian).
-#if defined(__clang__) || \
+#if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
+    __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+  static uint16_t HostToNet16(uint16_t x) { return x; }
+  static uint32_t HostToNet32(uint32_t x) { return x; }
+  static uint64_t HostToNet64(uint64_t x) { return x; }
+#elif defined(__clang__) || \
     (defined(__GNUC__) && \
      ((__GNUC__ == 4 && __GNUC_MINOR__ >= 8) || __GNUC__ >= 5))
   static uint16_t HostToNet16(uint16_t x) { return __builtin_bswap16(x); }
@@ -49,9 +54,23 @@ class QUICHE_EXPORT_PRIVATE QuicheEndian {
       char bytes[sizeof(T)];
     } value;
     value.number = input;
-    std::reverse(std::begin(value.bytes), std::end(value.bytes));
+    std::reverse(&value.bytes[0], &value.bytes[sizeof(T)]);
     return value.number;
   }
+};
+
+enum QuicheVariableLengthIntegerLength : uint8_t {
+  // Length zero means the variable length integer is not present.
+  VARIABLE_LENGTH_INTEGER_LENGTH_0 = 0,
+  VARIABLE_LENGTH_INTEGER_LENGTH_1 = 1,
+  VARIABLE_LENGTH_INTEGER_LENGTH_2 = 2,
+  VARIABLE_LENGTH_INTEGER_LENGTH_4 = 4,
+  VARIABLE_LENGTH_INTEGER_LENGTH_8 = 8,
+
+  // By default we write the IETF long header length using the 2-byte encoding
+  // of variable length integers, even when the length is below 64, which allows
+  // us to fill in the length before knowing what the length actually is.
+  kQuicheDefaultLongHeaderLengthLength = VARIABLE_LENGTH_INTEGER_LENGTH_2,
 };
 
 }  // namespace quiche

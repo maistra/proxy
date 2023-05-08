@@ -57,6 +57,14 @@ def proxy_wasm_cpp_host_repositories():
 
     maybe(
         http_archive,
+        name = "rules_fuzzing",
+        sha256 = "23bb074064c6f488d12044934ab1b0631e8e6898d5cf2f6bde087adb01111573",
+        strip_prefix = "rules_fuzzing-0.3.1",
+        url = "https://github.com/bazelbuild/rules_fuzzing/archive/v0.3.1.zip",
+    )
+
+    maybe(
+        http_archive,
         name = "rules_python",
         sha256 = "a30abdfc7126d497a7698c29c46ea9901c6392d6ed315171a6df5ce433aa4502",
         strip_prefix = "rules_python-0.6.0",
@@ -66,10 +74,10 @@ def proxy_wasm_cpp_host_repositories():
     maybe(
         http_archive,
         name = "rules_rust",
-        sha256 = "6c26af1bb98276917fcf29ea942615ab375cf9d3c52f15c27fdd176ced3ee906",
-        strip_prefix = "rules_rust-b3ddf6f096887b757ab1a661662a95d6b2699fa7",
+        sha256 = "c8a84a01bff4be4c7a8beefbc12e713ff296fed2110c30572a44205856594cfc",
+        strip_prefix = "rules_rust-0.19.0",
         # NOTE: Update Rust version in bazel/dependencies.bzl.
-        url = "https://github.com/bazelbuild/rules_rust/archive/b3ddf6f096887b757ab1a661662a95d6b2699fa7.tar.gz",
+        url = "https://github.com/bazelbuild/rules_rust/archive/0.19.0.tar.gz",
         patches = ["@proxy_wasm_cpp_host//bazel/external:rules_rust.patch"],
         patch_args = ["-p1"],
     )
@@ -88,9 +96,9 @@ def proxy_wasm_cpp_host_repositories():
     maybe(
         http_archive,
         name = "proxy_wasm_cpp_sdk",
-        sha256 = "c57de2425b5c61d7f630c5061e319b4557ae1f1c7526e5a51c33dc1299471b08",
-        strip_prefix = "proxy-wasm-cpp-sdk-fd0be8405db25de0264bdb78fae3a82668c03782",
-        urls = ["https://github.com/proxy-wasm/proxy-wasm-cpp-sdk/archive/fd0be8405db25de0264bdb78fae3a82668c03782.tar.gz"],
+        sha256 = "89792fc1abca331f29f99870476a04146de5e82ff903bdffca90e6729c1f2470",
+        strip_prefix = "proxy-wasm-cpp-sdk-95bb82ce45c41d9100fd1ec15d2ffc67f7f3ceee",
+        urls = ["https://github.com/proxy-wasm/proxy-wasm-cpp-sdk/archive/95bb82ce45c41d9100fd1ec15d2ffc67f7f3ceee.tar.gz"],
     )
 
     # Test dependencies.
@@ -118,10 +126,10 @@ def proxy_wasm_cpp_host_repositories():
     maybe(
         git_repository,
         name = "v8",
-        # 10.0.139.6
-        commit = "1e242a567b609aa18ce46f7b04cc51fd85756b67",
+        # 10.7.193.13
+        commit = "6c8b357a84847a479cd329478522feefc1c3195a",
         remote = "https://chromium.googlesource.com/v8/v8",
-        shallow_since = "1646671271 +0000",
+        shallow_since = "1664374400 +0000",
         patches = ["@proxy_wasm_cpp_host//bazel/external:v8.patch"],
         patch_args = ["-p1"],
     )
@@ -135,33 +143,14 @@ def proxy_wasm_cpp_host_repositories():
         new_git_repository,
         name = "com_googlesource_chromium_base_trace_event_common",
         build_file = "@v8//:bazel/BUILD.trace_event_common",
-        commit = "d115b033c4e53666b535cbd1985ffe60badad082",
+        commit = "521ac34ebd795939c7e16b37d9d3ddb40e8ed556",
         remote = "https://chromium.googlesource.com/chromium/src/base/trace_event/common.git",
-        shallow_since = "1642576054 -0800",
+        shallow_since = "1662508800 +0000",
     )
 
     native.bind(
         name = "base_trace_event_common",
         actual = "@com_googlesource_chromium_base_trace_event_common//:trace_event_common",
-    )
-
-    maybe(
-        new_git_repository,
-        name = "com_googlesource_chromium_zlib",
-        build_file = "@v8//:bazel/BUILD.zlib",
-        commit = "9538f4194f6e5eff1bd59f2396ed9d05b1a8d801",
-        remote = "https://chromium.googlesource.com/chromium/src/third_party/zlib.git",
-        shallow_since = "1644963419 -0800",
-    )
-
-    native.bind(
-        name = "zlib",
-        actual = "@com_googlesource_chromium_zlib//:zlib",
-    )
-
-    native.bind(
-        name = "zlib_compression_utils",
-        actual = "@com_googlesource_chromium_zlib//:zlib_compression_utils",
     )
 
     # WAMR with dependencies.
@@ -170,15 +159,40 @@ def proxy_wasm_cpp_host_repositories():
         http_archive,
         name = "com_github_bytecodealliance_wasm_micro_runtime",
         build_file = "@proxy_wasm_cpp_host//bazel/external:wamr.BUILD",
-        # WAMR-01-18-2022
-        sha256 = "af88da144bcb5ecac417af7fd34130487f5e4792e79670f07530474b2ef43912",
-        strip_prefix = "wasm-micro-runtime-d856af6c33591815ab4c890f0606bc99ee8135ad",
-        url = "https://github.com/bytecodealliance/wasm-micro-runtime/archive/d856af6c33591815ab4c890f0606bc99ee8135ad.tar.gz",
+        # WAMR-2022-12-16
+        sha256 = "976b928f420040a77e793051e4d742208adf157370b9ad0f5535e126adb31eb0",
+        strip_prefix = "wasm-micro-runtime-WAMR-1.1.2",
+        url = "https://github.com/bytecodealliance/wasm-micro-runtime/archive/WAMR-1.1.2.tar.gz",
     )
 
     native.bind(
         name = "wamr",
         actual = "@com_github_bytecodealliance_wasm_micro_runtime//:wamr_lib",
+    )
+
+    maybe(
+        http_archive,
+        name = "llvm-13_0_1",
+        build_file = "@proxy_wasm_cpp_host//bazel/external:wamr_llvm.BUILD",
+        sha256 = "ec6b80d82c384acad2dc192903a6cf2cdbaffb889b84bfb98da9d71e630fc834",
+        strip_prefix = "llvm-13.0.1.src",
+        url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-13.0.1/llvm-13.0.1.src.tar.xz",
+    )
+
+    # WasmEdge with dependencies.
+
+    maybe(
+        http_archive,
+        name = "com_github_wasmedge_wasmedge",
+        build_file = "@proxy_wasm_cpp_host//bazel/external:wasmedge.BUILD",
+        sha256 = "65d95e5f83d25ab09fa9a29369f578838e8a519fb170704d0f5896187364429b",
+        strip_prefix = "WasmEdge-proxy-wasm-0.11.2",
+        url = "https://github.com/WasmEdge/WasmEdge/archive/refs/tags/proxy-wasm/0.11.2.tar.gz",
+    )
+
+    native.bind(
+        name = "wasmedge",
+        actual = "@com_github_wasmedge_wasmedge//:wasmedge_lib",
     )
 
     # Wasmtime with dependencies.
@@ -187,9 +201,9 @@ def proxy_wasm_cpp_host_repositories():
         http_archive,
         name = "com_github_bytecodealliance_wasmtime",
         build_file = "@proxy_wasm_cpp_host//bazel/external:wasmtime.BUILD",
-        sha256 = "9dcb51313f9d6a67169f70759411cddf511000b0372e57532e638441100aac9c",
-        strip_prefix = "wasmtime-0.35.2",
-        url = "https://github.com/bytecodealliance/wasmtime/archive/v0.35.2.tar.gz",
+        sha256 = "7ed6359faa385c40fc77e324301e5c70c7fdaeeca8a5ab58e25b1f75035b2cd6",
+        strip_prefix = "wasmtime-6.0.1",
+        url = "https://github.com/bytecodealliance/wasmtime/archive/v6.0.1.tar.gz",
     )
 
     maybe(
@@ -217,11 +231,9 @@ def proxy_wasm_cpp_host_repositories():
         http_archive,
         name = "com_github_wavm_wavm",
         build_file = "@proxy_wasm_cpp_host//bazel/external:wavm.BUILD",
-        sha256 = "bf2b2aec8a4c6a5413081c0527cb40dd16cb67e9c74a91f8a82fe1cf27a3c5d5",
-        strip_prefix = "WAVM-c8997ebf154f3b42e688e670a7d0fa045b7a32a0",
-        url = "https://github.com/WAVM/WAVM/archive/c8997ebf154f3b42e688e670a7d0fa045b7a32a0.tar.gz",
-        patches = ["@proxy_wasm_cpp_host//bazel/external:wavm.patch"],
-        patch_args = ["-p1"],
+        sha256 = "7cfa3d7334c96f89553bb44eeee736a192826a78b4db114042d38d6882748f5b",
+        strip_prefix = "WAVM-nightly-2022-05-14",
+        url = "https://github.com/WAVM/WAVM/archive/refs/tags/nightly/2022-05-14.tar.gz",
     )
 
     native.bind(

@@ -47,8 +47,6 @@ You can also use gcrane as docker image
 
 ```sh
 $ docker run --rm gcr.io/go-containerregistry/gcrane ls gcr.io/google-containers/busybox
-2020/02/24 20:52:27 gcloud binary not found
-2020/02/24 20:52:27 No matching credentials were found, falling back on anonymous
 gcr.io/google-containers/busybox@sha256:4bdd623e848417d96127e16037743f0cd8b528c026e9175e22a84f639eca58ff
 gcr.io/google-containers/busybox:1.24
 gcr.io/google-containers/busybox@sha256:545e6a6310a27636260920bc07b994a299b6708a1b26910cfefd335fdfb60d2b
@@ -58,8 +56,10 @@ gcr.io/google-containers/busybox@sha256:d8d3bc2c183ed2f9f10e7258f84971202325ee60
 gcr.io/google-containers/busybox:latest
 ```
 
-And it's also available with a shell, which uses the `debug` tag
+And it's also available with a shell, at the `:debug` tag:
 
 ```sh
 docker run --rm -it --entrypoint "/busybox/sh" gcr.io/go-containerregistry/gcrane:debug
 ```
+
+Tagged debug images are available at `gcr.io/go-containerregistry/gcrane/debug:[tag]`.

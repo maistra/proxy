@@ -37,8 +37,8 @@ var languages = []language.Language{{
 	{lang_calls},
 }}
 """
-    lang_imports = [_format_import(d[GoArchive].data.importpath) for d in ctx.attr.languages]
-    lang_calls = [_format_call(d[GoArchive].data.importpath) for d in ctx.attr.languages]
+    lang_imports = [format_import(d[GoArchive].data.importpath) for d in ctx.attr.languages]
+    lang_calls = [format_call(d[GoArchive].data.importpath) for d in ctx.attr.languages]
     langs_content = langs_content_tpl.format(
         lang_imports = "\n\t".join(lang_imports),
         lang_calls = ",\n\t".join(lang_calls),
@@ -76,9 +76,25 @@ var languages = []language.Language{{
 
 _gazelle_binary_kwargs = {
     "implementation": _gazelle_binary_impl,
+    "doc": """The `gazelle_binary` rule builds a Go binary that incorporates a list of
+language extensions. This requires generating a small amount of code that
+must be compiled into Gazelle's main package, so the normal [go_binary]
+rule is not used.
+
+When the binary runs, each language extension is run sequentially. This affects
+the order that rules appear in generated build files. Metadata may be produced
+by an earlier extension and consumed by a later extension. For example, the
+proto extension stores metadata in hidden attributes of generated
+`proto_library` rules. The Go extension uses this metadata to generate
+`go_proto_library` rules.
+""",
     "attrs": {
         "languages": attr.label_list(
-            doc = "A list of language extensions the Gazelle binary will use",
+            doc = """A list of language extensions the Gazelle binary will use.
+
+            Each extension must be a [go_library] or something compatible. Each extension
+            must export a function named `NewLanguage` with no parameters that returns
+            a value assignable to [Language].""",
             providers = [GoArchive],
             mandatory = True,
             allow_empty = False,
@@ -103,10 +119,11 @@ def gazelle_binary_wrapper(**kwargs):
             fail("gazelle_binary attribute '%s' is no longer supported (https://github.com/bazelbuild/bazel-gazelle/issues/803)" % key)
     gazelle_binary(**kwargs)
 
-def _format_import(importpath):
-    _, _, base = importpath.rpartition("/")
-    return '{} "{}"'.format(base + "_", importpath)
+def _import_alias(importpath):
+    return importpath.replace("/", "_").replace(".", "_").replace("-", "_") + "_"
 
-def _format_call(importpath):
-    _, _, base = importpath.rpartition("/")
-    return "{}.NewLanguage()".format(base + "_")
+def format_import(importpath):
+    return '{} "{}"'.format(_import_alias(importpath), importpath)
+
+def format_call(importpath):
+    return _import_alias(importpath)+".NewLanguage()"

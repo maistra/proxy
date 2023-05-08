@@ -21,7 +21,7 @@
 #                            | (__| |_| |  _ <| |___
 #                             \___|\___/|_| \_\_____|
 #
-# Copyright (C) 1998 - 2022, Daniel Stenberg, <daniel@haxx.se>, et al.
+# Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al.
 #
 # This software is licensed as described in the file COPYING, which
 # you should have received as part of this distribution. The terms
@@ -33,6 +33,8 @@
 #
 # This software is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY
 # KIND, either express or implied.
+#
+# SPDX-License-Identifier: curl
 #
 ###########################################################################
 
@@ -43,7 +45,7 @@
 #                            | (__| |_| |  _ <| |___
 #                             \___|\___/|_| \_\_____|
 #
-# Copyright (C) 1998 - 2022, Daniel Stenberg, <daniel@haxx.se>, et al.
+# Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al.
 #
 # This software is licensed as described in the file COPYING, which
 # you should have received as part of this distribution. The terms
@@ -55,6 +57,8 @@
 #
 # This software is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY
 # KIND, either express or implied.
+#
+# SPDX-License-Identifier: curl
 #
 ###########################################################################
 
@@ -65,7 +69,7 @@
 #                            | (__| |_| |  _ <| |___
 #                             \___|\___/|_| \_\_____|
 #
-# Copyright (C) 1998 - 2022, Daniel Stenberg, <daniel@haxx.se>, et al.
+# Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al.
 #
 # This software is licensed as described in the file COPYING, which
 # you should have received as part of this distribution. The terms
@@ -77,6 +81,8 @@
 #
 # This software is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY
 # KIND, either express or implied.
+#
+# SPDX-License-Identifier: curl
 #
 ###########################################################################
 # ./src/Makefile.inc
@@ -164,8 +170,7 @@ build_triplet = @build@
 host_triplet = @host@
 subdir = .
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
-am__aclocal_m4_deps = $(top_srcdir)/m4/ax_compile_check_sizeof.m4 \
-	$(top_srcdir)/m4/curl-amissl.m4 \
+am__aclocal_m4_deps = $(top_srcdir)/m4/curl-amissl.m4 \
 	$(top_srcdir)/m4/curl-bearssl.m4 \
 	$(top_srcdir)/m4/curl-compilers.m4 \
 	$(top_srcdir)/m4/curl-confopts.m4 \
@@ -334,6 +339,8 @@ distcleancheck_listfiles = find . -type f -print
 ACLOCAL = @ACLOCAL@
 AMTAR = @AMTAR@
 AM_DEFAULT_VERBOSITY = @AM_DEFAULT_VERBOSITY@
+APACHECTL = @APACHECTL@
+APXS = @APXS@
 AR = @AR@
 AR_FLAGS = @AR_FLAGS@
 AS = @AS@
@@ -342,6 +349,7 @@ AUTOHEADER = @AUTOHEADER@
 AUTOMAKE = @AUTOMAKE@
 AWK = @AWK@
 BLANK_AT_MAKETIME = @BLANK_AT_MAKETIME@
+CADDY = @CADDY@
 CC = @CC@
 CCDEPMODE = @CCDEPMODE@
 CFLAGS = @CFLAGS@
@@ -374,6 +382,7 @@ CURL_DISABLE_TFTP = @CURL_DISABLE_TFTP@
 CURL_LT_SHLIB_VERSIONED_FLAVOUR = @CURL_LT_SHLIB_VERSIONED_FLAVOUR@
 CURL_NETWORK_AND_TIME_LIBS = @CURL_NETWORK_AND_TIME_LIBS@
 CURL_NETWORK_LIBS = @CURL_NETWORK_LIBS@
+CURL_PLIST_VERSION = @CURL_PLIST_VERSION@
 CURL_WITH_MULTI_SSL = @CURL_WITH_MULTI_SSL@
 CYGPATH_W = @CYGPATH_W@
 DEFAULT_SSL_BACKEND = @DEFAULT_SSL_BACKEND@
@@ -391,6 +400,7 @@ ENABLE_STATIC = @ENABLE_STATIC@
 ETAGS = @ETAGS@
 EXEEXT = @EXEEXT@
 FGREP = @FGREP@
+FILECMD = @FILECMD@
 FISH_FUNCTIONS_DIR = @FISH_FUNCTIONS_DIR@
 GCOV = @GCOV@
 GREP = @GREP@
@@ -401,6 +411,8 @@ HAVE_LIBZ = @HAVE_LIBZ@
 HAVE_OPENSSL_SRP = @HAVE_OPENSSL_SRP@
 HAVE_PROTO_BSDSOCKET_H = @HAVE_PROTO_BSDSOCKET_H@
 HAVE_ZSTD = @HAVE_ZSTD@
+HTTPD = @HTTPD@
+HTTPD_NGHTTPX = @HTTPD_NGHTTPX@
 IDN_ENABLED = @IDN_ENABLED@
 INSTALL = @INSTALL@
 INSTALL_DATA = @INSTALL_DATA@
@@ -448,6 +460,7 @@ PKGADD_VENDOR = @PKGADD_VENDOR@
 PKGCONFIG = @PKGCONFIG@
 RANDOM_FILE = @RANDOM_FILE@
 RANLIB = @RANLIB@
+RC = @RC@
 REQUIRE_LIB_DEPS = @REQUIRE_LIB_DEPS@
 SED = @SED@
 SET_MAKE = @SET_MAKE@
@@ -458,6 +471,7 @@ SSL_LIBS = @SSL_LIBS@
 STRIP = @STRIP@
 SUPPORT_FEATURES = @SUPPORT_FEATURES@
 SUPPORT_PROTOCOLS = @SUPPORT_PROTOCOLS@
+TEST_NGHTTPX = @TEST_NGHTTPX@
 USE_ARES = @USE_ARES@
 USE_BEARSSL = @USE_BEARSSL@
 USE_GNUTLS = @USE_GNUTLS@
@@ -466,11 +480,13 @@ USE_LIBRTMP = @USE_LIBRTMP@
 USE_LIBSSH = @USE_LIBSSH@
 USE_LIBSSH2 = @USE_LIBSSH2@
 USE_MBEDTLS = @USE_MBEDTLS@
+USE_MSH3 = @USE_MSH3@
 USE_NGHTTP2 = @USE_NGHTTP2@
 USE_NGHTTP3 = @USE_NGHTTP3@
 USE_NGTCP2 = @USE_NGTCP2@
 USE_NGTCP2_CRYPTO_GNUTLS = @USE_NGTCP2_CRYPTO_GNUTLS@
 USE_NGTCP2_CRYPTO_OPENSSL = @USE_NGTCP2_CRYPTO_OPENSSL@
+USE_NGTCP2_CRYPTO_WOLFSSL = @USE_NGTCP2_CRYPTO_WOLFSSL@
 USE_NSS = @USE_NSS@
 USE_OPENLDAP = @USE_OPENLDAP@
 USE_QUICHE = @USE_QUICHE@
@@ -554,8 +570,10 @@ CMAKE_DIST = \
  CMake/FindBrotli.cmake                         \
  CMake/FindCARES.cmake                          \
  CMake/FindGSS.cmake                            \
+ CMake/FindLibPSL.cmake                         \
  CMake/FindLibSSH2.cmake                        \
  CMake/FindMbedTLS.cmake                        \
+ CMake/FindMSH3.cmake                           \
  CMake/FindNGHTTP2.cmake                        \
  CMake/FindNGHTTP3.cmake                        \
  CMake/FindNGTCP2.cmake                         \
@@ -593,54 +611,54 @@ VC14_LIBVCXPROJ_DEPS = $(VC14_LIBTMPL) Makefile.am lib/Makefile.inc
 VC14_SRCTMPL = projects/Windows/VC14/src/curl.tmpl
 VC14_SRCVCXPROJ = projects/Windows/VC14/src/curl.vcxproj.dist
 VC14_SRCVCXPROJ_DEPS = $(VC14_SRCTMPL) Makefile.am src/Makefile.inc
-VC15_LIBTMPL = projects/Windows/VC15/lib/libcurl.tmpl
-VC15_LIBVCXPROJ = projects/Windows/VC15/lib/libcurl.vcxproj.dist
-VC15_LIBVCXPROJ_DEPS = $(VC15_LIBTMPL) Makefile.am lib/Makefile.inc
-VC15_SRCTMPL = projects/Windows/VC15/src/curl.tmpl
-VC15_SRCVCXPROJ = projects/Windows/VC15/src/curl.vcxproj.dist
-VC15_SRCVCXPROJ_DEPS = $(VC15_SRCTMPL) Makefile.am src/Makefile.inc
-VC17_LIBTMPL = projects/Windows/VC17/lib/libcurl.tmpl
-VC17_LIBVCXPROJ = projects/Windows/VC17/lib/libcurl.vcxproj.dist
-VC17_LIBVCXPROJ_DEPS = $(VC17_LIBTMPL) Makefile.am lib/Makefile.inc
-VC17_SRCTMPL = projects/Windows/VC17/src/curl.tmpl
-VC17_SRCVCXPROJ = projects/Windows/VC17/src/curl.vcxproj.dist
-VC17_SRCVCXPROJ_DEPS = $(VC17_SRCTMPL) Makefile.am src/Makefile.inc
-VC_DIST = projects/README                           \
- projects/build-openssl.bat                         \
- projects/build-wolfssl.bat                         \
- projects/checksrc.bat                              \
- projects/Windows/VC10/curl-all.sln                 \
- projects/Windows/VC10/lib/libcurl.sln              \
- projects/Windows/VC10/lib/libcurl.vcxproj.filters  \
- projects/Windows/VC10/src/curl.sln                 \
- projects/Windows/VC10/src/curl.vcxproj.filters     \
- projects/Windows/VC11/curl-all.sln                 \
- projects/Windows/VC11/lib/libcurl.sln              \
- projects/Windows/VC11/lib/libcurl.vcxproj.filters  \
- projects/Windows/VC11/src/curl.sln                 \
- projects/Windows/VC11/src/curl.vcxproj.filters     \
- projects/Windows/VC12/curl-all.sln                 \
- projects/Windows/VC12/lib/libcurl.sln              \
- projects/Windows/VC12/lib/libcurl.vcxproj.filters  \
- projects/Windows/VC12/src/curl.sln                 \
- projects/Windows/VC12/src/curl.vcxproj.filters     \
- projects/Windows/VC14/curl-all.sln                 \
- projects/Windows/VC14/lib/libcurl.sln              \
- projects/Windows/VC14/lib/libcurl.vcxproj.filters  \
- projects/Windows/VC14/src/curl.sln                 \
- projects/Windows/VC14/src/curl.vcxproj.filters     \
- projects/Windows/VC15/curl-all.sln                 \
- projects/Windows/VC15/lib/libcurl.sln              \
- projects/Windows/VC15/lib/libcurl.vcxproj.filters  \
- projects/Windows/VC15/src/curl.sln                 \
- projects/Windows/VC15/src/curl.vcxproj.filters     \
- projects/Windows/VC17/curl-all.sln                 \
- projects/Windows/VC17/lib/libcurl.sln              \
- projects/Windows/VC17/lib/libcurl.vcxproj.filters  \
- projects/Windows/VC17/src/curl.sln                 \
- projects/Windows/VC17/src/curl.vcxproj.filters     \
- projects/generate.bat                              \
- projects/wolfssl_options.h                         \
+VC14_10_LIBTMPL = projects/Windows/VC14.10/lib/libcurl.tmpl
+VC14_10_LIBVCXPROJ = projects/Windows/VC14.10/lib/libcurl.vcxproj.dist
+VC14_10_LIBVCXPROJ_DEPS = $(VC14_10_LIBTMPL) Makefile.am lib/Makefile.inc
+VC14_10_SRCTMPL = projects/Windows/VC14.10/src/curl.tmpl
+VC14_10_SRCVCXPROJ = projects/Windows/VC14.10/src/curl.vcxproj.dist
+VC14_10_SRCVCXPROJ_DEPS = $(VC14_10_SRCTMPL) Makefile.am src/Makefile.inc
+VC14_30_LIBTMPL = projects/Windows/VC14.30/lib/libcurl.tmpl
+VC14_30_LIBVCXPROJ = projects/Windows/VC14.30/lib/libcurl.vcxproj.dist
+VC14_30_LIBVCXPROJ_DEPS = $(VC14_30_LIBTMPL) Makefile.am lib/Makefile.inc
+VC14_30_SRCTMPL = projects/Windows/VC14.30/src/curl.tmpl
+VC14_30_SRCVCXPROJ = projects/Windows/VC14.30/src/curl.vcxproj.dist
+VC14_30_SRCVCXPROJ_DEPS = $(VC14_30_SRCTMPL) Makefile.am src/Makefile.inc
+VC_DIST = projects/README.md                           \
+ projects/build-openssl.bat                            \
+ projects/build-wolfssl.bat                            \
+ projects/checksrc.bat                                 \
+ projects/Windows/VC10/curl-all.sln                    \
+ projects/Windows/VC10/lib/libcurl.sln                 \
+ projects/Windows/VC10/lib/libcurl.vcxproj.filters     \
+ projects/Windows/VC10/src/curl.sln                    \
+ projects/Windows/VC10/src/curl.vcxproj.filters        \
+ projects/Windows/VC11/curl-all.sln                    \
+ projects/Windows/VC11/lib/libcurl.sln                 \
+ projects/Windows/VC11/lib/libcurl.vcxproj.filters     \
+ projects/Windows/VC11/src/curl.sln                    \
+ projects/Windows/VC11/src/curl.vcxproj.filters        \
+ projects/Windows/VC12/curl-all.sln                    \
+ projects/Windows/VC12/lib/libcurl.sln                 \
+ projects/Windows/VC12/lib/libcurl.vcxproj.filters     \
+ projects/Windows/VC12/src/curl.sln                    \
+ projects/Windows/VC12/src/curl.vcxproj.filters        \
+ projects/Windows/VC14/curl-all.sln                    \
+ projects/Windows/VC14/lib/libcurl.sln                 \
+ projects/Windows/VC14/lib/libcurl.vcxproj.filters     \
+ projects/Windows/VC14/src/curl.sln                    \
+ projects/Windows/VC14/src/curl.vcxproj.filters        \
+ projects/Windows/VC14.10/curl-all.sln                 \
+ projects/Windows/VC14.10/lib/libcurl.sln              \
+ projects/Windows/VC14.10/lib/libcurl.vcxproj.filters  \
+ projects/Windows/VC14.10/src/curl.sln                 \
+ projects/Windows/VC14.10/src/curl.vcxproj.filters     \
+ projects/Windows/VC14.30/curl-all.sln                 \
+ projects/Windows/VC14.30/lib/libcurl.sln              \
+ projects/Windows/VC14.30/lib/libcurl.vcxproj.filters  \
+ projects/Windows/VC14.30/src/curl.sln                 \
+ projects/Windows/VC14.30/src/curl.vcxproj.filters     \
+ projects/generate.bat                                 \
+ projects/wolfssl_options.h                            \
  projects/wolfssl_override.props
 
 WINBUILD_DIST = winbuild/README.md winbuild/gen_resp_file.bat \
@@ -656,16 +674,14 @@ PLAN9_DIST = plan9/include/mkfile \
  plan9/src/mkfile.inc             \
  plan9/src/mkfile
 
-EXTRA_DIST = CHANGES COPYING maketgz Makefile.dist curl-config.in \
- RELEASE-NOTES buildconf libcurl.pc.in MacOSX-Framework \
- scripts/updatemanpages.pl $(CMAKE_DIST) \
- $(VC_DIST) $(WINBUILD_DIST) $(PLAN9_DIST) \
- lib/libcurl.vers.in buildconf.bat scripts/coverage.sh scripts/completion.pl
+EXTRA_DIST = CHANGES COPYING maketgz Makefile.dist curl-config.in            \
+ RELEASE-NOTES buildconf libcurl.pc.in MacOSX-Framework $(CMAKE_DIST)        \
+ $(VC_DIST) $(WINBUILD_DIST) $(PLAN9_DIST) lib/libcurl.vers.in buildconf.bat
 
 CLEANFILES = $(VC10_LIBVCXPROJ) $(VC10_SRCVCXPROJ) $(VC11_LIBVCXPROJ)        \
  $(VC11_SRCVCXPROJ) $(VC12_LIBVCXPROJ) $(VC12_SRCVCXPROJ) $(VC14_LIBVCXPROJ) \
- $(VC14_SRCVCXPROJ) $(VC15_LIBVCXPROJ) $(VC15_SRCVCXPROJ) $(VC17_LIBVCXPROJ) \
- $(VC17_SRCVCXPROJ)
+ $(VC14_SRCVCXPROJ) $(VC14_10_LIBVCXPROJ) $(VC14_10_SRCVCXPROJ)              \
+ $(VC14_30_LIBVCXPROJ) $(VC14_30_SRCVCXPROJ)
 
 bin_SCRIPTS = curl-config
 SUBDIRS = lib src
@@ -724,18 +740,22 @@ LIB_VTLS_HFILES = \
   vtls/schannel.h           \
   vtls/sectransp.h          \
   vtls/vtls.h               \
+  vtls/vtls_int.h           \
   vtls/wolfssl.h            \
   vtls/x509asn1.h
 
 LIB_VQUIC_CFILES = \
-  vquic/ngtcp2.c   \
-  vquic/quiche.c   \
+  vquic/curl_msh3.c   \
+  vquic/curl_ngtcp2.c   \
+  vquic/curl_quiche.c   \
   vquic/vquic.c
 
 LIB_VQUIC_HFILES = \
-  vquic/ngtcp2.h   \
-  vquic/quiche.h   \
-  vquic/vquic.h
+  vquic/curl_msh3.h   \
+  vquic/curl_ngtcp2.h   \
+  vquic/curl_quiche.h   \
+  vquic/vquic.h    \
+  vquic/vquic_int.h
 
 LIB_VSSH_CFILES = \
   vssh/libssh.c    \
@@ -753,18 +773,21 @@ LIB_CFILES = \
   base64.c           \
   bufref.c           \
   c-hyper.c          \
+  cf-https-connect.c \
+  cf-socket.c        \
+  cfilters.c         \
   conncache.c        \
   connect.c          \
   content_encoding.c \
   cookie.c           \
   curl_addrinfo.c    \
-  curl_ctype.c       \
   curl_des.c         \
   curl_endian.c      \
   curl_fnmatch.c     \
   curl_get_line.c    \
   curl_gethostname.c \
   curl_gssapi.c      \
+  curl_log.c         \
   curl_memrchr.c     \
   curl_multibyte.c   \
   curl_ntlm_core.c   \
@@ -777,7 +800,6 @@ LIB_CFILES = \
   curl_threads.c     \
   dict.c             \
   doh.c              \
-  dotdot.c           \
   dynbuf.c           \
   easy.c             \
   easygetopt.c       \
@@ -785,6 +807,7 @@ LIB_CFILES = \
   escape.c           \
   file.c             \
   fileinfo.c         \
+  fopen.c            \
   formdata.c         \
   ftp.c              \
   ftplistparser.c    \
@@ -793,6 +816,7 @@ LIB_CFILES = \
   gopher.c           \
   h2h3.c             \
   hash.c             \
+  headers.c          \
   hmac.c             \
   hostasyn.c         \
   hostip.c           \
@@ -808,7 +832,7 @@ LIB_CFILES = \
   http_ntlm.c        \
   http_proxy.c       \
   http_aws_sigv4.c   \
-  idn_win32.c        \
+  idn.c              \
   if2ip.c            \
   imap.c             \
   inet_ntop.c        \
@@ -825,6 +849,7 @@ LIB_CFILES = \
   multi.c            \
   netrc.c            \
   nonblock.c         \
+  noproxy.c          \
   openldap.c         \
   parsedate.c        \
   pingpong.c         \
@@ -856,6 +881,7 @@ LIB_CFILES = \
   system_win32.c     \
   telnet.c           \
   tftp.c             \
+  timediff.c         \
   timeval.c          \
   transfer.c         \
   url.c              \
@@ -863,7 +889,7 @@ LIB_CFILES = \
   version.c          \
   version_win32.c    \
   warnless.c         \
-  wildcard.c
+  ws.c
 
 LIB_HFILES = \
   altsvc.h           \
@@ -872,6 +898,9 @@ LIB_HFILES = \
   asyn.h             \
   bufref.h           \
   c-hyper.h          \
+  cf-https-connect.h \
+  cf-socket.h        \
+  cfilters.h         \
   conncache.h        \
   connect.h          \
   content_encoding.h \
@@ -888,6 +917,7 @@ LIB_HFILES = \
   curl_hmac.h        \
   curl_krb5.h        \
   curl_ldap.h        \
+  curl_log.h         \
   curl_md4.h         \
   curl_md5.h         \
   curl_memory.h      \
@@ -908,20 +938,23 @@ LIB_HFILES = \
   curlx.h            \
   dict.h             \
   doh.h              \
-  dotdot.h           \
   dynbuf.h           \
+  easy_lock.h        \
   easyif.h           \
   easyoptions.h      \
   escape.h           \
   file.h             \
   fileinfo.h         \
+  fopen.h            \
   formdata.h         \
+  functypes.h        \
   ftp.h              \
   ftplistparser.h    \
   getinfo.h          \
   gopher.h           \
   h2h3.h             \
   hash.h             \
+  headers.h          \
   hostip.h           \
   hsts.h             \
   http.h             \
@@ -932,6 +965,7 @@ LIB_HFILES = \
   http_ntlm.h        \
   http_proxy.h       \
   http_aws_sigv4.h   \
+  idn.h              \
   if2ip.h            \
   imap.h             \
   inet_ntop.h        \
@@ -944,12 +978,12 @@ LIB_HFILES = \
   multiif.h          \
   netrc.h            \
   nonblock.h         \
+  noproxy.h          \
   parsedate.h        \
   pingpong.h         \
   pop3.h             \
   progress.h         \
   psl.h              \
-  quic.h             \
   rand.h             \
   rename.h           \
   rtsp.h             \
@@ -975,6 +1009,7 @@ LIB_HFILES = \
   system_win32.h     \
   telnet.h           \
   tftp.h             \
+  timediff.h         \
   timeval.h          \
   transfer.h         \
   url.h              \
@@ -982,7 +1017,7 @@ LIB_HFILES = \
   urldata.h          \
   version_win32.h    \
   warnless.h         \
-  wildcard.h
+  ws.h
 
 LIB_RCFILES = libcurl.rc
 CSOURCES = $(LIB_CFILES) $(LIB_VAUTH_CFILES) $(LIB_VTLS_CFILES) \
@@ -996,9 +1031,9 @@ HHEADERS = $(LIB_HFILES) $(LIB_VAUTH_HFILES) $(LIB_VTLS_HFILES) \
 # the official API, but we re-use the code here to avoid duplication.
 CURLX_CFILES = \
   ../lib/strtoofft.c \
+  ../lib/timediff.c \
   ../lib/nonblock.c \
   ../lib/warnless.c \
-  ../lib/curl_ctype.c \
   ../lib/curl_multibyte.c \
   ../lib/version_win32.c \
   ../lib/dynbuf.c
@@ -1006,6 +1041,7 @@ CURLX_CFILES = \
 CURLX_HFILES = \
   ../lib/curl_setup.h \
   ../lib/strtoofft.h \
+  ../lib/timediff.h \
   ../lib/nonblock.h \
   ../lib/warnless.h \
   ../lib/curl_ctype.h \
@@ -1041,10 +1077,10 @@ CURL_CFILES = \
   tool_msgs.c \
   tool_operate.c \
   tool_operhlp.c \
-  tool_panykey.c \
   tool_paramhlp.c \
   tool_parsecfg.c \
   tool_progress.c \
+  tool_stderr.c \
   tool_strdup.c \
   tool_setopt.c \
   tool_sleep.c \
@@ -1082,7 +1118,6 @@ CURL_HFILES = \
   tool_msgs.h \
   tool_operate.h \
   tool_operhlp.h \
-  tool_panykey.h \
   tool_paramhlp.h \
   tool_parsecfg.h \
   tool_progress.h \
@@ -1090,6 +1125,7 @@ CURL_HFILES = \
   tool_setopt.h \
   tool_setup.h \
   tool_sleep.h \
+  tool_stderr.h \
   tool_strdup.h \
   tool_urlglob.h \
   tool_util.h \
@@ -1758,13 +1794,13 @@ uninstall-hook:
 	(cd docs && $(MAKE) uninstall)
 	(cd docs/libcurl && $(MAKE) uninstall)
 
-ca-bundle: lib/mk-ca-bundle.pl
+ca-bundle: $(srcdir)/scripts/mk-ca-bundle.pl
 	@echo "generating a fresh ca-bundle.crt"
-	@perl $< -b -l -u lib/ca-bundle.crt
+	@perl $(srcdir)/scripts/mk-ca-bundle.pl -b -l -u lib/ca-bundle.crt
 
-ca-firefox: lib/firefox-db2pem.sh
+ca-firefox: $(srcdir)/scripts/firefox-db2pem.sh
 	@echo "generating a fresh ca-bundle.crt"
-	./lib/firefox-db2pem.sh lib/ca-bundle.crt
+	$(srcdir)/scripts/firefox-db2pem.sh lib/ca-bundle.crt
 
 checksrc:
 	(cd lib && $(MAKE) checksrc)
@@ -1779,8 +1815,8 @@ checksrc:
 vc-ide: $(VC10_LIBVCXPROJ_DEPS) $(VC10_SRCVCXPROJ_DEPS)                  \
  $(VC11_LIBVCXPROJ_DEPS) $(VC11_SRCVCXPROJ_DEPS) $(VC12_LIBVCXPROJ_DEPS) \
  $(VC12_SRCVCXPROJ_DEPS) $(VC14_LIBVCXPROJ_DEPS) $(VC14_SRCVCXPROJ_DEPS) \
- $(VC15_LIBVCXPROJ_DEPS) $(VC15_SRCVCXPROJ_DEPS) $(VC17_LIBVCXPROJ_DEPS) \
- $(VC17_SRCVCXPROJ_DEPS)
+ $(VC14_10_LIBVCXPROJ_DEPS) $(VC14_10_SRCVCXPROJ_DEPS)                   \
+ $(VC14_30_LIBVCXPROJ_DEPS) $(VC14_30_SRCVCXPROJ_DEPS)
 	@(win32_lib_srcs='$(LIB_CFILES)'; \
 	win32_lib_hdrs='$(LIB_HFILES) config-win32.h'; \
 	win32_lib_rc='$(LIB_RCFILES)'; \
@@ -2037,7 +2073,7 @@ function gen_element(type, dir, file)\
 		-v src_x_hdrs="$$sorted_src_x_hdrs" \
 		"$$awk_code" $(srcdir)/$(VC14_SRCTMPL) > $(VC14_SRCVCXPROJ) || { exit 1; }; \
 	\
-	echo "generating '$(VC15_LIBVCXPROJ)'"; \
+	echo "generating '$(VC14_10_LIBVCXPROJ)'"; \
 	awk -v proj_type=vcxproj \
 		-v lib_srcs="$$sorted_lib_srcs" \
 		-v lib_hdrs="$$sorted_lib_hdrs" \
@@ -2050,18 +2086,18 @@ function gen_element(type, dir, file)\
 		-v lib_vssh_hdrs="$$sorted_lib_vssh_hdrs" \
 		-v lib_vtls_srcs="$$sorted_lib_vtls_srcs" \
 		-v lib_vtls_hdrs="$$sorted_lib_vtls_hdrs" \
-		"$$awk_code" $(srcdir)/$(VC15_LIBTMPL) > $(VC15_LIBVCXPROJ) || { exit 1; }; \
+		"$$awk_code" $(srcdir)/$(VC14_10_LIBTMPL) > $(VC14_10_LIBVCXPROJ) || { exit 1; }; \
 	\
-	echo "generating '$(VC15_SRCVCXPROJ)'"; \
+	echo "generating '$(VC14_10_SRCVCXPROJ)'"; \
 	awk -v proj_type=vcxproj \
 		-v src_srcs="$$sorted_src_srcs" \
 		-v src_hdrs="$$sorted_src_hdrs" \
 		-v src_rc="$$win32_src_rc" \
 		-v src_x_srcs="$$sorted_src_x_srcs" \
 		-v src_x_hdrs="$$sorted_src_x_hdrs" \
-		"$$awk_code" $(srcdir)/$(VC15_SRCTMPL) > $(VC15_SRCVCXPROJ) || { exit 1; }; \
+		"$$awk_code" $(srcdir)/$(VC14_10_SRCTMPL) > $(VC14_10_SRCVCXPROJ) || { exit 1; }; \
 	\
-	echo "generating '$(VC17_LIBVCXPROJ)'"; \
+	echo "generating '$(VC14_30_LIBVCXPROJ)'"; \
 	awk -v proj_type=vcxproj \
 		-v lib_srcs="$$sorted_lib_srcs" \
 		-v lib_hdrs="$$sorted_lib_hdrs" \
@@ -2074,16 +2110,16 @@ function gen_element(type, dir, file)\
 		-v lib_vssh_hdrs="$$sorted_lib_vssh_hdrs" \
 		-v lib_vtls_srcs="$$sorted_lib_vtls_srcs" \
 		-v lib_vtls_hdrs="$$sorted_lib_vtls_hdrs" \
-		"$$awk_code" $(srcdir)/$(VC17_LIBTMPL) > $(VC17_LIBVCXPROJ) || { exit 1; }; \
+		"$$awk_code" $(srcdir)/$(VC14_30_LIBTMPL) > $(VC14_30_LIBVCXPROJ) || { exit 1; }; \
 	\
-	echo "generating '$(VC17_SRCVCXPROJ)'"; \
+	echo "generating '$(VC14_30_SRCVCXPROJ)'"; \
 	awk -v proj_type=vcxproj \
 		-v src_srcs="$$sorted_src_srcs" \
 		-v src_hdrs="$$sorted_src_hdrs" \
 		-v src_rc="$$win32_src_rc" \
 		-v src_x_srcs="$$sorted_src_x_srcs" \
 		-v src_x_hdrs="$$sorted_src_x_hdrs" \
-		"$$awk_code" $(srcdir)/$(VC17_SRCTMPL) > $(VC17_SRCVCXPROJ) || { exit 1; };)
+		"$$awk_code" $(srcdir)/$(VC14_30_SRCTMPL) > $(VC14_30_SRCVCXPROJ) || { exit 1; };)
 
 tidy:
 	(cd src && $(MAKE) tidy)

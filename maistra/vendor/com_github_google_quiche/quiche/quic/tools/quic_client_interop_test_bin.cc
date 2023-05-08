@@ -9,17 +9,20 @@
 
 #include "absl/strings/str_cat.h"
 #include "quiche/quic/core/crypto/quic_client_session_cache.h"
-#include "quiche/quic/core/quic_epoll_clock.h"
+#include "quiche/quic/core/io/quic_default_event_loop.h"
+#include "quiche/quic/core/io/quic_event_loop.h"
+#include "quiche/quic/core/quic_default_clock.h"
 #include "quiche/quic/core/quic_types.h"
 #include "quiche/quic/core/quic_versions.h"
-#include "quiche/quic/platform/api/quic_epoll.h"
 #include "quiche/quic/test_tools/quic_connection_peer.h"
 #include "quiche/quic/test_tools/quic_session_peer.h"
 #include "quiche/quic/tools/fake_proof_verifier.h"
-#include "quiche/quic/tools/quic_client.h"
+#include "quiche/quic/tools/quic_default_client.h"
+#include "quiche/quic/tools/quic_name_lookup.h"
 #include "quiche/quic/tools/quic_url.h"
 #include "quiche/common/platform/api/quiche_command_line_flags.h"
 #include "quiche/common/platform/api/quiche_system_event_loop.h"
+#include "quiche/spdy/core/http2_header_block.h"
 
 DEFINE_QUICHE_COMMAND_LINE_FLAG(std::string, host, "",
                                 "The IP or hostname to connect to.");
@@ -106,23 +109,20 @@ class QuicClientInteropRunner : QuicConnectionDebugVisitor {
   // Attempts a resumption using |client| by disconnecting and reconnecting. If
   // resumption is successful, |features_| is modified to add
   // Feature::kResumption to it, otherwise it is left unmodified.
-  void AttemptResumption(QuicClient* client, const std::string& authority);
+  void AttemptResumption(QuicDefaultClient* client,
+                         const std::string& authority);
 
-  void AttemptRequest(QuicSocketAddress addr,
-                      std::string authority,
-                      QuicServerId server_id,
-                      ParsedQuicVersion version,
-                      bool test_version_negotiation,
-                      bool attempt_rebind,
-                      bool attempt_multi_packet_chlo,
-                      bool attempt_key_update);
+  void AttemptRequest(QuicSocketAddress addr, std::string authority,
+                      QuicServerId server_id, ParsedQuicVersion version,
+                      bool test_version_negotiation, bool attempt_rebind,
+                      bool attempt_multi_packet_chlo, bool attempt_key_update);
 
-  // Constructs a SpdyHeaderBlock containing the pseudo-headers needed to make a
-  // GET request to "/" on the hostname |authority|.
+  // Constructs a Http2HeaderBlock containing the pseudo-headers needed to make
+  // a GET request to "/" on the hostname |authority|.
   spdy::Http2HeaderBlock ConstructHeaderBlock(const std::string& authority);
 
   // Sends an HTTP request represented by |header_block| using |client|.
-  void SendRequest(QuicClient* client,
+  void SendRequest(QuicDefaultClient* client,
                    const spdy::Http2HeaderBlock& header_block);
 
   void OnConnectionCloseFrame(const QuicConnectionCloseFrame& frame) override {
@@ -160,7 +160,7 @@ class QuicClientInteropRunner : QuicConnectionDebugVisitor {
   std::set<Feature> features_;
 };
 
-void QuicClientInteropRunner::AttemptResumption(QuicClient* client,
+void QuicClientInteropRunner::AttemptResumption(QuicDefaultClient* client,
                                                 const std::string& authority) {
   client->Disconnect();
   if (!client->Initialize()) {
@@ -193,14 +193,11 @@ void QuicClientInteropRunner::AttemptResumption(QuicClient* client,
   }
 }
 
-void QuicClientInteropRunner::AttemptRequest(QuicSocketAddress addr,
-                                             std::string authority,
-                                             QuicServerId server_id,
-                                             ParsedQuicVersion version,
-                                             bool test_version_negotiation,
-                                             bool attempt_rebind,
-                                             bool attempt_multi_packet_chlo,
-                                             bool attempt_key_update) {
+void QuicClientInteropRunner::AttemptRequest(
+    QuicSocketAddress addr, std::string authority, QuicServerId server_id,
+    ParsedQuicVersion version, bool test_version_negotiation,
+    bool attempt_rebind, bool attempt_multi_packet_chlo,
+    bool attempt_key_update) {
   ParsedQuicVersionVector versions = {version};
   if (test_version_negotiation) {
     versions.insert(versions.begin(), QuicVersionReservedForNegotiation());
@@ -208,8 +205,6 @@ void QuicClientInteropRunner::AttemptRequest(QuicSocketAddress addr,
 
   auto proof_verifier = std::make_unique<FakeProofVerifier>();
   auto session_cache = std::make_unique<QuicClientSessionCache>();
-  QuicEpollServer epoll_server;
-  QuicEpollClock epoll_clock(&epoll_server);
   QuicConfig config;
   QuicTime::Delta timeout = QuicTime::Delta::FromSeconds(20);
   config.SetIdleNetworkTimeout(timeout);
@@ -222,8 +217,10 @@ void QuicClientInteropRunner::AttemptRequest(QuicSocketAddress addr,
     config.custom_transport_parameters_to_send()[kCustomParameter] =
         custom_value;
   }
-  auto client = std::make_unique<QuicClient>(
-      addr, server_id, versions, config, &epoll_server,
+  std::unique_ptr<QuicEventLoop> event_loop =
+      GetDefaultEventLoop()->Create(QuicDefaultClock::Get());
+  auto client = std::make_unique<QuicDefaultClient>(
+      addr, server_id, versions, config, event_loop.get(),
       std::move(proof_verifier), std::move(session_cache));
   client->set_connection_debug_visitor(this);
   if (!client->Initialize()) {
@@ -345,8 +342,7 @@ spdy::Http2HeaderBlock QuicClientInteropRunner::ConstructHeaderBlock(
 }
 
 void QuicClientInteropRunner::SendRequest(
-    QuicClient* client,
-    const spdy::Http2HeaderBlock& header_block) {
+    QuicDefaultClient* client, const spdy::Http2HeaderBlock& header_block) {
   client->set_store_response(true);
   client->SendRequestAndWaitForResponse(header_block, "", /*fin=*/true);
 
@@ -367,10 +363,8 @@ void QuicClientInteropRunner::SendRequest(
   }
 }
 
-std::set<Feature> ServerSupport(std::string dns_host,
-                                std::string url_host,
-                                int port,
-                                ParsedQuicVersion version) {
+std::set<Feature> ServerSupport(std::string dns_host, std::string url_host,
+                                int port, ParsedQuicVersion version) {
   std::cout << "Attempting interop with version " << version << std::endl;
 
   // Build the client, and try to connect.
@@ -405,9 +399,9 @@ int main(int argc, char* argv[]) {
     quiche::QuichePrintCommandLineFlagHelp(usage);
     exit(1);
   }
-  std::string dns_host = GetQuicFlag(FLAGS_host);
+  std::string dns_host = quiche::GetQuicheCommandLineFlag(FLAGS_host);
   std::string url_host = "";
-  int port = GetQuicFlag(FLAGS_port);
+  int port = quiche::GetQuicheCommandLineFlag(FLAGS_port);
 
   if (!args.empty()) {
     quic::QuicUrl url(args[0], "https");
@@ -433,7 +427,8 @@ int main(int argc, char* argv[]) {
   // Pick QUIC version to use.
   quic::QuicVersionInitializeSupportForIetfDraft();
   quic::ParsedQuicVersion version = quic::UnsupportedQuicVersion();
-  std::string quic_version_string = GetQuicFlag(FLAGS_quic_version);
+  std::string quic_version_string =
+      quiche::GetQuicheCommandLineFlag(FLAGS_quic_version);
   if (!quic_version_string.empty()) {
     version = quic::ParseQuicVersionString(quic_version_string);
   } else {

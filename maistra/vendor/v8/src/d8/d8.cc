@@ -34,6 +34,7 @@
 #include "src/api/api-inl.h"
 #include "src/base/cpu.h"
 #include "src/base/logging.h"
+#include "src/base/platform/memory.h"
 #include "src/base/platform/platform.h"
 #include "src/base/platform/time.h"
 #include "src/base/platform/wrappers.h"
@@ -46,6 +47,7 @@
 #include "src/debug/debug-interface.h"
 #include "src/deoptimizer/deoptimizer.h"
 #include "src/diagnostics/basic-block-profiler.h"
+#include "src/execution/microtask-queue.h"
 #include "src/execution/v8threads.h"
 #include "src/execution/vm-state-inl.h"
 #include "src/flags/flags.h"
@@ -54,7 +56,7 @@
 #include "src/init/v8.h"
 #include "src/interpreter/interpreter.h"
 #include "src/logging/counters.h"
-#include "src/logging/log-utils.h"
+#include "src/logging/log-file.h"
 #include "src/objects/managed-inl.h"
 #include "src/objects/objects-inl.h"
 #include "src/objects/objects.h"
@@ -62,12 +64,16 @@
 #include "src/parsing/parsing.h"
 #include "src/parsing/scanner-character-streams.h"
 #include "src/profiler/profile-generator.h"
+#include "src/sandbox/testing.h"
 #include "src/snapshot/snapshot.h"
 #include "src/tasks/cancelable-task.h"
-#include "src/trap-handler/trap-handler.h"
 #include "src/utils/ostreams.h"
 #include "src/utils/utils.h"
 #include "src/web-snapshot/web-snapshot.h"
+
+#if V8_OS_POSIX
+#include <signal.h>
+#endif  // V8_OS_POSIX
 
 #ifdef V8_FUZZILLI
 #include "src/d8/cov.h"
@@ -91,6 +97,10 @@
 #include <windows.h>
 #endif                // !defined(_WIN32) && !defined(_WIN64)
 
+#if V8_ENABLE_WEBASSEMBLY
+#include "src/trap-handler/trap-handler.h"
+#endif  // V8_ENABLE_WEBASSEMBLY
+
 #ifndef DCHECK
 #define DCHECK(condition) assert(condition)
 #endif
@@ -98,11 +108,6 @@
 #ifndef CHECK
 #define CHECK(condition) assert(condition)
 #endif
-
-#define TRACE_BS(...)                                     \
-  do {                                                    \
-    if (i::FLAG_trace_backing_store) PrintF(__VA_ARGS__); \
-  } while (false)
 
 namespace v8 {
 
@@ -184,7 +189,7 @@ class ShellArrayBufferAllocator : public ArrayBufferAllocatorBase {
     v8::PageAllocator* page_allocator = i::GetArrayBufferPageAllocator();
     size_t page_size = page_allocator->AllocatePageSize();
     size_t allocated = RoundUp(length, page_size);
-    CHECK(i::FreePages(page_allocator, data, allocated));
+    i::FreePages(page_allocator, data, allocated);
   }
 };
 
@@ -480,14 +485,15 @@ std::atomic<int> Shell::unhandled_promise_rejections_{0};
 
 Global<Context> Shell::evaluation_context_;
 ArrayBuffer::Allocator* Shell::array_buffer_allocator;
-Isolate* Shell::shared_isolate = nullptr;
 bool check_d8_flag_contradictions = true;
 ShellOptions Shell::options;
 base::OnceType Shell::quit_once_ = V8_ONCE_INIT;
 
 ScriptCompiler::CachedData* Shell::LookupCodeCache(Isolate* isolate,
                                                    Local<Value> source) {
-  base::MutexGuard lock_guard(cached_code_mutex_.Pointer());
+  i::ParkedMutexGuard lock_guard(
+      reinterpret_cast<i::Isolate*>(isolate)->main_thread_local_isolate(),
+      cached_code_mutex_.Pointer());
   CHECK(source->IsString());
   v8::String::Utf8Value key(isolate, source);
   DCHECK(*key);
@@ -505,7 +511,9 @@ ScriptCompiler::CachedData* Shell::LookupCodeCache(Isolate* isolate,
 
 void Shell::StoreInCodeCache(Isolate* isolate, Local<Value> source,
                              const ScriptCompiler::CachedData* cache_data) {
-  base::MutexGuard lock_guard(cached_code_mutex_.Pointer());
+  i::ParkedMutexGuard lock_guard(
+      reinterpret_cast<i::Isolate*>(isolate)->main_thread_local_isolate(),
+      cached_code_mutex_.Pointer());
   CHECK(source->IsString());
   if (cache_data == nullptr) return;
   v8::String::Utf8Value key(isolate, source);
@@ -653,6 +661,100 @@ namespace {
 const int kHostDefinedOptionsLength = 2;
 const uint32_t kHostDefinedOptionsMagicConstant = 0xF1F2F3F0;
 
+std::string ToSTLString(Isolate* isolate, Local<String> v8_str) {
+  String::Utf8Value utf8(isolate, v8_str);
+  // Should not be able to fail since the input is a String.
+  CHECK(*utf8);
+  return *utf8;
+}
+
+// Per-context Module data, allowing sharing of module maps
+// across top-level module loads.
+class ModuleEmbedderData {
+ private:
+  class ModuleGlobalHash {
+   public:
+    explicit ModuleGlobalHash(Isolate* isolate) : isolate_(isolate) {}
+    size_t operator()(const Global<Module>& module) const {
+      return module.Get(isolate_)->GetIdentityHash();
+    }
+
+   private:
+    Isolate* isolate_;
+  };
+
+ public:
+  explicit ModuleEmbedderData(Isolate* isolate)
+      : module_to_specifier_map(10, ModuleGlobalHash(isolate)),
+        json_module_to_parsed_json_map(
+            10, module_to_specifier_map.hash_function()) {}
+
+  static ModuleType ModuleTypeFromImportAssertions(
+      Local<Context> context, Local<FixedArray> import_assertions,
+      bool hasPositions) {
+    Isolate* isolate = context->GetIsolate();
+    const int kV8AssertionEntrySize = hasPositions ? 3 : 2;
+    for (int i = 0; i < import_assertions->Length();
+         i += kV8AssertionEntrySize) {
+      Local<String> v8_assertion_key =
+          import_assertions->Get(context, i).As<v8::String>();
+      std::string assertion_key = ToSTLString(isolate, v8_assertion_key);
+
+      if (assertion_key == "type") {
+        Local<String> v8_assertion_value =
+            import_assertions->Get(context, i + 1).As<String>();
+        std::string assertion_value = ToSTLString(isolate, v8_assertion_value);
+        if (assertion_value == "json") {
+          return ModuleType::kJSON;
+        } else {
+          // JSON is currently the only supported non-JS type
+          return ModuleType::kInvalid;
+        }
+      }
+    }
+
+    // If no type is asserted, default to JS.
+    return ModuleType::kJavaScript;
+  }
+
+  // Map from (normalized module specifier, module type) pair to Module.
+  std::map<std::pair<std::string, ModuleType>, Global<Module>> module_map;
+  // Map from Module to its URL as defined in the ScriptOrigin
+  std::unordered_map<Global<Module>, std::string, ModuleGlobalHash>
+      module_to_specifier_map;
+  // Map from JSON Module to its parsed content, for use in module
+  // JSONModuleEvaluationSteps
+  std::unordered_map<Global<Module>, Global<Value>, ModuleGlobalHash>
+      json_module_to_parsed_json_map;
+
+  // Origin location used for resolving modules when referrer is null.
+  std::string origin;
+};
+
+enum { kModuleEmbedderDataIndex, kInspectorClientIndex };
+
+std::shared_ptr<ModuleEmbedderData> InitializeModuleEmbedderData(
+    Local<Context> context) {
+  i::Isolate* i_isolate = reinterpret_cast<i::Isolate*>(context->GetIsolate());
+  const size_t kModuleEmbedderDataEstimate = 4 * 1024;  // module map.
+  i::Handle<i::Managed<ModuleEmbedderData>> module_data_managed =
+      i::Managed<ModuleEmbedderData>::Allocate(
+          i_isolate, kModuleEmbedderDataEstimate, context->GetIsolate());
+  v8::Local<v8::Value> module_data = Utils::ToLocal(module_data_managed);
+  context->SetEmbedderData(kModuleEmbedderDataIndex, module_data);
+  return module_data_managed->get();
+}
+
+std::shared_ptr<ModuleEmbedderData> GetModuleDataFromContext(
+    Local<Context> context) {
+  v8::Local<v8::Value> module_data =
+      context->GetEmbedderData(kModuleEmbedderDataIndex);
+  i::Handle<i::Managed<ModuleEmbedderData>> module_data_managed =
+      i::Handle<i::Managed<ModuleEmbedderData>>::cast(
+          Utils::OpenHandle<Value, i::Object>(module_data));
+  return module_data_managed->get();
+}
+
 ScriptOrigin CreateScriptOrigin(Isolate* isolate, Local<String> resource_name,
                                 v8::ScriptType type) {
   Local<PrimitiveArray> options =
@@ -741,6 +843,10 @@ bool Shell::ExecuteString(Isolate* isolate, Local<String> source,
     ScriptOrigin origin =
         CreateScriptOrigin(isolate, name, ScriptType::kClassic);
 
+    std::shared_ptr<ModuleEmbedderData> module_data =
+        GetModuleDataFromContext(realm);
+    module_data->origin = ToSTLString(isolate, name);
+
     for (int i = 1; i < options.repeat_compile; ++i) {
       HandleScope handle_scope_for_compiling(isolate);
       if (CompileString<Script>(isolate, context, source, origin).IsEmpty()) {
@@ -784,38 +890,6 @@ bool Shell::ExecuteString(Isolate* isolate, Local<String> source,
       if (!HandleUnhandledPromiseRejections(isolate)) success = false;
     }
     data->realm_current_ = data->realm_switch_;
-
-    if (options.web_snapshot_config) {
-      const char* web_snapshot_output_file_name = "web.snap";
-      if (options.web_snapshot_output) {
-        web_snapshot_output_file_name = options.web_snapshot_output;
-      }
-
-      MaybeLocal<PrimitiveArray> maybe_exports =
-          ReadLines(isolate, options.web_snapshot_config);
-      Local<PrimitiveArray> exports;
-      if (!maybe_exports.ToLocal(&exports)) {
-        isolate->ThrowError("Web snapshots: unable to read config");
-        CHECK(try_catch.HasCaught());
-        ReportException(isolate, &try_catch);
-        return false;
-      }
-
-      i::WebSnapshotSerializer serializer(isolate);
-      i::WebSnapshotData snapshot_data;
-      if (serializer.TakeSnapshot(context, exports, snapshot_data)) {
-        DCHECK_NOT_NULL(snapshot_data.buffer);
-        WriteChars(web_snapshot_output_file_name, snapshot_data.buffer,
-                   snapshot_data.buffer_size);
-      } else {
-        CHECK(try_catch.HasCaught());
-        return false;
-      }
-    } else if (options.web_snapshot_output) {
-      isolate->ThrowError(
-          "Web snapshots: --web-snapshot-config is needed when "
-          "--web-snapshot-output is passed");
-    }
   }
   Local<Value> result;
   if (!maybe_result.ToLocal(&result)) {
@@ -842,14 +916,53 @@ bool Shell::ExecuteString(Isolate* isolate, Local<String> source,
   return success;
 }
 
-namespace {
+bool Shell::TakeWebSnapshot(Isolate* isolate) {
+  PerIsolateData* data = PerIsolateData::Get(isolate);
+  Local<Context> realm =
+      Local<Context>::New(isolate, data->realms_[data->realm_current_]);
+  Context::Scope context_scope(realm);
+  Local<Context> context(isolate->GetCurrentContext());
 
-std::string ToSTLString(Isolate* isolate, Local<String> v8_str) {
-  String::Utf8Value utf8(isolate, v8_str);
-  // Should not be able to fail since the input is a String.
-  CHECK(*utf8);
-  return *utf8;
+  v8::TryCatch try_catch(isolate);
+  try_catch.SetVerbose(true);
+  const char* web_snapshot_output_file_name = "web.snap";
+  if (options.web_snapshot_output) {
+    web_snapshot_output_file_name = options.web_snapshot_output;
+  }
+
+  if (!options.web_snapshot_config) {
+    isolate->ThrowError(
+        "Web snapshots: --web-snapshot-config is needed when "
+        "--web-snapshot-output is passed");
+    CHECK(try_catch.HasCaught());
+    ReportException(isolate, &try_catch);
+    return false;
+  }
+
+  MaybeLocal<PrimitiveArray> maybe_exports =
+      ReadLines(isolate, options.web_snapshot_config);
+  Local<PrimitiveArray> exports;
+  if (!maybe_exports.ToLocal(&exports)) {
+    isolate->ThrowError("Web snapshots: unable to read config");
+    CHECK(try_catch.HasCaught());
+    ReportException(isolate, &try_catch);
+    return false;
+  }
+
+  i::WebSnapshotSerializer serializer(isolate);
+  i::WebSnapshotData snapshot_data;
+  if (serializer.TakeSnapshot(context, exports, snapshot_data)) {
+    DCHECK_NOT_NULL(snapshot_data.buffer);
+    WriteChars(web_snapshot_output_file_name, snapshot_data.buffer,
+               snapshot_data.buffer_size);
+  } else {
+    CHECK(try_catch.HasCaught());
+    return false;
+  }
+  return true;
 }
+
+namespace {
 
 bool IsAbsolutePath(const std::string& path) {
 #if defined(_WIN32) || defined(_WIN64)
@@ -919,98 +1032,23 @@ std::string NormalizePath(const std::string& path,
   return os.str();
 }
 
-// Per-context Module data, allowing sharing of module maps
-// across top-level module loads.
-class ModuleEmbedderData {
- private:
-  class ModuleGlobalHash {
-   public:
-    explicit ModuleGlobalHash(Isolate* isolate) : isolate_(isolate) {}
-    size_t operator()(const Global<Module>& module) const {
-      return module.Get(isolate_)->GetIdentityHash();
-    }
-
-   private:
-    Isolate* isolate_;
-  };
-
- public:
-  explicit ModuleEmbedderData(Isolate* isolate)
-      : module_to_specifier_map(10, ModuleGlobalHash(isolate)),
-        json_module_to_parsed_json_map(10, ModuleGlobalHash(isolate)) {}
-
-  static ModuleType ModuleTypeFromImportAssertions(
-      Local<Context> context, Local<FixedArray> import_assertions,
-      bool hasPositions) {
-    Isolate* isolate = context->GetIsolate();
-    const int kV8AssertionEntrySize = hasPositions ? 3 : 2;
-    for (int i = 0; i < import_assertions->Length();
-         i += kV8AssertionEntrySize) {
-      Local<String> v8_assertion_key =
-          import_assertions->Get(context, i).As<v8::String>();
-      std::string assertion_key = ToSTLString(isolate, v8_assertion_key);
-
-      if (assertion_key == "type") {
-        Local<String> v8_assertion_value =
-            import_assertions->Get(context, i + 1).As<String>();
-        std::string assertion_value = ToSTLString(isolate, v8_assertion_value);
-        if (assertion_value == "json") {
-          return ModuleType::kJSON;
-        } else {
-          // JSON is currently the only supported non-JS type
-          return ModuleType::kInvalid;
-        }
-      }
-    }
-
-    // If no type is asserted, default to JS.
-    return ModuleType::kJavaScript;
-  }
-
-  // Map from (normalized module specifier, module type) pair to Module.
-  std::map<std::pair<std::string, ModuleType>, Global<Module>> module_map;
-  // Map from Module to its URL as defined in the ScriptOrigin
-  std::unordered_map<Global<Module>, std::string, ModuleGlobalHash>
-      module_to_specifier_map;
-  // Map from JSON Module to its parsed content, for use in module
-  // JSONModuleEvaluationSteps
-  std::unordered_map<Global<Module>, Global<Value>, ModuleGlobalHash>
-      json_module_to_parsed_json_map;
-};
-
-enum { kModuleEmbedderDataIndex, kInspectorClientIndex };
-
-void InitializeModuleEmbedderData(Local<Context> context) {
-  context->SetAlignedPointerInEmbedderData(
-      kModuleEmbedderDataIndex, new ModuleEmbedderData(context->GetIsolate()));
-}
-
-ModuleEmbedderData* GetModuleDataFromContext(Local<Context> context) {
-  return static_cast<ModuleEmbedderData*>(
-      context->GetAlignedPointerFromEmbedderData(kModuleEmbedderDataIndex));
-}
-
-void DisposeModuleEmbedderData(Local<Context> context) {
-  delete GetModuleDataFromContext(context);
-  context->SetAlignedPointerInEmbedderData(kModuleEmbedderDataIndex, nullptr);
-}
-
 MaybeLocal<Module> ResolveModuleCallback(Local<Context> context,
                                          Local<String> specifier,
                                          Local<FixedArray> import_assertions,
                                          Local<Module> referrer) {
   Isolate* isolate = context->GetIsolate();
-  ModuleEmbedderData* d = GetModuleDataFromContext(context);
-  auto specifier_it =
-      d->module_to_specifier_map.find(Global<Module>(isolate, referrer));
-  CHECK(specifier_it != d->module_to_specifier_map.end());
+  std::shared_ptr<ModuleEmbedderData> module_data =
+      GetModuleDataFromContext(context);
+  auto specifier_it = module_data->module_to_specifier_map.find(
+      Global<Module>(isolate, referrer));
+  CHECK(specifier_it != module_data->module_to_specifier_map.end());
   std::string absolute_path = NormalizePath(ToSTLString(isolate, specifier),
                                             DirName(specifier_it->second));
   ModuleType module_type = ModuleEmbedderData::ModuleTypeFromImportAssertions(
       context, import_assertions, true);
   auto module_it =
-      d->module_map.find(std::make_pair(absolute_path, module_type));
-  CHECK(module_it != d->module_map.end());
+      module_data->module_map.find(std::make_pair(absolute_path, module_type));
+  CHECK(module_it != module_data->module_map.end());
   return module_it->second.Get(isolate);
 }
 
@@ -1022,7 +1060,7 @@ MaybeLocal<Module> Shell::FetchModuleTree(Local<Module> referrer,
                                           ModuleType module_type) {
   DCHECK(IsAbsolutePath(file_name));
   Isolate* isolate = context->GetIsolate();
-  Local<String> source_text = ReadFile(isolate, file_name.c_str(), false);
+  MaybeLocal<String> source_text = ReadFile(isolate, file_name.c_str(), false);
   if (source_text.IsEmpty() && options.fuzzy_module_file_extensions) {
     std::string fallback_file_name = file_name + ".js";
     source_text = ReadFile(isolate, fallback_file_name.c_str(), false);
@@ -1032,13 +1070,14 @@ MaybeLocal<Module> Shell::FetchModuleTree(Local<Module> referrer,
     }
   }
 
-  ModuleEmbedderData* d = GetModuleDataFromContext(context);
+  std::shared_ptr<ModuleEmbedderData> module_data =
+      GetModuleDataFromContext(context);
   if (source_text.IsEmpty()) {
     std::string msg = "d8: Error reading  module from " + file_name;
     if (!referrer.IsEmpty()) {
-      auto specifier_it =
-          d->module_to_specifier_map.find(Global<Module>(isolate, referrer));
-      CHECK(specifier_it != d->module_to_specifier_map.end());
+      auto specifier_it = module_data->module_to_specifier_map.find(
+          Global<Module>(isolate, referrer));
+      CHECK(specifier_it != module_data->module_to_specifier_map.end());
       msg += "\n    imported by " + specifier_it->second;
     }
     isolate->ThrowError(
@@ -1053,14 +1092,16 @@ MaybeLocal<Module> Shell::FetchModuleTree(Local<Module> referrer,
 
   Local<Module> module;
   if (module_type == ModuleType::kJavaScript) {
-    ScriptCompiler::Source source(source_text, origin);
-    if (!CompileString<Module>(isolate, context, source_text, origin)
+    ScriptCompiler::Source source(source_text.ToLocalChecked(), origin);
+    if (!CompileString<Module>(isolate, context, source_text.ToLocalChecked(),
+                               origin)
              .ToLocal(&module)) {
       return MaybeLocal<Module>();
     }
   } else if (module_type == ModuleType::kJSON) {
     Local<Value> parsed_json;
-    if (!v8::JSON::Parse(context, source_text).ToLocal(&parsed_json)) {
+    if (!v8::JSON::Parse(context, source_text.ToLocalChecked())
+             .ToLocal(&parsed_json)) {
       return MaybeLocal<Module>();
     }
 
@@ -1072,7 +1113,7 @@ MaybeLocal<Module> Shell::FetchModuleTree(Local<Module> referrer,
         String::NewFromUtf8(isolate, file_name.c_str()).ToLocalChecked(),
         export_names, Shell::JSONModuleEvaluationSteps);
 
-    CHECK(d->json_module_to_parsed_json_map
+    CHECK(module_data->json_module_to_parsed_json_map
               .insert(std::make_pair(Global<Module>(isolate, module),
                                      Global<Value>(isolate, parsed_json)))
               .second);
@@ -1080,11 +1121,11 @@ MaybeLocal<Module> Shell::FetchModuleTree(Local<Module> referrer,
     UNREACHABLE();
   }
 
-  CHECK(d->module_map
+  CHECK(module_data->module_map
             .insert(std::make_pair(std::make_pair(file_name, module_type),
                                    Global<Module>(isolate, module)))
             .second);
-  CHECK(d->module_to_specifier_map
+  CHECK(module_data->module_to_specifier_map
             .insert(std::make_pair(Global<Module>(isolate, module), file_name))
             .second);
 
@@ -1107,7 +1148,7 @@ MaybeLocal<Module> Shell::FetchModuleTree(Local<Module> referrer,
       return MaybeLocal<Module>();
     }
 
-    if (d->module_map.count(
+    if (module_data->module_map.count(
             std::make_pair(absolute_path, request_module_type))) {
       continue;
     }
@@ -1125,10 +1166,11 @@ MaybeLocal<Value> Shell::JSONModuleEvaluationSteps(Local<Context> context,
                                                    Local<Module> module) {
   Isolate* isolate = context->GetIsolate();
 
-  ModuleEmbedderData* d = GetModuleDataFromContext(context);
-  auto json_value_it =
-      d->json_module_to_parsed_json_map.find(Global<Module>(isolate, module));
-  CHECK(json_value_it != d->json_module_to_parsed_json_map.end());
+  std::shared_ptr<ModuleEmbedderData> module_data =
+      GetModuleDataFromContext(context);
+  auto json_value_it = module_data->json_module_to_parsed_json_map.find(
+      Global<Module>(isolate, module));
+  CHECK(json_value_it != module_data->json_module_to_parsed_json_map.end());
   Local<Value> json_value = json_value_it->second.Get(isolate);
 
   TryCatch try_catch(isolate);
@@ -1149,11 +1191,12 @@ MaybeLocal<Value> Shell::JSONModuleEvaluationSteps(Local<Context> context,
 }
 
 struct DynamicImportData {
-  DynamicImportData(Isolate* isolate_, Local<String> referrer_,
-                    Local<String> specifier_,
+  DynamicImportData(Isolate* isolate_, Local<Context> context_,
+                    Local<Value> referrer_, Local<String> specifier_,
                     Local<FixedArray> import_assertions_,
                     Local<Promise::Resolver> resolver_)
       : isolate(isolate_) {
+    context.Reset(isolate, context_);
     referrer.Reset(isolate, referrer_);
     specifier.Reset(isolate, specifier_);
     import_assertions.Reset(isolate, import_assertions_);
@@ -1161,7 +1204,10 @@ struct DynamicImportData {
   }
 
   Isolate* isolate;
-  Global<String> referrer;
+  // The initiating context. It can be the Realm created by d8, or the context
+  // created by ShadowRealm built-in.
+  Global<Context> context;
+  Global<Value> referrer;
   Global<String> specifier;
   Global<FixedArray> import_assertions;
   Global<Promise::Resolver> resolver;
@@ -1233,7 +1279,8 @@ MaybeLocal<Promise> Shell::HostImportModuleDynamically(
   Local<Promise::Resolver> resolver;
   if (!maybe_resolver.ToLocal(&resolver)) return MaybeLocal<Promise>();
 
-  if (!IsValidHostDefinedOptions(context, host_defined_options,
+  if (!resource_name->IsNull() &&
+      !IsValidHostDefinedOptions(context, host_defined_options,
                                  resource_name)) {
     resolver
         ->Reject(context, v8::Exception::TypeError(String::NewFromUtf8Literal(
@@ -1241,7 +1288,7 @@ MaybeLocal<Promise> Shell::HostImportModuleDynamically(
         .ToChecked();
   } else {
     DynamicImportData* data =
-        new DynamicImportData(isolate, resource_name.As<String>(), specifier,
+        new DynamicImportData(isolate, context, resource_name, specifier,
                               import_assertions, resolver);
     PerIsolateData::Get(isolate)->AddDynamicImportData(data);
     isolate->EnqueueMicrotask(Shell::DoHostImportModuleDynamically, data);
@@ -1255,10 +1302,11 @@ void Shell::HostInitializeImportMetaObject(Local<Context> context,
   Isolate* isolate = context->GetIsolate();
   HandleScope handle_scope(isolate);
 
-  ModuleEmbedderData* d = GetModuleDataFromContext(context);
-  auto specifier_it =
-      d->module_to_specifier_map.find(Global<Module>(isolate, module));
-  CHECK(specifier_it != d->module_to_specifier_map.end());
+  std::shared_ptr<ModuleEmbedderData> module_data =
+      GetModuleDataFromContext(context);
+  auto specifier_it = module_data->module_to_specifier_map.find(
+      Global<Module>(isolate, module));
+  CHECK(specifier_it != module_data->module_to_specifier_map.end());
 
   Local<String> url_key =
       String::NewFromUtf8Literal(isolate, "url", NewStringType::kInternalized);
@@ -1269,7 +1317,14 @@ void Shell::HostInitializeImportMetaObject(Local<Context> context,
 
 MaybeLocal<Context> Shell::HostCreateShadowRealmContext(
     Local<Context> initiator_context) {
-  return v8::Context::New(initiator_context->GetIsolate());
+  Local<Context> context = v8::Context::New(initiator_context->GetIsolate());
+  std::shared_ptr<ModuleEmbedderData> shadow_realm_data =
+      InitializeModuleEmbedderData(context);
+  std::shared_ptr<ModuleEmbedderData> initiator_data =
+      GetModuleDataFromContext(initiator_context);
+  shadow_realm_data->origin = initiator_data->origin;
+
+  return context;
 }
 
 void Shell::DoHostImportModuleDynamically(void* import_data) {
@@ -1279,16 +1334,16 @@ void Shell::DoHostImportModuleDynamically(void* import_data) {
   Isolate* isolate(import_data_->isolate);
   HandleScope handle_scope(isolate);
 
-  Local<String> referrer(import_data_->referrer.Get(isolate));
+  Local<Context> realm = import_data_->context.Get(isolate);
+  Local<Value> referrer(import_data_->referrer.Get(isolate));
   Local<String> specifier(import_data_->specifier.Get(isolate));
   Local<FixedArray> import_assertions(
       import_data_->import_assertions.Get(isolate));
   Local<Promise::Resolver> resolver(import_data_->resolver.Get(isolate));
 
   PerIsolateData* data = PerIsolateData::Get(isolate);
-  PerIsolateData::Get(isolate)->DeleteDynamicImportData(import_data_);
+  data->DeleteDynamicImportData(import_data_);
 
-  Local<Context> realm = data->realms_[data->realm_current_].Get(isolate);
   Context::Scope context_scope(realm);
 
   ModuleType module_type = ModuleEmbedderData::ModuleTypeFromImportAssertions(
@@ -1304,17 +1359,21 @@ void Shell::DoHostImportModuleDynamically(void* import_data) {
     return;
   }
 
-  std::string source_url = ToSTLString(isolate, referrer);
+  std::shared_ptr<ModuleEmbedderData> module_data =
+      GetModuleDataFromContext(realm);
+
+  std::string source_url = referrer->IsNull()
+                               ? module_data->origin
+                               : ToSTLString(isolate, referrer.As<String>());
   std::string dir_name =
       DirName(NormalizePath(source_url, GetWorkingDirectory()));
   std::string file_name = ToSTLString(isolate, specifier);
   std::string absolute_path = NormalizePath(file_name, dir_name);
 
-  ModuleEmbedderData* d = GetModuleDataFromContext(realm);
   Local<Module> root_module;
   auto module_it =
-      d->module_map.find(std::make_pair(absolute_path, module_type));
-  if (module_it != d->module_map.end()) {
+      module_data->module_map.find(std::make_pair(absolute_path, module_type));
+  if (module_it != module_data->module_map.end()) {
     root_module = module_it->second.Get(isolate);
   } else if (!FetchModuleTree(Local<Module>(), realm, absolute_path,
                               module_type)
@@ -1372,11 +1431,12 @@ bool Shell::ExecuteModule(Isolate* isolate, const char* file_name) {
   // isolate->ReportPendingMessages().
   TryCatch try_catch(isolate);
 
-  ModuleEmbedderData* d = GetModuleDataFromContext(realm);
+  std::shared_ptr<ModuleEmbedderData> module_data =
+      GetModuleDataFromContext(realm);
   Local<Module> root_module;
-  auto module_it = d->module_map.find(
+  auto module_it = module_data->module_map.find(
       std::make_pair(absolute_path, ModuleType::kJavaScript));
-  if (module_it != d->module_map.end()) {
+  if (module_it != module_data->module_map.end()) {
     root_module = module_it->second.Get(isolate);
   } else if (!FetchModuleTree(Local<Module>(), realm, absolute_path,
                               ModuleType::kJavaScript)
@@ -1385,6 +1445,8 @@ bool Shell::ExecuteModule(Isolate* isolate, const char* file_name) {
     ReportException(isolate, &try_catch);
     return false;
   }
+
+  module_data->origin = absolute_path;
 
   MaybeLocal<Value> maybe_result;
   if (root_module->InstantiateModule(realm, ResolveModuleCallback)
@@ -1402,7 +1464,10 @@ bool Shell::ExecuteModule(Isolate* isolate, const char* file_name) {
 
   // Loop until module execution finishes
   Local<Promise> result_promise(result.As<Promise>());
-  while (result_promise->State() == Promise::kPending) {
+  while (result_promise->State() == Promise::kPending &&
+         reinterpret_cast<i::Isolate*>(isolate)
+                 ->default_microtask_queue()
+                 ->size() > 0) {
     Shell::CompleteMessageLoop(isolate);
   }
 
@@ -1420,6 +1485,14 @@ bool Shell::ExecuteModule(Isolate* isolate, const char* file_name) {
     return false;
   }
 
+  std::vector<std::tuple<Local<Module>, Local<Message>>> stalled =
+      root_module->GetStalledTopLevelAwaitMessage(isolate);
+  if (stalled.size() > 0) {
+    Local<Message> message = std::get<1>(stalled[0]);
+    ReportException(isolate, message, v8::Exception::Error(message->Get()));
+    return false;
+  }
+
   DCHECK(!try_catch.HasCaught());
   return true;
 }
@@ -1430,8 +1503,6 @@ bool Shell::ExecuteWebSnapshot(Isolate* isolate, const char* file_name) {
   PerIsolateData* data = PerIsolateData::Get(isolate);
   Local<Context> realm = data->realms_[data->realm_current_].Get(isolate);
   Context::Scope context_scope(realm);
-  TryCatch try_catch(isolate);
-  bool success = false;
 
   std::string absolute_path = NormalizePath(file_name, GetWorkingDirectory());
 
@@ -1439,17 +1510,64 @@ bool Shell::ExecuteWebSnapshot(Isolate* isolate, const char* file_name) {
   std::unique_ptr<uint8_t[]> snapshot_data(
       reinterpret_cast<uint8_t*>(ReadChars(absolute_path.c_str(), &length)));
   if (length == 0) {
+    TryCatch try_catch(isolate);
     isolate->ThrowError("Could not read the web snapshot file");
-  } else {
-    i::WebSnapshotDeserializer deserializer(isolate, snapshot_data.get(),
-                                            static_cast<size_t>(length));
-    success = deserializer.Deserialize();
-  }
-  if (!success) {
     CHECK(try_catch.HasCaught());
     ReportException(isolate, &try_catch);
+    return false;
+  } else {
+    for (int r = 0; r < DeserializationRunCount(); ++r) {
+      bool skip_exports = r > 0;
+      i::WebSnapshotDeserializer deserializer(isolate, snapshot_data.get(),
+                                              static_cast<size_t>(length));
+      if (!deserializer.Deserialize({}, skip_exports)) {
+        // d8 is calling into the internal APIs which won't do
+        // ReportPendingMessages in all error paths (it's supposed to be done at
+        // the API boundary). Call it here.
+        auto i_isolate = reinterpret_cast<i::Isolate*>(isolate);
+        if (i_isolate->has_pending_exception()) {
+          i_isolate->ReportPendingMessages();
+        }
+        return false;
+      }
+    }
   }
-  return success;
+  return true;
+}
+
+// Treat every line as a JSON value and parse it.
+bool Shell::LoadJSON(Isolate* isolate, const char* file_name) {
+  HandleScope handle_scope(isolate);
+  PerIsolateData* isolate_data = PerIsolateData::Get(isolate);
+  Local<Context> realm =
+      isolate_data->realms_[isolate_data->realm_current_].Get(isolate);
+  Context::Scope context_scope(realm);
+  TryCatch try_catch(isolate);
+
+  std::string absolute_path = NormalizePath(file_name, GetWorkingDirectory());
+  int length = 0;
+  std::unique_ptr<char[]> data(ReadChars(absolute_path.c_str(), &length));
+  if (length == 0) {
+    printf("Error reading '%s'\n", file_name);
+    base::OS::ExitProcess(1);
+  }
+  std::stringstream stream(data.get());
+  std::string line;
+  while (std::getline(stream, line, '\n')) {
+    for (int r = 0; r < DeserializationRunCount(); ++r) {
+      Local<String> source =
+          String::NewFromUtf8(isolate, line.c_str()).ToLocalChecked();
+      MaybeLocal<Value> maybe_value = JSON::Parse(realm, source);
+
+      Local<Value> value;
+      if (!maybe_value.ToLocal(&value)) {
+        DCHECK(try_catch.HasCaught());
+        ReportException(isolate, &try_catch);
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 PerIsolateData::PerIsolateData(Isolate* isolate)
@@ -1566,6 +1684,14 @@ void PerIsolateData::SetSnapshotObjectCtor(Local<FunctionTemplate> ctor) {
   snapshot_object_ctor_.Reset(isolate_, ctor);
 }
 
+Local<FunctionTemplate> PerIsolateData::GetDomNodeCtor() const {
+  return dom_node_ctor_.Get(isolate_);
+}
+
+void PerIsolateData::SetDomNodeCtor(Local<FunctionTemplate> ctor) {
+  dom_node_ctor_.Reset(isolate_, ctor);
+}
+
 PerIsolateData::RealmScope::RealmScope(PerIsolateData* data) : data_(data) {
   data_->realm_count_ = 1;
   data_->realm_current_ = 0;
@@ -1576,14 +1702,7 @@ PerIsolateData::RealmScope::RealmScope(PerIsolateData* data) : data_(data) {
 }
 
 PerIsolateData::RealmScope::~RealmScope() {
-  // Drop realms to avoid keeping them alive. We don't dispose the
-  // module embedder data for the first realm here, but instead do
-  // it in RunShell or in RunMain, if not running in interactive mode
-  for (int i = 1; i < data_->realm_count_; ++i) {
-    Global<Context>& realm = data_->realms_[i];
-    if (realm.IsEmpty()) continue;
-    DisposeModuleEmbedderData(realm.Get(data_->isolate_));
-  }
+  // Drop realms to avoid keeping them alive.
   data_->realm_count_ = 0;
   delete[] data_->realms_;
 }
@@ -1751,8 +1870,8 @@ MaybeLocal<Context> Shell::CreateRealm(
   Local<ObjectTemplate> global_template = CreateGlobalTemplate(isolate);
   Local<Context> context =
       Context::New(isolate, nullptr, global_template, global_object);
-  DCHECK(!try_catch.HasCaught());
   if (context.IsEmpty()) return MaybeLocal<Context>();
+  DCHECK(!try_catch.HasCaught());
   InitializeModuleEmbedderData(context);
   data->realms_[index].Reset(isolate, context);
   data->realms_[index].AnnotateStrongRetainer(kGlobalHandleLabel);
@@ -1765,7 +1884,6 @@ void Shell::DisposeRealm(const v8::FunctionCallbackInfo<v8::Value>& args,
   Isolate* isolate = args.GetIsolate();
   PerIsolateData* data = PerIsolateData::Get(isolate);
   Local<Context> context = data->realms_[index].Get(isolate);
-  DisposeModuleEmbedderData(context);
   data->realms_[index].Reset();
   // ContextDisposedNotification expects the disposed context to be entered.
   v8::Context::Scope scope(context);
@@ -2013,18 +2131,18 @@ void Shell::LogGetAndStop(const v8::FunctionCallbackInfo<v8::Value>& args) {
   i::Isolate* i_isolate = reinterpret_cast<i::Isolate*>(isolate);
   HandleScope handle_scope(isolate);
 
-  std::string file_name = i_isolate->logger()->file_name();
-  if (!i::Log::IsLoggingToTemporaryFile(file_name)) {
+  std::string file_name = i_isolate->v8_file_logger()->file_name();
+  if (!i::LogFile::IsLoggingToTemporaryFile(file_name)) {
     isolate->ThrowError("Only capturing from temporary files is supported.");
     return;
   }
-  if (!i_isolate->logger()->is_logging()) {
+  if (!i_isolate->v8_file_logger()->is_logging()) {
     isolate->ThrowError("Logging not enabled.");
     return;
   }
 
   std::string raw_log;
-  FILE* log_file = i_isolate->logger()->TearDownAndGetLogFile();
+  FILE* log_file = i_isolate->v8_file_logger()->TearDownAndGetLogFile();
   if (!log_file) {
     isolate->ThrowError("Log file does not exist.");
     return;
@@ -2055,8 +2173,9 @@ void Shell::TestVerifySourcePositions(
     return;
   }
   auto arg_handle = Utils::OpenHandle(*args[0]);
-  if (!arg_handle->IsHeapObject() || !i::Handle<i::HeapObject>::cast(arg_handle)
-                                          ->IsJSFunctionOrBoundFunction()) {
+  if (!arg_handle->IsHeapObject() ||
+      !i::Handle<i::HeapObject>::cast(arg_handle)
+           ->IsJSFunctionOrBoundFunctionOrWrappedFunction()) {
     isolate->ThrowError("Expected function as single argument.");
     return;
   }
@@ -2064,18 +2183,21 @@ void Shell::TestVerifySourcePositions(
   i::Isolate* i_isolate = reinterpret_cast<i::Isolate*>(isolate);
   HandleScope handle_scope(isolate);
 
-  auto callable = i::Handle<i::JSFunctionOrBoundFunction>::cast(arg_handle);
+  auto callable =
+      i::Handle<i::JSFunctionOrBoundFunctionOrWrappedFunction>::cast(
+          arg_handle);
   while (callable->IsJSBoundFunction()) {
     internal::DisallowGarbageCollection no_gc;
     auto bound_function = i::Handle<i::JSBoundFunction>::cast(callable);
     auto bound_target = bound_function->bound_target_function();
-    if (!bound_target.IsJSFunctionOrBoundFunction()) {
+    if (!bound_target.IsJSFunctionOrBoundFunctionOrWrappedFunction()) {
       internal::AllowGarbageCollection allow_gc;
       isolate->ThrowError("Expected function as bound target.");
       return;
     }
-    callable =
-        handle(i::JSFunctionOrBoundFunction::cast(bound_target), i_isolate);
+    callable = handle(
+        i::JSFunctionOrBoundFunctionOrWrappedFunction::cast(bound_target),
+        i_isolate);
   }
 
   i::Handle<i::JSFunction> function = i::Handle<i::JSFunction>::cast(callable);
@@ -2139,6 +2261,12 @@ void Shell::TestVerifySourcePositions(
   }
 }
 
+void Shell::InstallConditionalFeatures(
+    const v8::FunctionCallbackInfo<v8::Value>& args) {
+  Isolate* isolate = args.GetIsolate();
+  isolate->InstallConditionalFeatures(isolate->GetCurrentContext());
+}
+
 // async_hooks.createHook() registers functions to be called for different
 // lifetime events of each async operation.
 void Shell::AsyncHooksCreateHook(
@@ -2166,6 +2294,16 @@ void Shell::AsyncHooksTriggerAsyncId(
   args.GetReturnValue().Set(v8::Number::New(
       isolate,
       PerIsolateData::Get(isolate)->GetAsyncHooks()->GetTriggerAsyncId()));
+}
+
+static v8::debug::DebugDelegate dummy_delegate;
+
+void Shell::EnableDebugger(const v8::FunctionCallbackInfo<v8::Value>& args) {
+  v8::debug::SetDebugDelegate(args.GetIsolate(), &dummy_delegate);
+}
+
+void Shell::DisableDebugger(const v8::FunctionCallbackInfo<v8::Value>& args) {
+  v8::debug::SetDebugDelegate(args.GetIsolate(), nullptr);
 }
 
 void Shell::SetPromiseHooks(const v8::FunctionCallbackInfo<v8::Value>& args) {
@@ -2196,6 +2334,50 @@ void Shell::SetPromiseHooks(const v8::FunctionCallbackInfo<v8::Value>& args) {
       "d8.promise.setHooks is disabled due to missing build flag "
       "v8_enabale_javascript_in_promise_hooks");
 #endif  // V8_ENABLE_JAVASCRIPT_PROMISE_HOOKS
+}
+
+void Shell::SerializerSerialize(
+    const v8::FunctionCallbackInfo<v8::Value>& args) {
+  Isolate* isolate = args.GetIsolate();
+  HandleScope handle_scope(isolate);
+  Local<Context> context = isolate->GetCurrentContext();
+
+  ValueSerializer serializer(isolate);
+  serializer.WriteHeader();
+  for (int i = 0; i < args.Length(); i++) {
+    bool ok;
+    if (!serializer.WriteValue(context, args[i]).To(&ok)) return;
+  }
+  Local<v8::ArrayBuffer> buffer;
+  {
+    std::pair<uint8_t*, size_t> pair = serializer.Release();
+    buffer = ArrayBuffer::New(isolate, pair.second);
+    memcpy(buffer->GetBackingStore()->Data(), pair.first, pair.second);
+    free(pair.first);
+  }
+  args.GetReturnValue().Set(buffer);
+}
+
+void Shell::SerializerDeserialize(
+    const v8::FunctionCallbackInfo<v8::Value>& args) {
+  Isolate* isolate = args.GetIsolate();
+  HandleScope handle_scope(isolate);
+  Local<Context> context = isolate->GetCurrentContext();
+
+  if (!args[0]->IsArrayBuffer()) {
+    isolate->ThrowError("Can only deserialize from an ArrayBuffer");
+    return;
+  }
+  std::shared_ptr<BackingStore> backing_store =
+      args[0].As<ArrayBuffer>()->GetBackingStore();
+  ValueDeserializer deserializer(
+      isolate, static_cast<const uint8_t*>(backing_store->Data()),
+      backing_store->ByteLength());
+  bool ok;
+  if (!deserializer.ReadHeader(context).To(&ok)) return;
+  Local<Value> result;
+  if (!deserializer.ReadValue(context).ToLocal(&result)) return;
+  args.GetReturnValue().Set(result);
 }
 
 void WriteToFile(FILE* file, const v8::FunctionCallbackInfo<v8::Value>& args) {
@@ -2260,8 +2442,8 @@ void Shell::ReadFile(const v8::FunctionCallbackInfo<v8::Value>& args) {
       return;
     }
   }
-  Local<String> source = ReadFile(args.GetIsolate(), *file_name);
-  if (source.IsEmpty()) return;
+  Local<String> source;
+  if (!ReadFile(args.GetIsolate(), *file_name).ToLocal(&source)) return;
   args.GetReturnValue().Set(source);
 }
 
@@ -2270,6 +2452,9 @@ Local<String> Shell::ReadFromStdin(Isolate* isolate) {
   char buffer[kBufferSize];
   Local<String> accumulator = String::NewFromUtf8Literal(isolate, "");
   int length;
+  // Flush stdout before reading stdin, as stdout isn't guaranteed to be flushed
+  // automatically.
+  fflush(stdout);
   while (true) {
     // Continue reading if the line ends with an escape '\\' or the line has
     // not been fully read into the buffer yet (does not end with '\n').
@@ -2314,8 +2499,8 @@ void Shell::ExecuteFile(const v8::FunctionCallbackInfo<v8::Value>& args) {
           String::NewFromUtf8(isolate, oss.str().c_str()).ToLocalChecked());
       return;
     }
-    Local<String> source = ReadFile(isolate, *file_name);
-    if (source.IsEmpty()) return;
+    Local<String> source;
+    if (!ReadFile(isolate, *file_name).ToLocal(&source)) return;
     if (!ExecuteString(
             args.GetIsolate(), source,
             String::NewFromUtf8(isolate, *file_name).ToLocalChecked(),
@@ -2455,8 +2640,9 @@ MaybeLocal<String> Shell::ReadSource(
         return MaybeLocal<String>();
       }
       String::Utf8Value filename(isolate, args[index]);
-      source = Shell::ReadFile(isolate, *filename);
-      if (source.IsEmpty()) return MaybeLocal<String>();
+      if (!Shell::ReadFile(isolate, *filename).ToLocal(&source)) {
+        return MaybeLocal<String>();
+      }
       break;
     }
     case CodeType::kString:
@@ -2499,7 +2685,9 @@ void Shell::WorkerNew(const v8::FunctionCallbackInfo<v8::Value>& args) {
   {
     // Don't allow workers to create more workers if the main thread
     // is waiting for existing running workers to terminate.
-    base::MutexGuard lock_guard(workers_mutex_.Pointer());
+    i::ParkedMutexGuard lock_guard(
+        reinterpret_cast<i::Isolate*>(isolate)->main_thread_local_isolate(),
+        workers_mutex_.Pointer());
     if (!allow_new_workers_) return;
 
     String::Utf8Value script(isolate, source);
@@ -2517,7 +2705,7 @@ void Shell::WorkerNew(const v8::FunctionCallbackInfo<v8::Value>& args) {
     i::Handle<i::Object> managed = i::Managed<Worker>::FromSharedPtr(
         i_isolate, kWorkerSizeEstimate, worker);
     args.Holder()->SetInternalField(0, Utils::ToLocal(managed));
-    if (!Worker::StartWorkerThread(std::move(worker))) {
+    if (!Worker::StartWorkerThread(isolate, std::move(worker))) {
       isolate->ThrowError("Can't start thread");
       return;
     }
@@ -2558,7 +2746,7 @@ void Shell::WorkerGetMessage(const v8::FunctionCallbackInfo<v8::Value>& args) {
     return;
   }
 
-  std::unique_ptr<SerializationData> data = worker->GetMessage();
+  std::unique_ptr<SerializationData> data = worker->GetMessage(isolate);
   if (data) {
     Local<Value> value;
     if (Shell::DeserializeValue(isolate, std::move(data)).ToLocal(&value)) {
@@ -2586,14 +2774,15 @@ void Shell::WorkerTerminateAndWait(
     return;
   }
 
-  worker->TerminateAndWaitForThread();
+  i::ParkedScope parked(
+      reinterpret_cast<i::Isolate*>(isolate)->main_thread_local_isolate());
+  worker->TerminateAndWaitForThread(parked);
 }
 
 void Shell::QuitOnce(v8::FunctionCallbackInfo<v8::Value>* args) {
   int exit_code = (*args)[0]
                       ->Int32Value(args->GetIsolate()->GetCurrentContext())
                       .FromMaybe(0);
-  WaitForRunningWorkers();
   Isolate* isolate = args->GetIsolate();
   isolate->Exit();
 
@@ -2856,30 +3045,101 @@ Local<String> Shell::Stringify(Isolate* isolate, Local<Value> value) {
 
 void Shell::NodeTypeCallback(const v8::FunctionCallbackInfo<v8::Value>& args) {
   v8::Isolate* isolate = args.GetIsolate();
+
+  // HasInstance does a slow prototype chain lookup, and this function is used
+  // for micro benchmarks too.
+#ifdef DEBUG
+  PerIsolateData* data = PerIsolateData::Get(isolate);
+  if (!data->GetDomNodeCtor()->HasInstance(args.This())) {
+    isolate->ThrowError("Calling .nodeType on wrong instance type.");
+  }
+#endif
+
   args.GetReturnValue().Set(v8::Number::New(isolate, 1));
 }
 
-Local<FunctionTemplate> Shell::CreateNodeTemplates(Isolate* isolate) {
-  Local<FunctionTemplate> node = FunctionTemplate::New(isolate);
+Local<FunctionTemplate> NewDOMFunctionTemplate(Isolate* isolate,
+                                               uint16_t instance_type) {
+  return FunctionTemplate::New(
+      isolate, nullptr, Local<Value>(), Local<Signature>(), 0,
+      ConstructorBehavior::kAllow, SideEffectType::kHasSideEffect, nullptr,
+      instance_type);
+}
+
+Local<FunctionTemplate> Shell::CreateEventTargetTemplate(Isolate* isolate) {
+  Local<FunctionTemplate> event_target =
+      NewDOMFunctionTemplate(isolate, i::Internals::kFirstJSApiObjectType + 1);
+  return event_target;
+}
+
+Local<FunctionTemplate> Shell::CreateNodeTemplates(
+    Isolate* isolate, Local<FunctionTemplate> event_target) {
+  Local<FunctionTemplate> node =
+      NewDOMFunctionTemplate(isolate, i::Internals::kFirstJSApiObjectType + 2);
+  node->Inherit(event_target);
+
+  PerIsolateData* data = PerIsolateData::Get(isolate);
+  data->SetDomNodeCtor(node);
+
   Local<ObjectTemplate> proto_template = node->PrototypeTemplate();
   Local<Signature> signature = v8::Signature::New(isolate, node);
   Local<FunctionTemplate> nodeType = FunctionTemplate::New(
-      isolate, NodeTypeCallback, Local<Value>(), signature);
+      isolate, NodeTypeCallback, Local<Value>(), signature, 0,
+      ConstructorBehavior::kThrow, SideEffectType::kHasSideEffect, nullptr,
+      i::Internals::kFirstJSApiObjectType,
+      i::Internals::kFirstJSApiObjectType + 3,
+      i::Internals::kFirstJSApiObjectType + 5);
   nodeType->SetAcceptAnyReceiver(false);
   proto_template->SetAccessorProperty(
       String::NewFromUtf8Literal(isolate, "nodeType"), nodeType);
 
-  Local<FunctionTemplate> element = FunctionTemplate::New(isolate);
+  Local<FunctionTemplate> element =
+      NewDOMFunctionTemplate(isolate, i::Internals::kFirstJSApiObjectType + 3);
   element->Inherit(node);
 
-  Local<FunctionTemplate> html_element = FunctionTemplate::New(isolate);
+  Local<FunctionTemplate> html_element =
+      NewDOMFunctionTemplate(isolate, i::Internals::kFirstJSApiObjectType + 4);
   html_element->Inherit(element);
 
-  Local<FunctionTemplate> div_element = FunctionTemplate::New(isolate);
+  Local<FunctionTemplate> div_element =
+      NewDOMFunctionTemplate(isolate, i::Internals::kFirstJSApiObjectType + 5);
   div_element->Inherit(html_element);
 
   return div_element;
 }
+
+static bool D8AccessCheckCallback(Local<Context> accessing_context,
+                                  Local<Object> accessed_object,
+                                  Local<Value> data) {
+  return Isolate::GetCurrent()
+      ->GetCurrentContext()
+      ->GetSecurityToken()
+      ->StrictEquals(
+          accessed_object->GetCreationContextChecked()->GetSecurityToken());
+}
+
+static void AccessNamedGetter(Local<Name> property,
+                              const PropertyCallbackInfo<Value>& info) {}
+static void AccessNamedSetter(Local<Name> property, Local<Value> value,
+                              const PropertyCallbackInfo<Value>& info) {}
+static void AccessNamedQuery(Local<Name> property,
+                             const PropertyCallbackInfo<Integer>& info) {}
+static void AccessNamedDeleter(Local<Name> property,
+                               const PropertyCallbackInfo<Boolean>& info) {}
+static void AccessNamedEnumerator(const PropertyCallbackInfo<Array>& info) {}
+static void AccessIndexedGetter(uint32_t index,
+                                const PropertyCallbackInfo<Value>& info) {}
+
+static void AccessIndexedSetter(uint32_t index, Local<Value> value,
+                                const PropertyCallbackInfo<Value>& info) {}
+
+static void AccessIndexedQuery(uint32_t index,
+                               const PropertyCallbackInfo<Integer>& info) {}
+
+static void AccessIndexedDeleter(uint32_t index,
+                                 const PropertyCallbackInfo<Boolean>& info) {}
+
+static void AccessIndexedEnumerator(const PropertyCallbackInfo<Array>& info) {}
 
 Local<ObjectTemplate> Shell::CreateGlobalTemplate(Isolate* isolate) {
   Local<ObjectTemplate> global_template = ObjectTemplate::New(isolate);
@@ -2932,6 +3192,18 @@ Local<ObjectTemplate> Shell::CreateGlobalTemplate(Isolate* isolate) {
   if (i::FLAG_expose_async_hooks) {
     global_template->Set(isolate, "async_hooks",
                          Shell::CreateAsyncHookTemplate(isolate));
+  }
+
+  if (options.throw_on_failed_access_check ||
+      options.noop_on_failed_access_check) {
+    global_template->SetAccessCheckCallbackAndHandler(
+        D8AccessCheckCallback,
+        v8::NamedPropertyHandlerConfiguration(
+            AccessNamedGetter, AccessNamedSetter, AccessNamedQuery,
+            AccessNamedDeleter, AccessNamedEnumerator),
+        v8::IndexedPropertyHandlerConfiguration(
+            AccessIndexedGetter, AccessIndexedSetter, AccessIndexedQuery,
+            AccessIndexedDeleter, AccessIndexedEnumerator));
   }
 
   return global_template;
@@ -3074,7 +3346,11 @@ Local<ObjectTemplate> Shell::CreateD8Template(Isolate* isolate) {
   }
   {
     Local<ObjectTemplate> dom_template = ObjectTemplate::New(isolate);
-    dom_template->Set(isolate, "Div", Shell::CreateNodeTemplates(isolate));
+    Local<FunctionTemplate> event_target =
+        Shell::CreateEventTargetTemplate(isolate);
+    dom_template->Set(isolate, "EventTarget", event_target);
+    dom_template->Set(isolate, "Div",
+                      Shell::CreateNodeTemplates(isolate, event_target));
     d8_template->Set(isolate, "dom", dom_template);
   }
   {
@@ -3096,6 +3372,11 @@ Local<ObjectTemplate> Shell::CreateD8Template(Isolate* isolate) {
       test_template->Set(isolate, "LeafInterfaceType",
                          Shell::CreateLeafInterfaceTypeTemplate(isolate));
     }
+    // Allows testing code paths that are triggered when Origin Trials are
+    // added in the browser.
+    test_template->Set(
+        isolate, "installConditionalFeatures",
+        FunctionTemplate::New(isolate, Shell::InstallConditionalFeatures));
 
     d8_template->Set(isolate, "test", test_template);
   }
@@ -3106,6 +3387,29 @@ Local<ObjectTemplate> Shell::CreateD8Template(Isolate* isolate) {
         FunctionTemplate::New(isolate, SetPromiseHooks, Local<Value>(),
                               Local<Signature>(), 4));
     d8_template->Set(isolate, "promise", promise_template);
+  }
+  {
+    Local<ObjectTemplate> debugger_template = ObjectTemplate::New(isolate);
+    debugger_template->Set(
+        isolate, "enable",
+        FunctionTemplate::New(isolate, EnableDebugger, Local<Value>(),
+                              Local<Signature>(), 0));
+    debugger_template->Set(
+        isolate, "disable",
+        FunctionTemplate::New(isolate, DisableDebugger, Local<Value>(),
+                              Local<Signature>(), 0));
+    d8_template->Set(isolate, "debugger", debugger_template);
+  }
+  {
+    Local<ObjectTemplate> serializer_template = ObjectTemplate::New(isolate);
+    serializer_template->Set(
+        isolate, "serialize",
+        FunctionTemplate::New(isolate, SerializerSerialize));
+    serializer_template->Set(
+        isolate, "deserialize",
+        FunctionTemplate::New(isolate, SerializerDeserialize, Local<Value>(),
+                              Local<Signature>(), 1));
+    d8_template->Set(isolate, "serializer", serializer_template);
   }
   return d8_template;
 }
@@ -3182,6 +3486,11 @@ void Shell::PromiseRejectCallback(v8::PromiseRejectMessage data) {
   isolate_data->AddUnhandledPromise(promise, message, exception);
 }
 
+static void ThrowOnFailedAccessCheck(Local<Object> host, v8::AccessType type,
+                                     Local<Value> data) {
+  Isolate::GetCurrent()->ThrowError("Error in failed access check callback");
+}
+
 void Shell::Initialize(Isolate* isolate, D8Console* console,
                        bool isOnMainThread) {
   isolate->SetPromiseRejectCallback(PromiseRejectCallback);
@@ -3204,6 +3513,13 @@ void Shell::Initialize(Isolate* isolate, D8Console* console,
       Shell::HostInitializeImportMetaObject);
   isolate->SetHostCreateShadowRealmContextCallback(
       Shell::HostCreateShadowRealmContext);
+
+  if (options.throw_on_failed_access_check) {
+    isolate->SetFailedAccessCheckCallbackFunction(ThrowOnFailedAccessCheck);
+  } else if (options.noop_on_failed_access_check) {
+    isolate->SetFailedAccessCheckCallbackFunction(
+        [](Local<Object> host, v8::AccessType type, Local<Value> data) {});
+  }
 
 #ifdef V8_FUZZILLI
   // Let the parent process (Fuzzilli) know we are ready.
@@ -3229,17 +3545,20 @@ void Shell::Initialize(Isolate* isolate, D8Console* console,
 
 Local<String> Shell::WasmLoadSourceMapCallback(Isolate* isolate,
                                                const char* path) {
-  return Shell::ReadFile(isolate, path, false);
+  return Shell::ReadFile(isolate, path, false).ToLocalChecked();
 }
 
 Local<Context> Shell::CreateEvaluationContext(Isolate* isolate) {
   // This needs to be a critical section since this is not thread-safe
-  base::MutexGuard lock_guard(context_mutex_.Pointer());
+  i::ParkedMutexGuard lock_guard(
+      reinterpret_cast<i::Isolate*>(isolate)->main_thread_local_isolate(),
+      context_mutex_.Pointer());
   // Initialize the global objects
   Local<ObjectTemplate> global_template = CreateGlobalTemplate(isolate);
   EscapableHandleScope handle_scope(isolate);
   Local<Context> context = Context::New(isolate, nullptr, global_template);
-  DCHECK(!context.IsEmpty());
+  DCHECK_IMPLIES(context.IsEmpty(), isolate->IsExecutionTerminating());
+  if (context.IsEmpty()) return {};
   if (i::FLAG_perf_prof_annotate_wasm || i::FLAG_vtune_prof_annotate_wasm) {
     isolate->SetWasmLoadSourceMapCallback(Shell::WasmLoadSourceMapCallback);
   }
@@ -3378,10 +3697,8 @@ void Shell::WriteLcovData(v8::Isolate* isolate, const char* file) {
 }
 
 void Shell::OnExit(v8::Isolate* isolate, bool dispose) {
+  platform::NotifyIsolateShutdown(g_default_platform, isolate);
   isolate->Dispose();
-  if (shared_isolate) {
-    i::Isolate::Delete(reinterpret_cast<i::Isolate*>(shared_isolate));
-  }
 
   // Simulate errors before disposing V8, as that resets flags (via
   // FlagList::ResetAllFlags()), but error simulation reads the random seed.
@@ -3527,32 +3844,12 @@ V8_NOINLINE void FuzzerMonitor::UseOfUninitializedValue() {
 #endif
 }
 
-static FILE* FOpen(const char* path, const char* mode) {
-#if defined(_MSC_VER) && (defined(_WIN32) || defined(_WIN64))
-  FILE* result;
-  if (fopen_s(&result, path, mode) == 0) {
-    return result;
-  } else {
-    return nullptr;
-  }
-#else
-  FILE* file = base::Fopen(path, mode);
-  if (file == nullptr) return nullptr;
-  struct stat file_stat;
-  if (fstat(fileno(file), &file_stat) != 0) return nullptr;
-  bool is_regular_file = ((file_stat.st_mode & S_IFREG) != 0);
-  if (is_regular_file) return file;
-  base::Fclose(file);
-  return nullptr;
-#endif
-}
-
 char* Shell::ReadChars(const char* name, int* size_out) {
   if (options.read_from_tcp_port >= 0) {
     return ReadCharsFromTcpPort(name, size_out);
   }
 
-  FILE* file = FOpen(name, "rb");
+  FILE* file = base::OS::FOpen(name, "rb");
   if (file == nullptr) return nullptr;
 
   fseek(file, 0, SEEK_END);
@@ -3577,11 +3874,12 @@ char* Shell::ReadChars(const char* name, int* size_out) {
 MaybeLocal<PrimitiveArray> Shell::ReadLines(Isolate* isolate,
                                             const char* name) {
   int length;
-  const char* data = reinterpret_cast<const char*>(ReadChars(name, &length));
-  if (data == nullptr) {
+  std::unique_ptr<char[]> data(ReadChars(name, &length));
+
+  if (data.get() == nullptr) {
     return MaybeLocal<PrimitiveArray>();
   }
-  std::stringstream stream(data);
+  std::stringstream stream(data.get());
   std::string line;
   std::vector<std::string> lines;
   while (std::getline(stream, line, '\n')) {
@@ -3627,33 +3925,31 @@ void Shell::ReadBuffer(const v8::FunctionCallbackInfo<v8::Value>& args) {
 }
 
 // Reads a file into a v8 string.
-Local<String> Shell::ReadFile(Isolate* isolate, const char* name,
-                              bool should_throw) {
+MaybeLocal<String> Shell::ReadFile(Isolate* isolate, const char* name,
+                                   bool should_throw) {
   std::unique_ptr<base::OS::MemoryMappedFile> file(
       base::OS::MemoryMappedFile::open(
           name, base::OS::MemoryMappedFile::FileMode::kReadOnly));
   if (!file) {
     if (should_throw) {
       std::ostringstream oss;
-      oss << "Error loading file: \"" << name << '"';
+      oss << "Error loading file: " << name;
       isolate->ThrowError(
-          v8::String::NewFromUtf8(isolate, oss.str().c_str()).ToLocalChecked());
+          v8::String::NewFromUtf8(
+              isolate, oss.str().substr(0, String::kMaxLength).c_str())
+              .ToLocalChecked());
     }
-    return Local<String>();
+    return MaybeLocal<String>();
   }
 
   int size = static_cast<int>(file->size());
   char* chars = static_cast<char*>(file->memory());
-  Local<String> result;
   if (i::FLAG_use_external_strings && i::String::IsAscii(chars, size)) {
     String::ExternalOneByteStringResource* resource =
         new ExternalOwningOneByteStringResource(std::move(file));
-    result = String::NewExternalOneByte(isolate, resource).ToLocalChecked();
-  } else {
-    result = String::NewFromUtf8(isolate, chars, NewStringType::kNormal, size)
-                 .ToLocalChecked();
+    return String::NewExternalOneByte(isolate, resource);
   }
-  return result;
+  return String::NewFromUtf8(isolate, chars, NewStringType::kNormal, size);
 }
 
 void Shell::WriteChars(const char* name, uint8_t* buffer, size_t buffer_size) {
@@ -3680,9 +3976,6 @@ void Shell::RunShell(Isolate* isolate) {
                   kProcessMessageQueue);
   }
   printf("\n");
-  // We need to explicitly clean up the module embedder data for
-  // the interative shell context.
-  DisposeModuleEmbedderData(context);
 }
 
 class InspectorFrontend final : public v8_inspector::V8Inspector::Channel {
@@ -3756,7 +4049,8 @@ class InspectorClient : public v8_inspector::V8InspectorClient {
     channel_.reset(new InspectorFrontend(context));
     inspector_ = v8_inspector::V8Inspector::create(isolate_, this);
     session_ =
-        inspector_->connect(1, channel_.get(), v8_inspector::StringView());
+        inspector_->connect(1, channel_.get(), v8_inspector::StringView(),
+                            v8_inspector::V8Inspector::kFullyTrusted);
     context->SetAlignedPointerInEmbedderData(kInspectorClientIndex, this);
     inspector_->contextCreated(v8_inspector::V8ContextInfo(
         context, kContextGroupId, v8_inspector::StringView()));
@@ -3929,6 +4223,15 @@ bool SourceGroup::Execute(Isolate* isolate) {
         break;
       }
       continue;
+    } else if (strcmp(arg, "--json") == 0 && i + 1 < end_offset_) {
+      // Treat the next file as a JSON file.
+      arg = argv_[++i];
+      Shell::set_script_executed();
+      if (!Shell::LoadJSON(isolate, arg)) {
+        success = false;
+        break;
+      }
+      continue;
     } else if (arg[0] == '-') {
       // Ignore other options. They have been parsed already.
       continue;
@@ -3938,8 +4241,8 @@ bool SourceGroup::Execute(Isolate* isolate) {
     HandleScope handle_scope(isolate);
     Local<String> file_name =
         String::NewFromUtf8(isolate, arg).ToLocalChecked();
-    Local<String> source = Shell::ReadFile(isolate, arg);
-    if (source.IsEmpty()) {
+    Local<String> source;
+    if (!Shell::ReadFile(isolate, arg).ToLocal(&source)) {
       printf("Error reading '%s'\n", arg);
       base::OS::ExitProcess(1);
     }
@@ -3952,6 +4255,13 @@ bool SourceGroup::Execute(Isolate* isolate) {
       break;
     }
   }
+  if (!success) {
+    return false;
+  }
+  if (Shell::options.web_snapshot_config ||
+      Shell::options.web_snapshot_output) {
+    success = Shell::TakeWebSnapshot(isolate);
+  }
   return success;
 }
 
@@ -3961,14 +4271,16 @@ SourceGroup::IsolateThread::IsolateThread(SourceGroup* group)
 void SourceGroup::ExecuteInThread() {
   Isolate::CreateParams create_params;
   create_params.array_buffer_allocator = Shell::array_buffer_allocator;
-  create_params.experimental_attach_to_shared_isolate = Shell::shared_isolate;
   Isolate* isolate = Isolate::New(create_params);
   Shell::SetWaitUntilDone(isolate, false);
   D8Console console(isolate);
   Shell::Initialize(isolate, &console, false);
 
   for (int i = 0; i < Shell::options.stress_runs; ++i) {
-    next_semaphore_.Wait();
+    {
+      next_semaphore_.ParkedWait(
+          reinterpret_cast<i::Isolate*>(isolate)->main_thread_local_isolate());
+    }
     {
       Isolate::Scope iscope(isolate);
       PerIsolateData data(isolate);
@@ -3983,7 +4295,6 @@ void SourceGroup::ExecuteInThread() {
           Execute(isolate);
           Shell::CompleteMessageLoop(isolate);
         }
-        DisposeModuleEmbedderData(context);
       }
       Shell::CollectGarbage(isolate);
     }
@@ -4001,12 +4312,13 @@ void SourceGroup::StartExecuteInThread() {
   next_semaphore_.Signal();
 }
 
-void SourceGroup::WaitForThread() {
+void SourceGroup::WaitForThread(const i::ParkedScope& parked) {
   if (thread_ == nullptr) return;
-  done_semaphore_.Wait();
+  done_semaphore_.ParkedWait(parked);
 }
 
-void SourceGroup::JoinThread() {
+void SourceGroup::JoinThread(const i::ParkedScope& parked) {
+  USE(parked);
   if (thread_ == nullptr) return;
   thread_->Join();
 }
@@ -4051,7 +4363,8 @@ Worker::~Worker() {
 
 bool Worker::is_running() const { return state_.load() == State::kRunning; }
 
-bool Worker::StartWorkerThread(std::shared_ptr<Worker> worker) {
+bool Worker::StartWorkerThread(Isolate* requester,
+                               std::shared_ptr<Worker> worker) {
   auto expected = State::kReady;
   CHECK(
       worker->state_.compare_exchange_strong(expected, State::kPrepareRunning));
@@ -4059,7 +4372,8 @@ bool Worker::StartWorkerThread(std::shared_ptr<Worker> worker) {
   worker->thread_ = thread;
   if (!thread->Start()) return false;
   // Wait until the worker is ready to receive messages.
-  worker->started_semaphore_.Wait();
+  worker->started_semaphore_.ParkedWait(
+      reinterpret_cast<i::Isolate*>(requester)->main_thread_local_isolate());
   Shell::AddRunningWorker(std::move(worker));
   return true;
 }
@@ -4116,18 +4430,20 @@ class TerminateTask : public i::CancelableTask {
   std::shared_ptr<Worker> worker_;
 };
 
-std::unique_ptr<SerializationData> Worker::GetMessage() {
+std::unique_ptr<SerializationData> Worker::GetMessage(Isolate* requester) {
   std::unique_ptr<SerializationData> result;
   while (!out_queue_.Dequeue(&result)) {
     // If the worker is no longer running, and there are no messages in the
     // queue, don't expect any more messages from it.
     if (!is_running()) break;
-    out_semaphore_.Wait();
+    out_semaphore_.ParkedWait(
+        reinterpret_cast<i::Isolate*>(requester)->main_thread_local_isolate());
   }
   return result;
 }
 
-void Worker::TerminateAndWaitForThread() {
+void Worker::TerminateAndWaitForThread(const i::ParkedScope& parked) {
+  USE(parked);
   Terminate();
   {
     base::MutexGuard lock_guard(&worker_mutex_);
@@ -4145,6 +4461,10 @@ void Worker::Terminate() {
   std::unique_ptr<v8::Task> task(
       new TerminateTask(task_manager_, shared_from_this()));
   task_runner_->PostTask(std::move(task));
+  // Also schedule an interrupt in case the worker is running code and never
+  // returning to the event queue. Since we checked the state before, and we are
+  // holding the {worker_mutex_}, it's safe to access the isolate.
+  isolate_->TerminateExecution();
 }
 
 void Worker::ProcessMessage(std::unique_ptr<SerializationData> data) {
@@ -4189,7 +4509,6 @@ void Worker::ProcessMessages() {
 void Worker::ExecuteInThread() {
   Isolate::CreateParams create_params;
   create_params.array_buffer_allocator = Shell::array_buffer_allocator;
-  create_params.experimental_attach_to_shared_isolate = Shell::shared_isolate;
   isolate_ = Isolate::New(create_params);
 
   task_runner_ = g_default_platform->GetForegroundTaskRunner(isolate_);
@@ -4204,12 +4523,15 @@ void Worker::ExecuteInThread() {
 
   D8Console console(isolate_);
   Shell::Initialize(isolate_, &console, false);
-  {
+  // This is not really a loop, but the loop allows us to break out of this
+  // block easily.
+  for (bool execute = true; execute; execute = false) {
     Isolate::Scope iscope(isolate_);
     {
       HandleScope scope(isolate_);
       PerIsolateData data(isolate_);
       Local<Context> context = Shell::CreateEvaluationContext(isolate_);
+      if (context.IsEmpty()) break;
       context_.Reset(isolate_, context);
       {
         Context::Scope cscope(context);
@@ -4251,7 +4573,6 @@ void Worker::ExecuteInThread() {
           }
         }
       }
-      DisposeModuleEmbedderData(context);
     }
     Shell::CollectGarbage(isolate_);
   }
@@ -4296,9 +4617,43 @@ void Worker::PostMessageOut(const v8::FunctionCallbackInfo<v8::Value>& args) {
   }
 }
 
+#ifdef V8_TARGET_OS_WIN
+// Enable support for unicode filename path on windows.
+// We first convert ansi encoded argv[i] to utf16 encoded, and then
+// convert utf16 encoded to utf8 encoded with setting the argv[i]
+// to the utf8 encoded arg. We allocate memory for the utf8 encoded
+// arg, and we will free it and reset it to nullptr after using
+// the filename path arg. And because Execute may be called multiple
+// times, we need to free the allocated unicode filename when exit.
+
+// Save the allocated utf8 filenames, and we will free them when exit.
+std::vector<char*> utf8_filenames;
+#include <shellapi.h>
+// Convert utf-16 encoded string to utf-8 encoded.
+char* ConvertUtf16StringToUtf8(const wchar_t* str) {
+  // On Windows wchar_t must be a 16-bit value.
+  static_assert(sizeof(wchar_t) == 2, "wrong wchar_t size");
+  int len =
+      WideCharToMultiByte(CP_UTF8, 0, str, -1, nullptr, 0, nullptr, FALSE);
+  DCHECK_LT(0, len);
+  char* utf8_str = new char[len];
+  utf8_filenames.push_back(utf8_str);
+  WideCharToMultiByte(CP_UTF8, 0, str, -1, utf8_str, len, nullptr, FALSE);
+  return utf8_str;
+}
+
+// Convert ansi encoded argv[i] to utf8 encoded.
+void PreProcessUnicodeFilenameArg(char* argv[], int i) {
+  int argc;
+  wchar_t** wargv = CommandLineToArgvW(GetCommandLineW(), &argc);
+  argv[i] = ConvertUtf16StringToUtf8(wargv[i]);
+  LocalFree(wargv);
+}
+
+#endif
+
 bool Shell::SetOptions(int argc, char* argv[]) {
   bool logfile_per_isolate = false;
-  bool no_always_opt = false;
   options.d8_path = argv[0];
   for (int i = 0; i < argc; i++) {
     if (strcmp(argv[i], "--") == 0) {
@@ -4314,16 +4669,6 @@ bool Shell::SetOptions(int argc, char* argv[]) {
     } else if (strcmp(argv[i], "--simulate-errors") == 0) {
       options.simulate_errors = true;
       argv[i] = nullptr;
-    } else if (strcmp(argv[i], "--stress-opt") == 0) {
-      options.stress_opt = true;
-      argv[i] = nullptr;
-    } else if (strcmp(argv[i], "--nostress-opt") == 0 ||
-               strcmp(argv[i], "--no-stress-opt") == 0) {
-      options.stress_opt = false;
-      argv[i] = nullptr;
-    } else if (strcmp(argv[i], "--noalways-opt") == 0 ||
-               strcmp(argv[i], "--no-always-opt") == 0) {
-      no_always_opt = true;
     } else if (strcmp(argv[i], "--fuzzing") == 0 ||
                strcmp(argv[i], "--no-abort-on-contradictory-flags") == 0 ||
                strcmp(argv[i], "--noabort-on-contradictory-flags") == 0) {
@@ -4403,8 +4748,7 @@ bool Shell::SetOptions(int argc, char* argv[]) {
             ShellOptions::CodeCacheOptions::kProduceCache;
       } else if (strncmp(value, "=none", 6) == 0) {
         options.compile_options = v8::ScriptCompiler::kNoCompileOptions;
-        options.code_cache_options =
-            ShellOptions::CodeCacheOptions::kNoProduceCache;
+        options.code_cache_options = ShellOptions::kNoProduceCache;
       } else if (strncmp(value, "=after-execute", 15) == 0) {
         options.compile_options = v8::ScriptCompiler::kNoCompileOptions;
         options.code_cache_options =
@@ -4468,6 +4812,9 @@ bool Shell::SetOptions(int argc, char* argv[]) {
       options.cpu_profiler = true;
       options.cpu_profiler_print = true;
       argv[i] = nullptr;
+    } else if (strcmp(argv[i], "--stress-deserialize") == 0) {
+      options.stress_deserialize = true;
+      argv[i] = nullptr;
     } else if (strncmp(argv[i], "--web-snapshot-config=", 22) == 0) {
       options.web_snapshot_config = argv[i] + 22;
       argv[i] = nullptr;
@@ -4495,12 +4842,16 @@ bool Shell::SetOptions(int argc, char* argv[]) {
       DCHECK(options.fuzzy_module_file_extensions);
       options.fuzzy_module_file_extensions = false;
       argv[i] = nullptr;
+#if defined(V8_ENABLE_ETW_STACK_WALKING)
+    } else if (strcmp(argv[i], "--enable-etw-stack-walking") == 0) {
+      options.enable_etw_stack_walking = true;
+      // This needs to be manually triggered for JIT ETW events to work.
+      i::FLAG_enable_etw_stack_walking = true;
 #if defined(V8_ENABLE_SYSTEM_INSTRUMENTATION)
     } else if (strcmp(argv[i], "--enable-system-instrumentation") == 0) {
       options.enable_system_instrumentation = true;
       options.trace_enabled = true;
-      // This needs to be manually triggered for JIT ETW events to work.
-      i::FLAG_enable_system_instrumentation = true;
+#endif
 #if defined(V8_OS_WIN)
       // Guard this bc the flag has a lot of overhead and is not currently used
       // by macos
@@ -4519,11 +4870,29 @@ bool Shell::SetOptions(int argc, char* argv[]) {
     } else if (strcmp(argv[i], "--expose-fast-api") == 0) {
       options.expose_fast_api = true;
       argv[i] = nullptr;
+#if V8_ENABLE_SANDBOX
+    } else if (strcmp(argv[i], "--enable-sandbox-crash-filter") == 0) {
+      options.enable_sandbox_crash_filter = true;
+      argv[i] = nullptr;
+#endif  // V8_ENABLE_SANDBOX
+    } else if (strcmp(argv[i], "--throw-on-failed-access-check") == 0) {
+      options.throw_on_failed_access_check = true;
+      argv[i] = nullptr;
+    } else if (strcmp(argv[i], "--noop-on-failed-access-check") == 0) {
+      options.noop_on_failed_access_check = true;
+      argv[i] = nullptr;
+    } else {
+#ifdef V8_TARGET_OS_WIN
+      PreProcessUnicodeFilenameArg(argv, i);
+#endif
     }
   }
 
-  if (options.stress_opt && no_always_opt && check_d8_flag_contradictions) {
-    FATAL("Flag --no-always-opt is incompatible with --stress-opt.");
+  if (options.throw_on_failed_access_check &&
+      options.noop_on_failed_access_check && check_d8_flag_contradictions) {
+    FATAL(
+        "Flag --throw-on-failed-access-check is incompatible with "
+        "--noop-on-failed-access-check.");
   }
 
   const char* usage =
@@ -4562,7 +4931,8 @@ bool Shell::SetOptions(int argc, char* argv[]) {
       current++;
       current->Begin(argv, i + 1);
     } else if (strcmp(str, "--module") == 0 ||
-               strcmp(str, "--web-snapshot") == 0) {
+               strcmp(str, "--web-snapshot") == 0 ||
+               strcmp(str, "--json") == 0) {
       // Pass on to SourceGroup, which understands these options.
     } else if (strncmp(str, "--", 2) == 0) {
       if (!i::FLAG_correctness_fuzzer_suppressions) {
@@ -4609,9 +4979,6 @@ int Shell::RunMain(Isolate* isolate, bool last_run) {
       if (!options.isolate_sources[0].Execute(isolate)) success = false;
       if (!CompleteMessageLoop(isolate)) success = false;
     }
-    if (!use_existing_context) {
-      DisposeModuleEmbedderData(context);
-    }
     WriteLcovData(isolate, options.lcov_file);
     if (last_run && i::FLAG_stress_snapshot) {
       static constexpr bool kClearRecompilableData = true;
@@ -4635,12 +5002,12 @@ int Shell::RunMain(Isolate* isolate, bool last_run) {
 
   for (int i = 1; i < options.num_isolates; ++i) {
     if (last_run) {
-      options.isolate_sources[i].JoinThread();
+      options.isolate_sources[i].JoinThread(parked);
     } else {
-      options.isolate_sources[i].WaitForThread();
+      options.isolate_sources[i].WaitForThread(parked);
     }
   }
-  WaitForRunningWorkers();
+  WaitForRunningWorkers(parked);
   if (Shell::unhandled_promise_rejections_.load() > 0) {
     printf("%i pending unhandled Promise rejection(s) detected.\n",
            Shell::unhandled_promise_rejections_.load());
@@ -4884,28 +5251,10 @@ class Serializer : public ValueSerializer::Delegate {
 
   void FreeBufferMemory(void* buffer) override { base::Free(buffer); }
 
-  bool SupportsSharedValues() const override { return true; }
-
-  Maybe<uint32_t> GetSharedValueId(Isolate* isolate,
-                                   Local<Value> shared_value) override {
-    DCHECK_NOT_NULL(data_);
-    for (size_t index = 0; index < data_->shared_values_.size(); ++index) {
-      if (data_->shared_values_[index] == shared_value) {
-        return Just<uint32_t>(static_cast<uint32_t>(index));
-      }
-    }
-
-    size_t index = data_->shared_values_.size();
-    // Shared values in transit are kept alive by global handles in the shared
-    // isolate. No code ever runs in the shared Isolate, so locking it does not
-    // contend with long-running tasks.
-    {
-      DCHECK_EQ(reinterpret_cast<i::Isolate*>(isolate)->shared_isolate(),
-                reinterpret_cast<i::Isolate*>(Shell::shared_isolate));
-      v8::Locker locker(Shell::shared_isolate);
-      data_->shared_values_.emplace_back(Shell::shared_isolate, shared_value);
-    }
-    return Just<uint32_t>(static_cast<uint32_t>(index));
+  bool AdoptSharedValueConveyor(Isolate* isolate,
+                                SharedValueConveyor&& conveyor) override {
+    data_->shared_value_conveyor_.emplace(std::move(conveyor));
+    return true;
   }
 
  private:
@@ -4952,7 +5301,8 @@ class Serializer : public ValueSerializer::Delegate {
       Local<ArrayBuffer> array_buffer =
           Local<ArrayBuffer>::New(isolate_, global_array_buffer);
       if (!array_buffer->IsDetachable()) {
-        isolate_->ThrowError("ArrayBuffer could not be transferred");
+        isolate_->ThrowError(
+            "ArrayBuffer is not detachable and could not be transferred");
         return Nothing<bool>();
       }
 
@@ -4964,6 +5314,7 @@ class Serializer : public ValueSerializer::Delegate {
     return Just(true);
   }
 
+  // This must come before ValueSerializer as it caches this value.
   Isolate* isolate_;
   ValueSerializer serializer_;
   std::unique_ptr<SerializationData> data_;
@@ -4974,12 +5325,6 @@ class Serializer : public ValueSerializer::Delegate {
   size_t current_memory_usage_;
 };
 
-void SerializationData::ClearSharedValuesUnderLockIfNeeded() {
-  if (shared_values_.empty()) return;
-  v8::Locker locker(Shell::shared_isolate);
-  shared_values_.clear();
-}
-
 class Deserializer : public ValueDeserializer::Delegate {
  public:
   Deserializer(Isolate* isolate, std::unique_ptr<SerializationData> data)
@@ -4987,12 +5332,6 @@ class Deserializer : public ValueDeserializer::Delegate {
         deserializer_(isolate, data->data(), data->size(), this),
         data_(std::move(data)) {
     deserializer_.SetSupportsLegacyWireFormat(true);
-  }
-
-  ~Deserializer() {
-    DCHECK_EQ(reinterpret_cast<i::Isolate*>(isolate_)->shared_isolate(),
-              reinterpret_cast<i::Isolate*>(Shell::shared_isolate));
-    data_->ClearSharedValuesUnderLockIfNeeded();
   }
 
   Deserializer(const Deserializer&) = delete;
@@ -5032,15 +5371,12 @@ class Deserializer : public ValueDeserializer::Delegate {
         isolate_, data_->compiled_wasm_modules().at(transfer_id));
   }
 
-  bool SupportsSharedValues() const override { return true; }
-
-  MaybeLocal<Value> GetSharedValueFromId(Isolate* isolate,
-                                         uint32_t id) override {
+  const SharedValueConveyor* GetSharedValueConveyor(Isolate* isolate) override {
     DCHECK_NOT_NULL(data_);
-    if (id < data_->shared_values().size()) {
-      return data_->shared_values().at(id).Get(isolate);
+    if (data_->shared_value_conveyor()) {
+      return &data_->shared_value_conveyor().value();
     }
-    return MaybeLocal<Value>();
+    return nullptr;
   }
 
  private:
@@ -5064,24 +5400,6 @@ class D8Testing {
 #else
     return 5;
 #endif
-  }
-
-  /**
-   * Indicate the number of the run which is about to start. The value of run
-   * should be between 0 and one less than the result from GetStressRuns()
-   */
-  static void PrepareStressRun(int run) {
-    static const char* kLazyOptimizations =
-        "--prepare-always-opt "
-        "--max-inlined-bytecode-size=999999 "
-        "--max-inlined-bytecode-size-cumulative=999999 "
-        "--noalways-opt";
-
-    if (run == 0) {
-      V8::SetFlagsFromString(kLazyOptimizations);
-    } else if (run == GetStressRuns() - 1) {
-      i::FLAG_always_opt = true;
-    }
   }
 
   /**
@@ -5125,7 +5443,7 @@ void Shell::RemoveRunningWorker(const std::shared_ptr<Worker>& worker) {
   if (it != running_workers_.end()) running_workers_.erase(it);
 }
 
-void Shell::WaitForRunningWorkers() {
+void Shell::WaitForRunningWorkers(const i::ParkedScope& parked) {
   // Make a copy of running_workers_, because we don't want to call
   // Worker::Terminate while holding the workers_mutex_ lock. Otherwise, if a
   // worker is about to create a new Worker, it would deadlock.
@@ -5137,7 +5455,7 @@ void Shell::WaitForRunningWorkers() {
   }
 
   for (auto& worker : workers_copy) {
-    worker->TerminateAndWaitForThread();
+    worker->TerminateAndWaitForThread(parked);
   }
 
   // Now that all workers are terminated, we can re-enable Worker creation.
@@ -5148,13 +5466,37 @@ void Shell::WaitForRunningWorkers() {
 
 namespace {
 
-bool HasFlagThatRequiresSharedIsolate() { return i::FLAG_shared_string_table; }
+#ifdef V8_OS_POSIX
+void d8_sigterm_handler(int signal, siginfo_t* info, void* context) {
+  // Dump stacktraces when terminating d8 instances with SIGTERM.
+  // SIGKILL is not intercepted.
+  if (signal == SIGTERM) {
+    FATAL("d8: Received SIGTERM signal (likely due to a TIMEOUT)\n");
+  } else {
+    UNREACHABLE();
+  }
+}
+#endif  // V8_OS_POSIX
+
+void d8_install_sigterm_handler() {
+#ifdef V8_OS_POSIX
+  CHECK(!i::FLAG_fuzzing);
+  struct sigaction sa;
+  sa.sa_sigaction = d8_sigterm_handler;
+  sigemptyset(&sa.sa_mask);
+  sa.sa_flags = 0;
+  if (sigaction(SIGTERM, &sa, NULL) == -1) {
+    FATAL("Could not install SIGTERM handler");
+  }
+#endif  // V8_OS_POSIX
+}
 
 }  // namespace
 
 int Shell::Main(int argc, char* argv[]) {
   v8::base::EnsureConsoleOutput();
   if (!SetOptions(argc, argv)) return 1;
+  if (!i::FLAG_fuzzing) d8_install_sigterm_handler();
 
   v8::V8::InitializeICUDefaultLocation(argv[0], options.icu_data_file);
 
@@ -5176,7 +5518,7 @@ int Shell::Main(int argc, char* argv[]) {
   if (options.trace_enabled && !i::FLAG_verify_predictable) {
     tracing = std::make_unique<platform::tracing::TracingController>();
 
-    if (!options.enable_system_instrumentation) {
+    if (!options.enable_etw_stack_walking) {
       const char* trace_path =
           options.trace_path ? options.trace_path : "v8_trace.json";
       trace_file.open(trace_path);
@@ -5240,11 +5582,13 @@ int Shell::Main(int argc, char* argv[]) {
     V8::SetFlagsFromString("--redirect-code-traces-to=code.asm");
   }
   v8::V8::InitializePlatform(g_platform.get());
-#ifdef V8_SANDBOX
-  if (!v8::V8::InitializeSandbox()) {
-    FATAL("Could not initialize the sandbox");
+
+  // Disable flag freezing if we are producing a code cache, because for that we
+  // modify FLAG_hash_seed (below).
+  if (options.code_cache_options != ShellOptions::kNoProduceCache) {
+    i::FLAG_freeze_flags_after_init = false;
   }
-#endif
+
   v8::V8::Initialize();
   if (options.snapshot_blob) {
     v8::V8::InitializeExternalStartupDataFromFile(options.snapshot_blob);
@@ -5279,7 +5623,9 @@ int Shell::Main(int argc, char* argv[]) {
   }
   create_params.array_buffer_allocator = Shell::array_buffer_allocator;
 #ifdef ENABLE_VTUNE_JIT_INTERFACE
-  create_params.code_event_handler = vTune::GetVtuneCodeEventHandler();
+  if (i::FLAG_enable_vtunejit) {
+    create_params.code_event_handler = vTune::GetVtuneCodeEventHandler();
+  }
 #endif
   create_params.constraints.ConfigureDefaults(
       base::SysInfo::AmountOfPhysicalMemory(),
@@ -5293,6 +5639,15 @@ int Shell::Main(int argc, char* argv[]) {
     create_params.add_histogram_sample_callback = AddHistogramSample;
   }
 
+#ifdef V8_ENABLE_SANDBOX
+  if (options.enable_sandbox_crash_filter) {
+    // Note: this must happen before the Wasm trap handler is installed, so
+    // that the Wasm trap handler is invoked first (and can handle Wasm OOB
+    // accesses), then forwards all "real" crashes to the sandbox crash filter.
+    i::SandboxTesting::InstallSandboxCrashFilter();
+  }
+#endif
+
 #if V8_ENABLE_WEBASSEMBLY
   if (V8_TRAP_HANDLER_SUPPORTED && options.wasm_trap_handler) {
     constexpr bool kUseDefaultTrapHandler = true;
@@ -5301,14 +5656,6 @@ int Shell::Main(int argc, char* argv[]) {
     }
   }
 #endif  // V8_ENABLE_WEBASSEMBLY
-
-  if (HasFlagThatRequiresSharedIsolate()) {
-    Isolate::CreateParams shared_create_params;
-    shared_create_params.array_buffer_allocator = Shell::array_buffer_allocator;
-    shared_isolate =
-        reinterpret_cast<Isolate*>(i::Isolate::NewShared(shared_create_params));
-    create_params.experimental_attach_to_shared_isolate = shared_isolate;
-  }
 
   Isolate* isolate = Isolate::New(create_params);
 
@@ -5354,22 +5701,11 @@ int Shell::Main(int argc, char* argv[]) {
       CpuProfiler* cpu_profiler;
       if (options.cpu_profiler) {
         cpu_profiler = CpuProfiler::New(isolate);
-        CpuProfilingOptions profile_options;
-        cpu_profiler->StartProfiling(String::Empty(isolate), profile_options);
+        cpu_profiler->StartProfiling(String::Empty(isolate),
+                                     CpuProfilingOptions{});
       }
 
-      if (options.stress_opt) {
-        options.stress_runs = D8Testing::GetStressRuns();
-        for (int i = 0; i < options.stress_runs && result == 0; i++) {
-          printf("============ Stress %d/%d ============\n", i + 1,
-                 options.stress_runs.get());
-          D8Testing::PrepareStressRun(i);
-          bool last_run = i == options.stress_runs - 1;
-          result = RunMain(isolate, last_run);
-        }
-        printf("======== Full Deoptimization =======\n");
-        D8Testing::DeoptimizeAll(isolate);
-      } else if (i::FLAG_stress_runs > 0) {
+      if (i::FLAG_stress_runs > 0) {
         options.stress_runs = i::FLAG_stress_runs;
         for (int i = 0; i < options.stress_runs && result == 0; i++) {
           printf("============ Run %d/%d ============\n", i + 1,
@@ -5377,8 +5713,7 @@ int Shell::Main(int argc, char* argv[]) {
           bool last_run = i == options.stress_runs - 1;
           result = RunMain(isolate, last_run);
         }
-      } else if (options.code_cache_options !=
-                 ShellOptions::CodeCacheOptions::kNoProduceCache) {
+      } else if (options.code_cache_options != ShellOptions::kNoProduceCache) {
         {
           // Park the main thread here in case the new isolate wants to perform
           // a shared GC to prevent a deadlock.
@@ -5389,11 +5724,11 @@ int Shell::Main(int argc, char* argv[]) {
           // First run to produce the cache
           Isolate::CreateParams create_params2;
           create_params2.array_buffer_allocator = Shell::array_buffer_allocator;
-          create_params2.experimental_attach_to_shared_isolate =
-              Shell::shared_isolate;
-          i::FLAG_hash_seed ^= 1337;  // Use a different hash seed.
+          // Use a different hash seed.
+          i::FLAG_hash_seed = i::FLAG_hash_seed ^ 1337;
           Isolate* isolate2 = Isolate::New(create_params2);
-          i::FLAG_hash_seed ^= 1337;  // Restore old hash seed.
+          // Restore old hash seed.
+          i::FLAG_hash_seed = i::FLAG_hash_seed ^ 1337;
           {
             D8Console console2(isolate2);
             Initialize(isolate2, &console2);
@@ -5411,8 +5746,7 @@ int Shell::Main(int argc, char* argv[]) {
                    v8::ScriptCompiler::kNoCompileOptions);
         options.compile_options.Overwrite(
             v8::ScriptCompiler::kConsumeCodeCache);
-        options.code_cache_options.Overwrite(
-            ShellOptions::CodeCacheOptions::kNoProduceCache);
+        options.code_cache_options.Overwrite(ShellOptions::kNoProduceCache);
 
         printf("============ Run: Consume code cache ============\n");
         // Second run to consume the cache in current isolate
@@ -5496,6 +5830,16 @@ int Shell::Main(int argc, char* argv[]) {
     tracing_controller->StopTracing();
   }
   g_platform.reset();
+
+#ifdef V8_TARGET_OS_WIN
+  // We need to free the allocated utf8 filenames in
+  // PreProcessUnicodeFilenameArg.
+  for (char* utf8_str : utf8_filenames) {
+    delete[] utf8_str;
+  }
+  utf8_filenames.clear();
+#endif
+
   return result;
 }
 
@@ -5505,4 +5849,3 @@ int main(int argc, char* argv[]) { return v8::Shell::Main(argc, argv); }
 
 #undef CHECK
 #undef DCHECK
-#undef TRACE_BS

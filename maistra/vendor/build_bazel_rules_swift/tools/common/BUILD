@@ -1,8 +1,6 @@
-package(
-    default_visibility = [
-        "//tools/worker:__pkg__",
-    ],
-)
+load("@bazel_skylib//lib:selects.bzl", "selects")
+
+package(default_visibility = ["//tools/worker:__pkg__"])
 
 licenses(["notice"])
 
@@ -10,35 +8,40 @@ cc_library(
     name = "bazel_substitutions",
     srcs = ["bazel_substitutions.cc"],
     hdrs = ["bazel_substitutions.h"],
-)
-
-cc_library(
-    name = "file_system",
-    srcs = ["file_system.cc"],
-    hdrs = ["file_system.h"],
-    deps = [
-        ":path_utils",
-    ],
-)
-
-cc_library(
-    name = "path_utils",
-    srcs = ["path_utils.cc"],
-    hdrs = ["path_utils.h"],
+    copts = select({
+        "//tools:clang-cl": [
+            "-Xclang",
+            "-fno-split-cold-code",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
     name = "process",
     srcs = ["process.cc"],
     hdrs = ["process.h"],
-    deps = [
-        ":path_utils",
-    ],
+    copts = selects.with_or({
+        ("//tools:clang-cl", "//tools:msvc"): [
+            "/std:c++17",
+        ],
+        "//conditions:default": [
+            "-std=c++17",
+        ],
+    }),
 )
 
 cc_library(
     name = "temp_file",
     hdrs = ["temp_file.h"],
+    copts = selects.with_or({
+        ("//tools:clang-cl", "//tools:msvc"): [
+            "/std:c++17",
+        ],
+        "//conditions:default": [
+            "-std=c++17",
+        ],
+    }),
 )
 
 # Consumed by Bazel integration tests.

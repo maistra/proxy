@@ -20,6 +20,8 @@
 #include <memory>
 #include <thread>
 
+#include <gtest/gtest.h>
+
 #include <grpc/grpc.h>
 #include <grpc/support/alloc.h>
 #include <grpc/support/log.h>
@@ -39,8 +41,6 @@
 #include "test/core/util/test_config.h"
 #include "test/cpp/util/byte_buffer_proto_helper.h"
 #include "test/cpp/util/string_ref_helper.h"
-
-#include <gtest/gtest.h>
 
 using grpc::testing::EchoRequest;
 using grpc::testing::EchoResponse;
@@ -143,21 +143,21 @@ class RawEnd2EndTest : public ::testing::Test {
 
   // For the client application to populate and send to server.
   EchoRequest send_request_;
-  ::grpc::ByteBuffer send_request_buffer_;
+  grpc::ByteBuffer send_request_buffer_;
 
   // For the server to give to gRPC to be populated by incoming request
   // from client.
   EchoRequest recv_request_;
-  ::grpc::ByteBuffer recv_request_buffer_;
+  grpc::ByteBuffer recv_request_buffer_;
 
   // For the server application to populate and send back to client.
   EchoResponse send_response_;
-  ::grpc::ByteBuffer send_response_buffer_;
+  grpc::ByteBuffer send_response_buffer_;
 
   // For the client to give to gRPC to be populated by incoming response
   // from server.
   EchoResponse recv_response_;
-  ::grpc::ByteBuffer recv_response_buffer_;
+  grpc::ByteBuffer recv_response_buffer_;
   Status recv_status_;
 
   // Both sides need contexts
@@ -363,7 +363,7 @@ TEST_F(RawEnd2EndTest, CompileTest) {
 int main(int argc, char** argv) {
   // Change the backup poll interval from 5s to 100ms to speed up the
   // ReconnectChannel test
-  grpc::testing::TestEnvironment env(argc, argv);
+  grpc::testing::TestEnvironment env(&argc, argv);
   ::testing::InitGoogleTest(&argc, argv);
   int ret = RUN_ALL_TESTS();
   return ret;

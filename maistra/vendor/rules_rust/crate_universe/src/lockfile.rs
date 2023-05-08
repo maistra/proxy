@@ -1,11 +1,11 @@
 //! Utility module for interracting with different kinds of lock files
 
+use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::ffi::OsStr;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
-use std::str::FromStr;
 
 use anyhow::{bail, Context as AnyhowContext, Result};
 use hex::ToHex;
@@ -14,68 +14,14 @@ use sha2::{Digest as Sha2Digest, Sha256};
 
 use crate::config::Config;
 use crate::context::Context;
+use crate::metadata::Cargo;
 use crate::splicing::{SplicingManifest, SplicingMetadata};
-
-#[derive(Debug)]
-pub enum LockfileKind {
-    Auto,
-    Bazel,
-    Cargo,
-}
-
-impl LockfileKind {
-    pub fn detect(path: &Path) -> Result<Self> {
-        let content = fs::read_to_string(path)?;
-
-        if serde_json::from_str::<Context>(&content).is_ok() {
-            return Ok(Self::Bazel);
-        }
-
-        if cargo_lock::Lockfile::from_str(&content).is_ok() {
-            return Ok(Self::Cargo);
-        }
-
-        bail!("Unknown Lockfile kind for {}", path.display())
-    }
-}
-
-impl FromStr for LockfileKind {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let lower = s.to_lowercase();
-        if lower == "auto" {
-            return Ok(Self::Auto);
-        }
-
-        if lower == "bazel" {
-            return Ok(Self::Bazel);
-        }
-
-        if lower == "cargo" {
-            return Ok(Self::Cargo);
-        }
-
-        bail!("Unknown LockfileKind: '{}'", s)
-    }
-}
-
-pub fn is_cargo_lockfile(path: &Path, kind: &LockfileKind) -> bool {
-    match kind {
-        LockfileKind::Auto => match LockfileKind::detect(path) {
-            Ok(kind) => matches!(kind, LockfileKind::Cargo),
-            Err(_) => false,
-        },
-        LockfileKind::Bazel => false,
-        LockfileKind::Cargo => true,
-    }
-}
 
 pub fn lock_context(
     mut context: Context,
     config: &Config,
     splicing_manifest: &SplicingManifest,
-    cargo_bin: &Path,
+    cargo_bin: &Cargo,
     rustc_bin: &Path,
 ) -> Result<Context> {
     // Ensure there is no existing checksum which could impact the lockfile results
@@ -95,7 +41,7 @@ pub fn write_lockfile(lockfile: Context, path: &Path, dry_run: bool) -> Result<(
     let content = serde_json::to_string_pretty(&lockfile)?;
 
     if dry_run {
-        println!("{:#?}", content);
+        println!("{content:#?}");
     } else {
         // Ensure the parent directory exists
         if let Some(parent) = path.parent() {
@@ -116,11 +62,11 @@ impl Digest {
         context: &Context,
         config: &Config,
         splicing_manifest: &SplicingManifest,
-        cargo_bin: &Path,
+        cargo_bin: &Cargo,
         rustc_bin: &Path,
     ) -> Result<Self> {
         let splicing_metadata = SplicingMetadata::try_from((*splicing_manifest).clone())?;
-        let cargo_version = Self::bin_version(cargo_bin)?;
+        let cargo_version = cargo_bin.full_version()?;
         let rustc_version = Self::bin_version(rustc_bin)?;
         let cargo_bazel_version = env!("CARGO_PKG_VERSION");
 
@@ -184,7 +130,7 @@ impl Digest {
         Self(hasher.finalize().encode_hex::<String>())
     }
 
-    fn bin_version(binary: &Path) -> Result<String> {
+    pub fn bin_version(binary: &Path) -> Result<String> {
         let safe_vars = [OsStr::new("HOMEDRIVE"), OsStr::new("PATHEXT")];
         let env = std::env::vars_os().filter(|(var, _)| safe_vars.contains(&var.as_os_str()));
 
@@ -192,14 +138,38 @@ impl Digest {
             .arg("--version")
             .env_clear()
             .envs(env)
-            .output()?;
+            .output()
+            .with_context(|| format!("Failed to run {} to get its version", binary.display()))?;
 
         if !output.status.success() {
             bail!("Failed to query cargo version")
         }
 
-        let version = String::from_utf8(output.stdout)?;
-        Ok(version)
+        let version = String::from_utf8(output.stdout)?.trim().to_owned();
+
+        // TODO: There is a bug in the linux binary for Cargo 1.60.0 where
+        // the commit hash reported by the version is shorter than what's
+        // reported on other platforms. This conditional here is a hack to
+        // correct for this difference and ensure lockfile hashes can be
+        // computed consistently. If a new binary is released then this
+        // condition should be removed
+        // https://github.com/rust-lang/cargo/issues/10547
+        let corrections = BTreeMap::from([
+            (
+                "cargo 1.60.0 (d1fd9fe 2022-03-01)",
+                "cargo 1.60.0 (d1fd9fe2c 2022-03-01)",
+            ),
+            (
+                "cargo 1.61.0 (a028ae4 2022-04-29)",
+                "cargo 1.61.0 (a028ae42f 2022-04-29)",
+            ),
+        ]);
+
+        if corrections.contains_key(version.as_str()) {
+            Ok(corrections[version.as_str()].to_string())
+        } else {
+            Ok(version)
+        }
     }
 }
 
@@ -223,7 +193,6 @@ mod test {
     use super::*;
 
     use std::collections::{BTreeMap, BTreeSet};
-    use std::fs;
 
     #[test]
     fn simple_digest() {
@@ -242,7 +211,7 @@ mod test {
 
         assert_eq!(
             digest,
-            Digest("4c8bc5de2d6d7acc7997ae9870e52bc0f0fcbc2b94076e61162078be6a69cc3b".to_owned())
+            Digest("7be4f323ac6a4d0a45d9d430a8056967eb248ca7c86bdba44af33ad90392cb4a".to_owned())
         );
     }
 
@@ -250,6 +219,7 @@ mod test {
     fn digest_with_config() {
         let context = Context::default();
         let config = Config {
+            generate_binaries: false,
             generate_build_scripts: false,
             annotations: BTreeMap::from([(
                 CrateId::new("rustonomicon".to_owned(), "1.0.0".to_owned()),
@@ -262,6 +232,7 @@ mod test {
             supported_platform_triples: BTreeSet::from([
                 "aarch64-apple-darwin".to_owned(),
                 "aarch64-unknown-linux-gnu".to_owned(),
+                "aarch64-pc-windows-msvc".to_owned(),
                 "wasm32-unknown-unknown".to_owned(),
                 "wasm32-wasi".to_owned(),
                 "x86_64-apple-darwin".to_owned(),
@@ -285,7 +256,7 @@ mod test {
 
         assert_eq!(
             digest,
-            Digest("7a0d2f5fce05c4d433826b5c4748bec7b125b79182de598dc700e893e09077e9".to_owned())
+            Digest("0485e1ac3d5a868679b2ee4b59443eec3f8b54e1f4824f7c251b20031542f64c".to_owned())
         );
     }
 
@@ -316,7 +287,7 @@ mod test {
 
         assert_eq!(
             digest,
-            Digest("fb5d7854dae366d4a9ff135208c28f08c14c2608dd6c5aa1b35b6e677dd53c06".to_owned())
+            Digest("c343bd2a351184bec7abad0016d45e1f4a89ec2fdf3f63d86e414206814ae483".to_owned())
         );
     }
 
@@ -365,59 +336,7 @@ mod test {
 
         assert_eq!(
             digest,
-            Digest("2b32833e4265bce03df70dbb9c2b32a78879cc02fbe88a481e3fe4a17812aca9".to_owned())
+            Digest("16dc7c9c8d2e1f50e070ae10b7a06a42c962c2afa9a60a73043eb74c5fb6cd82".to_owned())
         );
-    }
-
-    #[test]
-    fn detect_bazel_lockfile() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let lockfile = temp_dir.as_ref().join("lockfile");
-        fs::write(
-            &lockfile,
-            serde_json::to_string(&crate::context::Context::default()).unwrap(),
-        )
-        .unwrap();
-
-        let kind = LockfileKind::detect(&lockfile).unwrap();
-        assert!(matches!(kind, LockfileKind::Bazel));
-    }
-
-    #[test]
-    fn detect_cargo_lockfile() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let lockfile = temp_dir.as_ref().join("lockfile");
-        fs::write(
-            &lockfile,
-            textwrap::dedent(
-                r#"
-                version = 3
-
-                [[package]]
-                name = "detect"
-                version = "0.1.0"
-                "#,
-            ),
-        )
-        .unwrap();
-
-        let kind = LockfileKind::detect(&lockfile).unwrap();
-        assert!(matches!(kind, LockfileKind::Cargo));
-    }
-
-    #[test]
-    fn detect_invalid_lockfile() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let lockfile = temp_dir.as_ref().join("lockfile");
-        fs::write(&lockfile, "]} invalid {[").unwrap();
-
-        assert!(LockfileKind::detect(&lockfile).is_err());
-    }
-
-    #[test]
-    fn detect_missing_lockfile() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let lockfile = temp_dir.as_ref().join("lockfile");
-        assert!(LockfileKind::detect(&lockfile).is_err());
     }
 }

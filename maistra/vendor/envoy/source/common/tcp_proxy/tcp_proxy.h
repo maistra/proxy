@@ -22,6 +22,8 @@
 #include "envoy/upstream/upstream.h"
 
 #include "source/common/common/logger.h"
+#include "source/common/formatter/substitution_format_string.h"
+#include "source/common/http/header_map_impl.h"
 #include "source/common/network/cidr_range.h"
 #include "source/common/network/filter_impl.h"
 #include "source/common/network/hash_policy.h"
@@ -110,21 +112,40 @@ using RouteConstSharedPtr = std::shared_ptr<const Route>;
 using TunnelingConfig =
     envoy::extensions::filters::network::tcp_proxy::v3::TcpProxy_TunnelingConfig;
 
-class TunnelingConfigHelperImpl : public TunnelingConfigHelper {
+/**
+ * Response headers for the tunneling connections.
+ */
+class TunnelResponseHeaders : public StreamInfo::FilterState::Object {
+public:
+  TunnelResponseHeaders(Http::ResponseHeaderMapPtr&& response_headers)
+      : response_headers_(std::move(response_headers)) {}
+  const Http::ResponseHeaderMap& value() const { return *response_headers_; }
+  ProtobufTypes::MessagePtr serializeAsProto() const override;
+  static const std::string& key();
+
+private:
+  const Http::ResponseHeaderMapPtr response_headers_;
+};
+
+class TunnelingConfigHelperImpl : public TunnelingConfigHelper,
+                                  protected Logger::Loggable<Logger::Id::filter> {
 public:
   TunnelingConfigHelperImpl(
       const envoy::extensions::filters::network::tcp_proxy::v3::TcpProxy_TunnelingConfig&
-          config_message)
-      : hostname_(config_message.hostname()), use_post_(config_message.use_post()),
-        header_parser_(Envoy::Router::HeaderParser::configure(config_message.headers_to_add())) {}
-  const std::string& hostname() const override { return hostname_; }
+          config_message,
+      Server::Configuration::FactoryContext& context);
+  std::string host(const StreamInfo::StreamInfo& stream_info) const override;
   bool usePost() const override { return use_post_; }
   Envoy::Http::HeaderEvaluator& headerEvaluator() const override { return *header_parser_; }
+  void
+  propagateResponseHeaders(Http::ResponseHeaderMapPtr&& headers,
+                           const StreamInfo::FilterStateSharedPtr& filter_state) const override;
 
 private:
-  const std::string hostname_;
   const bool use_post_;
   std::unique_ptr<Envoy::Router::HeaderParser> header_parser_;
+  Formatter::FormatterPtr hostname_fmt_;
+  const bool propagate_response_headers_;
 };
 
 /**
@@ -195,7 +216,7 @@ public:
 
     // Hold a Scope for the lifetime of the configuration because connections in
     // the UpstreamDrainManager can live longer than the listener.
-    const Stats::ScopePtr stats_scope_;
+    const Stats::ScopeSharedPtr stats_scope_;
 
     const TcpProxyStats stats_;
     absl::optional<std::chrono::milliseconds> idle_timeout_;
@@ -336,13 +357,15 @@ public:
   Network::FilterStatus onData(Buffer::Instance& data, bool end_stream) override;
   Network::FilterStatus onNewConnection() override;
   void initializeReadFilterCallbacks(Network::ReadFilterCallbacks& callbacks) override;
+  bool startUpstreamSecureTransport() override;
 
   // GenericConnectionPoolCallbacks
   void onGenericPoolReady(StreamInfo::StreamInfo* info, std::unique_ptr<GenericUpstream>&& upstream,
                           Upstream::HostDescriptionConstSharedPtr& host,
-                          const Network::Address::InstanceConstSharedPtr& local_address,
+                          const Network::ConnectionInfoProvider& address_provider,
                           Ssl::ConnectionInfoConstSharedPtr ssl_info) override;
   void onGenericPoolFailure(ConnectionPool::PoolFailureReason reason,
+                            absl::string_view failure_reason,
                             Upstream::HostDescriptionConstSharedPtr host) override;
 
   // Upstream::LoadBalancerContext
@@ -355,7 +378,6 @@ public:
 
     return {};
   }
-
   const Network::Connection* downstreamConnection() const override {
     return &read_callbacks_->connection();
   }

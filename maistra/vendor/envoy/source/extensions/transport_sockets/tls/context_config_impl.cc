@@ -60,7 +60,8 @@ std::vector<Secret::TlsCertificateConfigProviderSharedPtr> getTlsCertificateConf
       if (sds_secret_config.has_sds_config()) {
         // Fetch dynamic secret.
         providers.push_back(factory_context.secretManager().findOrCreateTlsCertificateProvider(
-            sds_secret_config.sds_config(), sds_secret_config.name(), factory_context));
+            sds_secret_config.sds_config(), sds_secret_config.name(), factory_context,
+            factory_context.initManager()));
       } else {
         // Load static secret.
         auto secret_provider = factory_context.secretManager().findStaticTlsCertificateProvider(
@@ -82,7 +83,8 @@ Secret::CertificateValidationContextConfigProviderSharedPtr getProviderFromSds(
   if (sds_secret_config.has_sds_config()) {
     // Fetch dynamic secret.
     return factory_context.secretManager().findOrCreateCertificateValidationContextProvider(
-        sds_secret_config.sds_config(), sds_secret_config.name(), factory_context);
+        sds_secret_config.sds_config(), sds_secret_config.name(), factory_context,
+        factory_context.initManager());
   } else {
     // Load static secret.
     auto secret_provider =
@@ -145,7 +147,8 @@ Secret::TlsSessionTicketKeysConfigProviderSharedPtr getTlsSessionTicketKeysConfi
     if (sds_secret_config.has_sds_config()) {
       // Fetch dynamic secret.
       return factory_context.secretManager().findOrCreateTlsSessionTicketKeysContextProvider(
-          sds_secret_config.sds_config(), sds_secret_config.name(), factory_context);
+          sds_secret_config.sds_config(), sds_secret_config.name(), factory_context,
+          factory_context.initManager());
     } else {
       // Load static secret.
       auto secret_provider =
@@ -188,6 +191,7 @@ ContextConfigImpl::ContextConfigImpl(
     const std::string& default_cipher_suites, const std::string& default_curves,
     Server::Configuration::TransportSocketFactoryContext& factory_context)
     : api_(factory_context.api()), options_(factory_context.options()),
+      singleton_manager_(factory_context.singletonManager()),
       alpn_protocols_(RepeatedPtrUtil::join(config.alpn_protocols(), ",")),
       cipher_suites_(StringUtil::nonEmptyStringOrDefault(
           RepeatedPtrUtil::join(config.tls_params().cipher_suites(), ":"), default_cipher_suites)),
@@ -238,7 +242,8 @@ ContextConfigImpl::ContextConfigImpl(
     }
   }
 
-  HandshakerFactoryContextImpl handshaker_factory_context(api_, options_, alpn_protocols_);
+  HandshakerFactoryContextImpl handshaker_factory_context(api_, options_, alpn_protocols_,
+                                                          singleton_manager_);
   Ssl::HandshakerFactory* handshaker_factory;
   if (config.has_custom_handshaker()) {
     // If a custom handshaker is configured, derive the factory from the config.
@@ -403,32 +408,16 @@ const unsigned ServerContextConfigImpl::DEFAULT_FIPS_MAX_VERSION = TLS1_2_VERSIO
 const std::string ServerContextConfigImpl::DEFAULT_FIPS_CIPHER_SUITES =
     "ECDHE-ECDSA-AES128-GCM-SHA256:"
     "ECDHE-RSA-AES128-GCM-SHA256:"
-    "ECDHE-ECDSA-AES128-SHA:"
-    "ECDHE-RSA-AES128-SHA:"
-    "AES128-GCM-SHA256:"
-    "AES128-SHA:"
     "ECDHE-ECDSA-AES256-GCM-SHA384:"
-    "ECDHE-RSA-AES256-GCM-SHA384:"
-    "ECDHE-ECDSA-AES256-SHA:"
-    "ECDHE-RSA-AES256-SHA:"
-    "AES256-GCM-SHA384:"
-    "AES256-SHA";
+    "ECDHE-RSA-AES256-GCM-SHA384:";
 const std::string ServerContextConfigImpl::DEFAULT_FIPS_CURVES = "P-256";
 // Non FIPS configuration
 const unsigned ServerContextConfigImpl::DEFAULT_NON_FIPS_MAX_VERSION = TLS1_3_VERSION;
 const std::string ServerContextConfigImpl::DEFAULT_NON_FIPS_CIPHER_SUITES =
-    "[ECDHE-ECDSA-AES128-GCM-SHA256|ECDHE-ECDSA-CHACHA20-POLY1305]:"
-    "[ECDHE-RSA-AES128-GCM-SHA256|ECDHE-RSA-CHACHA20-POLY1305]:"
-    "ECDHE-ECDSA-AES128-SHA:"
-    "ECDHE-RSA-AES128-SHA:"
-    "AES128-GCM-SHA256:"
-    "AES128-SHA:"
+    "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-ECDSA-CHACHA20-POLY1305:"
+    "ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-CHACHA20-POLY1305:"
     "ECDHE-ECDSA-AES256-GCM-SHA384:"
-    "ECDHE-RSA-AES256-GCM-SHA384:"
-    "ECDHE-ECDSA-AES256-SHA:"
-    "ECDHE-RSA-AES256-SHA:"
-    "AES256-GCM-SHA384:"
-    "AES256-SHA";
+    "ECDHE-RSA-AES256-GCM-SHA384:";
 const std::string ServerContextConfigImpl::DEFAULT_NON_FIPS_CURVES = "X25519:"
                                                                      "P-256";
 

@@ -15,7 +15,11 @@
 #include <grpc/support/port_platform.h>
 
 #include <grpc/grpc.h>
+#include <grpc/grpc_security.h>
+#include <grpc/impl/codegen/grpc_types.h>
 
+#include "src/core/lib/gpr/useful.h"
+#include "src/core/lib/gprpp/ref_counted_ptr.h"
 #include "src/core/lib/security/authorization/authorization_policy_provider.h"
 
 namespace {
@@ -33,7 +37,7 @@ void ProviderArgDestroy(void* p) {
   provider->Unref();
 }
 
-int ProviderArgCmp(void* p, void* q) { return GPR_ICMP(p, q); }
+int ProviderArgCmp(void* p, void* q) { return grpc_core::QsortCompare(p, q); }
 
 }  // namespace
 

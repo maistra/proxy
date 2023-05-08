@@ -26,11 +26,16 @@ Skylib.
 
 load(
     "@build_bazel_rules_swift//swift/internal:feature_names.bzl",
+    "SWIFT_FEATURE_CODEVIEW_DEBUG_INFO",
     "SWIFT_FEATURE_DEBUG_PREFIX_MAP",
     "SWIFT_FEATURE_ENABLE_BATCH_MODE",
     "SWIFT_FEATURE_ENABLE_SKIP_FUNCTION_BODIES",
     "SWIFT_FEATURE_MODULE_MAP_NO_PRIVATE_HEADERS",
+    "SWIFT_FEATURE_NO_EMBED_DEBUG_MODULE",
     "SWIFT_FEATURE_SUPPORTS_PRIVATE_DEPS",
+    "SWIFT_FEATURE_USE_AUTOLINK_EXTRACT",
+    "SWIFT_FEATURE_USE_MODULE_WRAP",
+    "SWIFT_FEATURE_USE_OLD_DRIVER",
     "SWIFT_FEATURE_USE_RESPONSE_FILES",
 )
 
@@ -201,6 +206,11 @@ _FEATURE_CHECKS = {
     SWIFT_FEATURE_USE_RESPONSE_FILES: _check_use_response_files,
 }
 
+def _normalized_linux_cpu(cpu):
+    if cpu in ("amd64"):
+        return "x86_64"
+    return cpu
+
 def _create_linux_toolchain(repository_ctx):
     """Creates BUILD targets for the Swift toolchain on Linux.
 
@@ -225,6 +235,8 @@ def _create_linux_toolchain(repository_ctx):
     # explicit modules, but the build targets for CgRPC need to be cleaned up
     # first because they contain C++ code.
     feature_values.append(SWIFT_FEATURE_MODULE_MAP_NO_PRIVATE_HEADERS)
+    feature_values.append(SWIFT_FEATURE_USE_AUTOLINK_EXTRACT)
+    feature_values.append(SWIFT_FEATURE_USE_MODULE_WRAP)
 
     repository_ctx.file(
         "BUILD",
@@ -238,13 +250,14 @@ package(default_visibility = ["//visibility:public"])
 
 swift_toolchain(
     name = "toolchain",
-    arch = "x86_64",
+    arch = "{cpu}",
     features = [{feature_list}],
     os = "linux",
     root = "{root}",
     version_file = "{version_file}",
 )
 """.format(
+            cpu = _normalized_linux_cpu(repository_ctx.os.arch),
             feature_list = ", ".join([
                 '"{}"'.format(feature)
                 for feature in feature_values
@@ -289,6 +302,82 @@ xcode_swift_toolchain(
         ),
     )
 
+def _get_python_bin(repository_ctx):
+    if "PYTHON_BIN_PATH" in repository_ctx.os.environ:
+        return repository_ctx.os.environ.get("PYTHON_BIN_PATH").strip()
+    out = repository_ctx.which("python3.exe")
+    if out:
+        return out
+    out = repository_ctx.which("python.exe")
+    if out:
+        return out
+    return None
+
+def _create_windows_toolchain(repository_ctx):
+    path_to_swiftc = repository_ctx.which("swiftc.exe")
+    if not path_to_swiftc:
+        fail("No 'swiftc.exe' executable found in Path")
+
+    root = path_to_swiftc.dirname.dirname
+    enabled_features = [
+        SWIFT_FEATURE_CODEVIEW_DEBUG_INFO,
+        SWIFT_FEATURE_DEBUG_PREFIX_MAP,
+        SWIFT_FEATURE_ENABLE_BATCH_MODE,
+        SWIFT_FEATURE_ENABLE_SKIP_FUNCTION_BODIES,
+        SWIFT_FEATURE_SUPPORTS_PRIVATE_DEPS,
+        SWIFT_FEATURE_USE_RESPONSE_FILES,
+        SWIFT_FEATURE_NO_EMBED_DEBUG_MODULE,
+        SWIFT_FEATURE_MODULE_MAP_NO_PRIVATE_HEADERS,
+    ]
+    disabled_features = [
+        SWIFT_FEATURE_USE_OLD_DRIVER,
+    ]
+
+    version_file = _write_swift_version(repository_ctx, path_to_swiftc)
+    xctest_version = repository_ctx.execute([
+        _get_python_bin(repository_ctx),
+        "-c",
+        "import os, plistlib; " +
+        "print(plistlib.loads(open(os.path.join(r'{}', '..', '..', '..', 'Info.plist'), 'rb').read(), fmt=plistlib.FMT_XML)['DefaultProperties']['XCTEST_VERSION'])".format(repository_ctx.os.environ["SDKROOT"]),
+    ])
+
+    env = {
+        "Path": repository_ctx.os.environ["Path"] if "Path" in repository_ctx.os.environ else repository_ctx.os.environ["PATH"],
+        "ProgramData": repository_ctx.os.environ["ProgramData"],
+    }
+
+    repository_ctx.file(
+        "BUILD",
+        """
+load(
+  "@build_bazel_rules_swift//swift/internal:swift_toolchain.bzl",
+  "swift_toolchain",
+)
+
+package(default_visibility = ["//visibility:public"])
+
+swift_toolchain(
+  name = "toolchain",
+  arch = "x86_64",
+  features = [{features}],
+  os = "windows",
+  root = "{root}",
+  version_file = "{version_file}",
+  env = {env},
+  sdkroot = "{sdkroot}",
+  tool_executable_suffix = ".exe",
+  xctest_version = "{xctest_version}",
+)
+""".format(
+            features = ", ".join(['"{}"'.format(feature) for feature in enabled_features] + ['"-{}"'.format(feature) for feature in disabled_features]),
+            root = root,
+            env = env,
+            sdkroot = repository_ctx.os.environ["SDKROOT"].replace("\\", "/"),
+            xctest_version = xctest_version.stdout.rstrip(),
+            version_file = version_file,
+        ),
+    )
+
 def _swift_autoconfiguration_impl(repository_ctx):
     # TODO(allevato): This is expedient and fragile. Use the
     # platforms/toolchains APIs instead to define proper toolchains, and make it
@@ -296,10 +385,12 @@ def _swift_autoconfiguration_impl(repository_ctx):
     os_name = repository_ctx.os.name.lower()
     if os_name.startswith("mac os"):
         _create_xcode_toolchain(repository_ctx)
+    elif os_name.startswith("windows"):
+        _create_windows_toolchain(repository_ctx)
     else:
         _create_linux_toolchain(repository_ctx)
 
 swift_autoconfiguration = repository_rule(
-    environ = ["CC", "PATH"],
+    environ = ["CC", "PATH", "ProgramData", "Path"],
     implementation = _swift_autoconfiguration_impl,
 )

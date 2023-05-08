@@ -1,13 +1,13 @@
-load("@not_named_rules_pkg//pkg:pkg.bzl", "pkg_tar")
+load("@not_named_rules_pkg//pkg:tar.bzl", "pkg_tar")
 
 pkg_tar(
     name = "dummy_tar",
     srcs = [
-      ":BUILD",
+        ":BUILD",
     ],
     extension = "tar.gz",
     owner = "0.0",
-    package_dir = ".",
+    package_dir = "etc",
     tags = [
         "manual",
     ],

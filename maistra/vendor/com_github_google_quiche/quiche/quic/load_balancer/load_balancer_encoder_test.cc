@@ -130,10 +130,10 @@ TEST_F(LoadBalancerEncoderTest, BadUnroutableLength) {
 
 TEST_F(LoadBalancerEncoderTest, BadServerIdLength) {
   auto encoder = LoadBalancerEncoder::Create(random_, nullptr, true);
-  EXPECT_TRUE(encoder.has_value());
+  ASSERT_TRUE(encoder.has_value());
   // Expects a 3 byte server ID and got 4.
   auto config = LoadBalancerConfig::CreateUnencrypted(1, 3, 4);
-  EXPECT_TRUE(config.has_value());
+  ASSERT_TRUE(config.has_value());
   EXPECT_QUIC_BUG(
       EXPECT_FALSE(encoder->UpdateConfig(*config, MakeServerId(kServerId, 4))),
       "Server ID length 4 does not match configured value of 3");
@@ -143,10 +143,9 @@ TEST_F(LoadBalancerEncoderTest, BadServerIdLength) {
 TEST_F(LoadBalancerEncoderTest, FailToUpdateConfigWithSameId) {
   TestLoadBalancerEncoderVisitor visitor;
   auto encoder = LoadBalancerEncoder::Create(random_, &visitor, true);
-  EXPECT_TRUE(encoder.has_value());
-  EXPECT_TRUE(encoder.has_value());
+  ASSERT_TRUE(encoder.has_value());
   auto config = LoadBalancerConfig::CreateUnencrypted(1, 3, 4);
-  EXPECT_TRUE(config.has_value());
+  ASSERT_TRUE(config.has_value());
   EXPECT_TRUE(encoder->UpdateConfig(*config, MakeServerId(kServerId, 3)));
   EXPECT_EQ(visitor.num_adds(), 1u);
   EXPECT_QUIC_BUG(
@@ -157,22 +156,22 @@ TEST_F(LoadBalancerEncoderTest, FailToUpdateConfigWithSameId) {
 
 struct LoadBalancerEncoderTestCase {
   LoadBalancerConfig config;
-  LoadBalancerServerId server_id;
   QuicConnectionId connection_id;
+  LoadBalancerServerId server_id;
 };
 
 TEST_F(LoadBalancerEncoderTest, UnencryptedConnectionIdTestVectors) {
   const struct LoadBalancerEncoderTestCase test_vectors[2] = {
       {
           *LoadBalancerConfig::CreateUnencrypted(0, 3, 4),
-          MakeServerId(kServerId, 3),
           QuicConnectionId({0x07, 0xed, 0x79, 0x3a, 0x80, 0x49, 0x71, 0x8a}),
+          MakeServerId(kServerId, 3),
       },
       {
           *LoadBalancerConfig::CreateUnencrypted(1, 8, 5),
-          MakeServerId(kServerId, 8),
           QuicConnectionId({0x4d, 0xed, 0x79, 0x3a, 0x51, 0xd4, 0x9b, 0x8f,
                             0x5f, 0xee, 0x15, 0xda, 0x27, 0xc4}),
+          MakeServerId(kServerId, 8),
       },
   };
   for (const auto &test : test_vectors) {
@@ -185,7 +184,7 @@ TEST_F(LoadBalancerEncoderTest, UnencryptedConnectionIdTestVectors) {
   }
 }
 
-// Follow example in draft-ietf-quic-load-balancers-12.
+// Follow example in draft-ietf-quic-load-balancers-14.
 TEST_F(LoadBalancerEncoderTest, FollowSpecExample) {
   const uint8_t config_id = 0, server_id_len = 3, nonce_len = 4;
   const uint8_t raw_server_id[] = {
@@ -199,21 +198,21 @@ TEST_F(LoadBalancerEncoderTest, FollowSpecExample) {
   };
   random_.AddNextValues(0, 0x75c2699c);
   auto encoder = LoadBalancerEncoder::Create(random_, nullptr, true, 8);
-  EXPECT_TRUE(encoder.has_value());
+  ASSERT_TRUE(encoder.has_value());
   auto config = LoadBalancerConfig::Create(config_id, server_id_len, nonce_len,
                                            absl::string_view(raw_key));
-  EXPECT_TRUE(config.has_value());
+  ASSERT_TRUE(config.has_value());
   EXPECT_TRUE(encoder->UpdateConfig(
       *config, *LoadBalancerServerId::Create(raw_server_id)));
   EXPECT_TRUE(encoder->IsEncoding());
-  const char raw_connection_id[] = {0x07, 0xe2, 0x3c, 0xb4,
-                                    0x2b, 0xba, 0x1e, 0xe0};
+  const char raw_connection_id[] = {0x07, 0x32, 0xc3, 0x63,
+                                    0xfc, 0xe1, 0xe0, 0xd2};
   auto expected =
       QuicConnectionId(raw_connection_id, 1 + server_id_len + nonce_len);
   EXPECT_EQ(encoder->GenerateConnectionId(), expected);
 }
 
-// Compare test vectors from Appendix B of draft-ietf-quic-load-balancers-12.
+// Compare test vectors from Appendix B of draft-ietf-quic-load-balancers-14.
 TEST_F(LoadBalancerEncoderTest, EncoderTestVectors) {
   // Try (1) the "standard" ConnectionId length of 8
   // (2) server_id_len > nonce_len, so there is a fourth decryption pass
@@ -222,33 +221,33 @@ TEST_F(LoadBalancerEncoderTest, EncoderTestVectors) {
   const LoadBalancerEncoderTestCase test_vectors[4] = {
       {
           *LoadBalancerConfig::Create(0, 3, 4, kKey),
+          QuicConnectionId({0x07, 0x27, 0xed, 0xaa, 0x37, 0xe7, 0xfa, 0xc8}),
           MakeServerId(kServerId, 3),
-          QuicConnectionId({0x07, 0xfb, 0xfe, 0x05, 0xf7, 0x31, 0xb4, 0x25}),
       },
       {
           *LoadBalancerConfig::Create(1, 10, 5, kKey),
+          QuicConnectionId({0x4f, 0x22, 0x61, 0x4a, 0x97, 0xce, 0xee, 0x84,
+                            0x34, 0x1e, 0xd7, 0xfb, 0xfe, 0xb1, 0xe6, 0xe2}),
           MakeServerId(kServerId, 10),
-          QuicConnectionId({0x4f, 0x01, 0x09, 0x56, 0xfb, 0x5c, 0x1d, 0x4d,
-                            0x86, 0xe0, 0x10, 0x18, 0x3e, 0x0b, 0x7d, 0x1e}),
       },
       {
           *LoadBalancerConfig::Create(2, 8, 8, kKey),
-          MakeServerId(kServerId, 8),
           QuicConnectionId({0x90, 0x4d, 0xd2, 0xd0, 0x5a, 0x7b, 0x0d, 0xe9,
                             0xb2, 0xb9, 0x90, 0x7a, 0xfb, 0x5e, 0xcf, 0x8c,
                             0xc3}),
+          MakeServerId(kServerId, 8),
       },
       {
           *LoadBalancerConfig::Create(0, 9, 9, kKey),
+          QuicConnectionId({0x12, 0x5e, 0x3b, 0x00, 0xaa, 0x5f, 0xcf, 0xd1,
+                            0xa9, 0xa5, 0x81, 0x02, 0xa8, 0x9a, 0x19, 0xa1,
+                            0xe4, 0xa1, 0x0e}),
           MakeServerId(kServerId, 9),
-          QuicConnectionId({0x12, 0x7a, 0x28, 0x5a, 0x09, 0xf8, 0x52, 0x80,
-                            0xf4, 0xfd, 0x6a, 0xbb, 0x43, 0x4a, 0x71, 0x59,
-                            0xe4, 0xd3, 0xeb}),
       },
   };
   for (const auto &test : test_vectors) {
     auto encoder = LoadBalancerEncoder::Create(random_, nullptr, true, 8);
-    EXPECT_TRUE(encoder.has_value());
+    ASSERT_TRUE(encoder.has_value());
     random_.AddNextValues(kNonceHigh, kNonceLow);
     EXPECT_TRUE(encoder->UpdateConfig(test.config, test.server_id));
     EXPECT_EQ(encoder->GenerateConnectionId(), test.connection_id);
@@ -259,16 +258,16 @@ TEST_F(LoadBalancerEncoderTest, RunOutOfNonces) {
   const uint8_t server_id_len = 3;
   TestLoadBalancerEncoderVisitor visitor;
   auto encoder = LoadBalancerEncoder::Create(random_, &visitor, true, 8);
-  EXPECT_TRUE(encoder.has_value());
+  ASSERT_TRUE(encoder.has_value());
   auto config = LoadBalancerConfig::Create(0, server_id_len, 4, kKey);
-  EXPECT_TRUE(config.has_value());
+  ASSERT_TRUE(config.has_value());
   EXPECT_TRUE(
       encoder->UpdateConfig(*config, MakeServerId(kServerId, server_id_len)));
   EXPECT_EQ(visitor.num_adds(), 1u);
   LoadBalancerEncoderPeer::SetNumNoncesLeft(*encoder, 2);
   EXPECT_EQ(encoder->num_nonces_left(), 2);
   EXPECT_EQ(encoder->GenerateConnectionId(),
-            QuicConnectionId({0x07, 0xba, 0x7f, 0x38, 0x2f, 0x5c, 0x22, 0x1d}));
+            QuicConnectionId({0x07, 0xf4, 0xeb, 0x21, 0xfb, 0x22, 0xa8, 0x40}));
   EXPECT_EQ(encoder->num_nonces_left(), 1);
   encoder->GenerateConnectionId();
   EXPECT_EQ(encoder->IsEncoding(), false);
@@ -279,7 +278,7 @@ TEST_F(LoadBalancerEncoderTest, RunOutOfNonces) {
 TEST_F(LoadBalancerEncoderTest, UnroutableConnectionId) {
   random_.AddNextValues(0x83, kNonceHigh);
   auto encoder = LoadBalancerEncoder::Create(random_, nullptr, false);
-  EXPECT_TRUE(encoder.has_value());
+  ASSERT_TRUE(encoder.has_value());
   EXPECT_EQ(encoder->num_nonces_left(), 0);
   auto connection_id = encoder->GenerateConnectionId();
   // The first byte is the config_id (0xc0) xored with (0x83 & 0x3f).
@@ -290,7 +289,7 @@ TEST_F(LoadBalancerEncoderTest, UnroutableConnectionId) {
 
 TEST_F(LoadBalancerEncoderTest, NonDefaultUnroutableConnectionIdLength) {
   auto encoder = LoadBalancerEncoder::Create(random_, nullptr, true, 9);
-  EXPECT_TRUE(encoder.has_value());
+  ASSERT_TRUE(encoder.has_value());
   QuicConnectionId connection_id = encoder->GenerateConnectionId();
   EXPECT_EQ(connection_id.length(), 9);
 }
@@ -298,14 +297,14 @@ TEST_F(LoadBalancerEncoderTest, NonDefaultUnroutableConnectionIdLength) {
 TEST_F(LoadBalancerEncoderTest, DeleteConfigWhenNoConfigExists) {
   TestLoadBalancerEncoderVisitor visitor;
   auto encoder = LoadBalancerEncoder::Create(random_, &visitor, true);
-  EXPECT_TRUE(encoder.has_value());
+  ASSERT_TRUE(encoder.has_value());
   encoder->DeleteConfig();
   EXPECT_EQ(visitor.num_deletes(), 0u);
 }
 
 TEST_F(LoadBalancerEncoderTest, AddConfig) {
   auto config = LoadBalancerConfig::CreateUnencrypted(0, 3, 4);
-  EXPECT_TRUE(config.has_value());
+  ASSERT_TRUE(config.has_value());
   TestLoadBalancerEncoderVisitor visitor;
   auto encoder = LoadBalancerEncoder::Create(random_, &visitor, true);
   EXPECT_TRUE(encoder->UpdateConfig(*config, MakeServerId(kServerId, 3)));
@@ -321,12 +320,12 @@ TEST_F(LoadBalancerEncoderTest, AddConfig) {
 
 TEST_F(LoadBalancerEncoderTest, UpdateConfig) {
   auto config = LoadBalancerConfig::CreateUnencrypted(0, 3, 4);
-  EXPECT_TRUE(config.has_value());
+  ASSERT_TRUE(config.has_value());
   TestLoadBalancerEncoderVisitor visitor;
   auto encoder = LoadBalancerEncoder::Create(random_, &visitor, true);
   EXPECT_TRUE(encoder->UpdateConfig(*config, MakeServerId(kServerId, 3)));
   config = LoadBalancerConfig::Create(1, 4, 4, kKey);
-  EXPECT_TRUE(config.has_value());
+  ASSERT_TRUE(config.has_value());
   EXPECT_TRUE(encoder->UpdateConfig(*config, MakeServerId(kServerId, 4)));
   EXPECT_EQ(visitor.num_adds(), 2u);
   EXPECT_EQ(visitor.num_deletes(), 1u);
@@ -336,7 +335,7 @@ TEST_F(LoadBalancerEncoderTest, UpdateConfig) {
 
 TEST_F(LoadBalancerEncoderTest, DeleteConfig) {
   auto config = LoadBalancerConfig::CreateUnencrypted(0, 3, 4);
-  EXPECT_TRUE(config.has_value());
+  ASSERT_TRUE(config.has_value());
   TestLoadBalancerEncoderVisitor visitor;
   auto encoder = LoadBalancerEncoder::Create(random_, &visitor, true);
   EXPECT_TRUE(encoder->UpdateConfig(*config, MakeServerId(kServerId, 3)));
@@ -350,13 +349,99 @@ TEST_F(LoadBalancerEncoderTest, DeleteConfig) {
 
 TEST_F(LoadBalancerEncoderTest, DeleteConfigNoVisitor) {
   auto config = LoadBalancerConfig::CreateUnencrypted(0, 3, 4);
-  EXPECT_TRUE(config.has_value());
+  ASSERT_TRUE(config.has_value());
   auto encoder = LoadBalancerEncoder::Create(random_, nullptr, true);
   EXPECT_TRUE(encoder->UpdateConfig(*config, MakeServerId(kServerId, 3)));
   encoder->DeleteConfig();
   EXPECT_FALSE(encoder->IsEncoding());
   EXPECT_FALSE(encoder->IsEncrypted());
   EXPECT_EQ(encoder->num_nonces_left(), 0);
+}
+
+TEST_F(LoadBalancerEncoderTest, MaybeReplaceConnectionIdReturnsNoChange) {
+  auto encoder = LoadBalancerEncoder::Create(random_, nullptr, false);
+  ASSERT_TRUE(encoder.has_value());
+  EXPECT_EQ(encoder->MaybeReplaceConnectionId(TestConnectionId(1),
+                                              ParsedQuicVersion::Q050()),
+            absl::nullopt);
+}
+
+TEST_F(LoadBalancerEncoderTest, MaybeReplaceConnectionIdReturnsChange) {
+  random_.AddNextValues(0x83, kNonceHigh);
+  auto encoder = LoadBalancerEncoder::Create(random_, nullptr, false);
+  ASSERT_TRUE(encoder.has_value());
+  // The first byte is the config_id (0xc0) xored with (0x83 & 0x3f).
+  // The remaining bytes are random, and therefore match kNonceHigh.
+  QuicConnectionId expected({0xc3, 0x5d, 0x52, 0xde, 0x4d, 0xe3, 0xe7, 0x21});
+  EXPECT_EQ(*encoder->MaybeReplaceConnectionId(TestConnectionId(1),
+                                               ParsedQuicVersion::RFCv1()),
+            expected);
+}
+
+TEST_F(LoadBalancerEncoderTest, GenerateNextConnectionIdReturnsNoChange) {
+  auto config = LoadBalancerConfig::CreateUnencrypted(0, 3, 4);
+  ASSERT_TRUE(config.has_value());
+  auto encoder = LoadBalancerEncoder::Create(random_, nullptr, true);
+  EXPECT_TRUE(encoder->UpdateConfig(*config, MakeServerId(kServerId, 3)));
+  EXPECT_EQ(encoder->GenerateNextConnectionId(TestConnectionId(1)),
+            absl::nullopt);
+}
+
+TEST_F(LoadBalancerEncoderTest, GenerateNextConnectionIdReturnsChange) {
+  random_.AddNextValues(0x83, kNonceHigh);
+  auto encoder = LoadBalancerEncoder::Create(random_, nullptr, false);
+  ASSERT_TRUE(encoder.has_value());
+  // The first byte is the config_id (0xc0) xored with (0x83 & 0x3f).
+  // The remaining bytes are random, and therefore match kNonceHigh.
+  QuicConnectionId expected({0xc3, 0x5d, 0x52, 0xde, 0x4d, 0xe3, 0xe7, 0x21});
+  EXPECT_EQ(*encoder->GenerateNextConnectionId(TestConnectionId(1)), expected);
+}
+
+TEST_F(LoadBalancerEncoderTest, ConnectionIdLengthsEncoded) {
+  // The first byte literally encodes the length.
+  auto len_encoder = LoadBalancerEncoder::Create(random_, nullptr, true);
+  ASSERT_TRUE(len_encoder.has_value());
+  EXPECT_EQ(len_encoder->ConnectionIdLength(0xc8), 9);
+  EXPECT_EQ(len_encoder->ConnectionIdLength(0x4a), 11);
+  EXPECT_EQ(len_encoder->ConnectionIdLength(0x09), 10);
+  // The length is not self-encoded anymore.
+  auto encoder = LoadBalancerEncoder::Create(random_, nullptr, false);
+  ASSERT_TRUE(encoder.has_value());
+  EXPECT_EQ(encoder->ConnectionIdLength(0xc8), kQuicDefaultConnectionIdLength);
+  EXPECT_EQ(encoder->ConnectionIdLength(0x4a), kQuicDefaultConnectionIdLength);
+  EXPECT_EQ(encoder->ConnectionIdLength(0x09), kQuicDefaultConnectionIdLength);
+  // Add config ID 0, so that ID now returns a different length.
+  uint8_t config_id = 0;
+  uint8_t server_id_len = 3;
+  uint8_t nonce_len = 6;
+  uint8_t config_0_len = server_id_len + nonce_len + 1;
+  auto config0 = LoadBalancerConfig::CreateUnencrypted(config_id, server_id_len,
+                                                       nonce_len);
+  ASSERT_TRUE(config0.has_value());
+  EXPECT_TRUE(
+      encoder->UpdateConfig(*config0, MakeServerId(kServerId, server_id_len)));
+  EXPECT_EQ(encoder->ConnectionIdLength(0xc8), kQuicDefaultConnectionIdLength);
+  EXPECT_EQ(encoder->ConnectionIdLength(0x4a), kQuicDefaultConnectionIdLength);
+  EXPECT_EQ(encoder->ConnectionIdLength(0x09), config_0_len);
+  // Replace config ID 0 with 1. There are probably still packets with config
+  // ID 0 arriving, so keep that length in memory.
+  config_id = 1;
+  nonce_len++;
+  uint8_t config_1_len = server_id_len + nonce_len + 1;
+  auto config1 = LoadBalancerConfig::CreateUnencrypted(config_id, server_id_len,
+                                                       nonce_len);
+  ASSERT_TRUE(config1.has_value());
+  // Old config length still there after replacement
+  EXPECT_TRUE(
+      encoder->UpdateConfig(*config1, MakeServerId(kServerId, server_id_len)));
+  EXPECT_EQ(encoder->ConnectionIdLength(0xc8), kQuicDefaultConnectionIdLength);
+  EXPECT_EQ(encoder->ConnectionIdLength(0x4a), config_1_len);
+  EXPECT_EQ(encoder->ConnectionIdLength(0x09), config_0_len);
+  // Old config length still there after delete
+  encoder->DeleteConfig();
+  EXPECT_EQ(encoder->ConnectionIdLength(0xc8), kQuicDefaultConnectionIdLength);
+  EXPECT_EQ(encoder->ConnectionIdLength(0x4a), config_1_len);
+  EXPECT_EQ(encoder->ConnectionIdLength(0x09), config_0_len);
 }
 
 }  // namespace

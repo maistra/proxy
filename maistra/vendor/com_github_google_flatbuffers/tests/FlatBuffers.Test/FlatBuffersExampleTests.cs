@@ -19,8 +19,9 @@ using System.Text;
 using System.Threading;
 using MyGame.Example;
 using optional_scalars;
+using KeywordTest;
 
-namespace FlatBuffers.Test
+namespace Google.FlatBuffers.Test
 {
     [FlatBuffersTestClass]
     public class FlatBuffersExampleTests
@@ -115,13 +116,13 @@ namespace FlatBuffers.Test
             // Dump to output directory so we can inspect later, if needed
             #if ENABLE_SPAN_T
             var data = fbb.DataBuffer.ToSizedArray();
-            string filename = @".tmp/monsterdata_cstest" + (sizePrefix ? "_sp" : "") + ".mon";
+            string filename = @"monsterdata_cstest" + (sizePrefix ? "_sp" : "") + ".mon";
             File.WriteAllBytes(filename, data);
             #else
             using (var ms = fbb.DataBuffer.ToMemoryStream(fbb.DataBuffer.Position, fbb.Offset))
             {
                 var data = ms.ToArray();
-                string filename = @".tmp/monsterdata_cstest" + (sizePrefix ? "_sp" : "") + ".mon";
+                string filename = @"monsterdata_cstest" + (sizePrefix ? "_sp" : "") + ".mon";
                 File.WriteAllBytes(filename, data);
             }
             #endif
@@ -155,8 +156,11 @@ namespace FlatBuffers.Test
 
             // Example of searching for a table by the key
             Assert.IsTrue(monster.TestarrayoftablesByKey("Frodo") != null);
+            Assert.AreEqual(monster.TestarrayoftablesByKey("Frodo").Value.Name, "Frodo");
             Assert.IsTrue(monster.TestarrayoftablesByKey("Barney") != null);
+            Assert.AreEqual(monster.TestarrayoftablesByKey("Barney").Value.Name, "Barney");
             Assert.IsTrue(monster.TestarrayoftablesByKey("Wilma") != null);
+            Assert.AreEqual(monster.TestarrayoftablesByKey("Wilma").Value.Name, "Wilma");
 
             // testType is an existing field
             Assert.AreEqual(monster.TestType, Any.Monster);
@@ -486,6 +490,26 @@ namespace FlatBuffers.Test
             Assert.AreEqual("Chip", movie.CharactersAsString(2));
 
             TestObjectAPI(movie);
+        }
+
+        [FlatBuffersTestMethod]
+        public void TestUnionUtility()
+        {
+            var movie = new MovieT
+            {
+                MainCharacter = CharacterUnion.FromRapunzel(new RapunzelT { HairLength = 40 }),
+                Characters = new System.Collections.Generic.List<CharacterUnion>
+                {
+                    CharacterUnion.FromMuLan(new AttackerT { SwordAttackDamage = 10 }),
+                    CharacterUnion.FromBelle(new BookReaderT { BooksRead = 20 }),
+                    CharacterUnion.FromOther("Chip"),
+                },
+            };
+
+            var fbb = new FlatBufferBuilder(100);
+            Movie.FinishMovieBuffer(fbb, Movie.Pack(fbb, movie));
+
+            TestObjectAPI(Movie.GetRootAsMovie(fbb.DataBuffer));
         }
 
         private void AreEqual(Monster a, MonsterT b)
@@ -1096,6 +1120,76 @@ namespace FlatBuffers.Test
             Assert.AreEqual(OptionalByte.Two, scalarStuff.JustEnum);
             Assert.AreEqual(OptionalByte.Two, scalarStuff.MaybeEnum);
             Assert.AreEqual(OptionalByte.Two, scalarStuff.DefaultEnum);
+        }
+
+
+        [FlatBuffersTestMethod]
+        public void TestKeywordEscaping() {
+            Assert.AreEqual((int)KeywordTest.@public.NONE, 0);
+
+            Assert.AreEqual((int)KeywordTest.ABC.@void, 0);
+            Assert.AreEqual((int)KeywordTest.ABC.where, 1);
+            Assert.AreEqual((int)KeywordTest.ABC.@stackalloc, 2);
+
+            var fbb = new FlatBufferBuilder(1);
+            var offset = KeywordsInTable.CreateKeywordsInTable(
+                fbb, KeywordTest.ABC.@stackalloc, KeywordTest.@public.NONE);
+            fbb.Finish(offset.Value);
+ 
+            KeywordsInTable keywordsInTable = 
+                KeywordsInTable.GetRootAsKeywordsInTable(fbb.DataBuffer);
+
+            Assert.AreEqual(keywordsInTable.Is, KeywordTest.ABC.@stackalloc);
+            Assert.AreEqual(keywordsInTable.Private, KeywordTest.@public.NONE);
+        }
+
+
+        [FlatBuffersTestMethod]
+        public void AddOptionalEnum_WhenPassNull_ShouldWorkProperly() {
+          var fbb = new FlatBufferBuilder(1);
+          ScalarStuff.StartScalarStuff(fbb);
+          ScalarStuff.AddMaybeEnum(fbb, null);
+          var offset = ScalarStuff.EndScalarStuff(fbb);
+          ScalarStuff.FinishScalarStuffBuffer(fbb, offset);
+          
+          ScalarStuff scalarStuff = ScalarStuff.GetRootAsScalarStuff(fbb.DataBuffer);
+          Assert.AreEqual(null, scalarStuff.MaybeEnum);
+        }
+
+
+        [FlatBuffersTestMethod]
+        public void SortKey_WithDefaultedValue_IsFindable() {
+            // This checks if using the `key` attribute that includes the
+            // default value (e.g., 0) is still searchable. This is a regression
+            // test for https://github.com/google/flatbuffers/issues/7380.
+            var fbb = new FlatBufferBuilder(1);
+
+            // Create a vector of Stat objects, with Count being the key. 
+            var stat_offsets = new Offset<Stat>[4];
+            for(ushort i = 0; i < stat_offsets.Length; i++) {
+                Stat.StartStat(fbb);
+                Stat.AddCount(fbb, i);
+                stat_offsets[stat_offsets.Length - 1 - i] = Stat.EndStat(fbb);
+            }
+
+            // Ensure the sort works.
+            var sort = Stat.CreateSortedVectorOfStat(fbb, stat_offsets);
+
+            // Create the monster with the sorted vector of Stat objects.
+            var str = fbb.CreateString("MyMonster");
+            Monster.StartMonster(fbb);
+            Monster.AddName(fbb, str);
+            Monster.AddScalarKeySortedTables(fbb, sort);
+            fbb.Finish(Monster.EndMonster(fbb).Value);
+
+            // Get the monster.
+            var monster = Monster.GetRootAsMonster(fbb.DataBuffer);
+
+            // Ensure each key is findable.
+            for(ushort i =0 ; i < stat_offsets.Length; i++) {
+                Assert.IsTrue(monster.ScalarKeySortedTablesByKey(i) != null);
+                Assert.AreEqual(monster.ScalarKeySortedTablesByKey(i).Value.Count, i);
+            }
         }
     }
 }

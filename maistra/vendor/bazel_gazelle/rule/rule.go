@@ -406,7 +406,7 @@ func (f *File) SortMacro() {
 func (f *File) Save(path string) error {
 	f.Sync()
 	f.Content = bzl.Format(f.File)
-	return ioutil.WriteFile(path, f.Content, 0666)
+	return ioutil.WriteFile(path, f.Content, 0o666)
 }
 
 // HasDefaultVisibility returns whether the File contains a "package" rule with
@@ -604,6 +604,19 @@ func (l *Load) Add(sym string) {
 	if _, ok := l.symbols[sym]; !ok {
 		i := &bzl.Ident{Name: sym}
 		l.symbols[sym] = identPair{to: i, from: i}
+		l.updated = true
+	}
+}
+
+// AddAlias inserts a new aliased symbol into the load statement. This has
+// no effect if the symbol is already loaded. Symbols will be sorted, so the order
+// doesn't matter.
+func (l *Load) AddAlias(sym, to string) {
+	if _, ok := l.symbols[sym]; !ok {
+		l.symbols[sym] = identPair{
+			to:   &bzl.Ident{Name: to},
+			from: &bzl.Ident{Name: sym},
+		}
 		l.updated = true
 	}
 }

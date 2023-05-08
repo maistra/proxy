@@ -1,5 +1,5 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load("@crate_universe_crate_index//:defs.bzl", "aliases", "all_crate_deps")
+load("@cui//:defs.bzl", "aliases", "all_crate_deps")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_doc", "rust_doc_test", "rust_library", "rust_test")
 load("//crate_universe:version.bzl", "VERSION")
 
@@ -7,26 +7,10 @@ exports_files(
     glob(["src/**"]) + [
         "Cargo.toml",
         "Cargo.lock",
-        "Cargo.Bazel.lock",
         "defs.bzl",
+        "docs.bzl",
     ],
     visibility = ["//visibility:public"],
-)
-
-filegroup(
-    name = "distro",
-    srcs = glob(["*.bzl"]) + [
-        ":rust_srcs",
-        "//crate_universe/3rdparty:distro",
-        "//crate_universe/private:distro",
-        "//crate_universe/tools:distro",
-        "BUILD.bazel",
-        "Cargo.Bazel.lock",
-        "Cargo.lock",
-        "Cargo.toml",
-        "README.md",
-    ],
-    visibility = ["//:__subpackages__"],
 )
 
 filegroup(
@@ -66,7 +50,13 @@ rust_library(
         include = ["src/**"],
         exclude = ["src/**/*.rs"],
     ),
+    edition = "2018",
     proc_macro_deps = all_crate_deps(proc_macro = True),
+    # This target embeds additional, stamping related information (see
+    # https://docs.bazel.build/versions/main/user-manual.html#workspace_status
+    # for more information). Set stamp = -1 to indicate that it should respect
+    # the value of the --stamp comandline flag.
+    stamp = -1,
     version = VERSION,
     visibility = ["//visibility:public"],
     deps = all_crate_deps(normal = True),
@@ -75,6 +65,7 @@ rust_library(
 rust_binary(
     name = "cargo_bazel_bin",
     srcs = ["src/main.rs"],
+    edition = "2018",
     version = VERSION,
     visibility = ["//visibility:public"],
     deps = [":cargo_bazel"],
@@ -91,20 +82,52 @@ rust_test(
     aliases = aliases(),
     crate = ":cargo_bazel",
     data = glob(["test_data/**"]) + [
-        "@rules_rust//rust/toolchain:current_exec_cargo_files",
-        "@rules_rust//rust/toolchain:current_exec_rustc_files",
+        "@rules_rust//rust/toolchain:current_cargo_files",
+        "@rules_rust//rust/toolchain:current_rustc_files",
+        "//crate_universe/test_data/serialized_configs",
     ],
     proc_macro_deps = all_crate_deps(
         proc_macro_dev = True,
     ),
     rustc_env = {
-        "CARGO": "$(rootpath @rules_rust//rust/toolchain:current_exec_cargo_files)",
-        "RUSTC": "$(rootpath @rules_rust//rust/toolchain:current_exec_rustc_files)",
+        "CARGO": "$(rootpath @rules_rust//rust/toolchain:current_cargo_files)",
+        "RUSTC": "$(rootpath @rules_rust//rust/toolchain:current_rustc_files)",
     },
     deps = [
         "@rules_rust//tools/runfiles",
     ] + all_crate_deps(
         normal_dev = True,
+    ),
+)
+
+# Integration tests which invoke cargo and/or rustc as subprocesses.
+rust_test(
+    name = "cargo_integration_test",
+    timeout = "long",
+    srcs = ["tests/cargo_integration_test.rs"],
+    aliases = aliases(),
+    data = glob(["test_data/**"]) + [
+        "@rules_rust//rust/toolchain:current_cargo_files",
+        "@rules_rust//rust/toolchain:current_rustc_files",
+        "//crate_universe/test_data/serialized_configs",
+    ],
+    edition = "2018",
+    env = {
+        "CARGO": "$(rootpath @rules_rust//rust/toolchain:current_cargo_files)",
+        "RUSTC": "$(rootpath @rules_rust//rust/toolchain:current_rustc_files)",
+    },
+    proc_macro_deps = all_crate_deps(
+        proc_macro_dev = True,
+    ),
+    rustc_env = {
+        "CARGO": "$(rootpath @rules_rust//rust/toolchain:current_cargo_files)",
+        "RUSTC": "$(rootpath @rules_rust//rust/toolchain:current_rustc_files)",
+    },
+    deps = [
+        ":cargo_bazel",
+        "@rules_rust//tools/runfiles",
+    ] + all_crate_deps(
+        normal = True,
     ),
 )
 
@@ -117,10 +140,4 @@ rust_doc(
 rust_doc_test(
     name = "rustdoc_test",
     crate = ":cargo_bazel",
-    # TODO: This target fails on windows with the error tracked in:
-    # https://github.com/bazelbuild/rules_rust/issues/1233
-    target_compatible_with = select({
-        "@platforms//os:windows": ["@platforms//:incompatible"],
-        "//conditions:default": [],
-    }),
 )

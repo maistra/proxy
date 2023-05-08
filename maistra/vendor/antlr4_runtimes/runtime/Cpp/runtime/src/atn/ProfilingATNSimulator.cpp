@@ -99,7 +99,7 @@ std::unique_ptr<ATNConfigSet> ProfilingATNSimulator::computeReachSet(ATNConfigSe
     _decisions[_currentDecision].LL_ATNTransitions++; // count computation even if error
     if (reachConfigs != nullptr) {
     } else { // no reach on current lookahead symbol. ERROR.
-      // TO_DO: does not handle delayed errors per getSynValidOrSemInvalidAltThatFinishedDecisionEntryRule()
+      // TODO: does not handle delayed errors per getSynValidOrSemInvalidAltThatFinishedDecisionEntryRule()
       _decisions[_currentDecision].errors.push_back(ErrorInfo(_currentDecision, closure, _input, _startIndex, _llStopIndex, true));
     }
   } else {
@@ -112,10 +112,10 @@ std::unique_ptr<ATNConfigSet> ProfilingATNSimulator::computeReachSet(ATNConfigSe
   return reachConfigs;
 }
 
-bool ProfilingATNSimulator::evalSemanticContext(Ref<SemanticContext> const& pred, ParserRuleContext *parserCallStack,
+bool ProfilingATNSimulator::evalSemanticContext(Ref<const SemanticContext> const& pred, ParserRuleContext *parserCallStack,
                                                 size_t alt, bool fullCtx) {
   bool result = ParserATNSimulator::evalSemanticContext(pred, parserCallStack, alt, fullCtx);
-  if (!(std::dynamic_pointer_cast<SemanticContext::PrecedencePredicate>(pred) != nullptr)) {
+  if (!(std::dynamic_pointer_cast<const SemanticContext::PrecedencePredicate>(pred) != nullptr)) {
     bool fullContext = _llStopIndex >= 0;
     int stopIndex = fullContext ? _llStopIndex : _sllStopIndex;
     _decisions[_currentDecision].predicateEvals.push_back(

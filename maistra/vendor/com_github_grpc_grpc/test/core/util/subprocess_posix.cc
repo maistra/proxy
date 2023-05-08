@@ -20,20 +20,16 @@
 
 #ifdef GPR_POSIX_SUBPROCESS
 
-#include <assert.h>
 #include <errno.h>
 #include <signal.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
 #include <grpc/support/alloc.h>
 #include <grpc/support/log.h>
 
+#include "src/core/lib/gprpp/memory.h"
 #include "test/core/util/subprocess.h"
 
 struct gpr_subprocess {
@@ -60,9 +56,8 @@ gpr_subprocess* gpr_subprocess_create(int argc, const char** argv) {
     /* if we reach here, an error has occurred */
     gpr_log(GPR_ERROR, "execv '%s' failed: %s", exec_args[0], strerror(errno));
     _exit(1);
-    return nullptr;
   } else {
-    r = static_cast<gpr_subprocess*>(gpr_zalloc(sizeof(gpr_subprocess)));
+    r = grpc_core::Zalloc<gpr_subprocess>();
     r->pid = pid;
     return r;
   }
@@ -96,5 +91,7 @@ void gpr_subprocess_interrupt(gpr_subprocess* p) {
     kill(p->pid, SIGINT);
   }
 }
+
+int gpr_subprocess_get_process_id(gpr_subprocess* p) { return p->pid; }
 
 #endif /* GPR_POSIX_SUBPROCESS */

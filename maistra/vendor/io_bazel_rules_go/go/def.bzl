@@ -59,6 +59,10 @@ load(
     _go_embed_data = "go_embed_data",
 )
 load(
+    "//extras:gomock.bzl",
+    _gomock = "gomock",
+)
+load(
     "//go/private/tools:path.bzl",
     _go_path = "go_path",
 )
@@ -69,6 +73,10 @@ load(
 load(
     "//go/private/rules:nogo.bzl",
     _nogo = "nogo_wrapper",
+)
+load(
+    "//go/private/rules:cross.bzl",
+    _go_cross_binary = "go_cross_binary",
 )
 
 # TOOLS_NOGO is a list of all analysis passes in
@@ -116,11 +124,12 @@ TOOLS_NOGO = [
 
 # Current version or next version to be tagged. Gazelle and other tools may
 # check this to determine compatibility.
-RULES_GO_VERSION = "0.31.0"
+RULES_GO_VERSION = "0.35.0"
 
 declare_toolchains = _declare_toolchains
 go_context = _go_context
 go_embed_data = _go_embed_data
+gomock = _gomock
 go_sdk = _go_sdk
 go_tool_library = _go_tool_library
 go_toolchain = _go_toolchain
@@ -158,6 +167,9 @@ go_source = _go_source
 
 # See docs/go/core/rules.md#go_path for full documentation.
 go_path = _go_path
+
+# See docs/go/core/rules.md#go_cross_binary for full documentation.
+go_cross_binary = _go_cross_binary
 
 def go_vet_test(*args, **kwargs):
     fail("The go_vet_test rule has been removed. Please migrate to nogo instead, which supports vet tests.")

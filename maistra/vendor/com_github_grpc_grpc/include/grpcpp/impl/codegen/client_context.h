@@ -34,6 +34,8 @@
 #ifndef GRPCPP_IMPL_CODEGEN_CLIENT_CONTEXT_H
 #define GRPCPP_IMPL_CODEGEN_CLIENT_CONTEXT_H
 
+// IWYU pragma: private, include <grpcpp/client_context.h>
+
 #include <map>
 #include <memory>
 #include <string>
@@ -224,11 +226,16 @@ class ClientContext {
   /// must end in "-bin".
   ///
   /// Metadata must conform to the following format:
-  /// Custom-Metadata -> Binary-Header / ASCII-Header
-  /// Binary-Header -> {Header-Name "-bin" } {binary value}
-  /// ASCII-Header -> Header-Name ASCII-Value
-  /// Header-Name -> 1*( %x30-39 / %x61-7A / "_" / "-" / ".") ; 0-9 a-z _ - .
-  /// ASCII-Value -> 1*( %x20-%x7E ) ; space and printable ASCII
+  /**
+  \verbatim
+  Custom-Metadata -> Binary-Header / ASCII-Header
+  Binary-Header -> {Header-Name "-bin" } {binary value}
+  ASCII-Header -> Header-Name ASCII-Value
+  Header-Name -> 1*( %x30-39 / %x61-7A / "_" / "-" / ".") ; 0-9 a-z _ - .
+  ASCII-Value -> 1*( %x20-%x7E ) ; space and printable ASCII
+  Custom-Metadata -> Binary-Header / ASCII-Header
+  \endverbatim
+  **/
   void AddMetadata(const std::string& meta_key, const std::string& meta_value);
 
   /// Return a collection of initial metadata key-value pairs. Note that keys
@@ -269,19 +276,7 @@ class ClientContext {
     deadline_ = deadline_tp.raw_time();
   }
 
-  /// EXPERIMENTAL: Indicate that this request is idempotent.
-  /// By default, RPCs are assumed to <i>not</i> be idempotent.
-  ///
-  /// If true, the gRPC library assumes that it's safe to initiate
-  /// this RPC multiple times.
-  void set_idempotent(bool idempotent) { idempotent_ = idempotent; }
-
-  /// EXPERIMENTAL: Set this request to be cacheable.
-  /// If set, grpc is free to use the HTTP GET verb for sending the request,
-  /// with the possibility of receiving a cached response.
-  void set_cacheable(bool cacheable) { cacheable_ = cacheable; }
-
-  /// EXPERIMENTAL: Trigger wait-for-ready or not on this request.
+  /// Trigger wait-for-ready or not on this request.
   /// See https://github.com/grpc/grpc/blob/master/doc/wait-for-ready.md.
   /// If set, if an RPC is made when a channel's connectivity state is
   /// TRANSIENT_FAILURE or CONNECTING, the call will not "fail fast",
@@ -423,38 +418,38 @@ class ClientContext {
   ClientContext(const ClientContext&);
   ClientContext& operator=(const ClientContext&);
 
-  friend class ::grpc::testing::InteropClientContextInspector;
-  friend class ::grpc::testing::ClientContextTestPeer;
-  friend class ::grpc::internal::CallOpClientRecvStatus;
-  friend class ::grpc::internal::CallOpRecvInitialMetadata;
-  friend class ::grpc::Channel;
+  friend class grpc::testing::InteropClientContextInspector;
+  friend class grpc::testing::ClientContextTestPeer;
+  friend class grpc::internal::CallOpClientRecvStatus;
+  friend class grpc::internal::CallOpRecvInitialMetadata;
+  friend class grpc::Channel;
   template <class R>
-  friend class ::grpc::ClientReader;
+  friend class grpc::ClientReader;
   template <class W>
-  friend class ::grpc::ClientWriter;
+  friend class grpc::ClientWriter;
   template <class W, class R>
-  friend class ::grpc::ClientReaderWriter;
+  friend class grpc::ClientReaderWriter;
   template <class R>
-  friend class ::grpc::ClientAsyncReader;
+  friend class grpc::ClientAsyncReader;
   template <class W>
-  friend class ::grpc::ClientAsyncWriter;
+  friend class grpc::ClientAsyncWriter;
   template <class W, class R>
-  friend class ::grpc::ClientAsyncReaderWriter;
+  friend class grpc::ClientAsyncReaderWriter;
   template <class R>
-  friend class ::grpc::ClientAsyncResponseReader;
-  friend class ::grpc::internal::ClientAsyncResponseReaderHelper;
+  friend class grpc::ClientAsyncResponseReader;
+  friend class grpc::internal::ClientAsyncResponseReaderHelper;
   template <class InputMessage, class OutputMessage>
-  friend class ::grpc::internal::BlockingUnaryCallImpl;
+  friend class grpc::internal::BlockingUnaryCallImpl;
   template <class InputMessage, class OutputMessage>
-  friend class ::grpc::internal::CallbackUnaryCallImpl;
+  friend class grpc::internal::CallbackUnaryCallImpl;
   template <class Request, class Response>
-  friend class ::grpc::internal::ClientCallbackReaderWriterImpl;
+  friend class grpc::internal::ClientCallbackReaderWriterImpl;
   template <class Response>
-  friend class ::grpc::internal::ClientCallbackReaderImpl;
+  friend class grpc::internal::ClientCallbackReaderImpl;
   template <class Request>
-  friend class ::grpc::internal::ClientCallbackWriterImpl;
-  friend class ::grpc::internal::ClientCallbackUnaryImpl;
-  friend class ::grpc::internal::ClientContextAccessor;
+  friend class grpc::internal::ClientCallbackWriterImpl;
+  friend class grpc::internal::ClientCallbackUnaryImpl;
+  friend class grpc::internal::ClientContextAccessor;
 
   // Used by friend class CallOpClientRecvStatus
   void set_debug_error_string(const std::string& debug_error_string) {
@@ -462,8 +457,7 @@ class ClientContext {
   }
 
   grpc_call* call() const { return call_; }
-  void set_call(grpc_call* call,
-                const std::shared_ptr<::grpc::Channel>& channel);
+  void set_call(grpc_call* call, const std::shared_ptr<grpc::Channel>& channel);
 
   grpc::experimental::ClientRpcInfo* set_client_rpc_info(
       const char* method, const char* suffix_for_stats,
@@ -478,13 +472,10 @@ class ClientContext {
   }
 
   uint32_t initial_metadata_flags() const {
-    return (idempotent_ ? GRPC_INITIAL_METADATA_IDEMPOTENT_REQUEST : 0) |
-           (wait_for_ready_ ? GRPC_INITIAL_METADATA_WAIT_FOR_READY : 0) |
-           (cacheable_ ? GRPC_INITIAL_METADATA_CACHEABLE_REQUEST : 0) |
+    return (wait_for_ready_ ? GRPC_INITIAL_METADATA_WAIT_FOR_READY : 0) |
            (wait_for_ready_explicitly_set_
                 ? GRPC_INITIAL_METADATA_WAIT_FOR_READY_EXPLICITLY_SET
-                : 0) |
-           (initial_metadata_corked_ ? GRPC_INITIAL_METADATA_CORKED : 0);
+                : 0);
   }
 
   std::string authority() { return authority_; }
@@ -498,9 +489,7 @@ class ClientContext {
   bool initial_metadata_received_;
   bool wait_for_ready_;
   bool wait_for_ready_explicitly_set_;
-  bool idempotent_;
-  bool cacheable_;
-  std::shared_ptr<::grpc::Channel> channel_;
+  std::shared_ptr<grpc::Channel> channel_;
   grpc::internal::Mutex mu_;
   grpc_call* call_;
   bool call_canceled_;

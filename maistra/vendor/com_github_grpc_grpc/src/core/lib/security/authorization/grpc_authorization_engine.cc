@@ -16,6 +16,12 @@
 
 #include "src/core/lib/security/authorization/grpc_authorization_engine.h"
 
+#include <algorithm>
+#include <map>
+#include <utility>
+
+#include "absl/memory/memory.h"
+
 namespace grpc_core {
 
 GrpcAuthorizationEngine::GrpcAuthorizationEngine(Rbac policy)
@@ -27,6 +33,17 @@ GrpcAuthorizationEngine::GrpcAuthorizationEngine(Rbac policy)
         std::move(sub_policy.second));
     policies_.push_back(std::move(policy));
   }
+}
+
+GrpcAuthorizationEngine::GrpcAuthorizationEngine(
+    GrpcAuthorizationEngine&& other) noexcept
+    : action_(other.action_), policies_(std::move(other.policies_)) {}
+
+GrpcAuthorizationEngine& GrpcAuthorizationEngine::operator=(
+    GrpcAuthorizationEngine&& other) noexcept {
+  action_ = other.action_;
+  policies_ = std::move(other.policies_);
+  return *this;
 }
 
 AuthorizationEngine::Decision GrpcAuthorizationEngine::Evaluate(

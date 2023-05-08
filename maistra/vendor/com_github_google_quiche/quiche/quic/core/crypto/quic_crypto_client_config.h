@@ -17,6 +17,7 @@
 #include "quiche/quic/core/crypto/client_proof_source.h"
 #include "quiche/quic/core/crypto/crypto_handshake.h"
 #include "quiche/quic/core/crypto/crypto_protocol.h"
+#include "quiche/quic/core/crypto/quic_random.h"
 #include "quiche/quic/core/crypto/transport_parameters.h"
 #include "quiche/quic/core/quic_packets.h"
 #include "quiche/quic/core/quic_server_id.h"
@@ -28,7 +29,6 @@ namespace quic {
 class CryptoHandshakeMessage;
 class ProofVerifier;
 class ProofVerifyDetails;
-class QuicRandom;
 
 // QuicResumptionState stores the state a client needs for performing connection
 // resumption.
@@ -153,8 +153,7 @@ class QUIC_EXPORT_PRIVATE QuicCryptoClientConfig : public QuicCryptoConfig {
 
     // SetProof stores a cert chain, cert signed timestamp and signature.
     void SetProof(const std::vector<std::string>& certs,
-                  absl::string_view cert_sct,
-                  absl::string_view chlo_hash,
+                  absl::string_view cert_sct, absl::string_view chlo_hash,
                   absl::string_view signature);
 
     // Clears all the data.
@@ -201,10 +200,8 @@ class QUIC_EXPORT_PRIVATE QuicCryptoClientConfig : public QuicCryptoConfig {
     bool Initialize(absl::string_view server_config,
                     absl::string_view source_address_token,
                     const std::vector<std::string>& certs,
-                    const std::string& cert_sct,
-                    absl::string_view chlo_hash,
-                    absl::string_view signature,
-                    QuicWallTime now,
+                    const std::string& cert_sct, absl::string_view chlo_hash,
+                    absl::string_view signature, QuicWallTime now,
                     QuicWallTime expiration_time);
 
    private:
@@ -404,12 +401,9 @@ class QUIC_EXPORT_PRIVATE QuicCryptoClientConfig : public QuicCryptoConfig {
   // This is used on receipt of a REJ from a server, or when a server sends
   // updated server config during a connection.
   QuicErrorCode CacheNewServerConfig(
-      const CryptoHandshakeMessage& message,
-      QuicWallTime now,
-      QuicTransportVersion version,
-      absl::string_view chlo_hash,
-      const std::vector<std::string>& cached_certs,
-      CachedState* cached,
+      const CryptoHandshakeMessage& message, QuicWallTime now,
+      QuicTransportVersion version, absl::string_view chlo_hash,
+      const std::vector<std::string>& cached_certs, CachedState* cached,
       std::string* error_details);
 
   // If the suffix of the hostname in |server_id| is in |canonical_suffixes_|,

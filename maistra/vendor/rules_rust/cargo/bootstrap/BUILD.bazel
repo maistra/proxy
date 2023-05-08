@@ -14,16 +14,8 @@ rust_binary(
     srcs = [
         "bootstrap_installer.rs",
     ],
+    edition = "2018",
     rustc_env = {
         "RULES_RUST_CARGO_BOOTSTRAP_BINARY": "$(rootpath bootstrap_installer.rs)",
     },
-)
-
-filegroup(
-    name = "distro",
-    srcs = [
-        "BUILD.bazel",
-        "bootstrap_installer.rs",
-    ],
-    visibility = ["//:__subpackages__"],
 )

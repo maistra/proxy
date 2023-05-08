@@ -108,8 +108,7 @@ class QUIC_EXPORT_PRIVATE ProofSource {
     // |details| holds a pointer to an object representing the statistics, if
     // any, gathered during the operation of ComputeTlsSignature.  If no stats
     // are available, this will be nullptr.
-    virtual void Run(bool ok,
-                     std::string signature,
+    virtual void Run(bool ok, std::string signature,
                      std::unique_ptr<Details> details) = 0;
 
    private:
@@ -164,10 +163,8 @@ class QUIC_EXPORT_PRIVATE ProofSource {
   // Callers should expect that |callback| might be invoked synchronously.
   virtual void ComputeTlsSignature(
       const QuicSocketAddress& server_address,
-      const QuicSocketAddress& client_address,
-      const std::string& hostname,
-      uint16_t signature_algorithm,
-      absl::string_view in,
+      const QuicSocketAddress& client_address, const std::string& hostname,
+      uint16_t signature_algorithm, absl::string_view in,
       std::unique_ptr<SignatureCallback> callback) = 0;
 
   // Return the list of TLS signature algorithms that is acceptable by the
@@ -176,7 +173,7 @@ class QUIC_EXPORT_PRIVATE ProofSource {
   //
   // If returns a non-empty list, ComputeTlsSignature will only be called with a
   // algorithm in the list.
-  virtual absl::InlinedVector<uint16_t, 8> SupportedTlsSignatureAlgorithms()
+  virtual QuicSignatureAlgorithmVector SupportedTlsSignatureAlgorithms()
       const = 0;
 
   class QUIC_EXPORT_PRIVATE DecryptCallback {
@@ -222,7 +219,7 @@ class QUIC_EXPORT_PRIVATE ProofSource {
     // |in|. If decryption fails, the callback is invoked with an empty
     // vector.
     virtual void Decrypt(absl::string_view in,
-                         std::unique_ptr<DecryptCallback> callback) = 0;
+                         std::shared_ptr<DecryptCallback> callback) = 0;
   };
 
   // Returns the TicketCrypter used for encrypting and decrypting TLS
@@ -265,9 +262,7 @@ class QUIC_EXPORT_PRIVATE ProofSourceHandleCallback {
 
   // Called when a ProofSourceHandle::ComputeSignature operation completes.
   virtual void OnComputeSignatureDone(
-      bool ok,
-      bool is_sync,
-      std::string signature,
+      bool ok, bool is_sync, std::string signature,
       std::unique_ptr<ProofSource::Details> details) = 0;
 
   // Return true iff ProofSourceHandle::ComputeSignature won't be called later.
@@ -315,10 +310,9 @@ class QUIC_EXPORT_PRIVATE ProofSourceHandle {
   virtual QuicAsyncStatus SelectCertificate(
       const QuicSocketAddress& server_address,
       const QuicSocketAddress& client_address,
-      absl::string_view ssl_capabilities,
-      const std::string& hostname,
-      absl::string_view client_hello,
-      const std::string& alpn,
+      const QuicConnectionId& original_connection_id,
+      absl::string_view ssl_capabilities, const std::string& hostname,
+      absl::string_view client_hello, const std::string& alpn,
       absl::optional<std::string> alps,
       const std::vector<uint8_t>& quic_transport_params,
       const absl::optional<std::vector<uint8_t>>& early_data_context,
@@ -330,10 +324,8 @@ class QUIC_EXPORT_PRIVATE ProofSourceHandle {
   // See the comments of SelectCertificate for sync vs. async operations.
   virtual QuicAsyncStatus ComputeSignature(
       const QuicSocketAddress& server_address,
-      const QuicSocketAddress& client_address,
-      const std::string& hostname,
-      uint16_t signature_algorithm,
-      absl::string_view in,
+      const QuicSocketAddress& client_address, const std::string& hostname,
+      uint16_t signature_algorithm, absl::string_view in,
       size_t max_signature_size) = 0;
 
  protected:

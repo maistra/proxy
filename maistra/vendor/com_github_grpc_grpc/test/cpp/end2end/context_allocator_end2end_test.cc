@@ -16,6 +16,17 @@
  *
  */
 
+#include <algorithm>
+#include <atomic>
+#include <condition_variable>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <sstream>
+#include <thread>
+
+#include <gtest/gtest.h>
+
 #include <grpc/impl/codegen/log.h>
 #include <grpcpp/channel.h>
 #include <grpcpp/client_context.h>
@@ -25,16 +36,6 @@
 #include <grpcpp/server_context.h>
 #include <grpcpp/support/client_callback.h>
 #include <grpcpp/support/message_allocator.h>
-#include <gtest/gtest.h>
-
-#include <algorithm>
-#include <atomic>
-#include <condition_variable>
-#include <functional>
-#include <memory>
-#include <mutex>
-#include <sstream>
-#include <thread>
 
 #include "src/core/lib/iomgr/iomgr.h"
 #include "src/proto/grpc/testing/echo.grpc.pb.h"
@@ -58,8 +59,7 @@ class TestScenario {
   const std::string credentials_type;
 };
 
-static std::ostream& operator<<(std::ostream& out,
-                                const TestScenario& scenario) {
+std::ostream& operator<<(std::ostream& out, const TestScenario& scenario) {
   return out << "TestScenario{protocol="
              << (scenario.protocol == Protocol::INPROC ? "INPROC" : "TCP")
              << "," << scenario.credentials_type << "}";
@@ -111,8 +111,8 @@ class ContextAllocatorEnd2endTestBase
         GetParam().credentials_type, &args);
     switch (GetParam().protocol) {
       case Protocol::TCP:
-        channel_ = ::grpc::CreateCustomChannel(server_address_.str(),
-                                               channel_creds, args);
+        channel_ = grpc::CreateCustomChannel(server_address_.str(),
+                                             channel_creds, args);
         break;
       case Protocol::INPROC:
         channel_ = server_->InProcessChannel(args);
@@ -323,7 +323,7 @@ INSTANTIATE_TEST_SUITE_P(SimpleContextAllocatorTest, SimpleContextAllocatorTest,
 }  // namespace grpc
 
 int main(int argc, char** argv) {
-  grpc::testing::TestEnvironment env(argc, argv);
+  grpc::testing::TestEnvironment env(&argc, argv);
   ::testing::InitGoogleTest(&argc, argv);
   int ret = RUN_ALL_TESTS();
   return ret;

@@ -1,8 +1,25 @@
 """The rust_toolchain rule definition and implementation."""
 
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
+load("//rust/platform:triple.bzl", "triple")
 load("//rust/private:common.bzl", "rust_common")
-load("//rust/private:utils.bzl", "dedent", "find_cc_toolchain", "make_static_lib_symlink")
+load("//rust/private:rust_analyzer.bzl", _rust_analyzer_toolchain = "rust_analyzer_toolchain")
+load(
+    "//rust/private:rustfmt.bzl",
+    _current_rustfmt_toolchain = "current_rustfmt_toolchain",
+    _rustfmt_toolchain = "rustfmt_toolchain",
+)
+load(
+    "//rust/private:utils.bzl",
+    "dedent",
+    "dedup_expand_location",
+    "find_cc_toolchain",
+    "make_static_lib_symlink",
+)
+
+rust_analyzer_toolchain = _rust_analyzer_toolchain
+rustfmt_toolchain = _rustfmt_toolchain
+current_rustfmt_toolchain = _current_rustfmt_toolchain
 
 def _rust_stdlib_filegroup_impl(ctx):
     rust_std = ctx.files.srcs
@@ -11,6 +28,8 @@ def _rust_stdlib_filegroup_impl(ctx):
     core_files = []
     between_core_and_std_files = []
     std_files = []
+    test_files = []
+    memchr_files = []
     alloc_files = []
     self_contained_files = [
         file
@@ -20,7 +39,8 @@ def _rust_stdlib_filegroup_impl(ctx):
 
     std_rlibs = [f for f in rust_std if f.basename.endswith(".rlib")]
     if std_rlibs:
-        # std depends on everything
+        # test depends on std
+        # std depends on everything except test
         #
         # core only depends on alloc, but we poke adler in there
         # because that needs to be before miniz_oxide
@@ -35,13 +55,15 @@ def _rust_stdlib_filegroup_impl(ctx):
         between_core_and_std_files = [
             f
             for f in dot_a_files
-            if "alloc" not in f.basename and "compiler_builtins" not in f.basename and "core" not in f.basename and "adler" not in f.basename and "std" not in f.basename
+            if "alloc" not in f.basename and "compiler_builtins" not in f.basename and "core" not in f.basename and "adler" not in f.basename and "std" not in f.basename and "memchr" not in f.basename and "test" not in f.basename
         ]
+        memchr_files = [f for f in dot_a_files if "memchr" in f.basename]
         std_files = [f for f in dot_a_files if "std" in f.basename]
+        test_files = [f for f in dot_a_files if "test" in f.basename]
 
-        partitioned_files_len = len(alloc_files) + len(between_alloc_and_core_files) + len(core_files) + len(between_core_and_std_files) + len(std_files)
+        partitioned_files_len = len(alloc_files) + len(between_alloc_and_core_files) + len(core_files) + len(between_core_and_std_files) + len(memchr_files) + len(std_files) + len(test_files)
         if partitioned_files_len != len(dot_a_files):
-            partitioned = alloc_files + between_alloc_and_core_files + core_files + between_core_and_std_files + std_files
+            partitioned = alloc_files + between_alloc_and_core_files + core_files + between_core_and_std_files + memchr_files + std_files + test_files
             for f in sorted(partitioned):
                 # buildifier: disable=print
                 print("File partitioned: {}".format(f.basename))
@@ -58,6 +80,8 @@ def _rust_stdlib_filegroup_impl(ctx):
             core_files = core_files,
             between_core_and_std_files = between_core_and_std_files,
             std_files = std_files,
+            test_files = test_files,
+            memchr_files = memchr_files,
             alloc_files = alloc_files,
             self_contained_files = self_contained_files,
             srcs = ctx.attr.srcs,
@@ -168,12 +192,20 @@ def _make_libstd_and_allocator_ccinfo(ctx, rust_std, allocator_library):
                 for f in filtered_between_core_and_std_files
                 if "panic_abort" not in f.basename
             ]
+        memchr_inputs = depset(
+            [
+                _ltl(f, ctx, cc_toolchain, feature_configuration)
+                for f in rust_stdlib_info.memchr_files
+            ],
+            transitive = [core_inputs],
+            order = "topological",
+        )
         between_core_and_std_inputs = depset(
             [
                 _ltl(f, ctx, cc_toolchain, feature_configuration)
                 for f in filtered_between_core_and_std_files
             ],
-            transitive = [core_inputs],
+            transitive = [memchr_inputs],
             order = "topological",
         )
         std_inputs = depset(
@@ -184,10 +216,18 @@ def _make_libstd_and_allocator_ccinfo(ctx, rust_std, allocator_library):
             transitive = [between_core_and_std_inputs],
             order = "topological",
         )
+        test_inputs = depset(
+            [
+                _ltl(f, ctx, cc_toolchain, feature_configuration)
+                for f in rust_stdlib_info.test_files
+            ],
+            transitive = [std_inputs],
+            order = "topological",
+        )
 
         link_inputs = cc_common.create_linker_input(
             owner = rust_std.label,
-            libraries = std_inputs,
+            libraries = test_inputs,
         )
 
         allocator_inputs = None
@@ -395,20 +435,15 @@ def _rust_toolchain_impl(ctx):
         if not k in ctx.attr.opt_level:
             fail("Compilation mode {} is not defined in opt_level but is defined debug_info".format(k))
 
-    if ctx.attr.target_triple and ctx.file.target_json:
-        fail("Do not specify both target_triple and target_json, either use a builtin triple or provide a custom specification file.")
-
     rename_first_party_crates = ctx.attr._rename_first_party_crates[BuildSettingInfo].value
     third_party_dir = ctx.attr._third_party_dir[BuildSettingInfo].value
+    pipelined_compilation = ctx.attr._pipelined_compilation[BuildSettingInfo].value
 
-    if ctx.attr.rust_lib:
-        # buildifier: disable=print
-        print("`rust_toolchain.rust_lib` is deprecated. Please update {} to use `rust_toolchain.rust_std`".format(
-            ctx.label,
-        ))
-        rust_std = ctx.attr.rust_lib
-    else:
-        rust_std = ctx.attr.rust_std
+    experimental_use_cc_common_link = ctx.attr.experimental_use_cc_common_link[BuildSettingInfo].value
+    if experimental_use_cc_common_link and not ctx.attr.allocator_library:
+        fail("rust_toolchain.experimental_use_cc_common_link requires rust_toolchain.allocator_library to be set")
+
+    rust_std = ctx.attr.rust_std
 
     sysroot = _generate_sysroot(
         ctx = ctx,
@@ -425,7 +460,8 @@ def _rust_toolchain_impl(ctx):
     expanded_stdlib_linkflags = []
     for flag in ctx.attr.stdlib_linkflags:
         expanded_stdlib_linkflags.append(
-            ctx.expand_location(
+            dedup_expand_location(
+                ctx,
                 flag,
                 targets = rust_std[rust_common.stdlib_info].srcs,
             ),
@@ -454,6 +490,67 @@ def _rust_toolchain_impl(ctx):
     sysroot_path = sysroot.sysroot_anchor.dirname
     sysroot_short_path, _, _ = sysroot.sysroot_anchor.short_path.rpartition("/")
 
+    # Variables for make variable expansion
+    make_variables = {
+        "RUSTC": sysroot.rustc.path,
+        "RUSTDOC": sysroot.rustdoc.path,
+        "RUST_DEFAULT_EDITION": ctx.attr.default_edition or "",
+        "RUST_SYSROOT": sysroot_path,
+    }
+
+    if sysroot.cargo:
+        make_variables.update({
+            "CARGO": sysroot.cargo.path,
+        })
+
+    if sysroot.rustfmt:
+        make_variables.update({
+            "RUSTFMT": sysroot.rustfmt.path,
+        })
+
+    make_variable_info = platform_common.TemplateVariableInfo(make_variables)
+
+    exec_triple = triple(ctx.attr.exec_triple)
+
+    exec_os = ctx.attr.os
+    if not ctx.attr.os:
+        exec_os = exec_triple.system
+
+    if not exec_os:
+        fail("No system was provided for the execution platform. Please update {}".format(
+            ctx.label,
+        ))
+
+    if ctx.attr.target_triple and ctx.attr.target_json:
+        fail("Do not specify both target_triple and target_json, either use a builtin triple or provide a custom specification file. Please update {}".format(
+            ctx.label,
+        ))
+
+    target_triple = None
+    target_json = None
+    target_arch = None
+
+    if ctx.attr.target_triple:
+        target_triple = triple(ctx.attr.target_triple)
+        target_arch = target_triple.arch
+
+    elif ctx.attr.target_json:
+        # Ensure the data provided is valid json
+        target_json_content = json.decode(ctx.attr.target_json)
+        target_json = ctx.actions.declare_file("{}.target.json".format(ctx.label.name))
+
+        ctx.actions.write(
+            output = target_json,
+            content = json.encode_indent(target_json_content, indent = " " * 4),
+        )
+
+        if "arch" in target_json_content:
+            target_arch = target_json_content["arch"]
+    else:
+        fail("Either `target_triple` or `target_json` must be provided. Please update {}".format(
+            ctx.label,
+        ))
+
     toolchain = platform_common.ToolchainInfo(
         all_files = sysroot.all_files,
         binary_ext = ctx.attr.binary_ext,
@@ -463,31 +560,40 @@ def _rust_toolchain_impl(ctx):
         crosstool_files = ctx.files._cc_toolchain,
         default_edition = ctx.attr.default_edition,
         dylib_ext = ctx.attr.dylib_ext,
-        exec_triple = ctx.attr.exec_triple,
+        env = ctx.attr.env,
+        exec_triple = exec_triple,
         libstd_and_allocator_ccinfo = _make_libstd_and_allocator_ccinfo(ctx, rust_std, ctx.attr.allocator_library),
-        os = ctx.attr.os,
+        llvm_cov = ctx.file.llvm_cov,
+        llvm_profdata = ctx.file.llvm_profdata,
+        make_variables = make_variable_info,
+        os = exec_os,
         rust_doc = sysroot.rustdoc,
-        rust_lib = sysroot.rust_std,  # `rust_lib` is deprecated and only exists for legacy support.
         rust_std = sysroot.rust_std,
         rust_std_paths = depset([file.dirname for file in sysroot.rust_std.to_list()]),
         rustc = sysroot.rustc,
         rustc_lib = sysroot.rustc_lib,
-        rustc_srcs = ctx.attr.rustc_srcs,
         rustfmt = sysroot.rustfmt,
         staticlib_ext = ctx.attr.staticlib_ext,
         stdlib_linkflags = stdlib_linkflags_cc_info,
+        extra_rustc_flags = ctx.attr.extra_rustc_flags,
+        extra_exec_rustc_flags = ctx.attr.extra_exec_rustc_flags,
         sysroot = sysroot_path,
         sysroot_short_path = sysroot_short_path,
-        target_arch = ctx.attr.target_triple.split("-")[0],
-        target_flag_value = ctx.file.target_json.path if ctx.file.target_json else ctx.attr.target_triple,
-        target_json = ctx.file.target_json,
-        target_triple = ctx.attr.target_triple,
+        target_arch = target_arch,
+        target_flag_value = target_json.path if target_json else target_triple.str,
+        target_json = target_json,
+        target_triple = target_triple,
 
         # Experimental and incompatible flags
         _rename_first_party_crates = rename_first_party_crates,
         _third_party_dir = third_party_dir,
+        _pipelined_compilation = pipelined_compilation,
+        _experimental_use_cc_common_link = experimental_use_cc_common_link,
     )
-    return [toolchain]
+    return [
+        toolchain,
+        make_variable_info,
+    ]
 
 rust_toolchain = rule(
     implementation = _rust_toolchain_impl,
@@ -519,12 +625,17 @@ rust_toolchain = rule(
             },
         ),
         "default_edition": attr.string(
-            doc = "The edition to use for rust_* rules that don't specify an edition.",
-            default = rust_common.default_edition,
+            doc = (
+                "The edition to use for rust_* rules that don't specify an edition. " +
+                "If absent, every rule is required to specify its `edition` attribute."
+            ),
         ),
         "dylib_ext": attr.string(
             doc = "The extension for dynamic libraries created from rustc.",
             mandatory = True,
+        ),
+        "env": attr.string_dict(
+            doc = "Environment variables to set in actions.",
         ),
         "exec_triple": attr.string(
             doc = (
@@ -532,6 +643,26 @@ rust_toolchain = rule(
                 "For more details see: https://docs.bazel.build/versions/master/skylark/rules.html#configurations"
             ),
             mandatory = True,
+        ),
+        "experimental_use_cc_common_link": attr.label(
+            default = Label("//rust/settings:experimental_use_cc_common_link"),
+            doc = "Label to a boolean build setting that controls whether cc_common.link is used to link rust binaries.",
+        ),
+        "extra_exec_rustc_flags": attr.string_list(
+            doc = "Extra flags to pass to rustc in exec configuration",
+        ),
+        "extra_rustc_flags": attr.string_list(
+            doc = "Extra flags to pass to rustc in non-exec configuration",
+        ),
+        "llvm_cov": attr.label(
+            doc = "The location of the `llvm-cov` binary. Can be a direct source or a filegroup containing one item. If None, rust code is not instrumented for coverage.",
+            allow_single_file = True,
+            cfg = "exec",
+        ),
+        "llvm_profdata": attr.label(
+            doc = "The location of the `llvm-profdata` binary. Can be a direct source or a filegroup containing one item. If `llvm_cov` is None, this can be None as well and rust code is not instrumented for coverage.",
+            allow_single_file = True,
+            cfg = "exec",
         ),
         "llvm_tools": attr.label(
             doc = "LLVM tools that are shipped with the Rust toolchain.",
@@ -547,16 +678,12 @@ rust_toolchain = rule(
         ),
         "os": attr.string(
             doc = "The operating system for the current toolchain",
-            mandatory = True,
         ),
         "rust_doc": attr.label(
             doc = "The location of the `rustdoc` binary. Can be a direct source or a filegroup containing one item.",
             allow_single_file = True,
             cfg = "exec",
             mandatory = True,
-        ),
-        "rust_lib": attr.label(
-            doc = "**Deprecated**: Use `rust_std`",
         ),
         "rust_std": attr.label(
             doc = "The Rust standard library.",
@@ -571,11 +698,8 @@ rust_toolchain = rule(
             doc = "The libraries used by rustc during compilation.",
             cfg = "exec",
         ),
-        "rustc_srcs": attr.label(
-            doc = "The source code of rustc.",
-        ),
         "rustfmt": attr.label(
-            doc = "The location of the `rustfmt` binary. Can be a direct source or a filegroup containing one item.",
+            doc = "**Deprecated**: Instead see [rustfmt_toolchain](#rustfmt_toolchain)",
             allow_single_file = True,
             cfg = "exec",
         ),
@@ -591,10 +715,9 @@ rust_toolchain = rule(
             ),
             mandatory = True,
         ),
-        "target_json": attr.label(
+        "target_json": attr.string(
             doc = ("Override the target_triple with a custom target specification. " +
                    "For more details see: https://doc.rust-lang.org/rustc/targets/custom.html"),
-            allow_single_file = True,
         ),
         "target_triple": attr.string(
             doc = (
@@ -603,13 +726,16 @@ rust_toolchain = rule(
             ),
         ),
         "_cc_toolchain": attr.label(
-            default = "@bazel_tools//tools/cpp:current_cc_toolchain",
+            default = Label("@bazel_tools//tools/cpp:current_cc_toolchain"),
+        ),
+        "_pipelined_compilation": attr.label(
+            default = Label("//rust/settings:pipelined_compilation"),
         ),
         "_rename_first_party_crates": attr.label(
-            default = "@rules_rust//rust/settings:rename_first_party_crates",
+            default = Label("//rust/settings:rename_first_party_crates"),
         ),
         "_third_party_dir": attr.label(
-            default = "@rules_rust//rust/settings:third_party_dir",
+            default = Label("//rust/settings:third_party_dir"),
         ),
     },
     toolchains = [

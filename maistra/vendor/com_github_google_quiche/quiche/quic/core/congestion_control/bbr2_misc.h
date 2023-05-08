@@ -75,7 +75,7 @@ struct QUIC_EXPORT_PRIVATE Bbr2Params {
    * STARTUP parameters.
    */
 
-  // The gain for both CWND and PacingRate at startup.
+  // The gain for CWND in startup.
   float startup_cwnd_gain = 2.0;
   // TODO(wub): Maybe change to the newly derived value of 2.773 (4 * ln(2)).
   float startup_pacing_gain = 2.885;
@@ -89,7 +89,7 @@ struct QUIC_EXPORT_PRIVATE Bbr2Params {
 
   // The minimum number of loss marking events to exit STARTUP.
   int64_t startup_full_loss_count =
-      GetQuicFlag(FLAGS_quic_bbr2_default_startup_full_loss_count);
+      GetQuicFlag(quic_bbr2_default_startup_full_loss_count);
 
   // If true, always exit STARTUP on loss, even if bandwidth exceeds threshold.
   // If false, exit STARTUP on loss only if bandwidth is below threshold.
@@ -125,16 +125,16 @@ struct QUIC_EXPORT_PRIVATE Bbr2Params {
   // Minimum duration for BBR-native probes.
   QuicTime::Delta probe_bw_probe_base_duration =
       QuicTime::Delta::FromMilliseconds(
-          GetQuicFlag(FLAGS_quic_bbr2_default_probe_bw_base_duration_ms));
+          GetQuicFlag(quic_bbr2_default_probe_bw_base_duration_ms));
 
   // The upper bound of the random amount of BBR-native probes.
   QuicTime::Delta probe_bw_probe_max_rand_duration =
       QuicTime::Delta::FromMilliseconds(
-          GetQuicFlag(FLAGS_quic_bbr2_default_probe_bw_max_rand_duration_ms));
+          GetQuicFlag(quic_bbr2_default_probe_bw_max_rand_duration_ms));
 
   // The minimum number of loss marking events to exit the PROBE_UP phase.
   int64_t probe_bw_full_loss_count =
-      GetQuicFlag(FLAGS_quic_bbr2_default_probe_bw_full_loss_count);
+      GetQuicFlag(quic_bbr2_default_probe_bw_full_loss_count);
 
   // Multiplier to get target inflight (as multiple of BDP) for PROBE_UP phase.
   float probe_bw_probe_inflight_gain = 1.25;
@@ -163,7 +163,7 @@ struct QUIC_EXPORT_PRIVATE Bbr2Params {
    */
   float probe_rtt_inflight_target_bdp_fraction = 0.5;
   QuicTime::Delta probe_rtt_period = QuicTime::Delta::FromMilliseconds(
-      GetQuicFlag(FLAGS_quic_bbr2_default_probe_rtt_period_ms));
+      GetQuicFlag(quic_bbr2_default_probe_rtt_period_ms));
   QuicTime::Delta probe_rtt_duration = QuicTime::Delta::FromMilliseconds(200);
 
   /*
@@ -172,14 +172,14 @@ struct QUIC_EXPORT_PRIVATE Bbr2Params {
 
   // The initial value of the max ack height filter's window length.
   QuicRoundTripCount initial_max_ack_height_filter_window =
-      GetQuicFlag(FLAGS_quic_bbr2_default_initial_ack_height_filter_window);
+      GetQuicFlag(quic_bbr2_default_initial_ack_height_filter_window);
 
   // Fraction of unutilized headroom to try to leave in path upon high loss.
   float inflight_hi_headroom =
-      GetQuicFlag(FLAGS_quic_bbr2_default_inflight_hi_headroom);
+      GetQuicFlag(quic_bbr2_default_inflight_hi_headroom);
 
   // Estimate startup/bw probing has gone too far if loss rate exceeds this.
-  float loss_threshold = GetQuicFlag(FLAGS_quic_bbr2_default_loss_threshold);
+  float loss_threshold = GetQuicFlag(quic_bbr2_default_loss_threshold);
 
   // A common factor for multiplicative decreases. Used for adjusting
   // bandwidth_lo, inflight_lo and inflight_hi upon losses.
@@ -339,17 +339,12 @@ struct QUIC_EXPORT_PRIVATE Bbr2CongestionEvent {
 // bandwidth_(hi|lo), bandwidth and rtt estimates, etc.
 class QUIC_EXPORT_PRIVATE Bbr2NetworkModel {
  public:
-  Bbr2NetworkModel(const Bbr2Params* params,
-                   QuicTime::Delta initial_rtt,
-                   QuicTime initial_rtt_timestamp,
-                   float cwnd_gain,
-                   float pacing_gain,
-                   const BandwidthSampler* old_sampler);
+  Bbr2NetworkModel(const Bbr2Params* params, QuicTime::Delta initial_rtt,
+                   QuicTime initial_rtt_timestamp, float cwnd_gain,
+                   float pacing_gain, const BandwidthSampler* old_sampler);
 
-  void OnPacketSent(QuicTime sent_time,
-                    QuicByteCount bytes_in_flight,
-                    QuicPacketNumber packet_number,
-                    QuicByteCount bytes,
+  void OnPacketSent(QuicTime sent_time, QuicByteCount bytes_in_flight,
+                    QuicPacketNumber packet_number, QuicByteCount bytes,
                     HasRetransmittableData is_retransmittable);
 
   void OnCongestionEventStart(QuicTime event_time,
@@ -565,7 +560,8 @@ class QUIC_EXPORT_PRIVATE Bbr2NetworkModel {
   QuicByteCount max_bytes_delivered_in_round_ = 0;
 
   // The minimum bytes in flight during this round.
-  QuicByteCount min_bytes_in_flight_in_round_ = 0;
+  QuicByteCount min_bytes_in_flight_in_round_ =
+      std::numeric_limits<uint64_t>::max();
 
   // Max bandwidth in the current round. Updated once per congestion event.
   QuicBandwidth bandwidth_latest_ = QuicBandwidth::Zero();
@@ -641,8 +637,7 @@ class QUIC_EXPORT_PRIVATE Bbr2ModeBase {
                      const Bbr2CongestionEvent* congestion_event) = 0;
 
   virtual Bbr2Mode OnCongestionEvent(
-      QuicByteCount prior_in_flight,
-      QuicTime event_time,
+      QuicByteCount prior_in_flight, QuicTime event_time,
       const AckedPacketVector& acked_packets,
       const LostPacketVector& lost_packets,
       const Bbr2CongestionEvent& congestion_event) = 0;

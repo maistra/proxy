@@ -5,8 +5,14 @@ rm -f -R antlr4-runtime build lib 2> /dev/null
 rm antlr4-cpp-runtime-macos.zip 2> /dev/null
 
 # Binaries
-xcodebuild -project runtime/antlrcpp.xcodeproj -target antlr4 -configuration Release
-xcodebuild -project runtime/antlrcpp.xcodeproj -target antlr4_static -configuration Release
+xcodebuild -project runtime/antlrcpp.xcodeproj \
+           -target antlr4                      \
+           # GCC_PREPROCESSOR_DEFINITIONS='$GCC_PREPROCESSOR_DEFINITIONS USE_UTF8_INSTEAD_OF_CODECVT' \
+           -configuration Release
+xcodebuild -project runtime/antlrcpp.xcodeproj \
+           -target antlr4_static               \
+           # GCC_PREPROCESSOR_DEFINITIONS='$GCC_PREPROCESSOR_DEFINITIONS USE_UTF8_INSTEAD_OF_CODECVT' \
+           -configuration Release
 rm -f -R lib
 mkdir lib
 mv runtime/build/Release/libantlr4-runtime.a lib/

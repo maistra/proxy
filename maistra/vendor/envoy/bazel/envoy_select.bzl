@@ -25,6 +25,19 @@ def envoy_select_google_grpc(xs, repository = ""):
         "//conditions:default": xs,
     })
 
+# Selects the given values if admin HTML is enabled in the current build.
+def envoy_select_admin_html(xs, repository = ""):
+    return select({
+        repository + "//bazel:disable_admin_html": [],
+        "//conditions:default": xs,
+    })
+
+def envoy_select_admin_no_html(xs, repository = ""):
+    return select({
+        repository + "//bazel:disable_admin_html": xs,
+        "//conditions:default": [],
+    })
+
 # Selects the given values if http3 is enabled in the current build.
 def envoy_select_enable_http3(xs, repository = ""):
     return select({
@@ -52,6 +65,9 @@ def envoy_select_wasm_cpp_tests(xs):
 def envoy_select_wasm_rust_tests(xs):
     return select({
         "@envoy//bazel:wasm_disabled": [],
+        # TODO(phlax): re-enable once issues with llvm profiler are resolved
+        #   (see https://github.com/envoyproxy/envoy/issues/24164)
+        "@envoy//bazel:coverage_build": [],
         "//conditions:default": xs,
     })
 
@@ -63,6 +79,9 @@ def envoy_select_wasm_v8(xs):
         "@envoy//bazel:wasm_wasmtime": [],
         "@envoy//bazel:wasm_wavm": [],
         "@envoy//bazel:wasm_disabled": [],
+        # TODO(phlax): re-enable once issues with llvm profiler are resolved
+        #   (see https://github.com/envoyproxy/envoy/issues/24164)
+        "@envoy//bazel:coverage_build": [],
         "//conditions:default": xs,  # implicit default (v8)
     })
 
@@ -74,6 +93,9 @@ def envoy_select_wasm_v8_bool():
         "@envoy//bazel:wasm_wasmtime": False,
         "@envoy//bazel:wasm_wavm": False,
         "@envoy//bazel:wasm_disabled": False,
+        # TODO(phlax): re-enable once issues with llvm profiler are resolved
+        #   (see https://github.com/envoyproxy/envoy/issues/24164)
+        "@envoy//bazel:coverage_build": False,
         "//conditions:default": True,  # implicit default (v8)
     })
 

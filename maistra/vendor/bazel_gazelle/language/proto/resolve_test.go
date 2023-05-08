@@ -351,6 +351,65 @@ proto_library(
     deps = ["//foo:foo_proto"],
 )
 `,
+		}, {
+			desc: "test single file resolution in file mode",
+			index: []buildFile{{
+				rel: "somedir",
+				content: `
+# gazelle:proto file
+
+proto_library(
+    name = "foo_proto",
+    srcs = ["foo.proto"],
+)
+
+proto_library(
+    name = "bar_proto",
+    srcs = ["bar.proto"],
+)
+
+proto_library(
+    name = "baz_proto",
+    srcs = ["baz.proto"],
+)
+`,
+			}},
+			old: `
+proto_library(
+    name = "other_proto",
+    _imports = ["somedir/bar.proto"],
+)
+`,
+			want: `
+proto_library(
+    name = "other_proto",
+    deps = ["//somedir:bar_proto"],
+)
+`,
+		}, {
+			desc: "test single file resolution in same package",
+			old: `
+proto_library(
+    name = "qwerty_proto",
+    srcs = ["qwerty.proto"],
+)
+
+proto_library(
+    name = "other_proto",
+    _imports = ["test/qwerty.proto"],
+)
+`,
+			want: `
+proto_library(
+    name = "qwerty_proto",
+    srcs = ["qwerty.proto"],
+)
+
+proto_library(
+    name = "other_proto",
+    deps = [":qwerty_proto"],
+)
+`,
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {

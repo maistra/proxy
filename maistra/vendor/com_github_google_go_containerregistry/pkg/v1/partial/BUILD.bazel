@@ -13,8 +13,8 @@ go_library(
     importpath = "github.com/google/go-containerregistry/pkg/v1/partial",
     visibility = ["//visibility:public"],
     deps = [
+        "//internal/gzip",
         "//pkg/v1:pkg",
-        "//pkg/v1/internal/gzip",
         "//pkg/v1/match",
         "//pkg/v1/types",
     ],
@@ -37,7 +37,7 @@ go_test(
     ],
     embed = [":partial"],
     deps = [
-        "//pkg/internal/compare",
+        "//internal/compare",
         "//pkg/legacy/tarball",
         "//pkg/name",
         "//pkg/registry",

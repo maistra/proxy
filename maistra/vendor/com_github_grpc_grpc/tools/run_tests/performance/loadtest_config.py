@@ -26,16 +26,15 @@ import collections
 import copy
 import datetime
 import itertools
+import json
 import os
 import string
 import sys
-import uuid
+from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Type
 
-from typing import Any, Dict, Iterable, Mapping, Optional, Type
-
-import json
 import yaml
 
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import scenario_config
 import scenario_config_exporter
 
@@ -63,11 +62,13 @@ def now_string() -> str:
 
 def validate_loadtest_name(name: str) -> None:
     """Validates that a LoadTest name is in the expected format."""
-    if len(name) > 63:
+    if len(name) > 253:
         raise ValueError(
-            'LoadTest name must be less than 63 characters long: %s' % name)
-    if not all((s.isalnum() for s in name.split('-'))):
-        raise ValueError('Invalid elements in LoadTest name: %s' % name)
+            'LoadTest name must be less than 253 characters long: %s' % name)
+    if not all(c.isalnum() and not c.isupper() for c in name if c != '-'):
+        raise ValueError('Invalid characters in LoadTest name: %s' % name)
+    if not name or not name[0].isalpha() or name[-1] == '-':
+        raise ValueError('Invalid format for LoadTest name: %s' % name)
 
 
 def loadtest_base_name(scenario_name: str,
@@ -75,7 +76,7 @@ def loadtest_base_name(scenario_name: str,
     """Constructs and returns the base name for a LoadTest resource."""
     name_elements = scenario_name.split('_')
     name_elements.extend(uniquifier_elements)
-    return '-'.join(name_elements)
+    return '-'.join(element.lower() for element in name_elements)
 
 
 def loadtest_name(prefix: str, scenario_name: str,
@@ -85,7 +86,7 @@ def loadtest_name(prefix: str, scenario_name: str,
     name_elements = []
     if prefix:
         name_elements.append(prefix)
-    name_elements.append(str(uuid.uuid5(uuid.NAMESPACE_DNS, base_name)))
+    name_elements.append(base_name)
     name = '-'.join(name_elements)
     validate_loadtest_name(name)
     return name
@@ -111,23 +112,85 @@ def gen_run_indices(runs_per_test: int) -> Iterable[str]:
     if runs_per_test < 2:
         yield ''
         return
-    prefix_length = len('{:d}'.format(runs_per_test - 1))
-    prefix_fmt = '{{:{:d}d}}'.format(prefix_length)
+    index_length = len('{:d}'.format(runs_per_test - 1))
+    index_fmt = '{{:0{:d}d}}'.format(index_length)
     for i in range(runs_per_test):
-        yield prefix_fmt.format(i)
+        yield index_fmt.format(i)
+
+
+def scenario_name(base_name: str, client_channels: Optional[int],
+                  server_threads: Optional[int], offered_load: Optional[int]):
+    """Constructs scenario name from base name and modifiers."""
+
+    elements = [base_name]
+    if client_channels:
+        elements.append('{:d}channels'.format(client_channels))
+    if server_threads:
+        elements.append('{:d}threads'.format(server_threads))
+    if offered_load:
+        elements.append('{:d}load'.format(offered_load))
+    return '_'.join(elements)
+
+
+def scenario_transform_function(
+    client_channels: Optional[int], server_threads: Optional[int],
+    offered_loads: Optional[Iterable[int]]
+) -> Optional[Callable[[Iterable[Mapping[str, Any]]], Iterable[Mapping[str,
+                                                                       Any]]]]:
+    """Returns a transform to be applied to a list of scenarios."""
+    if not any((client_channels, server_threads, len(offered_loads))):
+        return lambda s: s
+
+    def _transform(
+            scenarios: Iterable[Mapping[str,
+                                        Any]]) -> Iterable[Mapping[str, Any]]:
+        """Transforms scenarios by inserting num of client channels, number of async_server_threads and offered_load."""
+
+        for base_scenario in scenarios:
+            base_name = base_scenario['name']
+            if client_channels:
+                base_scenario['client_config'][
+                    'client_channels'] = client_channels
+
+            if server_threads:
+                base_scenario['server_config'][
+                    'async_server_threads'] = server_threads
+
+            if not offered_loads:
+                base_scenario['name'] = scenario_name(base_name,
+                                                      client_channels,
+                                                      server_threads, 0)
+                yield base_scenario
+                return
+
+            for offered_load in offered_loads:
+                scenario = copy.deepcopy(base_scenario)
+                scenario['client_config']['load_params'] = {
+                    'poisson': {
+                        'offered_load': offered_load
+                    }
+                }
+                scenario['name'] = scenario_name(base_name, client_channels,
+                                                 server_threads, offered_load)
+                yield scenario
+
+    return _transform
 
 
 def gen_loadtest_configs(
-        base_config: Mapping[str, Any],
-        base_config_clients: Iterable[Mapping[str, Any]],
-        base_config_servers: Iterable[Mapping[str, Any]],
-        scenario_name_regex: str,
-        language_config: scenario_config_exporter.LanguageConfig,
-        loadtest_name_prefix: str,
-        uniquifier_elements: Iterable[str],
-        annotations: Mapping[str, str],
-        instances_per_client: int = 1,
-        runs_per_test: int = 1) -> Iterable[Dict[str, Any]]:
+    base_config: Mapping[str, Any],
+    base_config_clients: Iterable[Mapping[str, Any]],
+    base_config_servers: Iterable[Mapping[str, Any]],
+    scenario_name_regex: str,
+    language_config: scenario_config_exporter.LanguageConfig,
+    loadtest_name_prefix: str,
+    uniquifier_elements: Iterable[str],
+    annotations: Mapping[str, str],
+    instances_per_client: int = 1,
+    runs_per_test: int = 1,
+    scenario_transform: Callable[[Iterable[Mapping[str, Any]]],
+                                 List[Dict[str, Any]]] = lambda s: s
+) -> Iterable[Dict[str, Any]]:
     """Generates LoadTest configurations for a given language config.
 
     The LoadTest configurations are generated as YAML objects.
@@ -141,8 +204,10 @@ def gen_loadtest_configs(
         category=language_config.category,
         client_language=language_config.client_language,
         server_language=language_config.server_language)
-    scenarios = scenario_config_exporter.gen_scenarios(language_config.language,
-                                                       scenario_filter)
+
+    scenarios = scenario_transform(
+        scenario_config_exporter.gen_scenarios(language_config.language,
+                                               scenario_filter))
 
     for scenario in scenarios:
         for run_index in gen_run_indices(runs_per_test):
@@ -217,14 +282,21 @@ def gen_loadtest_configs(
             # Set servers to named instances.
             spec['servers'] = servers
 
+            # Add driver, if needed.
+            if 'driver' not in spec:
+                spec['driver'] = dict()
+
+            # Ensure driver has language and run fields.
+            driver = spec['driver']
+            if 'language' not in driver:
+                driver['language'] = safe_name('c++')
+            if 'run' not in driver:
+                driver['run'] = dict()
+
             # Name the driver with an index for consistency with workers.
             # There is only one driver, so the index is zero.
-            if 'driver' in spec and 'run' in spec['driver']:
-                driver = spec['driver']
-                if 'language' not in driver:
-                    driver['language'] = safe_name('c++')
-                if 'name' not in driver or not driver['name']:
-                    driver['name'] = '0'
+            if 'name' not in driver or not driver['name']:
+                driver['name'] = '0'
 
             spec['scenariosJSON'] = scenario_str
 
@@ -259,12 +331,9 @@ def clear_empty_fields(config: Dict[str, Any]) -> None:
         driver = spec['driver']
         if 'pool' in driver and not driver['pool']:
             del driver['pool']
-        if 'run' in driver and 'image' not in driver['run']:
-            del driver['run']
-        if not set(driver).difference({'language'}):
-            del spec['driver']
-        else:
-            spec['driver'] = driver
+        if ('run' in driver and 'image' in driver['run'] and
+                not driver['run']['image']):
+            del driver['run']['image']
     if 'results' in spec and not ('bigQueryTable' in spec['results'] and
                                   spec['results']['bigQueryTable']):
         del spec['results']
@@ -344,7 +413,7 @@ def main() -> None:
                       help='Regex to select scenarios to run.')
     argp.add_argument(
         '--category',
-        choices=['all', 'inproc', 'scalable', 'smoketest', 'sweep'],
+        choices=['all', 'inproc', 'scalable', 'smoketest', 'sweep', 'psm'],
         default='all',
         help='Select a category of tests to run.')
     argp.add_argument(
@@ -373,6 +442,19 @@ def main() -> None:
                       '--output',
                       type=str,
                       help='Output file name. Output to stdout if not set.')
+    argp.add_argument('--client_channels',
+                      type=int,
+                      help='Number of client channels.')
+    argp.add_argument('--server_threads',
+                      type=int,
+                      help='Number of async server threads.')
+    argp.add_argument(
+        '--offered_loads',
+        nargs="*",
+        type=int,
+        default=[],
+        help='A list of QPS values at which each load test scenario will be run.'
+    )
     args = argp.parse_args()
 
     if args.instances_per_client < 1:
@@ -381,13 +463,27 @@ def main() -> None:
     if args.runs_per_test < 1:
         argp.error('runs_per_test must be greater than zero.')
 
-    substitutions = parse_key_value_args(args.substitutions)
+    # Config generation ignores environment variables that are passed by the
+    # controller at runtime.
+    substitutions = {
+        'DRIVER_PORT': '${DRIVER_PORT}',
+        'KILL_AFTER': '${KILL_AFTER}',
+        'POD_TIMEOUT': '${POD_TIMEOUT}',
+    }
+
+    # The user can override the ignored variables above by passing them in as
+    # substitution keys.
+    substitutions.update(parse_key_value_args(args.substitutions))
 
     uniquifier_elements = args.uniquifier_elements
     if args.d:
         uniquifier_elements.append(now_string())
 
     annotations = parse_key_value_args(args.annotations)
+
+    transform = scenario_transform_function(args.client_channels,
+                                            args.server_threads,
+                                            args.offered_loads)
 
     with open(args.template) as f:
         base_config = yaml.safe_load(
@@ -421,7 +517,8 @@ def main() -> None:
                                  uniquifier_elements=uniquifier_elements,
                                  annotations=annotations,
                                  instances_per_client=args.instances_per_client,
-                                 runs_per_test=args.runs_per_test))
+                                 runs_per_test=args.runs_per_test,
+                                 scenario_transform=transform))
     configs = (config for config in itertools.chain(*config_generators))
 
     with open(args.output, 'w') if args.output else sys.stdout as f:

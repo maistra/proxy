@@ -4,6 +4,7 @@ load("//rust/platform:triple.bzl", "triple")
 
 # All T1 Platforms should be supported, but aren't, see inline notes.
 SUPPORTED_T1_PLATFORM_TRIPLES = [
+    "aarch64-unknown-linux-gnu",
     "i686-apple-darwin",
     "i686-pc-windows-msvc",
     "i686-unknown-linux-gnu",
@@ -21,14 +22,18 @@ SUPPORTED_T1_PLATFORM_TRIPLES = [
 # See @rules_rust//rust/platform:triple_mappings.bzl for the complete list.
 SUPPORTED_T2_PLATFORM_TRIPLES = [
     "aarch64-apple-darwin",
+    "aarch64-apple-ios-sim",
     "aarch64-apple-ios",
     "aarch64-linux-android",
-    "aarch64-unknown-linux-gnu",
+    "aarch64-pc-windows-msvc",
     "arm-unknown-linux-gnueabi",
+    "armv7-linux-androideabi",
     "armv7-unknown-linux-gnueabi",
     "i686-linux-android",
     "i686-unknown-freebsd",
     "powerpc-unknown-linux-gnu",
+    "riscv32imc-unknown-none-elf",
+    "riscv64gc-unknown-none-elf",
     "s390x-unknown-linux-gnu",
     "wasm32-unknown-unknown",
     "wasm32-wasi",
@@ -55,9 +60,14 @@ _CPU_ARCH_TO_BUILTIN_PLAT_SUFFIX = {
     "powerpc": "ppc",
     "powerpc64": None,
     "powerpc64le": None,
+    "riscv32": "riscv32",
+    "riscv32imc": "riscv32",
+    "riscv64": "riscv64",
+    "riscv64gc": "riscv64",
     "s390": None,
     "s390x": "s390x",
-    "thumbv7m": "armv7",
+    "thumbv6m": "armv6-m",
+    "thumbv7m": "armv7-m",
     "wasm32": None,
     "x86_64": "x86_64",
 }
@@ -75,6 +85,7 @@ _SYSTEM_TO_BUILTIN_SYS_SUFFIX = {
     "linux": "linux",
     "nacl": None,
     "netbsd": None,
+    "none": "none",
     "openbsd": "openbsd",
     "solaris": None,
     "unknown": None,
@@ -90,6 +101,7 @@ _SYSTEM_TO_BINARY_EXT = {
     "freebsd": "",
     "ios": "",
     "linux": "",
+    "none": "",
     # This is currently a hack allowing us to have the proper
     # generated extension for the wasm target, similarly to the
     # windows target
@@ -106,6 +118,7 @@ _SYSTEM_TO_STATICLIB_EXT = {
     "freebsd": ".a",
     "ios": ".a",
     "linux": ".a",
+    "none": ".a",
     "unknown": "",
     "wasi": "",
     "windows": ".lib",
@@ -119,6 +132,7 @@ _SYSTEM_TO_DYLIB_EXT = {
     "freebsd": ".so",
     "ios": ".dylib",
     "linux": ".so",
+    "none": ".so",
     "unknown": ".wasm",
     "wasi": ".wasm",
     "windows": ".dll",
@@ -128,7 +142,7 @@ _SYSTEM_TO_DYLIB_EXT = {
 _SYSTEM_TO_STDLIB_LINKFLAGS = {
     # NOTE: Rust stdlib `build.rs` treats android as a subset of linux, rust rules treat android
     # as its own system.
-    "android": ["-ldl", "-llog", "-lgcc"],
+    "android": ["-ldl", "-llog"],
     "bitrig": [],
     # TODO(gregbowyer): If rust stdlib is compiled for cloudabi with the backtrace feature it
     # includes `-lunwind` but this might not actually be required.
@@ -158,12 +172,13 @@ _SYSTEM_TO_STDLIB_LINKFLAGS = {
     "linux": ["-ldl", "-lpthread"],
     "nacl": [],
     "netbsd": ["-lpthread", "-lrt"],
+    "none": [],
     "openbsd": ["-lpthread"],
     "solaris": ["-lsocket", "-lposix4", "-lpthread", "-lresolv"],
     "unknown": [],
     "uwp": ["ws2_32.lib"],
     "wasi": [],
-    "windows": ["advapi32.lib", "ws2_32.lib", "userenv.lib"],
+    "windows": ["advapi32.lib", "ws2_32.lib", "userenv.lib", "Bcrypt.lib"],
 }
 
 def cpu_arch_to_constraints(cpu_arch):
@@ -189,14 +204,54 @@ def system_to_constraints(system):
 
     return ["@platforms//os:{}".format(sys_suffix)]
 
-def abi_to_constraints(abi):
-    # iOS simulator
+def abi_to_constraints(abi, *, arch = None, system = None):
+    """Return a list of constraint values which represents a triple's ABI.
+
+    Note that some ABI values require additional info to accurately match a set of constraints.
+
+    Args:
+        abi (str): The abi value to match constraints for
+        arch (str, optional): The architecture for the associated ABI value.
+        system (str, optional): The system for the associated ABI value.
+
+    Returns:
+        List: A list of labels to constraint values
+    """
+
     if abi == "sim":
-        return ["@build_bazel_apple_support//constraints:simulator"]
-    else:
-        # TODO(acmcarther): Implement when C++ toolchain is more mature and we
-        # figure out how they're doing this
+        if not system:
+            fail("The ABI value {} is ambiguous. Please specify a system to match the right constraints.")
+        if not arch:
+            fail("The ABI value {} is ambiguous. Please specify an architecture to match the right constraints.")
+        if system == "ios":
+            if abi == "sim":
+                return ["@build_bazel_apple_support//constraints:simulator"]
+        elif arch == "aarch64":  # Only add device for archs that have both
+            return ["@build_bazel_apple_support//constraints:device"]
+        else:
+            return []
+
+    # TODO(bazelbuild/platforms#38): Implement when C++ toolchain is more mature and we
+    # figure out how they're doing this
+    return []
+
+def extra_ios_constraints(triple):
+    """Add constraints specific to iOS targets.
+
+    Deprecated: Instead, use `abi_to_constraints`
+
+    Args:
+        triple: The full triple struct for the target
+
+    Returns:
+        A list of constraints to add to the target
+    """
+
+    # TODO: Simplify if https://github.com/bazelbuild/bazel/issues/11454 is fixed
+    if triple.system != "ios":
         return []
+
+    return abi_to_constraints(triple.abi, arch = triple.arch, system = triple.system)
 
 def triple_to_system(target_triple):
     """Returns a system name for a given platform triple
@@ -209,7 +264,9 @@ def triple_to_system(target_triple):
     Returns:
         str: A system name
     """
-    return triple(target_triple).system
+    if type(target_triple) == "string":
+        target_triple = triple(target_triple)
+    return target_triple.system
 
 def triple_to_arch(target_triple):
     """Returns a system architecture name for a given platform triple
@@ -222,7 +279,9 @@ def triple_to_arch(target_triple):
     Returns:
         str: A cpu architecture
     """
-    return triple(target_triple).arch
+    if type(target_triple) == "string":
+        target_triple = triple(target_triple)
+    return target_triple.arch
 
 def triple_to_abi(target_triple):
     """Returns a system abi name for a given platform triple
@@ -235,7 +294,9 @@ def triple_to_abi(target_triple):
     Returns:
         str: The triple's abi
     """
-    return triple(target_triple).system
+    if type(target_triple) == "string":
+        target_triple = triple(target_triple)
+    return target_triple.system
 
 def system_to_dylib_ext(system):
     return _SYSTEM_TO_DYLIB_EXT[system]
@@ -260,12 +321,12 @@ def triple_to_constraint_set(target_triple):
     """
     if target_triple == "wasm32-wasi":
         return [
-            "@rules_rust//rust/platform/cpu:wasm32",
-            "@rules_rust//rust/platform/os:wasi",
+            "@platforms//cpu:wasm32",
+            "@platforms//os:wasi",
         ]
     if target_triple == "wasm32-unknown-unknown":
         return [
-            "@rules_rust//rust/platform/cpu:wasm32",
+            "@platforms//cpu:wasm32",
             "@rules_rust//rust/platform/os:unknown",
         ]
 
@@ -282,6 +343,10 @@ def triple_to_constraint_set(target_triple):
     constraint_set += cpu_arch_to_constraints(triple_struct.arch)
     constraint_set += vendor_to_constraints(triple_struct.vendor)
     constraint_set += system_to_constraints(triple_struct.system)
-    constraint_set += abi_to_constraints(triple_struct.abi)
+    constraint_set += abi_to_constraints(
+        triple_struct.abi,
+        arch = triple_struct.arch,
+        system = triple_struct.system,
+    )
 
     return constraint_set

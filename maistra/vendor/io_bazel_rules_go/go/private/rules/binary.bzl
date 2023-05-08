@@ -23,28 +23,42 @@ load(
     "go_exts",
 )
 load(
+    "//go/private:go_toolchain.bzl",
+    "GO_TOOLCHAIN",
+)
+load(
     "//go/private:providers.bzl",
     "GoLibrary",
     "GoSDK",
 )
 load(
     "//go/private/rules:transition.bzl",
-    "go_transition_rule",
+    "go_transition",
 )
 load(
     "//go/private:mode.bzl",
+    "LINKMODES_EXECUTABLE",
     "LINKMODE_C_ARCHIVE",
     "LINKMODE_C_SHARED",
     "LINKMODE_NORMAL",
     "LINKMODE_PLUGIN",
     "LINKMODE_SHARED",
 )
-load(
-    "//go/private:rpath.bzl",
-    "rpath",
-)
 
 _EMPTY_DEPSET = depset([])
+
+def _include_path(hdr):
+    if not hdr.root.path:
+        fail("Expected hdr to be a generated file, got source file: " + hdr.path)
+
+    root_relative_path = hdr.path[len(hdr.root.path + "/"):]
+    if not root_relative_path.startswith("external/"):
+        return hdr.root.path
+
+    # All headers should be includeable via a path relative to their repository
+    # root, regardless of whether the repository is external or not. If it is,
+    # we thus need to append "external/<external repo name>" to the path.
+    return "/".join([hdr.root.path] + root_relative_path.split("/")[0:2])
 
 def new_cc_import(
         go,
@@ -55,14 +69,12 @@ def new_cc_import(
         static_library = None,
         alwayslink = False,
         linkopts = []):
-    if dynamic_library:
-        linkopts = linkopts + rpath.flags(go, dynamic_library)
     return CcInfo(
         compilation_context = cc_common.create_compilation_context(
             defines = defines,
             local_defines = local_defines,
             headers = hdrs,
-            includes = depset([hdr.root.path for hdr in hdrs.to_list()]),
+            includes = depset([_include_path(hdr) for hdr in hdrs.to_list()]),
         ),
         linking_context = cc_common.create_linking_context(
             linker_inputs = depset([
@@ -110,18 +122,34 @@ def _go_binary_impl(ctx):
         executable = executable,
     )
 
+    if go.mode.link in LINKMODES_EXECUTABLE:
+        # The executable is automatically added to the runfiles.
+        default_info = DefaultInfo(
+            files = depset([executable]),
+            runfiles = runfiles,
+            executable = executable,
+        )
+    else:
+        # Workaround for https://github.com/bazelbuild/bazel/issues/15043
+        # As of Bazel 5.1.1, native rules do not pick up the "files" of a data
+        # dependency's DefaultInfo, only the "data_runfiles". Since transitive
+        # non-data dependents should not pick up the executable as a runfile
+        # implicitly, the deprecated "default_runfiles" and "data_runfiles"
+        # constructor parameters have to be used.
+        default_info = DefaultInfo(
+            files = depset([executable]),
+            default_runfiles = runfiles,
+            data_runfiles = runfiles.merge(ctx.runfiles([executable])),
+        )
+
     providers = [
         library,
         source,
         archive,
+        default_info,
         OutputGroupInfo(
             cgo_exports = archive.cgo_exports,
             compilation_outputs = [archive.data.file],
-        ),
-        DefaultInfo(
-            files = depset([executable]),
-            runfiles = runfiles,
-            executable = executable,
         ),
     ]
 
@@ -149,7 +177,7 @@ def _go_binary_impl(ctx):
             cc_import_kwargs["alwayslink"] = True
         ccinfo = new_cc_import(go, **cc_import_kwargs)
         ccinfo = cc_common.merge_cc_infos(
-            cc_infos = [ccinfo] + [d[CcInfo] for d in source.cdeps],
+            cc_infos = [ccinfo, source.cc_info],
         )
         providers.append(ccinfo)
 
@@ -182,6 +210,7 @@ _go_binary_kwargs = {
             doc = """List of Go libraries this package imports directly.
             These may be `go_library` rules or compatible rules with the [GoLibrary] provider.
             """,
+            cfg = go_transition,
         ),
         "embed": attr.label_list(
             providers = [GoLibrary],
@@ -194,6 +223,7 @@ _go_binary_kwargs = {
             embedding binary may not also have `cgo = True`. See [Embedding] for
             more information.
             """,
+            cfg = go_transition,
         ),
         "embedsrcs": attr.label_list(
             allow_files = True,
@@ -357,10 +387,12 @@ _go_binary_kwargs = {
             </ul>
             """,
         ),
-        "_go_context_data": attr.label(default = "//:go_context_data"),
+        "_go_context_data": attr.label(default = "//:go_context_data", cfg = go_transition),
+        "_allowlist_function_transition": attr.label(
+            default = "@bazel_tools//tools/allowlists/function_transition_allowlist",
+        ),
     },
-    "executable": True,
-    "toolchains": ["@io_bazel_rules_go//go:toolchain"],
+    "toolchains": [GO_TOOLCHAIN],
     "doc": """This builds an executable from a set of source files,
     which must all be in the `main` package. You can run the binary with
     `bazel run`, or you can build it with `bazel build` and run it directly.<br><br>
@@ -374,8 +406,8 @@ _go_binary_kwargs = {
     """,
 }
 
-go_binary = rule(**_go_binary_kwargs)
-go_transition_binary = go_transition_rule(**_go_binary_kwargs)
+go_binary = rule(executable = True, **_go_binary_kwargs)
+go_non_executable_binary = rule(executable = False, **_go_binary_kwargs)
 
 def _go_tool_binary_impl(ctx):
     sdk = ctx.attr.sdk[GoSDK]

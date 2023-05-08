@@ -14,10 +14,10 @@
 
 #include "tools/worker/swift_runner.h"
 
+#include <filesystem>
 #include <fstream>
 
 #include "tools/common/bazel_substitutions.h"
-#include "tools/common/file_system.h"
 #include "tools/common/process.h"
 #include "tools/common/temp_file.h"
 #include "tools/worker/output_file_map.h"
@@ -106,8 +106,10 @@ static bool StripPrefix(const std::string &prefix, std::string &str) {
 }  // namespace
 
 SwiftRunner::SwiftRunner(const std::vector<std::string> &args,
-                         bool force_response_file)
-    : force_response_file_(force_response_file), is_dump_ast_(false) {
+                         std::string index_import_path, bool force_response_file)
+    : index_import_path_(index_import_path),
+      force_response_file_(force_response_file),
+      is_dump_ast_(false) {
   args_ = ProcessArguments(args);
 }
 
@@ -138,6 +140,11 @@ int SwiftRunner::Run(std::ostream *stderr_stream, bool stdout_to_stderr) {
 
   auto enable_global_index_store = global_index_store_import_path_ != "";
   if (enable_global_index_store) {
+    if (index_import_path_.empty()) {
+      (*stderr_stream) << "Failed to find index-import path from runfiles\n";
+      return EXIT_FAILURE;
+    }
+
     OutputFileMap output_file_map;
     output_file_map.ReadFromPath(output_file_map_path_, "");
 
@@ -145,15 +152,7 @@ int SwiftRunner::Run(std::ostream *stderr_stream, bool stdout_to_stderr) {
     std::map<std::string, std::string>::iterator it;
 
     std::vector<std::string> ii_args;
-// The index-import runfile path is passed as a define
-#if defined(INDEX_IMPORT_PATH)
-    ii_args.push_back(INDEX_IMPORT_PATH);
-#else
-    // Logical error
-    std::cerr << "Incorrectly compiled work_processor.cc";
-    exit_code = EXIT_FAILURE;
-    return exit_code;
-#endif
+    ii_args.push_back(index_import_path_);
 
     for (it = outputs.begin(); it != outputs.end(); it++) {
       // Need the actual output paths of the compiler - not bazel
@@ -165,10 +164,10 @@ int SwiftRunner::Run(std::ostream *stderr_stream, bool stdout_to_stderr) {
       }
     }
 
-    auto exec_root = GetCurrentDirectory();
+    const std::filesystem::path &exec_root = std::filesystem::current_path();
     // Copy back from the global index store to bazel's index store
-    ii_args.push_back(exec_root + "/" + global_index_store_import_path_);
-    ii_args.push_back(exec_root + "/" + index_store_path_);
+    ii_args.push_back((exec_root / global_index_store_import_path_).string());
+    ii_args.push_back((exec_root / index_store_path_).string());
     exit_code =
         RunSubProcess(ii_args, stderr_stream, /*stdout_to_stderr=*/true);
   }
@@ -274,16 +273,22 @@ bool SwiftRunner::ProcessArgument(
     std::string new_arg = arg;
     if (StripPrefix("-Xwrapped-swift=", new_arg)) {
       if (new_arg == "-debug-prefix-pwd-is-dot") {
-        // Get the actual current working directory (the workspace root), which
-        // we didn't know at analysis time.
+        // Replace the $PWD with . to make the paths relative to the workspace
+        // without breaking hermiticity.
         consumer("-debug-prefix-map");
-        consumer(GetCurrentDirectory() + "=.");
+        consumer(std::filesystem::current_path().string() + "=.");
         changed = true;
       } else if (new_arg == "-coverage-prefix-pwd-is-dot") {
-        // Get the actual current working directory (the workspace root), which
-        // we didn't know at analysis time.
+        // Replace the $PWD with . to make the paths relative to the workspace
+        // without breaking hermiticity.
         consumer("-coverage-prefix-map");
-        consumer(GetCurrentDirectory() + "=.");
+        consumer(std::filesystem::current_path().string() + "=.");
+        changed = true;
+      } else if (new_arg == "-file-prefix-pwd-is-dot") {
+        // Replace the $PWD with . to make the paths relative to the workspace
+        // without breaking hermiticity.
+        consumer("-file-prefix-map");
+        consumer(std::filesystem::current_path().string() + "=.");
         changed = true;
       } else if (new_arg == "-ephemeral-module-cache") {
         // Create a temporary directory to hold the module cache, which will be

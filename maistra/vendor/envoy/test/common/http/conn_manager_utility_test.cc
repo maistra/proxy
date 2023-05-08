@@ -239,9 +239,6 @@ TEST_F(ConnectionManagerUtilityTest, UseRemoteAddressWhenNotLocalHostRemoteAddre
 }
 
 TEST_F(ConnectionManagerUtilityTest, RemoveRefererIfUrlInvalid) {
-  TestScopedRuntime scoped_runtime;
-  scoped_runtime.mergeValues({{"envoy.reloadable_features.sanitize_http_header_referer", "true"}});
-
   connection_.stream_info_.downstream_connection_info_provider_->setRemoteAddress(
       std::make_shared<Network::Address::Ipv4Instance>("10.0.0.1"));
   ON_CALL(config_, useRemoteAddress()).WillByDefault(Return(true));
@@ -252,9 +249,6 @@ TEST_F(ConnectionManagerUtilityTest, RemoveRefererIfUrlInvalid) {
 }
 
 TEST_F(ConnectionManagerUtilityTest, RemoveRefererIfMultipleEntriesAreFound) {
-  TestScopedRuntime scoped_runtime;
-  scoped_runtime.mergeValues({{"envoy.reloadable_features.sanitize_http_header_referer", "true"}});
-
   connection_.stream_info_.downstream_connection_info_provider_->setRemoteAddress(
       std::make_shared<Network::Address::Ipv4Instance>("10.0.0.1"));
   ON_CALL(config_, useRemoteAddress()).WillByDefault(Return(true));
@@ -266,9 +260,6 @@ TEST_F(ConnectionManagerUtilityTest, RemoveRefererIfMultipleEntriesAreFound) {
 }
 
 TEST_F(ConnectionManagerUtilityTest, ValidRefererPassesSanitization) {
-  TestScopedRuntime scoped_runtime;
-  scoped_runtime.mergeValues({{"envoy.reloadable_features.sanitize_http_header_referer", "true"}});
-
   connection_.stream_info_.downstream_connection_info_provider_->setRemoteAddress(
       std::make_shared<Network::Address::Ipv4Instance>("10.0.0.1"));
   ON_CALL(config_, useRemoteAddress()).WillByDefault(Return(true));
@@ -276,6 +267,17 @@ TEST_F(ConnectionManagerUtilityTest, ValidRefererPassesSanitization) {
   EXPECT_EQ((MutateRequestRet{"10.0.0.1:0", true, Tracing::Reason::NotTraceable}),
             callMutateRequestHeaders(headers, Protocol::Http2));
   EXPECT_EQ("https://example.com/",
+            headers.get(Http::CustomHeaders::get().Referer)[0]->value().getStringView());
+}
+
+TEST_F(ConnectionManagerUtilityTest, AlphaNumCharRefererPassesSanitization) {
+  connection_.stream_info_.downstream_connection_info_provider_->setRemoteAddress(
+      std::make_shared<Network::Address::Ipv4Instance>("10.0.0.1"));
+  ON_CALL(config_, useRemoteAddress()).WillByDefault(Return(true));
+  TestRequestHeaderMapImpl headers{{"referer", "android-app+1.0://example.com/"}};
+  EXPECT_EQ((MutateRequestRet{"10.0.0.1:0", true, Tracing::Reason::NotTraceable}),
+            callMutateRequestHeaders(headers, Protocol::Http2));
+  EXPECT_EQ("android-app+1.0://example.com/",
             headers.get(Http::CustomHeaders::get().Referer)[0]->value().getStringView());
 }
 
@@ -745,7 +747,7 @@ TEST_F(ConnectionManagerUtilityTest, OverrideRequestIdForExternalRequests) {
 TEST_F(ConnectionManagerUtilityTest, ExternalAddressExternalRequestUseRemote) {
   connection_.stream_info_.downstream_connection_info_provider_->setRemoteAddress(
       std::make_shared<Network::Address::Ipv4Instance>("50.0.0.1"));
-  ON_CALL(config_, useRemoteAddress()).WillByDefault(Return(true));
+  EXPECT_CALL(config_, useRemoteAddress()).WillRepeatedly(Return(true));
   route_config_.internal_only_headers_.push_back(LowerCaseString("custom_header"));
   TestRequestHeaderMapImpl headers{{"x-envoy-decorator-operation", "foo"},
                                    {"x-envoy-downstream-service-cluster", "foo"},
@@ -760,6 +762,7 @@ TEST_F(ConnectionManagerUtilityTest, ExternalAddressExternalRequestUseRemote) {
                                    {"x-envoy-expected-rq-timeout-ms", "10"},
                                    {"x-envoy-ip-tags", "bar"},
                                    {"x-envoy-original-url", "my_url"},
+                                   {"x-envoy-original-path", "/my_path"},
                                    {"custom_header", "foo"}};
 
   EXPECT_EQ((MutateRequestRet{"50.0.0.1:0", false, Tracing::Reason::NotTraceable}),
@@ -767,6 +770,7 @@ TEST_F(ConnectionManagerUtilityTest, ExternalAddressExternalRequestUseRemote) {
   EXPECT_EQ("50.0.0.1", headers.get_("x-envoy-external-address"));
   EXPECT_FALSE(headers.has("x-envoy-decorator-operation"));
   EXPECT_FALSE(headers.has("x-envoy-downstream-service-cluster"));
+  EXPECT_FALSE(headers.has("x-envoy-original-path"));
   EXPECT_FALSE(headers.has("x-envoy-hedge-on-per-try-timeout"));
   EXPECT_FALSE(headers.has("x-envoy-retriable-status-codes"));
   EXPECT_FALSE(headers.has("x-envoy-retry-on"));
@@ -781,19 +785,52 @@ TEST_F(ConnectionManagerUtilityTest, ExternalAddressExternalRequestUseRemote) {
   EXPECT_FALSE(headers.has("custom_header"));
 }
 
-// A request that is from an external address, but does not use remote address, should pull the
-// address from XFF.
+// A request that does not use remote address and is from an external address should pull the
+// external address from x-forwarded-for, and should not remove only-edge-sanitized headers.
 TEST_F(ConnectionManagerUtilityTest, ExternalAddressExternalRequestDontUseRemote) {
   connection_.stream_info_.downstream_connection_info_provider_->setRemoteAddress(
-      std::make_shared<Network::Address::Ipv4Instance>("60.0.0.2"));
-  ON_CALL(config_, useRemoteAddress()).WillByDefault(Return(false));
+      std::make_shared<Network::Address::Ipv4Instance>("50.0.0.1"));
+  EXPECT_CALL(config_, useRemoteAddress()).WillRepeatedly(Return(false));
+  route_config_.internal_only_headers_.push_back(LowerCaseString("custom_header"));
   TestRequestHeaderMapImpl headers{{"x-envoy-external-address", "60.0.0.1"},
-                                   {"x-forwarded-for", "60.0.0.1"}};
+                                   {"x-forwarded-for", "60.0.0.1"},
+                                   {"x-envoy-decorator-operation", "foo"},
+                                   {"x-envoy-downstream-service-cluster", "foo"},
+                                   {"x-envoy-hedge-on-per-try-timeout", "foo"},
+                                   {"x-envoy-retriable-status-codes", "123,456"},
+                                   {"x-envoy-retry-on", "foo"},
+                                   {"x-envoy-retry-grpc-on", "foo"},
+                                   {"x-envoy-max-retries", "foo"},
+                                   {"x-envoy-upstream-alt-stat-name", "foo"},
+                                   {"x-envoy-upstream-rq-timeout-alt-response", "204"},
+                                   {"x-envoy-upstream-rq-timeout-ms", "foo"},
+                                   {"x-envoy-expected-rq-timeout-ms", "10"},
+                                   {"x-envoy-ip-tags", "bar"},
+                                   {"x-envoy-original-url", "my_url"},
+                                   {"x-envoy-original-path", "/my_path"},
+                                   {"custom_header", "foo"}};
 
   EXPECT_EQ((MutateRequestRet{"60.0.0.1:0", false, Tracing::Reason::NotTraceable}),
             callMutateRequestHeaders(headers, Protocol::Http2));
+  // Expected external address is the one from the header, not the one from immediate upstream,
+  // because useRemoteAddress is false.
   EXPECT_EQ("60.0.0.1", headers.get_("x-envoy-external-address"));
   EXPECT_EQ("60.0.0.1", headers.get_("x-forwarded-for"));
+  EXPECT_TRUE(headers.has("x-envoy-decorator-operation"));
+  EXPECT_TRUE(headers.has("x-envoy-downstream-service-cluster"));
+  EXPECT_TRUE(headers.has("x-envoy-original-path"));
+  EXPECT_FALSE(headers.has("x-envoy-hedge-on-per-try-timeout"));
+  EXPECT_FALSE(headers.has("x-envoy-retriable-status-codes"));
+  EXPECT_FALSE(headers.has("x-envoy-retry-on"));
+  EXPECT_FALSE(headers.has("x-envoy-retry-grpc-on"));
+  EXPECT_FALSE(headers.has("x-envoy-max-retries"));
+  EXPECT_FALSE(headers.has("x-envoy-upstream-alt-stat-name"));
+  EXPECT_FALSE(headers.has("x-envoy-upstream-rq-timeout-alt-response"));
+  EXPECT_FALSE(headers.has("x-envoy-upstream-rq-timeout-ms"));
+  EXPECT_FALSE(headers.has("x-envoy-expected-rq-timeout-ms"));
+  EXPECT_FALSE(headers.has("x-envoy-ip-tags"));
+  EXPECT_FALSE(headers.has("x-envoy-original-url"));
+  EXPECT_FALSE(headers.has("custom_header"));
 }
 
 // Verify that if XFF is invalid we fall back to remote address, even if it is a pipe.
@@ -846,6 +883,23 @@ TEST_F(ConnectionManagerUtilityTest, DoNotRemoveConnectionUpgradeForWebSocketReq
             callMutateRequestHeaders(headers, Protocol::Http11));
   EXPECT_EQ("upgrade", headers.get_("connection"));
   EXPECT_EQ("websocket", headers.get_("upgrade"));
+  // Content-Length header should not be added
+  EXPECT_FALSE(headers.has("content-length"));
+}
+
+// Verify that Content-Length: 0 is added with runtime override
+TEST_F(ConnectionManagerUtilityTest, LegacyAddContentLength) {
+  TestScopedRuntime scoped_runtime;
+  scoped_runtime.mergeValues(
+      {{"envoy.reloadable_features.http_skip_adding_content_length_to_upgrade", "false"}});
+
+  TestRequestHeaderMapImpl headers{{"connection", "upgrade"}, {"upgrade", "websocket"}};
+
+  EXPECT_EQ((MutateRequestRet{"10.0.0.3:50000", false, Tracing::Reason::NotTraceable}),
+            callMutateRequestHeaders(headers, Protocol::Http11));
+  EXPECT_EQ("upgrade", headers.get_("connection"));
+  EXPECT_EQ("websocket", headers.get_("upgrade"));
+  EXPECT_EQ("0", headers.get_("content-length"));
 }
 
 // Make sure we do remove connection headers for non-WS requests.

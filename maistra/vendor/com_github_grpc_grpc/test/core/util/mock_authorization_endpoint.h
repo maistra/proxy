@@ -17,6 +17,10 @@
 
 #include <grpc/support/port_platform.h>
 
+#include <string>
+
+#include "absl/strings/string_view.h"
+
 #include "src/core/lib/iomgr/endpoint.h"
 
 namespace grpc_core {
@@ -27,8 +31,8 @@ class MockAuthorizationEndpoint : public grpc_endpoint {
                             absl::string_view peer_uri)
       : local_address_(local_uri), peer_address_(peer_uri) {
     static constexpr grpc_endpoint_vtable vtable = {
-        nullptr, nullptr, nullptr, nullptr,         nullptr, nullptr,
-        nullptr, nullptr, GetPeer, GetLocalAddress, nullptr, nullptr};
+        nullptr, nullptr, nullptr,         nullptr, nullptr, nullptr,
+        nullptr, GetPeer, GetLocalAddress, nullptr, nullptr};
     grpc_endpoint::vtable = &vtable;
   }
 

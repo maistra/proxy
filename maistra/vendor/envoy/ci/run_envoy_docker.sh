@@ -15,6 +15,7 @@ read -ra ENVOY_DOCKER_OPTIONS <<< "${ENVOY_DOCKER_OPTIONS:-}"
 export HTTP_PROXY="${http_proxy:-}"
 export HTTPS_PROXY="${https_proxy:-}"
 export NO_PROXY="${no_proxy:-}"
+export GOPROXY="${go_proxy:-}"
 
 if is_windows; then
   [[ -z "${IMAGE_NAME}" ]] && IMAGE_NAME="envoyproxy/envoy-build-windows2019"
@@ -40,8 +41,9 @@ else
   BUILD_DIR_MOUNT_DEST=/build
   SOURCE_DIR="${PWD}"
   SOURCE_DIR_MOUNT_DEST=/source
-  START_COMMAND=("/bin/bash" "-lc" "groupadd --gid $(id -g) -f envoygroup \
-    && useradd -o --uid $(id -u) --gid $(id -g) --no-create-home --home-dir /build envoybuild \
+  DOCKER_GID="$(stat -c %g /var/run/docker.sock 2>/dev/null || stat -f %g /var/run/docker.sock)"
+  START_COMMAND=("/bin/bash" "-lc" "groupadd --gid ${DOCKER_GID} -f envoygroup \
+    && useradd -o --uid $(id -u) --gid ${DOCKER_GID} --no-create-home --home-dir /build envoybuild \
     && usermod -a -G pcap envoybuild \
     && chown envoybuild:envoygroup /build \
     && sudo -EHs -u envoybuild bash -c 'cd /source && $*'")
@@ -61,17 +63,36 @@ mkdir -p "${ENVOY_DOCKER_BUILD_DIR}"
 
 export ENVOY_BUILD_IMAGE="${IMAGE_NAME}:${IMAGE_ID}"
 
+VOLUMES=(
+    -v "${ENVOY_DOCKER_BUILD_DIR}":"${BUILD_DIR_MOUNT_DEST}"
+    -v "${SOURCE_DIR}":"${SOURCE_DIR_MOUNT_DEST}")
+
+if ! is_windows; then
+    # Create a "shared" directory that has the same path in/outside the container
+    # This allows the host docker engine to see artefacts using a temporary path created inside the container,
+    # at the same path.
+    # For example, a directory created with `mktemp -d --tmpdir /tmp/bazel-shared` can be mounted as a volume
+    # from within the build container.
+    SHARED_TMP_DIR=/tmp/bazel-shared
+    mkdir -p "${SHARED_TMP_DIR}"
+    chmod +rwx "${SHARED_TMP_DIR}"
+    VOLUMES+=(-v "${SHARED_TMP_DIR}":"${SHARED_TMP_DIR}")
+fi
+
 time docker pull "${ENVOY_BUILD_IMAGE}"
+
 
 # Since we specify an explicit hash, docker-run will pull from the remote repo if missing.
 docker run --rm \
        "${ENVOY_DOCKER_OPTIONS[@]}" \
-       -v "${ENVOY_DOCKER_BUILD_DIR}":"${BUILD_DIR_MOUNT_DEST}" \
-       -v "${SOURCE_DIR}":"${SOURCE_DIR_MOUNT_DEST}" \
+       "${VOLUMES[@]}" \
        -e AZP_BRANCH \
+       -e AZP_COMMIT_SHA \
+       -e AZP_TARGET_BRANCH \
        -e HTTP_PROXY \
        -e HTTPS_PROXY \
        -e NO_PROXY \
+       -e GOPROXY \
        -e BAZEL_STARTUP_OPTIONS \
        -e BAZEL_BUILD_EXTRA_OPTIONS \
        -e BAZEL_EXTRA_TEST_OPTIONS \
@@ -79,6 +100,8 @@ docker run --rm \
        -e ENVOY_STDLIB \
        -e BUILD_REASON \
        -e BAZEL_REMOTE_INSTANCE \
+       -e BAZEL_REMOTE_INSTANCE_BRANCH \
+       -e GOOGLE_BES_PROJECT_ID \
        -e GCP_SERVICE_ACCOUNT_KEY \
        -e NUM_CPUS \
        -e ENVOY_RBE \

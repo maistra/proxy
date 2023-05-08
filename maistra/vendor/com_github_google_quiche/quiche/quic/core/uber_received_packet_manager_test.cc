@@ -33,6 +33,20 @@ const QuicTime::Delta kMinRttMs = QuicTime::Delta::FromMilliseconds(40);
 const QuicTime::Delta kDelayedAckTime =
     QuicTime::Delta::FromMilliseconds(kDefaultDelayedAckTimeMs);
 
+EncryptionLevel GetEncryptionLevel(PacketNumberSpace packet_number_space) {
+  switch (packet_number_space) {
+    case INITIAL_DATA:
+      return ENCRYPTION_INITIAL;
+    case HANDSHAKE_DATA:
+      return ENCRYPTION_HANDSHAKE;
+    case APPLICATION_DATA:
+      return ENCRYPTION_FORWARD_SECURE;
+    default:
+      QUICHE_DCHECK(false);
+      return NUM_ENCRYPTION_LEVELS;
+  }
+}
+
 class UberReceivedPacketManagerTest : public QuicTest {
  protected:
   UberReceivedPacketManagerTest() {
@@ -57,8 +71,7 @@ class UberReceivedPacketManagerTest : public QuicTest {
   }
 
   void RecordPacketReceipt(EncryptionLevel decrypted_packet_level,
-                           uint64_t packet_number,
-                           QuicTime receipt_time) {
+                           uint64_t packet_number, QuicTime receipt_time) {
     QuicPacketHeader header;
     header.packet_number = QuicPacketNumber(packet_number);
     manager_->RecordPacketReceived(decrypted_packet_level, header,
@@ -109,7 +122,7 @@ class UberReceivedPacketManagerTest : public QuicTest {
         continue;
       }
       manager_->ResetAckStates(
-          QuicUtils::GetEncryptionLevel(static_cast<PacketNumberSpace>(i)));
+          GetEncryptionLevel(static_cast<PacketNumberSpace>(i)));
     }
   }
 
@@ -545,15 +558,9 @@ TEST_F(UberReceivedPacketManagerTest,
   CheckAckTimeout(clock_.ApproximateNow());
 
   EXPECT_TRUE(HasPendingAck());
-  if (GetQuicReloadableFlag(quic_update_ack_timeout_on_receipt_time)) {
-    // Verify ACK delay is based on packet receipt time.
-    CheckAckTimeout(clock_.ApproximateNow() -
-                    QuicTime::Delta::FromMilliseconds(11) + kDelayedAckTime);
-  } else {
-    // Delayed ack is scheduled.
-    CheckAckTimeout(clock_.ApproximateNow() -
-                    QuicTime::Delta::FromMilliseconds(1) + kDelayedAckTime);
-  }
+  // Verify ACK delay is based on packet receipt time.
+  CheckAckTimeout(clock_.ApproximateNow() -
+                  QuicTime::Delta::FromMilliseconds(11) + kDelayedAckTime);
 }
 
 }  // namespace

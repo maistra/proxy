@@ -7,6 +7,8 @@ use regex::Regex;
 use serde::de::Visitor;
 use serde::{Deserialize, Serialize, Serializer};
 
+// Note that this type assumes there's no such thing as a relative label;
+// `:foo` is assumed to be relative to the repo root, and parses out to equivalent to `//:foo`.
 #[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct Label {
     pub repository: Option<String>,
@@ -18,16 +20,17 @@ impl FromStr for Label {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let re = Regex::new(r"^(@[\w\d\-_\.]*)?/{0,2}([\w\d\-_\./]+)?:?([\+\w\d\-_\./]+)$")?;
+        let re = Regex::new(r"^(@@?[\w\d\-_\.]*)?/{0,2}([\w\d\-_\./+]+)?(:([\+\w\d\-_\./]+))?$")?;
         let cap = re
             .captures(s)
-            .with_context(|| format!("Failed to parse label from string: {}", s))?;
+            .with_context(|| format!("Failed to parse label from string: {s}"))?;
 
         let repository = cap
             .get(1)
             .map(|m| m.as_str().trim_start_matches('@').to_owned());
+
         let package = cap.get(2).map(|m| m.as_str().to_owned());
-        let mut target = cap.get(3).map(|m| m.as_str().to_owned());
+        let mut target = cap.get(4).map(|m| m.as_str().to_owned());
 
         if target.is_none() {
             if let Some(pkg) = &package {
@@ -52,19 +55,21 @@ impl FromStr for Label {
 
 impl Display for Label {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut label = String::new();
-
         // Add the repository
         if let Some(repo) = &self.repository {
-            label = format!("@{}", repo);
+            write!(f, "@{repo}")?;
         }
+
+        write!(f, "//")?;
 
         // Add the package
         if let Some(pkg) = &self.package {
-            label = format!("{}//{}", label, pkg);
+            write!(f, "{pkg}")?;
         }
 
-        write!(f, "{}:{}", &label, &self.target,)
+        write!(f, ":{}", self.target)?;
+
+        Ok(())
     }
 }
 
@@ -188,8 +193,18 @@ mod test {
     use tempfile::tempdir;
 
     #[test]
+    fn full_label_bzlmod() {
+        let label = Label::from_str("@@repo//package/sub_package:target").unwrap();
+        assert_eq!(label.to_string(), "@repo//package/sub_package:target");
+        assert_eq!(label.repository.unwrap(), "repo");
+        assert_eq!(label.package.unwrap(), "package/sub_package");
+        assert_eq!(label.target, "target");
+    }
+
+    #[test]
     fn full_label() {
         let label = Label::from_str("@repo//package/sub_package:target").unwrap();
+        assert_eq!(label.to_string(), "@repo//package/sub_package:target");
         assert_eq!(label.repository.unwrap(), "repo");
         assert_eq!(label.package.unwrap(), "package/sub_package");
         assert_eq!(label.target, "target");
@@ -198,6 +213,7 @@ mod test {
     #[test]
     fn no_repository() {
         let label = Label::from_str("//package:target").unwrap();
+        assert_eq!(label.to_string(), "//package:target");
         assert_eq!(label.repository, None);
         assert_eq!(label.package.unwrap(), "package");
         assert_eq!(label.target, "target");
@@ -206,6 +222,7 @@ mod test {
     #[test]
     fn no_slashes() {
         let label = Label::from_str("package:target").unwrap();
+        assert_eq!(label.to_string(), "//package:target");
         assert_eq!(label.repository, None);
         assert_eq!(label.package.unwrap(), "package");
         assert_eq!(label.target, "target");
@@ -214,6 +231,7 @@ mod test {
     #[test]
     fn root_label() {
         let label = Label::from_str("@repo//:target").unwrap();
+        assert_eq!(label.to_string(), "@repo//:target");
         assert_eq!(label.repository.unwrap(), "repo");
         assert_eq!(label.package, None);
         assert_eq!(label.target, "target");
@@ -222,6 +240,7 @@ mod test {
     #[test]
     fn root_label_no_repository() {
         let label = Label::from_str("//:target").unwrap();
+        assert_eq!(label.to_string(), "//:target");
         assert_eq!(label.repository, None);
         assert_eq!(label.package, None);
         assert_eq!(label.target, "target");
@@ -230,6 +249,7 @@ mod test {
     #[test]
     fn root_label_no_slashes() {
         let label = Label::from_str(":target").unwrap();
+        assert_eq!(label.to_string(), "//:target");
         assert_eq!(label.repository, None);
         assert_eq!(label.package, None);
         assert_eq!(label.target, "target");
@@ -238,9 +258,25 @@ mod test {
     #[test]
     fn full_label_with_slash_after_colon() {
         let label = Label::from_str("@repo//package/sub_package:subdir/target").unwrap();
+        assert_eq!(
+            label.to_string(),
+            "@repo//package/sub_package:subdir/target"
+        );
         assert_eq!(label.repository.unwrap(), "repo");
         assert_eq!(label.package.unwrap(), "package/sub_package");
         assert_eq!(label.target, "subdir/target");
+    }
+
+    #[test]
+    fn label_contains_plus() {
+        let label = Label::from_str("@repo//vendor/wasi-0.11.0+wasi-snapshot-preview1:BUILD.bazel")
+            .unwrap();
+        assert_eq!(label.repository.unwrap(), "repo");
+        assert_eq!(
+            label.package.unwrap(),
+            "vendor/wasi-0.11.0+wasi-snapshot-preview1"
+        );
+        assert_eq!(label.target, "BUILD.bazel");
     }
 
     #[test]
@@ -249,8 +285,8 @@ mod test {
     }
 
     #[test]
-    fn invalid_double_at() {
-        assert!(Label::from_str("@@repo//pkg:target").is_err());
+    fn invalid_triple_at() {
+        assert!(Label::from_str("@@@repo//pkg:target").is_err());
     }
 
     #[test]
@@ -268,8 +304,8 @@ mod test {
         let actual_file = subdir.join("greatgrandchild");
         create_dir_all(subdir).unwrap();
         {
-            File::create(&workspace).unwrap();
-            File::create(&build_file).unwrap();
+            File::create(workspace).unwrap();
+            File::create(build_file).unwrap();
             File::create(&actual_file).unwrap();
         }
         let label = Label::from_absolute_path(&actual_file).unwrap();
@@ -286,7 +322,7 @@ mod test {
         let actual_file = subdir.join("greatgrandchild");
         create_dir_all(subdir).unwrap();
         {
-            File::create(&build_file).unwrap();
+            File::create(build_file).unwrap();
             File::create(&actual_file).unwrap();
         }
         let err = Label::from_absolute_path(&actual_file)
@@ -304,7 +340,7 @@ mod test {
         let actual_file = subdir.join("greatgrandchild");
         create_dir_all(subdir).unwrap();
         {
-            File::create(&workspace).unwrap();
+            File::create(workspace).unwrap();
             File::create(&actual_file).unwrap();
         }
         let err = Label::from_absolute_path(&actual_file)

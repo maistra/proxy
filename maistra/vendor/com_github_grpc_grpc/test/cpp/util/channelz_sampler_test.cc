@@ -15,6 +15,8 @@
  * limitations under the License.
  *
  */
+#include <grpc/support/port_platform.h>
+
 #include <stdlib.h>
 #include <unistd.h>
 
@@ -24,20 +26,21 @@
 #include <string>
 #include <thread>
 
-#include "grpc/grpc.h"
-#include "grpc/support/alloc.h"
-#include "grpc/support/port_platform.h"
-#include "grpcpp/channel.h"
-#include "grpcpp/client_context.h"
-#include "grpcpp/create_channel.h"
-#include "grpcpp/ext/channelz_service_plugin.h"
-#include "grpcpp/grpcpp.h"
-#include "grpcpp/security/credentials.h"
-#include "grpcpp/security/server_credentials.h"
-#include "grpcpp/server.h"
-#include "grpcpp/server_builder.h"
-#include "grpcpp/server_context.h"
 #include "gtest/gtest.h"
+
+#include <grpc/grpc.h>
+#include <grpc/support/alloc.h>
+#include <grpcpp/channel.h>
+#include <grpcpp/client_context.h>
+#include <grpcpp/create_channel.h>
+#include <grpcpp/ext/channelz_service_plugin.h>
+#include <grpcpp/grpcpp.h>
+#include <grpcpp/security/credentials.h>
+#include <grpcpp/security/server_credentials.h>
+#include <grpcpp/server.h>
+#include <grpcpp/server_builder.h>
+#include <grpcpp/server_context.h>
+
 #include "src/core/lib/gpr/env.h"
 #include "src/cpp/server/channelz/channelz_service.h"
 #include "src/proto/grpc/testing/test.grpc.pb.h"
@@ -64,7 +67,7 @@ std::string output_json("output.json");
 
 // Creata an echo server
 class EchoServerImpl final : public grpc::testing::TestService::Service {
-  Status EmptyCall(::grpc::ServerContext* /*context*/,
+  Status EmptyCall(grpc::ServerContext* /*context*/,
                    const grpc::testing::Empty* /*request*/,
                    grpc::testing::Empty* /*response*/) override {
     return Status::OK;
@@ -111,7 +114,7 @@ bool WaitForConnection(int wait_server_seconds) {
 // Test the channelz sampler
 TEST(ChannelzSamplerTest, SimpleTest) {
   // start server
-  ::grpc::channelz::experimental::InitChannelzService();
+  grpc::channelz::experimental::InitChannelzService();
   EchoServerImpl service;
   grpc::ServerBuilder builder;
   auto server_creds =
@@ -162,7 +165,7 @@ TEST(ChannelzSamplerTest, SimpleTest) {
 }
 
 int main(int argc, char** argv) {
-  grpc::testing::TestEnvironment env(argc, argv);
+  grpc::testing::TestEnvironment env(&argc, argv);
   ::testing::InitGoogleTest(&argc, argv);
   std::string me = argv[0];
   auto lslash = me.rfind('/');

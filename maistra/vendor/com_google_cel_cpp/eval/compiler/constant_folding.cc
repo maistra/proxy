@@ -1,5 +1,8 @@
 #include "eval/compiler/constant_folding.h"
 
+#include <string>
+#include <utility>
+
 #include "absl/strings/str_cat.h"
 #include "eval/eval/const_value_step.h"
 #include "eval/public/cel_builtins.h"
@@ -101,7 +104,8 @@ class ConstantFoldingTransform {
             matched_function = overload;
           }
         }
-        if (matched_function == nullptr) {
+        if (matched_function == nullptr ||
+            matched_function->descriptor().is_strict()) {
           // propagate argument errors up the expression
           for (const CelValue& arg : arg_values) {
             if (arg.IsError()) {
@@ -109,6 +113,8 @@ class ConstantFoldingTransform {
               return true;
             }
           }
+        }
+        if (matched_function == nullptr) {
           makeConstant(
               CreateNoMatchingOverloadError(arena_, call_expr->function()),
               out);

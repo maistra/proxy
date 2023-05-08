@@ -1,34 +1,41 @@
 load("//rust:defs.bzl", "rust_binary", "rust_clippy", "rust_library")
 load("//tools:tool_utils.bzl", "aspect_repository")
 
-package(default_visibility = ["//visibility:public"])
-
-exports_files([
-    "rustfmt.toml",
-    "rustfmt_utils.bzl",
-])
+exports_files(
+    [
+        "rustfmt.toml",
+        "rustfmt_utils.bzl",
+    ],
+    visibility = ["//visibility:public"],
+)
 
 rust_library(
     name = "rustfmt_lib",
     srcs = glob(
-        ["srcs/**/*.rs"],
-        exclude = ["srcs/**/*main.rs"],
+        include = ["src/**/*.rs"],
+        exclude = [
+            "src/**/*main.rs",
+            "src/bin/**",
+        ],
     ),
     data = [
         "//:rustfmt.toml",
-        "//rust/toolchain:current_exec_rustfmt_files",
+        "//rust/toolchain:current_rustfmt_toolchain",
     ],
     edition = "2018",
     rustc_env = {
-        "RUSTFMT": "$(rootpath //rust/toolchain:current_exec_rustfmt_files)",
+        "RUSTFMT": "$(rootpath //rust/toolchain:current_rustfmt_toolchain)",
         "RUSTFMT_CONFIG": "$(rootpath //:rustfmt.toml)",
     },
+    deps = [
+        "//tools/runfiles",
+    ],
 )
 
 rust_binary(
     name = "rustfmt",
     srcs = [
-        "srcs/main.rs",
+        "src/main.rs",
     ],
     data = [
         "//:rustfmt.toml",
@@ -36,7 +43,13 @@ rust_binary(
     edition = "2018",
     rustc_env = {
         "ASPECT_REPOSITORY": aspect_repository(),
+        "RUST_DEFAULT_EDITION": "$(RUST_DEFAULT_EDITION)",
     },
+    toolchains = [
+        "@rules_rust//rust/toolchain:current_rust_toolchain",
+        "@rules_rust//rust/toolchain:current_rustfmt_toolchain",
+    ],
+    visibility = ["//visibility:public"],
     deps = [
         ":rustfmt_lib",
         "//util/label",
@@ -46,9 +59,10 @@ rust_binary(
 rust_binary(
     name = "rustfmt_test",
     srcs = [
-        "srcs/test_main.rs",
+        "src/bin/test_main.rs",
     ],
     edition = "2018",
+    visibility = ["//visibility:public"],
     deps = [
         ":rustfmt_lib",
         "//tools/runfiles",
@@ -62,16 +76,4 @@ rust_clippy(
     deps = [
         ":rustfmt",
     ],
-)
-
-filegroup(
-    name = "distro",
-    srcs = glob([
-        "*.bzl",
-        "**/*.rs",
-    ]) + [
-        "rustfmt.toml",
-        "BUILD.bazel",
-    ],
-    visibility = ["//:__subpackages__"],
 )

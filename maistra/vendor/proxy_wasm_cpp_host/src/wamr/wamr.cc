@@ -58,8 +58,8 @@ public:
   std::string_view getEngineName() override { return "wamr"; }
   std::string_view getPrecompiledSectionName() override { return ""; }
 
-  Cloneable cloneable() override { return Cloneable::NotCloneable; }
-  std::unique_ptr<WasmVm> clone() override { return nullptr; }
+  Cloneable cloneable() override { return Cloneable::CompiledBytecode; }
+  std::unique_ptr<WasmVm> clone() override;
 
   bool load(std::string_view bytecode, std::string_view precompiled,
             const std::unordered_map<uint32_t, std::string> &function_names) override;
@@ -87,6 +87,7 @@ public:
 #undef _GET_MODULE_FUNCTION
 
   void terminate() override {}
+  bool usesWasmByteOrder() override { return true; }
 
 private:
   template <typename... Args>
@@ -107,6 +108,7 @@ private:
 
   WasmStorePtr store_;
   WasmModulePtr module_;
+  WasmSharedModulePtr shared_module_;
   WasmInstancePtr instance_;
 
   WasmMemoryPtr memory_;
@@ -123,15 +125,49 @@ bool Wamr::load(std::string_view bytecode, std::string_view /*precompiled*/,
     return false;
   }
 
-  WasmByteVec vec;
-  wasm_byte_vec_new(vec.get(), bytecode.size(), bytecode.data());
-
-  module_ = wasm_module_new(store_.get(), vec.get());
+  wasm_byte_vec_t binary = {.size = bytecode.size(),
+                            .data = (char *)bytecode.data(),
+                            .num_elems = bytecode.size(),
+                            .size_of_elem = sizeof(byte_t),
+                            .lock = nullptr};
+  module_ = wasm_module_new(store_.get(), &binary);
   if (module_ == nullptr) {
     return false;
   }
 
+  shared_module_ = wasm_module_share(module_.get());
+  if (shared_module_ == nullptr) {
+    return false;
+  }
+
   return true;
+}
+
+std::unique_ptr<WasmVm> Wamr::clone() {
+  assert(module_ != nullptr);
+
+  auto vm = std::make_unique<Wamr>();
+  if (vm == nullptr) {
+    return nullptr;
+  }
+
+  vm->store_ = wasm_store_new(engine());
+  if (vm->store_ == nullptr) {
+    return nullptr;
+  }
+
+  vm->module_ = wasm_module_obtain(vm->store_.get(), shared_module_.get());
+  if (vm->module_ == nullptr) {
+    return nullptr;
+  }
+
+  auto *integration_clone = integration()->clone();
+  if (integration_clone == nullptr) {
+    return nullptr;
+  }
+  vm->integration().reset(integration_clone);
+
+  return vm;
 }
 
 static bool equalValTypes(const wasm_valtype_vec_t *left, const wasm_valtype_vec_t *right) {
@@ -296,7 +332,7 @@ bool Wamr::link(std::string_view /*debug_name*/) {
     return false;
   }
 
-  wasm_extern_vec_t imports_vec = {imports.size(), imports.data()};
+  wasm_extern_vec_t imports_vec = {imports.size(), imports.data(), imports.size()};
   instance_ = wasm_instance_new(store_.get(), module_.get(), &imports_vec, nullptr);
   if (instance_ == nullptr) {
     fail(FailState::UnableToInitializeCode, "Failed to create new Wasm instance");
@@ -310,11 +346,10 @@ bool Wamr::link(std::string_view /*debug_name*/) {
   wasm_instance_exports(instance_.get(), exports.get());
 
   for (size_t i = 0; i < export_types.get()->size; i++) {
-    const wasm_externtype_t *exp_extern_type = wasm_exporttype_type(export_types.get()->data[i]);
     wasm_extern_t *actual_extern = exports.get()->data[i];
 
     wasm_externkind_t kind = wasm_extern_kind(actual_extern);
-    assert(kind == wasm_externtype_kind(exp_extern_type));
+    assert(kind == wasm_externtype_kind(wasm_exporttype_type(export_types.get()->data[i])));
     switch (kind) {
     case WASM_EXTERN_FUNC: {
       WasmFuncPtr func = wasm_func_copy(wasm_extern_as_func(actual_extern));
@@ -368,7 +403,7 @@ bool Wamr::getWord(uint64_t pointer, Word *word) {
 
   uint32_t word32;
   ::memcpy(&word32, wasm_memory_data(memory_.get()) + pointer, size);
-  word->u64_ = wasmtoh(word32);
+  word->u64_ = wasmtoh(word32, true);
   return true;
 }
 
@@ -377,7 +412,7 @@ bool Wamr::setWord(uint64_t pointer, Word word) {
   if (pointer + size > wasm_memory_data_size(memory_.get())) {
     return false;
   }
-  uint32_t word32 = htowasm(word.u32());
+  uint32_t word32 = htowasm(word.u32(), true);
   ::memcpy(wasm_memory_data(memory_.get()) + pointer, &word32, size);
   return true;
 }
@@ -578,9 +613,9 @@ void Wamr::getModuleFunctionImpl(std::string_view function_name,
     if (trap) {
       WasmByteVec error_message;
       wasm_trap_message(trap.get(), error_message.get());
+      std::string message(error_message.get()->data); // NULL-terminated
       fail(FailState::RuntimeError,
-           "Function: " + std::string(function_name) + " failed:\n" +
-               std::string(error_message.get()->data, error_message.get()->size));
+           "Function: " + std::string(function_name) + " failed: " + message);
       return;
     }
     if (log) {
@@ -628,9 +663,9 @@ void Wamr::getModuleFunctionImpl(std::string_view function_name,
     if (trap) {
       WasmByteVec error_message;
       wasm_trap_message(trap.get(), error_message.get());
+      std::string message(error_message.get()->data); // NULL-terminated
       fail(FailState::RuntimeError,
-           "Function: " + std::string(function_name) + " failed:\n" +
-               std::string(error_message.get()->data, error_message.get()->size));
+           "Function: " + std::string(function_name) + " failed: " + message);
       return R{};
     }
     R ret = convertValueTypeToArg<R>(results.data[0]);

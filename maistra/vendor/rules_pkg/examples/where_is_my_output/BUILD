@@ -12,10 +12,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 # Build a trivial .deb package to show how to find the output files.
 
-load("@rules_pkg//:pkg.bzl", "pkg_deb", "pkg_tar")
+load("@rules_pkg//pkg:deb.bzl", "pkg_deb")
+load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 
 genrule(
     name = "generate_files",
@@ -38,4 +38,19 @@ pkg_deb(
     maintainer = "someone@somewhere.com",
     package = "mwp",
     version = "3.14",
+)
+
+# We can also depend just on the .changes file
+
+filegroup(
+    name = "the_changes_file",
+    srcs = [":deb"],
+    output_group = "changes",
+)
+
+genrule(
+    name = "use_changes_file",
+    srcs = [":the_changes_file"],
+    outs = ["copy_of_changes.txt"],
+    cmd = "cp $(location :the_changes_file) $@",
 )

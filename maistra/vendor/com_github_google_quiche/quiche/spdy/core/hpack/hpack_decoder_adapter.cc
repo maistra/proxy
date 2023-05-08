@@ -39,8 +39,7 @@ void HpackDecoderAdapter::HandleControlFrameHeadersStart(
 }
 
 bool HpackDecoderAdapter::HandleControlFrameHeadersData(
-    const char* headers_data,
-    size_t headers_data_length) {
+    const char* headers_data, size_t headers_data_length) {
   QUICHE_DVLOG(2) << "HpackDecoderAdapter::HandleControlFrameHeadersData: len="
                   << headers_data_length;
   if (!header_block_started_) {
@@ -99,7 +98,7 @@ bool HpackDecoderAdapter::HandleControlFrameHeadersComplete() {
   return true;
 }
 
-const SpdyHeaderBlock& HpackDecoderAdapter::decoded_block() const {
+const Http2HeaderBlock& HpackDecoderAdapter::decoded_block() const {
   return listener_adapter_.decoded_block();
 }
 
@@ -149,7 +148,7 @@ void HpackDecoderAdapter::ListenerAdapter::OnHeader(const std::string& name,
 
 void HpackDecoderAdapter::ListenerAdapter::OnHeaderListEnd() {
   QUICHE_DVLOG(2) << "HpackDecoderAdapter::ListenerAdapter::OnHeaderListEnd";
-  // We don't clear the SpdyHeaderBlock here to allow access to it until the
+  // We don't clear the Http2HeaderBlock here to allow access to it until the
   // next HPACK block is decoded.
   if (handler_ != nullptr) {
     handler_->OnHeaderBlockEnd(total_uncompressed_bytes_, total_hpack_bytes_);

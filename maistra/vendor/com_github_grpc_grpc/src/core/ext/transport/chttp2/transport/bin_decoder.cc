@@ -18,12 +18,14 @@
 
 #include <grpc/support/port_platform.h>
 
+#include "src/core/ext/transport/chttp2/transport/bin_decoder.h"
+
+#include "absl/base/attributes.h"
+
 #include <grpc/support/alloc.h>
 #include <grpc/support/log.h>
-#include "src/core/ext/transport/chttp2/transport/bin_decoder.h"
-#include "src/core/lib/gpr/string.h"
-#include "src/core/lib/slice/slice_internal.h"
-#include "src/core/lib/slice/slice_string_helpers.h"
+
+#include "src/core/lib/slice/slice_refcount.h"
 
 static uint8_t decode_table[] = {
     0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40,
@@ -146,7 +148,7 @@ bool grpc_base64_decode_partial(struct grpc_base64_decode_context* ctx) {
       switch (input_tail) {
         case 3:
           ctx->output_cur[1] = COMPOSE_OUTPUT_BYTE_1(ctx->input_cur);
-        /* fallthrough */
+          ABSL_FALLTHROUGH_INTENDED;
         case 2:
           ctx->output_cur[0] = COMPOSE_OUTPUT_BYTE_0(ctx->input_cur);
       }

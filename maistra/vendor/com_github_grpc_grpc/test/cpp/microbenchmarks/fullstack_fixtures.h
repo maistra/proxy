@@ -37,10 +37,10 @@
 #include "src/core/lib/surface/channel.h"
 #include "src/core/lib/surface/completion_queue.h"
 #include "src/core/lib/surface/server.h"
+#include "src/cpp/client/create_channel_internal.h"
 #include "test/core/util/passthru_endpoint.h"
 #include "test/core/util/port.h"
-
-#include "src/cpp/client/create_channel_internal.h"
+#include "test/core/util/test_config.h"
 #include "test/cpp/microbenchmarks/helpers.h"
 
 namespace grpc {
@@ -52,6 +52,7 @@ class FixtureConfiguration {
   virtual void ApplyCommonChannelArguments(ChannelArguments* c) const {
     c->SetInt(GRPC_ARG_MAX_RECEIVE_MESSAGE_LENGTH, INT_MAX);
     c->SetInt(GRPC_ARG_MAX_SEND_MESSAGE_LENGTH, INT_MAX);
+    c->SetResourceQuota(ResourceQuota());
   }
 
   virtual void ApplyCommonServerBuilderConfig(ServerBuilder* b) const {
@@ -77,15 +78,15 @@ class FullstackFixture : public BaseFixture {
     ChannelArguments args;
     config.ApplyCommonChannelArguments(&args);
     if (address.length() > 0) {
-      channel_ = ::grpc::CreateCustomChannel(
-          address, InsecureChannelCredentials(), args);
+      channel_ = grpc::CreateCustomChannel(address,
+                                           InsecureChannelCredentials(), args);
     } else {
       channel_ = server_->InProcessChannel(args);
     }
   }
 
   ~FullstackFixture() override {
-    server_->Shutdown();
+    server_->Shutdown(grpc_timeout_milliseconds_to_deadline(0));
     cq_->Shutdown();
     void* tag;
     bool ok;
@@ -169,24 +170,23 @@ class EndpointPairFixture : public BaseFixture {
     b.RegisterService(service);
     fixture_configuration.ApplyCommonServerBuilderConfig(&b);
     server_ = b.BuildAndStart();
-
     grpc_core::ExecCtx exec_ctx;
-
     /* add server endpoint to server_
      * */
     {
-      const grpc_channel_args* server_args =
-          server_->c_server()->core_server->channel_args();
+      grpc_core::Server* core_server =
+          grpc_core::Server::FromC(server_->c_server());
+      grpc_core::ChannelArgs server_args = core_server->channel_args();
       server_transport_ = grpc_create_chttp2_transport(
           server_args, endpoints.server, false /* is_client */);
-
-      for (grpc_pollset* pollset :
-           server_->c_server()->core_server->pollsets()) {
+      for (grpc_pollset* pollset : core_server->pollsets()) {
         grpc_endpoint_add_to_pollset(endpoints.server, pollset);
       }
 
-      server_->c_server()->core_server->SetupTransport(
-          server_transport_, nullptr, server_args, nullptr);
+      GPR_ASSERT(GRPC_LOG_IF_ERROR(
+          "SetupTransport",
+          core_server->SetupTransport(server_transport_, nullptr, server_args,
+                                      nullptr)));
       grpc_chttp2_transport_start_reading(server_transport_, nullptr, nullptr,
                                           nullptr);
     }
@@ -197,16 +197,20 @@ class EndpointPairFixture : public BaseFixture {
       args.SetString(GRPC_ARG_DEFAULT_AUTHORITY, "test.authority");
       fixture_configuration.ApplyCommonChannelArguments(&args);
 
-      grpc_channel_args c_args = args.c_channel_args();
+      grpc_core::ChannelArgs c_args =
+          grpc_core::ChannelArgs::FromC(args.c_channel_args());
       client_transport_ =
-          grpc_create_chttp2_transport(&c_args, endpoints.client, true);
+          grpc_create_chttp2_transport(c_args, endpoints.client, true);
       GPR_ASSERT(client_transport_);
-      grpc_channel* channel = grpc_channel_create(
-          "target", &c_args, GRPC_CLIENT_DIRECT_CHANNEL, client_transport_);
+      grpc_channel* channel =
+          grpc_core::Channel::Create(
+              "target", c_args, GRPC_CLIENT_DIRECT_CHANNEL, client_transport_)
+              ->release()
+              ->c_ptr();
       grpc_chttp2_transport_start_reading(client_transport_, nullptr, nullptr,
                                           nullptr);
 
-      channel_ = ::grpc::CreateChannelInternal(
+      channel_ = grpc::CreateChannelInternal(
           "", channel,
           std::vector<std::unique_ptr<
               experimental::ClientInterceptorFactoryInterface>>());
@@ -214,7 +218,7 @@ class EndpointPairFixture : public BaseFixture {
   }
 
   ~EndpointPairFixture() override {
-    server_->Shutdown();
+    server_->Shutdown(grpc_timeout_milliseconds_to_deadline(0));
     cq_->Shutdown();
     void* tag;
     bool ok;
@@ -284,8 +288,7 @@ class InProcessCHTTP2WithExplicitStats : public EndpointPairFixture {
 
   static grpc_endpoint_pair MakeEndpoints(grpc_passthru_endpoint_stats* stats) {
     grpc_endpoint_pair p;
-    grpc_passthru_endpoint_create(&p.client, &p.server,
-                                  LibraryInitializer::get().rq(), stats);
+    grpc_passthru_endpoint_create(&p.client, &p.server, stats);
     return p;
   }
 };

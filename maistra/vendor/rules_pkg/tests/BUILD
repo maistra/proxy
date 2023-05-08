@@ -19,8 +19,10 @@ load(":my_package_name.bzl", "my_package_naming")
 load(":path_test.bzl", "path_tests")
 load("//pkg:deb.bzl", "pkg_deb")
 load("//pkg:mappings.bzl", "pkg_attributes", "pkg_mkdirs")
-load("//pkg:pkg.bzl", "pkg_tar")
+load("//pkg:tar.bzl", "pkg_tar")
 load("//pkg:zip.bzl", "pkg_zip")
+
+package(default_applicable_licenses = ["//:license"])
 
 licenses(["notice"])
 
@@ -32,6 +34,28 @@ filegroup(
         "testdata/loremipsum.txt",
     ],
     visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "archive_test",
+    srcs = [
+        "archive_test.py",
+    ],
+    data = [
+        "//tests:testdata/empty.ar",
+        "//tests:testdata/a_ab.ar",
+        "//tests:testdata/a.ar",
+        "//tests:testdata/a_b_ab.ar",
+        "//tests:testdata/a_b.ar",
+        "//tests:testdata/ab.ar",
+        "//tests:testdata/b.ar",
+    ],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        "//pkg/private:archive",
+        "@bazel_tools//tools/python/runfiles",
+    ],
 )
 
 py_test(
@@ -49,16 +73,6 @@ py_test(
     srcs_version = "PY3",
     deps = [
         "//pkg/private:helpers",
-    ],
-)
-
-py_test(
-    name = "make_rpm_test",
-    srcs = ["make_rpm_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
-    deps = [
-        "//pkg:make_rpm_lib",
     ],
 )
 

@@ -15,6 +15,9 @@ use crate::aquery::CrateSpec;
 /// [rd]: https://rust-analyzer.github.io/manual.html#non-cargo-based-projects
 #[derive(Debug, Serialize)]
 pub struct RustProject {
+    /// The path to a Rust sysroot.
+    sysroot: Option<String>,
+
     /// Path to the directory with *source code* of
     /// sysroot crates.
     sysroot_src: Option<String>,
@@ -89,10 +92,12 @@ pub struct Dependency {
 }
 
 pub fn generate_rust_project(
+    sysroot: &str,
     sysroot_src: &str,
     crates: &BTreeSet<CrateSpec>,
 ) -> anyhow::Result<RustProject> {
     let mut project = RustProject {
+        sysroot: Some(sysroot.into()),
         sysroot_src: Some(sysroot_src.into()),
         crates: Vec::new(),
     };
@@ -131,7 +136,7 @@ pub fn generate_rust_project(
                             let crate_index = *merged_crates_index
                                 .get(dep)
                                 .expect("failed to find dependency on second lookup");
-                            let dep_crate = &project.crates[crate_index as usize];
+                            let dep_crate = &project.crates[crate_index];
                             Dependency {
                                 crate_index,
                                 name: dep_crate
@@ -177,11 +182,16 @@ pub fn generate_rust_project(
 pub fn write_rust_project(
     rust_project_path: &Path,
     execution_root: &Path,
+    output_base: &Path,
     rust_project: &RustProject,
 ) -> anyhow::Result<()> {
     let execution_root = execution_root
         .to_str()
         .ok_or_else(|| anyhow!("execution_root is not valid UTF-8"))?;
+
+    let output_base = output_base
+        .to_str()
+        .ok_or_else(|| anyhow!("output_base is not valid UTF-8"))?;
 
     // Try to remove the existing rust-project.json. It's OK if the file doesn't exist.
     match std::fs::remove_file(rust_project_path) {
@@ -197,8 +207,9 @@ pub fn write_rust_project(
 
     // Render the `rust-project.json` file and replace the exec root
     // placeholders with the path to the local exec root.
-    let rust_project_content =
-        serde_json::to_string(rust_project)?.replace("__EXEC_ROOT__", execution_root);
+    let rust_project_content = serde_json::to_string(rust_project)?
+        .replace("__EXEC_ROOT__", execution_root)
+        .replace("__OUTPUT_BASE__", output_base);
 
     // Write the new rust-project.json file.
     std::fs::write(rust_project_path, rust_project_content)?;
@@ -219,6 +230,7 @@ mod tests {
     fn generate_rust_project_single() {
         let project = generate_rust_project(
             "sysroot",
+            "sysroot_src",
             &BTreeSet::from([CrateSpec {
                 crate_id: "ID-example".into(),
                 display_name: "example".into(),
@@ -248,6 +260,7 @@ mod tests {
     fn generate_rust_project_with_deps() {
         let project = generate_rust_project(
             "sysroot",
+            "sysroot_src",
             &BTreeSet::from([
                 CrateSpec {
                     crate_id: "ID-example".into(),

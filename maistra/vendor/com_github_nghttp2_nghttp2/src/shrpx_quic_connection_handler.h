@@ -55,8 +55,8 @@ struct CloseWait {
   ~CloseWait();
 
   int handle_packet(const UpstreamAddr *faddr, const Address &remote_addr,
-                    const Address &local_addr, const uint8_t *data,
-                    size_t datalen);
+                    const Address &local_addr, const ngtcp2_pkt_info &pi,
+                    const uint8_t *data, size_t datalen);
 
   Worker *worker;
   // Source Connection IDs of the connection.
@@ -82,8 +82,8 @@ public:
   QUICConnectionHandler(Worker *worker);
   ~QUICConnectionHandler();
   int handle_packet(const UpstreamAddr *faddr, const Address &remote_addr,
-                    const Address &local_addr, const uint8_t *data,
-                    size_t datalen);
+                    const Address &local_addr, const ngtcp2_pkt_info &pi,
+                    const uint8_t *data, size_t datalen);
   // Send Retry packet.  |ini_dcid| is the destination Connection ID
   // which appeared in Client Initial packet and its length is
   // |dcidlen|.  |ini_scid| is the source Connection ID which appeared
@@ -91,7 +91,8 @@ public:
   int send_retry(const UpstreamAddr *faddr, uint32_t version,
                  const uint8_t *ini_dcid, size_t ini_dcidlen,
                  const uint8_t *ini_scid, size_t ini_scidlen,
-                 const Address &remote_addr, const Address &local_addr);
+                 const Address &remote_addr, const Address &local_addr,
+                 size_t max_pktlen);
   // Send Version Negotiation packet.  |ini_dcid| is the destination
   // Connection ID which appeared in Client Initial packet and its
   // length is |dcidlen|.  |ini_scid| is the source Connection ID
@@ -113,7 +114,8 @@ public:
                             const ngtcp2_cid &ini_dcid,
                             const ngtcp2_cid &ini_scid,
                             const Address &remote_addr,
-                            const Address &local_addr, uint64_t error_code);
+                            const Address &local_addr, uint64_t error_code,
+                            size_t max_pktlen);
   ClientHandler *handle_new_connection(const UpstreamAddr *faddr,
                                        const Address &remote_addr,
                                        const Address &local_addr,

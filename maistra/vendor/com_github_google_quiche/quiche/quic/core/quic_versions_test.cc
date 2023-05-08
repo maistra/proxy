@@ -8,7 +8,6 @@
 #include "quiche/quic/platform/api/quic_expect_bug.h"
 #include "quiche/quic/platform/api/quic_flags.h"
 #include "quiche/quic/platform/api/quic_logging.h"
-#include "quiche/quic/platform/api/quic_mock_log.h"
 #include "quiche/quic/platform/api/quic_test.h"
 
 namespace quic {
@@ -242,7 +241,7 @@ TEST(QuicVersionsTest, CreateQuicVersionLabel) {
           0x0f0f0f0f);
 
   // Make sure that disabling randomness works.
-  SetQuicFlag(FLAGS_quic_disable_version_negotiation_grease_randomness, true);
+  SetQuicFlag(quic_disable_version_negotiation_grease_randomness, true);
   EXPECT_EQ(0xda5a3a3au, CreateQuicVersionLabel(
                              ParsedQuicVersion::ReservedForNegotiation()));
 }

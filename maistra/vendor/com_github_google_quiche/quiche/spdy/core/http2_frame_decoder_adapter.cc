@@ -27,7 +27,6 @@
 #include "quiche/spdy/core/hpack/hpack_decoder_adapter.h"
 #include "quiche/spdy/core/hpack/hpack_header_table.h"
 #include "quiche/spdy/core/spdy_alt_svc_wire_format.h"
-#include "quiche/spdy/core/spdy_header_block.h"
 #include "quiche/spdy/core/spdy_headers_handler_interface.h"
 #include "quiche/spdy/core/spdy_protocol.h"
 
@@ -436,7 +435,8 @@ void Http2DecoderAdapter::OnHeadersStart(const Http2FrameHeader& header) {
     }
     on_headers_called_ = true;
     ReportReceiveCompressedFrame(header);
-    visitor()->OnHeaders(header.stream_id, kNotHasPriorityFields,
+    visitor()->OnHeaders(header.stream_id, header.payload_length,
+                         kNotHasPriorityFields,
                          0,      // priority
                          0,      // parent_stream_id
                          false,  // exclusive
@@ -460,10 +460,10 @@ void Http2DecoderAdapter::OnHeadersPriority(
         << " priority:" << priority << " frame_header:" << frame_header_;
     return;
   }
-  visitor()->OnHeaders(frame_header_.stream_id, kHasPriorityFields,
-                       priority.weight, priority.stream_dependency,
-                       priority.is_exclusive, frame_header_.IsEndStream(),
-                       frame_header_.IsEndHeaders());
+  visitor()->OnHeaders(
+      frame_header_.stream_id, frame_header_.payload_length, kHasPriorityFields,
+      priority.weight, priority.stream_dependency, priority.is_exclusive,
+      frame_header_.IsEndStream(), frame_header_.IsEndHeaders());
   CommonStartHpackBlock();
 }
 
@@ -505,7 +505,8 @@ void Http2DecoderAdapter::OnContinuationStart(const Http2FrameHeader& header) {
     frame_header_ = header;
     has_frame_header_ = true;
     ReportReceiveCompressedFrame(header);
-    visitor()->OnContinuation(header.stream_id, header.IsEndHeaders());
+    visitor()->OnContinuation(header.stream_id, header.payload_length,
+                              header.IsEndHeaders());
   }
 }
 
@@ -575,8 +576,7 @@ void Http2DecoderAdapter::OnSettingsAck(const Http2FrameHeader& header) {
 }
 
 void Http2DecoderAdapter::OnPushPromiseStart(
-    const Http2FrameHeader& header,
-    const Http2PushPromiseFields& promise,
+    const Http2FrameHeader& header, const Http2PushPromiseFields& promise,
     size_t total_padding_length) {
   QUICHE_DVLOG(1) << "OnPushPromiseStart: " << header
                   << "; promise: " << promise
@@ -724,17 +724,19 @@ void Http2DecoderAdapter::OnPriorityUpdateEnd() {
   priority_field_value_.clear();
 }
 
-// Except for BLOCKED frames, all other unknown frames are either dropped or
-// passed to a registered extension.
 void Http2DecoderAdapter::OnUnknownStart(const Http2FrameHeader& header) {
   QUICHE_DVLOG(1) << "OnUnknownStart: " << header;
   if (IsOkToStartFrame(header)) {
+    frame_header_ = header;
+    has_frame_header_ = true;
+    const uint8_t type = static_cast<uint8_t>(header.type);
+    const uint8_t flags = static_cast<uint8_t>(header.flags);
     if (extension_ != nullptr) {
-      const uint8_t type = static_cast<uint8_t>(header.type);
-      const uint8_t flags = static_cast<uint8_t>(header.flags);
       handling_extension_payload_ = extension_->OnFrameHeader(
           header.stream_id, header.payload_length, type, flags);
     }
+    visitor()->OnUnknownFrameStart(header.stream_id, header.payload_length,
+                                   type, flags);
   }
 }
 
@@ -744,6 +746,8 @@ void Http2DecoderAdapter::OnUnknownPayload(const char* data, size_t len) {
   } else {
     QUICHE_DVLOG(1) << "OnUnknownPayload: len=" << len;
   }
+  visitor()->OnUnknownFramePayload(frame_header_.stream_id,
+                                   absl::string_view(data, len));
 }
 
 void Http2DecoderAdapter::OnUnknownEnd() {

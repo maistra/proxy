@@ -18,6 +18,14 @@
 
 #include "test/cpp/util/grpc_tool.h"
 
+#include <chrono>
+#include <sstream>
+
+#include <gtest/gtest.h>
+
+#include "absl/flags/declare.h"
+#include "absl/flags/flag.h"
+
 #include <grpc/grpc.h>
 #include <grpc/support/alloc.h>
 #include <grpcpp/channel.h>
@@ -27,13 +35,7 @@
 #include <grpcpp/server.h>
 #include <grpcpp/server_builder.h>
 #include <grpcpp/server_context.h>
-#include <gtest/gtest.h>
 
-#include <chrono>
-#include <sstream>
-
-#include "absl/flags/declare.h"
-#include "absl/flags/flag.h"
 #include "src/core/lib/gpr/env.h"
 #include "src/core/lib/iomgr/load_file.h"
 #include "src/proto/grpc/testing/echo.grpc.pb.h"
@@ -42,6 +44,7 @@
 #include "test/core/util/test_config.h"
 #include "test/cpp/util/cli_credentials.h"
 #include "test/cpp/util/string_ref_helper.h"
+#include "test/cpp/util/test_config.h"
 
 #define CA_CERT_PATH "src/core/tsi/test_creds/ca.pem"
 #define SERVER_CERT_PATH "src/core/tsi/test_creds/server1.pem"
@@ -170,7 +173,7 @@ size_t ArraySize(T& a) {
           static_cast<size_t>(!(sizeof(a) % sizeof(*(a)))));
 }
 
-class TestServiceImpl : public ::grpc::testing::EchoTestService::Service {
+class TestServiceImpl : public grpc::testing::EchoTestService::Service {
  public:
   Status Echo(ServerContext* context, const EchoRequest* request,
               EchoResponse* response) override {
@@ -934,10 +937,11 @@ TEST_F(GrpcToolTest, CallCommandWithTimeoutDeadlineUpperBound) {
                                    std::bind(PrintStream, &output_stream,
                                              std::placeholders::_1)));
 
+  std::string output = output_stream.str();
+
   // Expected output: "message: "true""
   // deadline not greater than timeout + current time
-  EXPECT_TRUE(nullptr !=
-              strstr(output_stream.str().c_str(), "message: \"true\""));
+  EXPECT_TRUE(nullptr != strstr(output.c_str(), "message: \"true\"")) << output;
   ShutdownServer();
 }
 
@@ -1343,8 +1347,8 @@ TEST_F(GrpcToolTest, ConfiguringDefaultServiceConfig) {
 }  // namespace grpc
 
 int main(int argc, char** argv) {
-  grpc::testing::TestEnvironment env(argc, argv);
+  grpc::testing::TestEnvironment env(&argc, argv);
   ::testing::InitGoogleTest(&argc, argv);
-  ::testing::FLAGS_gtest_death_test_style = "threadsafe";
+  GTEST_FLAG_SET(death_test_style, "threadsafe");
   return RUN_ALL_TESTS();
 }

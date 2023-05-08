@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::config::{Commitish, Config, CrateAnnotations, CrateId};
 use crate::metadata::dependency::DependencySet;
 use crate::splicing::{SourceInfo, WorkspaceMetadata};
+use crate::utils::starlark::SelectList;
 
 pub type CargoMetadata = cargo_metadata::Metadata;
 pub type CargoLockfile = cargo_lock::Lockfile;
@@ -156,10 +157,11 @@ pub enum SourceAnnotation {
     },
 }
 
-/// TODO
+/// Additional information related to [Cargo.lock](https://doc.rust-lang.org/cargo/guide/cargo-toml-vs-cargo-lock.html)
+/// data used for improved determinism.
 #[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 pub struct LockfileAnnotation {
-    /// TODO
+    /// A mapping of crates/packages to additional source (network location) information.
     pub crates: BTreeMap<PackageId, SourceAnnotation>,
 }
 
@@ -358,6 +360,9 @@ pub struct Annotations {
 
     /// Pairred crate annotations
     pub pairred_extras: BTreeMap<CrateId, PairredExtras>,
+
+    /// Feature set for each target triplet and crate.
+    pub features: BTreeMap<CrateId, SelectList<String>>,
 }
 
 impl Annotations {
@@ -414,12 +419,15 @@ impl Annotations {
             );
         }
 
+        let features = metadata_annotation.workspace_metadata.features.clone();
+
         // Annotate metadata
         Ok(Annotations {
             metadata: metadata_annotation,
             lockfile: lockfile_annotation,
             config,
             pairred_extras,
+            features,
         })
     }
 }
@@ -548,7 +556,7 @@ mod test {
         let result = Annotations::new(test::metadata::no_deps(), test::lockfile::no_deps(), config);
         assert!(result.is_err());
 
-        let result_str = format!("{:?}", result);
+        let result_str = format!("{result:?}");
         assert!(result_str.contains("Unused annotations were provided. Please remove them"));
         assert!(result_str.contains("mock-crate"));
     }

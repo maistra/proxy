@@ -21,7 +21,7 @@
 #                            | (__| |_| |  _ <| |___
 #                             \___|\___/|_| \_\_____|
 #
-# Copyright (C) 1998 - 2022, Daniel Stenberg, <daniel@haxx.se>, et al.
+# Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al.
 #
 # This software is licensed as described in the file COPYING, which
 # you should have received as part of this distribution. The terms
@@ -33,6 +33,8 @@
 #
 # This software is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY
 # KIND, either express or implied.
+#
+# SPDX-License-Identifier: curl
 #
 ###########################################################################
 
@@ -43,7 +45,7 @@
 #                            | (__| |_| |  _ <| |___
 #                             \___|\___/|_| \_\_____|
 #
-# Copyright (C) 1998 - 2022, Daniel Stenberg, <daniel@haxx.se>, et al.
+# Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al.
 #
 # This software is licensed as described in the file COPYING, which
 # you should have received as part of this distribution. The terms
@@ -55,6 +57,8 @@
 #
 # This software is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY
 # KIND, either express or implied.
+#
+# SPDX-License-Identifier: curl
 #
 ###########################################################################
 VPATH = @srcdir@
@@ -135,12 +139,12 @@ host_triplet = @host@
 check_PROGRAMS = 10-at-a-time$(EXEEXT) altsvc$(EXEEXT) \
 	anyauthput$(EXEEXT) certinfo$(EXEEXT) chkspeed$(EXEEXT) \
 	cookie_interface$(EXEEXT) debug$(EXEEXT) \
-	externalsocket$(EXEEXT) fileupload$(EXEEXT) fopen$(EXEEXT) \
+	externalsocket$(EXEEXT) fileupload$(EXEEXT) \
 	ftp-wildcard$(EXEEXT) ftpget$(EXEEXT) ftpgetinfo$(EXEEXT) \
 	ftpgetresp$(EXEEXT) ftpsget$(EXEEXT) ftpupload$(EXEEXT) \
 	ftpuploadfrommem$(EXEEXT) ftpuploadresume$(EXEEXT) \
 	getinfo$(EXEEXT) getinmemory$(EXEEXT) getredirect$(EXEEXT) \
-	getreferrer$(EXEEXT) http-post$(EXEEXT) \
+	getreferrer$(EXEEXT) headerapi$(EXEEXT) http-post$(EXEEXT) \
 	http2-download$(EXEEXT) http2-pushinmemory$(EXEEXT) \
 	http2-serverpush$(EXEEXT) http2-upload$(EXEEXT) http3$(EXEEXT) \
 	http3-present$(EXEEXT) httpcustomheader$(EXEEXT) \
@@ -160,8 +164,8 @@ check_PROGRAMS = 10-at-a-time$(EXEEXT) altsvc$(EXEEXT) \
 	pop3-tls$(EXEEXT) pop3-top$(EXEEXT) pop3-uidl$(EXEEXT) \
 	post-callback$(EXEEXT) postinmemory$(EXEEXT) postit2$(EXEEXT) \
 	postit2-formadd$(EXEEXT) progressfunc$(EXEEXT) \
-	resolve$(EXEEXT) rtsp$(EXEEXT) sendrecv$(EXEEXT) \
-	sepheaders$(EXEEXT) sftpget$(EXEEXT) sftpuploadresume$(EXEEXT) \
+	resolve$(EXEEXT) sendrecv$(EXEEXT) sepheaders$(EXEEXT) \
+	sftpget$(EXEEXT) sftpuploadresume$(EXEEXT) \
 	shared-connection-cache$(EXEEXT) simple$(EXEEXT) \
 	simplepost$(EXEEXT) simplessl$(EXEEXT) smtp-authzid$(EXEEXT) \
 	smtp-expn$(EXEEXT) smtp-mail$(EXEEXT) smtp-mime$(EXEEXT) \
@@ -170,8 +174,7 @@ check_PROGRAMS = 10-at-a-time$(EXEEXT) altsvc$(EXEEXT) \
 	urlapi$(EXEEXT)
 subdir = docs/examples
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
-am__aclocal_m4_deps = $(top_srcdir)/m4/ax_compile_check_sizeof.m4 \
-	$(top_srcdir)/m4/curl-amissl.m4 \
+am__aclocal_m4_deps = $(top_srcdir)/m4/curl-amissl.m4 \
 	$(top_srcdir)/m4/curl-bearssl.m4 \
 	$(top_srcdir)/m4/curl-compilers.m4 \
 	$(top_srcdir)/m4/curl-confopts.m4 \
@@ -270,12 +273,6 @@ fileupload_LDADD = $(LDADD)
 @USE_EXPLICIT_LIB_DEPS_FALSE@	$(LIBDIR)/libcurl.la
 @USE_EXPLICIT_LIB_DEPS_TRUE@fileupload_DEPENDENCIES =  \
 @USE_EXPLICIT_LIB_DEPS_TRUE@	$(LIBDIR)/libcurl.la
-fopen_SOURCES = fopen.c
-fopen_OBJECTS = fopen.$(OBJEXT)
-fopen_LDADD = $(LDADD)
-@USE_EXPLICIT_LIB_DEPS_FALSE@fopen_DEPENDENCIES =  \
-@USE_EXPLICIT_LIB_DEPS_FALSE@	$(LIBDIR)/libcurl.la
-@USE_EXPLICIT_LIB_DEPS_TRUE@fopen_DEPENDENCIES = $(LIBDIR)/libcurl.la
 ftp_wildcard_SOURCES = ftp-wildcard.c
 ftp_wildcard_OBJECTS = ftp-wildcard.$(OBJEXT)
 ftp_wildcard_LDADD = $(LDADD)
@@ -359,6 +356,13 @@ getreferrer_LDADD = $(LDADD)
 @USE_EXPLICIT_LIB_DEPS_FALSE@getreferrer_DEPENDENCIES =  \
 @USE_EXPLICIT_LIB_DEPS_FALSE@	$(LIBDIR)/libcurl.la
 @USE_EXPLICIT_LIB_DEPS_TRUE@getreferrer_DEPENDENCIES =  \
+@USE_EXPLICIT_LIB_DEPS_TRUE@	$(LIBDIR)/libcurl.la
+headerapi_SOURCES = headerapi.c
+headerapi_OBJECTS = headerapi.$(OBJEXT)
+headerapi_LDADD = $(LDADD)
+@USE_EXPLICIT_LIB_DEPS_FALSE@headerapi_DEPENDENCIES =  \
+@USE_EXPLICIT_LIB_DEPS_FALSE@	$(LIBDIR)/libcurl.la
+@USE_EXPLICIT_LIB_DEPS_TRUE@headerapi_DEPENDENCIES =  \
 @USE_EXPLICIT_LIB_DEPS_TRUE@	$(LIBDIR)/libcurl.la
 http_post_SOURCES = http-post.c
 http_post_OBJECTS = http-post.$(OBJEXT)
@@ -722,11 +726,6 @@ resolve_LDADD = $(LDADD)
 @USE_EXPLICIT_LIB_DEPS_FALSE@	$(LIBDIR)/libcurl.la
 @USE_EXPLICIT_LIB_DEPS_TRUE@resolve_DEPENDENCIES =  \
 @USE_EXPLICIT_LIB_DEPS_TRUE@	$(LIBDIR)/libcurl.la
-rtsp_SOURCES = rtsp.c
-rtsp_OBJECTS = rtsp.$(OBJEXT)
-rtsp_LDADD = $(LDADD)
-@USE_EXPLICIT_LIB_DEPS_FALSE@rtsp_DEPENDENCIES = $(LIBDIR)/libcurl.la
-@USE_EXPLICIT_LIB_DEPS_TRUE@rtsp_DEPENDENCIES = $(LIBDIR)/libcurl.la
 sendrecv_SOURCES = sendrecv.c
 sendrecv_OBJECTS = sendrecv.$(OBJEXT)
 sendrecv_LDADD = $(LDADD)
@@ -880,13 +879,13 @@ am__depfiles_remade = ./$(DEPDIR)/10-at-a-time.Po \
 	./$(DEPDIR)/certinfo.Po ./$(DEPDIR)/chkspeed.Po \
 	./$(DEPDIR)/cookie_interface.Po ./$(DEPDIR)/debug.Po \
 	./$(DEPDIR)/externalsocket.Po ./$(DEPDIR)/fileupload.Po \
-	./$(DEPDIR)/fopen.Po ./$(DEPDIR)/ftp-wildcard.Po \
-	./$(DEPDIR)/ftpget.Po ./$(DEPDIR)/ftpgetinfo.Po \
-	./$(DEPDIR)/ftpgetresp.Po ./$(DEPDIR)/ftpsget.Po \
-	./$(DEPDIR)/ftpupload.Po ./$(DEPDIR)/ftpuploadfrommem.Po \
-	./$(DEPDIR)/ftpuploadresume.Po ./$(DEPDIR)/getinfo.Po \
-	./$(DEPDIR)/getinmemory.Po ./$(DEPDIR)/getredirect.Po \
-	./$(DEPDIR)/getreferrer.Po ./$(DEPDIR)/http-post.Po \
+	./$(DEPDIR)/ftp-wildcard.Po ./$(DEPDIR)/ftpget.Po \
+	./$(DEPDIR)/ftpgetinfo.Po ./$(DEPDIR)/ftpgetresp.Po \
+	./$(DEPDIR)/ftpsget.Po ./$(DEPDIR)/ftpupload.Po \
+	./$(DEPDIR)/ftpuploadfrommem.Po ./$(DEPDIR)/ftpuploadresume.Po \
+	./$(DEPDIR)/getinfo.Po ./$(DEPDIR)/getinmemory.Po \
+	./$(DEPDIR)/getredirect.Po ./$(DEPDIR)/getreferrer.Po \
+	./$(DEPDIR)/headerapi.Po ./$(DEPDIR)/http-post.Po \
 	./$(DEPDIR)/http2-download.Po \
 	./$(DEPDIR)/http2-pushinmemory.Po \
 	./$(DEPDIR)/http2-serverpush.Po ./$(DEPDIR)/http2-upload.Po \
@@ -914,9 +913,8 @@ am__depfiles_remade = ./$(DEPDIR)/10-at-a-time.Po \
 	./$(DEPDIR)/post-callback.Po ./$(DEPDIR)/postinmemory.Po \
 	./$(DEPDIR)/postit2-formadd.Po ./$(DEPDIR)/postit2.Po \
 	./$(DEPDIR)/progressfunc.Po ./$(DEPDIR)/resolve.Po \
-	./$(DEPDIR)/rtsp.Po ./$(DEPDIR)/sendrecv.Po \
-	./$(DEPDIR)/sepheaders.Po ./$(DEPDIR)/sftpget.Po \
-	./$(DEPDIR)/sftpuploadresume.Po \
+	./$(DEPDIR)/sendrecv.Po ./$(DEPDIR)/sepheaders.Po \
+	./$(DEPDIR)/sftpget.Po ./$(DEPDIR)/sftpuploadresume.Po \
 	./$(DEPDIR)/shared-connection-cache.Po ./$(DEPDIR)/simple.Po \
 	./$(DEPDIR)/simplepost.Po ./$(DEPDIR)/simplessl.Po \
 	./$(DEPDIR)/smtp-authzid.Po ./$(DEPDIR)/smtp-expn.Po \
@@ -946,9 +944,9 @@ am__v_CCLD_0 = @echo "  CCLD    " $@;
 am__v_CCLD_1 = 
 SOURCES = 10-at-a-time.c altsvc.c anyauthput.c certinfo.c chkspeed.c \
 	cookie_interface.c debug.c externalsocket.c fileupload.c \
-	fopen.c ftp-wildcard.c ftpget.c ftpgetinfo.c ftpgetresp.c \
-	ftpsget.c ftpupload.c ftpuploadfrommem.c ftpuploadresume.c \
-	getinfo.c getinmemory.c getredirect.c getreferrer.c \
+	ftp-wildcard.c ftpget.c ftpgetinfo.c ftpgetresp.c ftpsget.c \
+	ftpupload.c ftpuploadfrommem.c ftpuploadresume.c getinfo.c \
+	getinmemory.c getredirect.c getreferrer.c headerapi.c \
 	http-post.c http2-download.c http2-pushinmemory.c \
 	http2-serverpush.c http2-upload.c http3.c http3-present.c \
 	httpcustomheader.c httpput.c httpput-postfields.c https.c \
@@ -961,30 +959,29 @@ SOURCES = 10-at-a-time.c altsvc.c anyauthput.c certinfo.c chkspeed.c \
 	pop3-dele.c pop3-list.c pop3-multi.c pop3-noop.c pop3-retr.c \
 	pop3-ssl.c pop3-stat.c pop3-tls.c pop3-top.c pop3-uidl.c \
 	post-callback.c postinmemory.c postit2.c postit2-formadd.c \
-	progressfunc.c resolve.c rtsp.c sendrecv.c sepheaders.c \
-	sftpget.c sftpuploadresume.c shared-connection-cache.c \
-	simple.c simplepost.c simplessl.c smtp-authzid.c smtp-expn.c \
+	progressfunc.c resolve.c sendrecv.c sepheaders.c sftpget.c \
+	sftpuploadresume.c shared-connection-cache.c simple.c \
+	simplepost.c simplessl.c smtp-authzid.c smtp-expn.c \
 	smtp-mail.c smtp-mime.c smtp-multi.c smtp-ssl.c smtp-tls.c \
 	smtp-vrfy.c sslbackend.c url2file.c urlapi.c
 DIST_SOURCES = 10-at-a-time.c altsvc.c anyauthput.c certinfo.c \
 	chkspeed.c cookie_interface.c debug.c externalsocket.c \
-	fileupload.c fopen.c ftp-wildcard.c ftpget.c ftpgetinfo.c \
-	ftpgetresp.c ftpsget.c ftpupload.c ftpuploadfrommem.c \
-	ftpuploadresume.c getinfo.c getinmemory.c getredirect.c \
-	getreferrer.c http-post.c http2-download.c \
-	http2-pushinmemory.c http2-serverpush.c http2-upload.c http3.c \
-	http3-present.c httpcustomheader.c httpput.c \
-	httpput-postfields.c https.c imap-append.c imap-authzid.c \
-	imap-copy.c imap-create.c imap-delete.c imap-examine.c \
-	imap-fetch.c imap-list.c imap-lsub.c imap-multi.c imap-noop.c \
-	imap-search.c imap-ssl.c imap-store.c imap-tls.c multi-app.c \
-	multi-debugcallback.c multi-double.c multi-formadd.c \
-	multi-legacy.c multi-post.c multi-single.c parseurl.c \
-	persistent.c pop3-authzid.c pop3-dele.c pop3-list.c \
-	pop3-multi.c pop3-noop.c pop3-retr.c pop3-ssl.c pop3-stat.c \
-	pop3-tls.c pop3-top.c pop3-uidl.c post-callback.c \
-	postinmemory.c postit2.c postit2-formadd.c progressfunc.c \
-	resolve.c rtsp.c sendrecv.c sepheaders.c sftpget.c \
+	fileupload.c ftp-wildcard.c ftpget.c ftpgetinfo.c ftpgetresp.c \
+	ftpsget.c ftpupload.c ftpuploadfrommem.c ftpuploadresume.c \
+	getinfo.c getinmemory.c getredirect.c getreferrer.c \
+	headerapi.c http-post.c http2-download.c http2-pushinmemory.c \
+	http2-serverpush.c http2-upload.c http3.c http3-present.c \
+	httpcustomheader.c httpput.c httpput-postfields.c https.c \
+	imap-append.c imap-authzid.c imap-copy.c imap-create.c \
+	imap-delete.c imap-examine.c imap-fetch.c imap-list.c \
+	imap-lsub.c imap-multi.c imap-noop.c imap-search.c imap-ssl.c \
+	imap-store.c imap-tls.c multi-app.c multi-debugcallback.c \
+	multi-double.c multi-formadd.c multi-legacy.c multi-post.c \
+	multi-single.c parseurl.c persistent.c pop3-authzid.c \
+	pop3-dele.c pop3-list.c pop3-multi.c pop3-noop.c pop3-retr.c \
+	pop3-ssl.c pop3-stat.c pop3-tls.c pop3-top.c pop3-uidl.c \
+	post-callback.c postinmemory.c postit2.c postit2-formadd.c \
+	progressfunc.c resolve.c sendrecv.c sepheaders.c sftpget.c \
 	sftpuploadresume.c shared-connection-cache.c simple.c \
 	simplepost.c simplessl.c smtp-authzid.c smtp-expn.c \
 	smtp-mail.c smtp-mime.c smtp-multi.c smtp-ssl.c smtp-tls.c \
@@ -1017,6 +1014,8 @@ DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
 ACLOCAL = @ACLOCAL@
 AMTAR = @AMTAR@
 AM_DEFAULT_VERBOSITY = @AM_DEFAULT_VERBOSITY@
+APACHECTL = @APACHECTL@
+APXS = @APXS@
 AR = @AR@
 AR_FLAGS = @AR_FLAGS@
 AS = @AS@
@@ -1025,6 +1024,7 @@ AUTOHEADER = @AUTOHEADER@
 AUTOMAKE = @AUTOMAKE@
 AWK = @AWK@
 BLANK_AT_MAKETIME = @BLANK_AT_MAKETIME@
+CADDY = @CADDY@
 CC = @CC@
 CCDEPMODE = @CCDEPMODE@
 
@@ -1059,6 +1059,7 @@ CURL_DISABLE_TFTP = @CURL_DISABLE_TFTP@
 CURL_LT_SHLIB_VERSIONED_FLAVOUR = @CURL_LT_SHLIB_VERSIONED_FLAVOUR@
 CURL_NETWORK_AND_TIME_LIBS = @CURL_NETWORK_AND_TIME_LIBS@
 CURL_NETWORK_LIBS = @CURL_NETWORK_LIBS@
+CURL_PLIST_VERSION = @CURL_PLIST_VERSION@
 CURL_WITH_MULTI_SSL = @CURL_WITH_MULTI_SSL@
 CYGPATH_W = @CYGPATH_W@
 DEFAULT_SSL_BACKEND = @DEFAULT_SSL_BACKEND@
@@ -1076,6 +1077,7 @@ ENABLE_STATIC = @ENABLE_STATIC@
 ETAGS = @ETAGS@
 EXEEXT = @EXEEXT@
 FGREP = @FGREP@
+FILECMD = @FILECMD@
 FISH_FUNCTIONS_DIR = @FISH_FUNCTIONS_DIR@
 GCOV = @GCOV@
 GREP = @GREP@
@@ -1086,6 +1088,8 @@ HAVE_LIBZ = @HAVE_LIBZ@
 HAVE_OPENSSL_SRP = @HAVE_OPENSSL_SRP@
 HAVE_PROTO_BSDSOCKET_H = @HAVE_PROTO_BSDSOCKET_H@
 HAVE_ZSTD = @HAVE_ZSTD@
+HTTPD = @HTTPD@
+HTTPD_NGHTTPX = @HTTPD_NGHTTPX@
 IDN_ENABLED = @IDN_ENABLED@
 INSTALL = @INSTALL@
 INSTALL_DATA = @INSTALL_DATA@
@@ -1135,6 +1139,7 @@ PKGADD_VENDOR = @PKGADD_VENDOR@
 PKGCONFIG = @PKGCONFIG@
 RANDOM_FILE = @RANDOM_FILE@
 RANLIB = @RANLIB@
+RC = @RC@
 REQUIRE_LIB_DEPS = @REQUIRE_LIB_DEPS@
 SED = @SED@
 SET_MAKE = @SET_MAKE@
@@ -1145,6 +1150,7 @@ SSL_LIBS = @SSL_LIBS@
 STRIP = @STRIP@
 SUPPORT_FEATURES = @SUPPORT_FEATURES@
 SUPPORT_PROTOCOLS = @SUPPORT_PROTOCOLS@
+TEST_NGHTTPX = @TEST_NGHTTPX@
 USE_ARES = @USE_ARES@
 USE_BEARSSL = @USE_BEARSSL@
 USE_GNUTLS = @USE_GNUTLS@
@@ -1153,11 +1159,13 @@ USE_LIBRTMP = @USE_LIBRTMP@
 USE_LIBSSH = @USE_LIBSSH@
 USE_LIBSSH2 = @USE_LIBSSH2@
 USE_MBEDTLS = @USE_MBEDTLS@
+USE_MSH3 = @USE_MSH3@
 USE_NGHTTP2 = @USE_NGHTTP2@
 USE_NGHTTP3 = @USE_NGHTTP3@
 USE_NGTCP2 = @USE_NGTCP2@
 USE_NGTCP2_CRYPTO_GNUTLS = @USE_NGTCP2_CRYPTO_GNUTLS@
 USE_NGTCP2_CRYPTO_OPENSSL = @USE_NGTCP2_CRYPTO_OPENSSL@
+USE_NGTCP2_CRYPTO_WOLFSSL = @USE_NGTCP2_CRYPTO_WOLFSSL@
 USE_NSS = @USE_NSS@
 USE_OPENLDAP = @USE_OPENLDAP@
 USE_QUICHE = @USE_QUICHE@
@@ -1230,8 +1238,8 @@ top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 AUTOMAKE_OPTIONS = foreign nostdinc
-EXTRA_DIST = README.md Makefile.example Makefile.inc Makefile.m32 \
-  makefile.dj $(COMPLICATED_EXAMPLES) .checksrc
+EXTRA_DIST = README.md Makefile.example Makefile.inc Makefile.mk \
+  $(COMPLICATED_EXAMPLES) .checksrc
 
 
 # Specify our include paths here, and do it relative to $(top_srcdir) and
@@ -1242,7 +1250,8 @@ EXTRA_DIST = README.md Makefile.example Makefile.inc Makefile.m32 \
 # $(top_srcdir)/include is for libcurl's external include files
 
 # Avoid libcurl obsolete stuff
-AM_CPPFLAGS = -I$(top_srcdir)/include -DCURL_NO_OLDIES $(am__append_1)
+AM_CPPFLAGS = -I$(top_srcdir)/include -DCURL_DISABLE_DEPRECATION \
+	-DCURL_NO_OLDIES $(am__append_1)
 LIBDIR = $(top_builddir)/lib
 @USE_EXPLICIT_LIB_DEPS_FALSE@LDADD = $(LIBDIR)/libcurl.la
 
@@ -1254,8 +1263,6 @@ LIBDIR = $(top_builddir)/lib
 COMPLICATED_EXAMPLES = \
   cacertinmem.c \
   crawler.c \
-  curlgtk.c \
-  curlx.c \
   ephiperfifo.c \
   evhiperfifo.c \
   ghiper.c \
@@ -1359,10 +1366,6 @@ fileupload$(EXEEXT): $(fileupload_OBJECTS) $(fileupload_DEPENDENCIES) $(EXTRA_fi
 	@rm -f fileupload$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(fileupload_OBJECTS) $(fileupload_LDADD) $(LIBS)
 
-fopen$(EXEEXT): $(fopen_OBJECTS) $(fopen_DEPENDENCIES) $(EXTRA_fopen_DEPENDENCIES) 
-	@rm -f fopen$(EXEEXT)
-	$(AM_V_CCLD)$(LINK) $(fopen_OBJECTS) $(fopen_LDADD) $(LIBS)
-
 ftp-wildcard$(EXEEXT): $(ftp_wildcard_OBJECTS) $(ftp_wildcard_DEPENDENCIES) $(EXTRA_ftp_wildcard_DEPENDENCIES) 
 	@rm -f ftp-wildcard$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(ftp_wildcard_OBJECTS) $(ftp_wildcard_LDADD) $(LIBS)
@@ -1410,6 +1413,10 @@ getredirect$(EXEEXT): $(getredirect_OBJECTS) $(getredirect_DEPENDENCIES) $(EXTRA
 getreferrer$(EXEEXT): $(getreferrer_OBJECTS) $(getreferrer_DEPENDENCIES) $(EXTRA_getreferrer_DEPENDENCIES) 
 	@rm -f getreferrer$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(getreferrer_OBJECTS) $(getreferrer_LDADD) $(LIBS)
+
+headerapi$(EXEEXT): $(headerapi_OBJECTS) $(headerapi_DEPENDENCIES) $(EXTRA_headerapi_DEPENDENCIES) 
+	@rm -f headerapi$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(headerapi_OBJECTS) $(headerapi_LDADD) $(LIBS)
 
 http-post$(EXEEXT): $(http_post_OBJECTS) $(http_post_DEPENDENCIES) $(EXTRA_http_post_DEPENDENCIES) 
 	@rm -f http-post$(EXEEXT)
@@ -1619,10 +1626,6 @@ resolve$(EXEEXT): $(resolve_OBJECTS) $(resolve_DEPENDENCIES) $(EXTRA_resolve_DEP
 	@rm -f resolve$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(resolve_OBJECTS) $(resolve_LDADD) $(LIBS)
 
-rtsp$(EXEEXT): $(rtsp_OBJECTS) $(rtsp_DEPENDENCIES) $(EXTRA_rtsp_DEPENDENCIES) 
-	@rm -f rtsp$(EXEEXT)
-	$(AM_V_CCLD)$(LINK) $(rtsp_OBJECTS) $(rtsp_LDADD) $(LIBS)
-
 sendrecv$(EXEEXT): $(sendrecv_OBJECTS) $(sendrecv_DEPENDENCIES) $(EXTRA_sendrecv_DEPENDENCIES) 
 	@rm -f sendrecv$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(sendrecv_OBJECTS) $(sendrecv_LDADD) $(LIBS)
@@ -1714,7 +1717,6 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/debug.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/externalsocket.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fileupload.Po@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fopen.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ftp-wildcard.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ftpget.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ftpgetinfo.Po@am__quote@ # am--include-marker
@@ -1727,6 +1729,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/getinmemory.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/getredirect.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/getreferrer.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/headerapi.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/http-post.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/http2-download.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/http2-pushinmemory.Po@am__quote@ # am--include-marker
@@ -1779,7 +1782,6 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/postit2.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/progressfunc.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/resolve.Po@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/rtsp.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sendrecv.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sepheaders.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sftpget.Po@am__quote@ # am--include-marker
@@ -1970,7 +1972,6 @@ distclean: distclean-am
 	-rm -f ./$(DEPDIR)/debug.Po
 	-rm -f ./$(DEPDIR)/externalsocket.Po
 	-rm -f ./$(DEPDIR)/fileupload.Po
-	-rm -f ./$(DEPDIR)/fopen.Po
 	-rm -f ./$(DEPDIR)/ftp-wildcard.Po
 	-rm -f ./$(DEPDIR)/ftpget.Po
 	-rm -f ./$(DEPDIR)/ftpgetinfo.Po
@@ -1983,6 +1984,7 @@ distclean: distclean-am
 	-rm -f ./$(DEPDIR)/getinmemory.Po
 	-rm -f ./$(DEPDIR)/getredirect.Po
 	-rm -f ./$(DEPDIR)/getreferrer.Po
+	-rm -f ./$(DEPDIR)/headerapi.Po
 	-rm -f ./$(DEPDIR)/http-post.Po
 	-rm -f ./$(DEPDIR)/http2-download.Po
 	-rm -f ./$(DEPDIR)/http2-pushinmemory.Po
@@ -2035,7 +2037,6 @@ distclean: distclean-am
 	-rm -f ./$(DEPDIR)/postit2.Po
 	-rm -f ./$(DEPDIR)/progressfunc.Po
 	-rm -f ./$(DEPDIR)/resolve.Po
-	-rm -f ./$(DEPDIR)/rtsp.Po
 	-rm -f ./$(DEPDIR)/sendrecv.Po
 	-rm -f ./$(DEPDIR)/sepheaders.Po
 	-rm -f ./$(DEPDIR)/sftpget.Po
@@ -2109,7 +2110,6 @@ maintainer-clean: maintainer-clean-am
 	-rm -f ./$(DEPDIR)/debug.Po
 	-rm -f ./$(DEPDIR)/externalsocket.Po
 	-rm -f ./$(DEPDIR)/fileupload.Po
-	-rm -f ./$(DEPDIR)/fopen.Po
 	-rm -f ./$(DEPDIR)/ftp-wildcard.Po
 	-rm -f ./$(DEPDIR)/ftpget.Po
 	-rm -f ./$(DEPDIR)/ftpgetinfo.Po
@@ -2122,6 +2122,7 @@ maintainer-clean: maintainer-clean-am
 	-rm -f ./$(DEPDIR)/getinmemory.Po
 	-rm -f ./$(DEPDIR)/getredirect.Po
 	-rm -f ./$(DEPDIR)/getreferrer.Po
+	-rm -f ./$(DEPDIR)/headerapi.Po
 	-rm -f ./$(DEPDIR)/http-post.Po
 	-rm -f ./$(DEPDIR)/http2-download.Po
 	-rm -f ./$(DEPDIR)/http2-pushinmemory.Po
@@ -2174,7 +2175,6 @@ maintainer-clean: maintainer-clean-am
 	-rm -f ./$(DEPDIR)/postit2.Po
 	-rm -f ./$(DEPDIR)/progressfunc.Po
 	-rm -f ./$(DEPDIR)/resolve.Po
-	-rm -f ./$(DEPDIR)/rtsp.Po
 	-rm -f ./$(DEPDIR)/sendrecv.Po
 	-rm -f ./$(DEPDIR)/sepheaders.Po
 	-rm -f ./$(DEPDIR)/sftpget.Po
@@ -2236,7 +2236,7 @@ uninstall-am:
 all: $(check_PROGRAMS)
 
 checksrc:
-	$(CHECKSRC)(@PERL@ $(top_srcdir)/lib/checksrc.pl -D$(srcdir) $(srcdir)/*.c)
+	$(CHECKSRC)(@PERL@ $(top_srcdir)/scripts/checksrc.pl -D$(srcdir) $(srcdir)/*.c)
 
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.

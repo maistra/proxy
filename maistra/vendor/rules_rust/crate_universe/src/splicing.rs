@@ -3,7 +3,7 @@
 pub(crate) mod cargo_config;
 mod splicer;
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 use std::convert::TryFrom;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -15,26 +15,15 @@ use hex::ToHex;
 use serde::{Deserialize, Serialize};
 
 use crate::config::CrateId;
-use crate::metadata::LockGenerator;
-use crate::utils::starlark::Label;
+use crate::metadata::{Cargo, CargoUpdateRequest, LockGenerator};
+use crate::utils::starlark::{Label, SelectList};
 
 use self::cargo_config::CargoConfig;
 pub use self::splicer::*;
 
-#[derive(Debug, Default, Serialize, Deserialize)]
-pub struct ExtraManifestInfo {
-    // The path to a Cargo Manifest
-    pub manifest: PathBuf,
-
-    // The URL where the manifest's package can be downloaded
-    pub url: String,
-
-    // The Sha256 checksum of the downloaded package located at `url`.
-    pub sha256: String,
-}
-
 type DirectPackageManifest = BTreeMap<String, cargo_toml::DependencyDetail>;
 
+/// A collection of information used for splicing together a new Cargo manifest.
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct SplicingManifest {
@@ -65,33 +54,35 @@ impl SplicingManifest {
         Self::from_str(&content).context("Failed to load SplicingManifest")
     }
 
-    pub fn absoulutize(self, relative_to: &Path) -> Self {
+    pub fn resolve(self, workspace_dir: &Path, output_base: &Path) -> Self {
         let Self {
             manifests,
             cargo_config,
             ..
         } = self;
 
+        let workspace_dir_str = workspace_dir.to_string_lossy();
+        let output_base_str = output_base.to_string_lossy();
+
         // Ensure manifests all have absolute paths
         let manifests = manifests
             .into_iter()
             .map(|(path, label)| {
-                if !path.is_absolute() {
-                    let path = relative_to.join(path);
-                    (path, label)
-                } else {
-                    (path, label)
-                }
+                let resolved_path = path
+                    .to_string_lossy()
+                    .replace("${build_workspace_directory}", &workspace_dir_str)
+                    .replace("${output_base}", &output_base_str);
+                (PathBuf::from(resolved_path), label)
             })
             .collect();
 
         // Ensure the cargo config is located at an absolute path
         let cargo_config = cargo_config.map(|path| {
-            if !path.is_absolute() {
-                relative_to.join(path)
-            } else {
-                path
-            }
+            let resolved_path = path
+                .to_string_lossy()
+                .replace("${build_workspace_directory}", &workspace_dir_str)
+                .replace("${output_base}", &output_base_str);
+            PathBuf::from(resolved_path)
         });
 
         Self {
@@ -102,6 +93,7 @@ impl SplicingManifest {
     }
 }
 
+/// The result of fully resolving a [SplicingManifest] in preparation for splicing.
 #[derive(Debug, Serialize, Default)]
 pub struct SplicingMetadata {
     /// A set of all packages directly written to the rule
@@ -147,32 +139,6 @@ impl TryFrom<SplicingManifest> for SplicingMetadata {
     }
 }
 
-/// A collection of information required for reproducible "extra worksspace members".
-#[derive(Debug, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ExtraManifestsManifest {
-    pub manifests: Vec<ExtraManifestInfo>,
-}
-
-impl FromStr for ExtraManifestsManifest {
-    type Err = serde_json::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        serde_json::from_str(s)
-    }
-}
-
-impl ExtraManifestsManifest {
-    pub fn try_from_path<T: AsRef<Path>>(path: T) -> Result<Self> {
-        let content = fs::read_to_string(path.as_ref())?;
-        Self::from_str(&content).context("Failed to load ExtraManifestsManifest")
-    }
-
-    pub fn absoulutize(self) -> Self {
-        self
-    }
-}
-
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct SourceInfo {
     /// A url where to a `.crate` file.
@@ -195,6 +161,12 @@ pub struct WorkspaceMetadata {
     /// Paths from the root of a Bazel workspace to a Cargo package
     #[serde(serialize_with = "toml::ser::tables_last")]
     pub package_prefixes: BTreeMap<String, String>,
+
+    /// Feature set for each target triplet and crate.
+    ///
+    /// We store this here because it's computed during the splicing phase via
+    /// calls to "cargo tree" which need the full spliced workspace.
+    pub features: BTreeMap<CrateId, SelectList<String>>,
 }
 
 impl TryFrom<toml::Value> for WorkspaceMetadata {
@@ -227,30 +199,9 @@ impl TryFrom<serde_json::Value> for WorkspaceMetadata {
 impl WorkspaceMetadata {
     fn new(
         splicing_manifest: &SplicingManifest,
-        extra_manifests_manifest: &ExtraManifestsManifest,
-        injected_manifests: HashMap<&PathBuf, String>,
+        member_manifests: BTreeMap<&PathBuf, String>,
     ) -> Result<Self> {
-        let mut sources = BTreeMap::new();
-
-        for config in extra_manifests_manifest.manifests.iter() {
-            let package = match read_manifest(&config.manifest) {
-                Ok(manifest) => match manifest.package {
-                    Some(pkg) => pkg,
-                    None => continue,
-                },
-                Err(e) => return Err(e),
-            };
-
-            let id = CrateId::new(package.name, package.version);
-            let info = SourceInfo {
-                url: config.url.clone(),
-                sha256: config.sha256.clone(),
-            };
-
-            sources.insert(id, info);
-        }
-
-        let mut package_prefixes: BTreeMap<String, String> = injected_manifests
+        let mut package_prefixes: BTreeMap<String, String> = member_manifests
             .iter()
             .filter_map(|(original_manifest, cargo_pkg_name)| {
                 let label = match splicing_manifest.manifests.get(*original_manifest) {
@@ -285,14 +236,16 @@ impl WorkspaceMetadata {
             .collect();
 
         Ok(Self {
-            sources,
+            sources: BTreeMap::new(),
             workspace_prefix,
             package_prefixes,
+            features: BTreeMap::new(),
         })
     }
 
-    pub fn write_registry_urls(
+    pub fn write_registry_urls_and_feature_map(
         lockfile: &cargo_lock::Lockfile,
+        features: BTreeMap<CrateId, SelectList<String>>,
         manifest_path: &SplicedManifest,
     ) -> Result<()> {
         let mut manifest = read_manifest(manifest_path.as_path_buf())?;
@@ -365,11 +318,11 @@ impl WorkspaceMetadata {
 
                     // Load the index for the current url
                     let index = crates_index::Index::from_url(index_url)
-                        .with_context(|| format!("Failed to load index for url: {}", index_url))?;
+                        .with_context(|| format!("Failed to load index for url: {index_url}"))?;
 
                     // Ensure each index has a valid index config
                     index.index_config().with_context(|| {
-                        format!("`config.json` not found in index: {}", index_url)
+                        format!("`config.json` not found in index: {index_url}")
                     })?;
 
                     index
@@ -413,6 +366,7 @@ impl WorkspaceMetadata {
             .flatten();
 
         workspace_metaata.sources.extend(additional_sources);
+        workspace_metaata.features = features;
         workspace_metaata.inject_into(&mut manifest)?;
 
         write_root_manifest(manifest_path.as_path_buf(), manifest)?;
@@ -467,8 +421,9 @@ pub fn read_manifest(manifest: &Path) -> Result<Manifest> {
 pub fn generate_lockfile(
     manifest_path: &SplicedManifest,
     existing_lock: &Option<PathBuf>,
-    cargo_bin: &Path,
+    cargo_bin: Cargo,
     rustc_bin: &Path,
+    update_request: &Option<CargoUpdateRequest>,
 ) -> Result<cargo_lock::Lockfile> {
     let manifest_dir = manifest_path
         .as_path_buf()
@@ -483,8 +438,11 @@ pub fn generate_lockfile(
     }
 
     // Generate the new lockfile
-    let lockfile = LockGenerator::new(PathBuf::from(cargo_bin), PathBuf::from(rustc_bin))
-        .generate(manifest_path.as_path_buf(), existing_lock)?;
+    let lockfile = LockGenerator::new(cargo_bin, PathBuf::from(rustc_bin)).generate(
+        manifest_path.as_path_buf(),
+        existing_lock,
+        update_request,
+    )?;
 
     // Write the lockfile to disk
     if !root_lockfile_path.exists() {
@@ -492,4 +450,108 @@ pub fn generate_lockfile(
     }
 
     Ok(lockfile)
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    use std::path::PathBuf;
+
+    #[test]
+    fn deserialize_splicing_manifest() {
+        let runfiles = runfiles::Runfiles::create().unwrap();
+        let path = runfiles.rlocation(
+            "rules_rust/crate_universe/test_data/serialized_configs/splicing_manifest.json",
+        );
+
+        let content = std::fs::read_to_string(path).unwrap();
+
+        let manifest: SplicingManifest = serde_json::from_str(&content).unwrap();
+
+        // Check manifests
+        assert_eq!(
+            manifest.manifests,
+            BTreeMap::from([
+                (
+                    PathBuf::from("${build_workspace_directory}/submod/Cargo.toml"),
+                    Label::from_str("//submod:Cargo.toml").unwrap()
+                ),
+                (
+                    PathBuf::from("${output_base}/external_crate/Cargo.toml"),
+                    Label::from_str("@external_crate//:Cargo.toml").unwrap()
+                ),
+                (
+                    PathBuf::from("/tmp/abs/path/workspace/Cargo.toml"),
+                    Label::from_str("//:Cargo.toml").unwrap()
+                ),
+            ])
+        );
+
+        // Check splicing configs
+        assert_eq!(manifest.resolver_version, cargo_toml::Resolver::V2);
+
+        // Check packages
+        assert_eq!(manifest.direct_packages.len(), 1);
+        let package = manifest.direct_packages.get("rand").unwrap();
+        assert_eq!(
+            package,
+            &cargo_toml::DependencyDetail {
+                default_features: false,
+                features: vec!["small_rng".to_owned()],
+                version: Some("0.8.5".to_owned()),
+                ..Default::default()
+            }
+        );
+
+        // Check cargo config
+        assert_eq!(
+            manifest.cargo_config,
+            Some(PathBuf::from("/tmp/abs/path/workspace/.cargo/config.toml"))
+        );
+    }
+
+    #[test]
+    fn splicing_manifest_resolve() {
+        let runfiles = runfiles::Runfiles::create().unwrap();
+        let path = runfiles.rlocation(
+            "rules_rust/crate_universe/test_data/serialized_configs/splicing_manifest.json",
+        );
+
+        let content = std::fs::read_to_string(path).unwrap();
+
+        let mut manifest: SplicingManifest = serde_json::from_str(&content).unwrap();
+        manifest.cargo_config = Some(PathBuf::from(
+            "${build_workspace_directory}/.cargo/config.toml",
+        ));
+        manifest = manifest.resolve(
+            &PathBuf::from("/tmp/abs/path/workspace"),
+            &PathBuf::from("/tmp/output_base"),
+        );
+
+        // Check manifests
+        assert_eq!(
+            manifest.manifests,
+            BTreeMap::from([
+                (
+                    PathBuf::from("/tmp/abs/path/workspace/submod/Cargo.toml"),
+                    Label::from_str("//submod:Cargo.toml").unwrap()
+                ),
+                (
+                    PathBuf::from("/tmp/output_base/external_crate/Cargo.toml"),
+                    Label::from_str("@external_crate//:Cargo.toml").unwrap()
+                ),
+                (
+                    PathBuf::from("/tmp/abs/path/workspace/Cargo.toml"),
+                    Label::from_str("//:Cargo.toml").unwrap()
+                ),
+            ])
+        );
+
+        // Check cargo config
+        assert_eq!(
+            manifest.cargo_config.unwrap(),
+            PathBuf::from("/tmp/abs/path/workspace/.cargo/config.toml"),
+        )
+    }
 }

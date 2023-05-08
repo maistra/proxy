@@ -167,10 +167,8 @@ bool TransportParameterIdIsKnown(
 }  // namespace
 
 TransportParameters::IntegerParameter::IntegerParameter(
-    TransportParameters::TransportParameterId param_id,
-    uint64_t default_value,
-    uint64_t min_value,
-    uint64_t max_value)
+    TransportParameters::TransportParameterId param_id, uint64_t default_value,
+    uint64_t min_value, uint64_t max_value)
     : param_id_(param_id),
       value_(default_value),
       default_value_(default_value),
@@ -179,24 +177,19 @@ TransportParameters::IntegerParameter::IntegerParameter(
       has_been_read_(false) {
   QUICHE_DCHECK_LE(min_value, default_value);
   QUICHE_DCHECK_LE(default_value, max_value);
-  QUICHE_DCHECK_LE(max_value, kVarInt62MaxValue);
+  QUICHE_DCHECK_LE(max_value, quiche::kVarInt62MaxValue);
 }
 
 TransportParameters::IntegerParameter::IntegerParameter(
     TransportParameters::TransportParameterId param_id)
     : TransportParameters::IntegerParameter::IntegerParameter(
-          param_id,
-          0,
-          0,
-          kVarInt62MaxValue) {}
+          param_id, 0, 0, quiche::kVarInt62MaxValue) {}
 
 void TransportParameters::IntegerParameter::set_value(uint64_t value) {
   value_ = value;
 }
 
-uint64_t TransportParameters::IntegerParameter::value() const {
-  return value_;
-}
+uint64_t TransportParameters::IntegerParameter::value() const { return value_; }
 
 bool TransportParameters::IntegerParameter::IsValid() const {
   return min_value_ <= value_ && value_ <= max_value_;
@@ -213,13 +206,13 @@ bool TransportParameters::IntegerParameter::Write(
     QUIC_BUG(quic_bug_10743_1) << "Failed to write param_id for " << *this;
     return false;
   }
-  const QuicVariableLengthIntegerLength value_length =
+  const quiche::QuicheVariableLengthIntegerLength value_length =
       QuicDataWriter::GetVarInt62Len(value_);
   if (!writer->WriteVarInt62(value_length)) {
     QUIC_BUG(quic_bug_10743_2) << "Failed to write value_length for " << *this;
     return false;
   }
-  if (!writer->WriteVarInt62(value_, value_length)) {
+  if (!writer->WriteVarInt62WithForcedLength(value_, value_length)) {
     QUIC_BUG(quic_bug_10743_3) << "Failed to write value for " << *this;
     return false;
   }
@@ -458,7 +451,8 @@ std::string TransportParameters::ToString() const {
 TransportParameters::TransportParameters()
     : max_idle_timeout_ms(kMaxIdleTimeout),
       max_udp_payload_size(kMaxPacketSize, kDefaultMaxPacketSizeTransportParam,
-                           kMinMaxPacketSizeTransportParam, kVarInt62MaxValue),
+                           kMinMaxPacketSizeTransportParam,
+                           quiche::kVarInt62MaxValue),
       initial_max_data(kInitialMaxData),
       initial_max_stream_data_bidi_local(kInitialMaxStreamDataBidiLocal),
       initial_max_stream_data_bidi_remote(kInitialMaxStreamDataBidiRemote),
@@ -476,7 +470,7 @@ TransportParameters::TransportParameters()
       active_connection_id_limit(kActiveConnectionIdLimit,
                                  kDefaultActiveConnectionIdLimitTransportParam,
                                  kMinActiveConnectionIdLimitTransportParam,
-                                 kVarInt62MaxValue),
+                                 quiche::kVarInt62MaxValue),
       max_datagram_frame_size(kMaxDatagramFrameSize),
       initial_round_trip_time_us(kInitialRoundTripTime)
 // Important note: any new transport parameters must be added
@@ -667,8 +661,7 @@ bool TransportParameters::AreValid(std::string* error_details) const {
 
 TransportParameters::~TransportParameters() = default;
 
-bool SerializeTransportParameters(ParsedQuicVersion /*version*/,
-                                  const TransportParameters& in,
+bool SerializeTransportParameters(const TransportParameters& in,
                                   std::vector<uint8_t>* out) {
   std::string error_details;
   if (!in.AreValid(&error_details)) {
@@ -1195,10 +1188,8 @@ bool SerializeTransportParameters(ParsedQuicVersion /*version*/,
 }
 
 bool ParseTransportParameters(ParsedQuicVersion version,
-                              Perspective perspective,
-                              const uint8_t* in,
-                              size_t in_len,
-                              TransportParameters* out,
+                              Perspective perspective, const uint8_t* in,
+                              size_t in_len, TransportParameters* out,
                               std::string* error_details) {
   out->perspective = perspective;
   QuicDataReader reader(reinterpret_cast<const char*>(in), in_len);
@@ -1504,8 +1495,7 @@ bool ParseTransportParameters(ParsedQuicVersion version,
 namespace {
 
 bool DigestUpdateIntegerParam(
-    EVP_MD_CTX* hash_ctx,
-    const TransportParameters::IntegerParameter& param) {
+    EVP_MD_CTX* hash_ctx, const TransportParameters::IntegerParameter& param) {
   uint64_t value = param.value();
   return EVP_DigestUpdate(hash_ctx, &value, sizeof(value));
 }
@@ -1513,8 +1503,7 @@ bool DigestUpdateIntegerParam(
 }  // namespace
 
 bool SerializeTransportParametersForTicket(
-    const TransportParameters& in,
-    const std::vector<uint8_t>& application_data,
+    const TransportParameters& in, const std::vector<uint8_t>& application_data,
     std::vector<uint8_t>* out) {
   std::string error_details;
   if (!in.AreValid(&error_details)) {

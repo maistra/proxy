@@ -6,6 +6,13 @@
 
 #include "flatbuffers/flatbuffers.h"
 
+// Ensure the included flatbuffers.h is the same version as when this file was
+// generated, otherwise it may not be compatible.
+static_assert(FLATBUFFERS_VERSION_MAJOR == 22 &&
+              FLATBUFFERS_VERSION_MINOR == 9 &&
+              FLATBUFFERS_VERSION_REVISION == 29,
+             "Non-compatible flatbuffers version included");
+
 namespace NamespaceA {
 namespace NamespaceB {
 
@@ -62,6 +69,14 @@ template<> struct UnionInNestedNSTraits<NamespaceA::NamespaceB::TableInNestedNS>
   static const UnionInNestedNS enum_value = UnionInNestedNS_TableInNestedNS;
 };
 
+template<typename T> struct UnionInNestedNSUnionTraits {
+  static const UnionInNestedNS enum_value = UnionInNestedNS_NONE;
+};
+
+template<> struct UnionInNestedNSUnionTraits<NamespaceA::NamespaceB::TableInNestedNST> {
+  static const UnionInNestedNS enum_value = UnionInNestedNS_TableInNestedNS;
+};
+
 struct UnionInNestedNSUnion {
   UnionInNestedNS type;
   void *value;
@@ -79,17 +94,15 @@ struct UnionInNestedNSUnion {
 
   void Reset();
 
-#ifndef FLATBUFFERS_CPP98_STL
   template <typename T>
   void Set(T&& val) {
-    using RT = typename std::remove_reference<T>::type;
+    typedef typename std::remove_reference<T>::type RT;
     Reset();
-    type = UnionInNestedNSTraits<typename RT::TableType>::enum_value;
+    type = UnionInNestedNSUnionTraits<RT>::enum_value;
     if (type != UnionInNestedNS_NONE) {
       value = new RT(std::forward<T>(val));
     }
   }
-#endif  // FLATBUFFERS_CPP98_STL
 
   static void *UnPack(const void *obj, UnionInNestedNS type, const flatbuffers::resolver_function_t *resolver);
   flatbuffers::Offset<void> Pack(flatbuffers::FlatBufferBuilder &_fbb, const flatbuffers::rehasher_function_t *_rehasher = nullptr) const;
@@ -170,7 +183,7 @@ FLATBUFFERS_MANUALLY_ALIGNED_STRUCT(4) StructInNestedNS FLATBUFFERS_FINAL_CLASS 
   static const flatbuffers::TypeTable *MiniReflectTypeTable() {
     return StructInNestedNSTypeTable();
   }
-  static FLATBUFFERS_CONSTEXPR const char *GetFullyQualifiedName() {
+  static FLATBUFFERS_CONSTEXPR_CPP11 const char *GetFullyQualifiedName() {
     return "NamespaceA.NamespaceB.StructInNestedNS";
   }
   StructInNestedNS()
@@ -209,21 +222,11 @@ inline bool operator!=(const StructInNestedNS &lhs, const StructInNestedNS &rhs)
 
 struct TableInNestedNST : public flatbuffers::NativeTable {
   typedef TableInNestedNS TableType;
-  static FLATBUFFERS_CONSTEXPR const char *GetFullyQualifiedName() {
+  static FLATBUFFERS_CONSTEXPR_CPP11 const char *GetFullyQualifiedName() {
     return "NamespaceA.NamespaceB.TableInNestedNST";
   }
   int32_t foo = 0;
 };
-
-inline bool operator==(const TableInNestedNST &lhs, const TableInNestedNST &rhs) {
-  return
-      (lhs.foo == rhs.foo);
-}
-
-inline bool operator!=(const TableInNestedNST &lhs, const TableInNestedNST &rhs) {
-    return !(lhs == rhs);
-}
-
 
 struct TableInNestedNS FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef TableInNestedNST NativeTableType;
@@ -231,7 +234,7 @@ struct TableInNestedNS FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   static const flatbuffers::TypeTable *MiniReflectTypeTable() {
     return TableInNestedNSTypeTable();
   }
-  static FLATBUFFERS_CONSTEXPR const char *GetFullyQualifiedName() {
+  static FLATBUFFERS_CONSTEXPR_CPP11 const char *GetFullyQualifiedName() {
     return "NamespaceA.NamespaceB.TableInNestedNS";
   }
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
@@ -240,12 +243,12 @@ struct TableInNestedNS FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   int32_t foo() const {
     return GetField<int32_t>(VT_FOO, 0);
   }
-  bool mutate_foo(int32_t _foo) {
+  bool mutate_foo(int32_t _foo = 0) {
     return SetField<int32_t>(VT_FOO, _foo, 0);
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int32_t>(verifier, VT_FOO) &&
+           VerifyField<int32_t>(verifier, VT_FOO, 4) &&
            verifier.EndTable();
   }
   TableInNestedNST *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -280,6 +283,17 @@ inline flatbuffers::Offset<TableInNestedNS> CreateTableInNestedNS(
 }
 
 flatbuffers::Offset<TableInNestedNS> CreateTableInNestedNS(flatbuffers::FlatBufferBuilder &_fbb, const TableInNestedNST *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+
+inline bool operator==(const TableInNestedNST &lhs, const TableInNestedNST &rhs) {
+  return
+      (lhs.foo == rhs.foo);
+}
+
+inline bool operator!=(const TableInNestedNST &lhs, const TableInNestedNST &rhs) {
+    return !(lhs == rhs);
+}
+
 
 inline TableInNestedNST *TableInNestedNS::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = std::unique_ptr<TableInNestedNST>(new TableInNestedNST());
@@ -333,6 +347,7 @@ inline bool VerifyUnionInNestedNSVector(flatbuffers::Verifier &verifier, const f
 }
 
 inline void *UnionInNestedNSUnion::UnPack(const void *obj, UnionInNestedNS type, const flatbuffers::resolver_function_t *resolver) {
+  (void)resolver;
   switch (type) {
     case UnionInNestedNS_TableInNestedNS: {
       auto ptr = reinterpret_cast<const NamespaceA::NamespaceB::TableInNestedNS *>(obj);
@@ -343,6 +358,7 @@ inline void *UnionInNestedNSUnion::UnPack(const void *obj, UnionInNestedNS type,
 }
 
 inline flatbuffers::Offset<void> UnionInNestedNSUnion::Pack(flatbuffers::FlatBufferBuilder &_fbb, const flatbuffers::rehasher_function_t *_rehasher) const {
+  (void)_rehasher;
   switch (type) {
     case UnionInNestedNS_TableInNestedNS: {
       auto ptr = reinterpret_cast<const NamespaceA::NamespaceB::TableInNestedNST *>(value);

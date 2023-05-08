@@ -10,7 +10,6 @@
 #include "src/compiler/js-heap-broker.h"
 #include "src/compiler/node.h"
 #include "src/handles/handles.h"
-#include "src/objects/map.h"
 #include "src/zone/zone-containers.h"
 
 namespace v8 {
@@ -58,12 +57,6 @@ class PropertyAccessBuilder {
   // retrieved.
   base::Optional<Node*> FoldLoadDictPrototypeConstant(
       PropertyAccessInfo const& access_info);
-
-  // Builds the load for data-field access for minimorphic loads that use
-  // dynamic map checks. These cannot depend on any information from the maps.
-  Node* BuildMinimorphicLoadDataField(
-      NameRef const& name, MinimorphicLoadPropertyAccessInfo const& access_info,
-      Node* lookup_start_object, Node** effect, Node** control);
 
   static MachineRepresentation ConvertRepresentation(
       Representation representation);

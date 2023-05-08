@@ -14,6 +14,7 @@
 #include "absl/base/attributes.h"
 #include "absl/base/macros.h"
 #include "absl/base/optimization.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
@@ -30,6 +31,7 @@
 #include "quiche/quic/core/crypto/quic_encrypter.h"
 #include "quiche/quic/core/crypto/quic_random.h"
 #include "quiche/quic/core/frames/quic_ack_frequency_frame.h"
+#include "quiche/quic/core/quic_connection_context.h"
 #include "quiche/quic/core/quic_connection_id.h"
 #include "quiche/quic/core/quic_constants.h"
 #include "quiche/quic/core/quic_data_reader.h"
@@ -309,7 +311,7 @@ size_t TruncatedErrorStringSize(const absl::string_view& error) {
   return kMaxErrorStringLength;
 }
 
-uint8_t GetConnectionIdLengthValue(QuicConnectionIdLength length) {
+uint8_t GetConnectionIdLengthValue(uint8_t length) {
   if (length == 0) {
     return 0;
   }
@@ -341,10 +343,8 @@ bool AppendIetfConnectionIds(bool version_flag, bool use_length_prefix,
   }
 
   // Compute connection ID length byte.
-  uint8_t dcil = GetConnectionIdLengthValue(
-      static_cast<QuicConnectionIdLength>(destination_connection_id.length()));
-  uint8_t scil = GetConnectionIdLengthValue(
-      static_cast<QuicConnectionIdLength>(source_connection_id.length()));
+  uint8_t dcil = GetConnectionIdLengthValue(destination_connection_id.length());
+  uint8_t scil = GetConnectionIdLengthValue(source_connection_id.length());
   uint8_t connection_id_length = dcil << 4 | scil;
 
   return writer->WriteUInt8(connection_id_length) &&
@@ -860,20 +860,20 @@ bool QuicFramer::WriteIetfLongHeaderLength(const QuicPacketHeader& header,
   }
   if (writer->length() < length_field_offset ||
       writer->length() - length_field_offset <
-          kQuicDefaultLongHeaderLengthLength) {
+          quiche::kQuicheDefaultLongHeaderLengthLength) {
     set_detailed_error("Invalid length_field_offset.");
     QUIC_BUG(quic_bug_10850_14) << "Invalid length_field_offset.";
     return false;
   }
   size_t length_to_write = writer->length() - length_field_offset -
-                           kQuicDefaultLongHeaderLengthLength;
+                           quiche::kQuicheDefaultLongHeaderLengthLength;
   // Add length of auth tag.
   length_to_write = GetCiphertextSize(level, length_to_write);
 
   QuicDataWriter length_writer(writer->length() - length_field_offset,
                                writer->data() + length_field_offset);
-  if (!length_writer.WriteVarInt62(length_to_write,
-                                   kQuicDefaultLongHeaderLengthLength)) {
+  if (!length_writer.WriteVarInt62WithForcedLength(
+          length_to_write, quiche::kQuicheDefaultLongHeaderLengthLength)) {
     set_detailed_error("Failed to overwrite long header length.");
     QUIC_BUG(quic_bug_10850_15) << "Failed to overwrite long header length.";
     return false;
@@ -1295,8 +1295,17 @@ size_t QuicFramer::GetMinStatelessResetPacketLength() {
 
 // static
 std::unique_ptr<QuicEncryptedPacket> QuicFramer::BuildIetfStatelessResetPacket(
-    QuicConnectionId /*connection_id*/, size_t received_packet_length,
+    QuicConnectionId connection_id, size_t received_packet_length,
     StatelessResetToken stateless_reset_token) {
+  return BuildIetfStatelessResetPacket(connection_id, received_packet_length,
+                                       stateless_reset_token,
+                                       QuicRandom::GetInstance());
+}
+
+// static
+std::unique_ptr<QuicEncryptedPacket> QuicFramer::BuildIetfStatelessResetPacket(
+    QuicConnectionId /*connection_id*/, size_t received_packet_length,
+    StatelessResetToken stateless_reset_token, QuicRandom* random) {
   QUIC_DVLOG(1) << "Building IETF stateless reset packet.";
   if (received_packet_length <= GetMinStatelessResetPacketLength()) {
     QUICHE_DLOG(ERROR)
@@ -1316,10 +1325,10 @@ std::unique_ptr<QuicEncryptedPacket> QuicFramer::BuildIetfStatelessResetPacket(
   // from comparing the entire packet to a known value. Therefore it has no
   // cryptographic use, and does not need a secure cryptographic pseudo-random
   // number generator. It's therefore safe to use WriteInsecureRandomBytes.
-  if (!writer.WriteInsecureRandomBytes(QuicRandom::GetInstance(),
-                                       len - kStatelessResetTokenLength)) {
+  const size_t random_bytes_size = len - kStatelessResetTokenLength;
+  if (!writer.WriteInsecureRandomBytes(random, random_bytes_size)) {
     QUIC_BUG(362045737_2) << "Failed to append random bytes of length: "
-                          << len - kStatelessResetTokenLength;
+                          << random_bytes_size;
     return nullptr;
   }
   // Change first 2 fixed bits to 01.
@@ -1364,7 +1373,7 @@ std::unique_ptr<QuicEncryptedPacket> QuicFramer::BuildVersionNegotiationPacket(
     // depends on this randomness.
     size_t version_index = 0;
     const bool disable_randomness =
-        GetQuicFlag(FLAGS_quic_disable_version_negotiation_grease_randomness);
+        GetQuicFlag(quic_disable_version_negotiation_grease_randomness);
     if (!disable_randomness) {
       version_index =
           QuicRandom::GetInstance()->RandUint64() % (wire_versions.size() + 1);
@@ -1741,7 +1750,7 @@ bool QuicFramer::ProcessIetfDataPacket(QuicDataReader* encrypted_reader,
                                        size_t buffer_length) {
   QUICHE_DCHECK_NE(GOOGLE_QUIC_PACKET, header->form);
   QUICHE_DCHECK(!header->has_possible_stateless_reset_token);
-  header->length_length = VARIABLE_LENGTH_INTEGER_LENGTH_0;
+  header->length_length = quiche::VARIABLE_LENGTH_INTEGER_LENGTH_0;
   header->remaining_packet_length = 0;
   if (header->form == IETF_QUIC_SHORT_HEADER_PACKET &&
       perspective_ == Perspective::IS_CLIENT) {
@@ -1893,6 +1902,23 @@ bool QuicFramer::ProcessIetfDataPacket(QuicDataReader* encrypted_reader,
     return RaiseError(QUIC_DECRYPTION_FAILURE);
   }
   QuicDataReader reader(decrypted_buffer, decrypted_length);
+
+  // Remember decrypted_payload in the current connection context until the end
+  // of this function.
+  auto* connection_context =
+      add_process_packet_context_ ? QuicConnectionContext::Current() : nullptr;
+  if (connection_context != nullptr) {
+    connection_context->process_packet_context.decrypted_payload =
+        reader.FullPayload();
+    connection_context->process_packet_context.current_frame_offset = 0;
+  }
+  auto clear_decrypted_payload = absl::MakeCleanup([&]() {
+    if (connection_context != nullptr) {
+      QUIC_RELOADABLE_FLAG_COUNT(quic_add_process_packet_context);
+      connection_context->process_packet_context.decrypted_payload =
+          absl::string_view();
+    }
+  });
 
   // Update the largest packet number after we have decrypted the packet
   // so we are confident is not attacker controlled.
@@ -2274,13 +2300,13 @@ bool QuicFramer::AppendIetfPacketHeader(const QuicPacketHeader& header,
   if (QuicVersionHasLongHeaderLengths(transport_version()) &&
       header.version_flag) {
     if (header.long_packet_type == INITIAL) {
-      QUICHE_DCHECK_NE(VARIABLE_LENGTH_INTEGER_LENGTH_0,
+      QUICHE_DCHECK_NE(quiche::VARIABLE_LENGTH_INTEGER_LENGTH_0,
                        header.retry_token_length_length)
           << ENDPOINT << ParsedQuicVersionToString(version_)
           << " bad retry token length length in header: " << header;
       // Write retry token length.
-      if (!writer->WriteVarInt62(header.retry_token.length(),
-                                 header.retry_token_length_length)) {
+      if (!writer->WriteVarInt62WithForcedLength(
+              header.retry_token.length(), header.retry_token_length_length)) {
         return false;
       }
       // Write retry token.
@@ -3121,6 +3147,8 @@ bool QuicFramer::ProcessFrameData(QuicDataReader* reader,
 // static
 bool QuicFramer::IsIetfFrameTypeExpectedForEncryptionLevel(
     uint64_t frame_type, EncryptionLevel level) {
+  // IETF_CRYPTO is allowed for any level here and is separately checked in
+  // QuicCryptoStream::OnCryptoFrame.
   switch (level) {
     case ENCRYPTION_INITIAL:
     case ENCRYPTION_HANDSHAKE:
@@ -3132,7 +3160,7 @@ bool QuicFramer::IsIetfFrameTypeExpectedForEncryptionLevel(
     case ENCRYPTION_ZERO_RTT:
       return !(frame_type == IETF_ACK || frame_type == IETF_ACK_ECN ||
                frame_type == IETF_ACK_RECEIVE_TIMESTAMPS ||
-               frame_type == IETF_CRYPTO || frame_type == IETF_HANDSHAKE_DONE ||
+               frame_type == IETF_HANDSHAKE_DONE ||
                frame_type == IETF_NEW_TOKEN ||
                frame_type == IETF_PATH_RESPONSE ||
                frame_type == IETF_RETIRE_CONNECTION_ID);
@@ -3157,7 +3185,14 @@ bool QuicFramer::ProcessIetfFrameData(QuicDataReader* reader,
   }
 
   QUIC_DVLOG(2) << ENDPOINT << "Processing IETF packet with header " << header;
+  auto* connection_context =
+      add_process_packet_context_ ? QuicConnectionContext::Current() : nullptr;
   while (!reader->IsDoneReading()) {
+    if (connection_context != nullptr) {
+      connection_context->process_packet_context.current_frame_offset =
+          connection_context->process_packet_context.decrypted_payload.size() -
+          reader->BytesRemaining();
+    }
     uint64_t frame_type;
     // Will be the number of bytes into which frame_type was encoded.
     size_t encoded_bytes = reader->BytesRemaining();
@@ -3961,7 +3996,8 @@ bool QuicFramer::ProcessIetfAckFrame(QuicDataReader* reader,
     return false;
   }
 
-  if (ack_delay_time_in_us >= (kVarInt62MaxValue >> peer_ack_delay_exponent_)) {
+  if (ack_delay_time_in_us >=
+      (quiche::kVarInt62MaxValue >> peer_ack_delay_exponent_)) {
     ack_frame->ack_delay_time = QuicTime::Delta::Infinite();
   } else {
     ack_delay_time_in_us = (ack_delay_time_in_us << peer_ack_delay_exponent_);
@@ -4352,13 +4388,13 @@ bool QuicFramer::ProcessMessageFrame(QuicDataReader* reader,
 // static
 absl::string_view QuicFramer::GetAssociatedDataFromEncryptedPacket(
     QuicTransportVersion version, const QuicEncryptedPacket& encrypted,
-    QuicConnectionIdLength destination_connection_id_length,
-    QuicConnectionIdLength source_connection_id_length, bool includes_version,
+    uint8_t destination_connection_id_length,
+    uint8_t source_connection_id_length, bool includes_version,
     bool includes_diversification_nonce,
     QuicPacketNumberLength packet_number_length,
-    QuicVariableLengthIntegerLength retry_token_length_length,
+    quiche::QuicheVariableLengthIntegerLength retry_token_length_length,
     uint64_t retry_token_length,
-    QuicVariableLengthIntegerLength length_length) {
+    quiche::QuicheVariableLengthIntegerLength length_length) {
   // TODO(ianswett): This is identical to QuicData::AssociatedData.
   return absl::string_view(
       encrypted.data(),
@@ -5699,7 +5735,7 @@ bool QuicFramer::AppendAckFrameAndTypeByte(const QuicAckFrame& frame,
         ++num_ack_blocks_written;
       }
       if (num_ack_blocks_written >= num_ack_blocks) {
-        if (QUIC_PREDICT_FALSE(num_ack_blocks_written != num_ack_blocks)) {
+        if (ABSL_PREDICT_FALSE(num_ack_blocks_written != num_ack_blocks)) {
           QUIC_BUG(quic_bug_10850_85)
               << "Wrote " << num_ack_blocks_written << ", expected to write "
               << num_ack_blocks;
@@ -6026,7 +6062,7 @@ bool QuicFramer::AppendIetfAckFrameAndTypeByte(const QuicAckFrame& frame,
     return false;
   }
 
-  uint64_t ack_delay_time_us = kVarInt62MaxValue;
+  uint64_t ack_delay_time_us = quiche::kVarInt62MaxValue;
   if (!frame.ack_delay_time.IsInfinite()) {
     QUICHE_DCHECK_LE(0u, frame.ack_delay_time.ToMicroseconds());
     ack_delay_time_us = frame.ack_delay_time.ToMicroseconds();
@@ -6810,7 +6846,7 @@ QuicErrorCode QuicFramer::ParsePublicHeaderDispatcher(
   }
   const bool ietf_format = QuicUtils::IsIetfPacketHeader(first_byte);
   uint8_t unused_first_byte;
-  QuicVariableLengthIntegerLength retry_token_length_length;
+  quiche::QuicheVariableLengthIntegerLength retry_token_length_length;
   absl::string_view maybe_retry_token;
   QuicErrorCode error_code = ParsePublicHeader(
       &reader, expected_destination_connection_id_length, ietf_format,
@@ -6818,7 +6854,7 @@ QuicErrorCode QuicFramer::ParsePublicHeaderDispatcher(
       version_label, parsed_version, destination_connection_id,
       source_connection_id, long_packet_type, &retry_token_length_length,
       &maybe_retry_token, detailed_error);
-  if (retry_token_length_length != VARIABLE_LENGTH_INTEGER_LENGTH_0) {
+  if (retry_token_length_length != quiche::VARIABLE_LENGTH_INTEGER_LENGTH_0) {
     *retry_token = maybe_retry_token;
   } else {
     retry_token->reset();
@@ -6959,7 +6995,7 @@ QuicErrorCode QuicFramer::ParsePublicHeader(
     QuicConnectionId* destination_connection_id,
     QuicConnectionId* source_connection_id,
     QuicLongHeaderType* long_packet_type,
-    QuicVariableLengthIntegerLength* retry_token_length_length,
+    quiche::QuicheVariableLengthIntegerLength* retry_token_length_length,
     absl::string_view* retry_token, std::string* detailed_error) {
   *version_present = false;
   *has_length_prefix = false;
@@ -6967,7 +7003,7 @@ QuicErrorCode QuicFramer::ParsePublicHeader(
   *parsed_version = UnsupportedQuicVersion();
   *source_connection_id = EmptyQuicConnectionId();
   *long_packet_type = INVALID_PACKET_TYPE;
-  *retry_token_length_length = VARIABLE_LENGTH_INTEGER_LENGTH_0;
+  *retry_token_length_length = quiche::VARIABLE_LENGTH_INTEGER_LENGTH_0;
   *retry_token = absl::string_view();
   *detailed_error = "";
 
@@ -7045,7 +7081,7 @@ QuicErrorCode QuicFramer::ParsePublicHeader(
   *retry_token_length_length = reader->PeekVarInt62Length();
   uint64_t retry_token_length;
   if (!reader->ReadVarInt62(&retry_token_length)) {
-    *retry_token_length_length = VARIABLE_LENGTH_INTEGER_LENGTH_0;
+    *retry_token_length_length = quiche::VARIABLE_LENGTH_INTEGER_LENGTH_0;
     *detailed_error = "Unable to read retry token length.";
     return QUIC_INVALID_PACKET_HEADER;
   }

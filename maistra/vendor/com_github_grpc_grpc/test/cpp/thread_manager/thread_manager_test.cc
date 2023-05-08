@@ -16,20 +16,22 @@
  *is % allowed in string
  */
 
+#include <grpc/support/port_platform.h>
+
+#include "src/cpp/thread_manager/thread_manager.h"
+
 #include <atomic>
 #include <chrono>
 #include <climits>
 #include <memory>
 #include <thread>
 
+#include <gtest/gtest.h>
+
 #include <grpc/support/log.h>
-#include <grpc/support/port_platform.h>
 #include <grpcpp/grpcpp.h>
 
-#include "src/cpp/thread_manager/thread_manager.h"
 #include "test/core/util/test_config.h"
-
-#include <gtest/gtest.h>
 
 namespace grpc {
 namespace {
@@ -181,7 +183,7 @@ TEST_P(ThreadManagerTest, TestThreadQuota) {
 
 int main(int argc, char** argv) {
   std::srand(std::time(nullptr));
-  grpc::testing::TestEnvironment env(argc, argv);
+  grpc::testing::TestEnvironment env(&argc, argv);
   ::testing::InitGoogleTest(&argc, argv);
 
   grpc_init();

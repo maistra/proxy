@@ -15,18 +15,22 @@
  *
  */
 
-#include <grpcpp/completion_queue.h>
+#include <vector>
 
-#include <memory>
+#include "absl/base/thread_annotations.h"
 
 #include <grpc/grpc.h>
+#include <grpc/impl/codegen/gpr_types.h>
+#include <grpc/impl/codegen/grpc_types.h>
 #include <grpc/support/cpu.h>
 #include <grpc/support/log.h>
+#include <grpc/support/sync.h>
+#include <grpc/support/time.h>
+#include <grpcpp/completion_queue.h>
+#include <grpcpp/impl/codegen/completion_queue_tag.h>
 #include <grpcpp/impl/grpc_library.h>
-#include <grpcpp/support/time.h>
 
 #include "src/core/lib/gpr/useful.h"
-#include "src/core/lib/gprpp/manual_constructor.h"
 #include "src/core/lib/gprpp/sync.h"
 #include "src/core/lib/gprpp/thd.h"
 
@@ -53,7 +57,8 @@ struct CallbackAlternativeCQ {
     refs++;
     if (refs == 1) {
       cq = new CompletionQueue;
-      int num_nexting_threads = GPR_CLAMP(gpr_cpu_num_cores() / 2, 2, 16);
+      int num_nexting_threads =
+          grpc_core::Clamp(gpr_cpu_num_cores() / 2, 2u, 16u);
       nexting_threads = new std::vector<grpc_core::Thread>;
       for (int i = 0; i < num_nexting_threads; i++) {
         nexting_threads->emplace_back(
@@ -89,8 +94,7 @@ struct CallbackAlternativeCQ {
                 // hold any application locks before executing the callback,
                 // and cannot be entered recursively.
                 auto* functor =
-                    static_cast<grpc_experimental_completion_queue_functor*>(
-                        ev.tag);
+                    static_cast<grpc_completion_queue_functor*>(ev.tag);
                 functor->functor_run(functor, ev.success);
               }
             },
@@ -152,7 +156,7 @@ CompletionQueue::NextStatus CompletionQueue::AsyncNextInternal(
         return SHUTDOWN;
       case GRPC_OP_COMPLETE:
         auto core_cq_tag =
-            static_cast<::grpc::internal::CompletionQueueTag*>(ev.tag);
+            static_cast<grpc::internal::CompletionQueueTag*>(ev.tag);
         *ok = ev.success != 0;
         *tag = core_cq_tag;
         if (core_cq_tag->FinalizeResult(tag, ok)) {
@@ -180,7 +184,7 @@ bool CompletionQueue::CompletionQueueTLSCache::Flush(void** tag, bool* ok) {
   if (grpc_completion_queue_thread_local_cache_flush(cq_->cq_, &res_tag,
                                                      &res)) {
     auto core_cq_tag =
-        static_cast<::grpc::internal::CompletionQueueTag*>(res_tag);
+        static_cast<grpc::internal::CompletionQueueTag*>(res_tag);
     *ok = res == 1;
     if (core_cq_tag->FinalizeResult(tag, ok)) {
       return true;

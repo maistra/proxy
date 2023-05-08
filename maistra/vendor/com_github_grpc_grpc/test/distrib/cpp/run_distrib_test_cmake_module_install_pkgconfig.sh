@@ -26,12 +26,8 @@ wget -q -O cmake-linux.sh https://github.com/Kitware/CMake/releases/download/v3.
 sh cmake-linux.sh -- --skip-license --prefix=/usr
 rm cmake-linux.sh
 
-# Install absl (absl won't be installed down below)
-mkdir -p "third_party/abseil-cpp/cmake/build"
-pushd "third_party/abseil-cpp/cmake/build"
-cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=TRUE ../..
-make -j4 install
-popd
+# Use externally provided env to determine build parallelism, otherwise use default.
+GRPC_CPP_DISTRIBTEST_BUILD_COMPILER_JOBS=${GRPC_CPP_DISTRIBTEST_BUILD_COMPILER_JOBS:-4}
 
 # Install gRPC and its dependencies
 mkdir -p "cmake/build"
@@ -40,14 +36,13 @@ cmake \
   -DCMAKE_BUILD_TYPE=Release \
   -DgRPC_INSTALL=ON \
   -DgRPC_BUILD_TESTS=OFF \
-  -DgRPC_ABSL_PROVIDER=package \
   -DgRPC_SSL_PROVIDER=package \
   ../..
-make -j4 install
+make "-j${GRPC_CPP_DISTRIBTEST_BUILD_COMPILER_JOBS}" install
 popd
 
 # Build helloworld example using make & pkg-config
 cd examples/cpp/helloworld
 export PKG_CONFIG_PATH=/usr/local/grpc/lib/pkgconfig
 export PATH=$PATH:/usr/local/grpc/bin
-make
+make "-j${GRPC_CPP_DISTRIBTEST_BUILD_COMPILER_JOBS}"

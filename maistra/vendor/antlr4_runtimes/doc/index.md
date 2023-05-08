@@ -21,6 +21,8 @@ This documentation is a reference and summarizes grammar syntax and the key sema
 
 <a href="https://vimeo.com/59285751"><img src=images/tertalk.png width=200></a>
 
+For those using Java, here's a great [set of ANTLR in Intellij notes](https://docs.google.com/document/d/1gQ2lsidvN2cDUUsHEkT05L-wGbX5mROB7d70Aaj3R64/edit#heading=h.xr0jj8vcdsgc) by Andreas Stefik.
+
 ## Sections
 
 * [Getting Started with ANTLR v4](getting-started.md)
@@ -54,8 +56,6 @@ This documentation is a reference and summarizes grammar syntax and the key sema
 * [Unicode U+FFFF, U+10FFFF character streams](unicode.md)
 
 * [Parsing binary streams](parsing-binary-files.md)
-
-* [Case-Insensitive Lexing](case-insensitive-lexing.md)
 
 * [Parser and lexer interpreters](interpreters.md)
 

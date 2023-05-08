@@ -28,6 +28,9 @@ LINKMODE_C_ARCHIVE = "c-archive"
 
 LINKMODES = [LINKMODE_NORMAL, LINKMODE_PLUGIN, LINKMODE_C_SHARED, LINKMODE_C_ARCHIVE, LINKMODE_PIE]
 
+# All link modes that produce executables to be run with bazel run.
+LINKMODES_EXECUTABLE = [LINKMODE_NORMAL, LINKMODE_PIE]
+
 def mode_string(mode):
     result = [mode.goos, mode.goarch]
     if mode.static:
@@ -76,8 +79,10 @@ def get_mode(ctx, go_toolchain, cgo_context_info, go_config_info):
     stamp = go_config_info.stamp if go_config_info else False
     debug = go_config_info.debug if go_config_info else False
     linkmode = go_config_info.linkmode if go_config_info else LINKMODE_NORMAL
-    goos = go_toolchain.default_goos
-    goarch = go_toolchain.default_goarch
+    cover_format = go_config_info and go_config_info.cover_format
+    amd64 = go_config_info.amd64 if go_config_info else None
+    goos = go_toolchain.default_goos if getattr(ctx.attr, "goos", "auto") == "auto" else ctx.attr.goos
+    goarch = go_toolchain.default_goarch if getattr(ctx.attr, "goarch", "auto") == "auto" else ctx.attr.goarch
 
     # TODO(jayconrod): check for more invalid and contradictory settings.
     if pure and race:
@@ -107,6 +112,8 @@ def get_mode(ctx, go_toolchain, cgo_context_info, go_config_info):
         goos = goos,
         goarch = goarch,
         tags = tags,
+        cover_format = cover_format,
+        amd64 = amd64,
     )
 
 def installsuffix(mode):

@@ -4,9 +4,9 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use anyhow::anyhow;
+use clap::Parser;
 use gen_rust_project_lib::generate_crate_info;
 use gen_rust_project_lib::write_rust_project;
-use structopt::StructOpt;
 
 // TODO(david): This shells out to an expected rule in the workspace root //:rust_analyzer that the user must define.
 // It would be more convenient if it could automatically discover all the rust code in the workspace if this target
@@ -26,24 +26,30 @@ fn main() -> anyhow::Result<()> {
         .as_ref()
         .expect("failed to find execution root, is --execution-root set correctly?");
 
+    let output_base = config
+        .output_base
+        .as_ref()
+        .expect("failed to find output base, is -output-base set correctly?");
+
     let rules_rust_name = env!("ASPECT_REPOSITORY");
 
     // Generate the crate specs.
     generate_crate_info(
         &config.bazel,
-        &workspace_root,
-        &rules_rust_name,
+        workspace_root,
+        rules_rust_name,
         &config.targets,
     )?;
 
     // Use the generated files to write rust-project.json.
     write_rust_project(
         &config.bazel,
-        &workspace_root,
+        workspace_root,
         &rules_rust_name,
         &config.targets,
-        &execution_root,
-        &workspace_root.join("rust-project.json"),
+        execution_root,
+        output_base,
+        workspace_root.join("rust-project.json"),
     )?;
 
     Ok(())
@@ -51,15 +57,7 @@ fn main() -> anyhow::Result<()> {
 
 // Parse the configuration flags and supplement with bazel info as needed.
 fn parse_config() -> anyhow::Result<Config> {
-    let mut config = Config::from_args();
-
-    // Ensure we know the workspace. If we are under `bazel run`, the
-    // BUILD_WORKSPACE_DIR environment variable will be present.
-    if config.workspace.is_none() {
-        if let Some(ws_dir) = env::var_os("BUILD_WORKSPACE_DIRECTORY") {
-            config.workspace = Some(PathBuf::from(ws_dir));
-        }
-    }
+    let mut config = Config::parse();
 
     if config.workspace.is_some() && config.execution_root.is_some() {
         return Ok(config);
@@ -88,7 +86,7 @@ fn parse_config() -> anyhow::Result<Config> {
         .trim()
         .split('\n')
         .map(|line| line.split_at(line.find(':').expect("missing `:` in bazel info output")))
-        .map(|(k, v)| (k, (&v[1..]).trim()))
+        .map(|(k, v)| (k, (v[1..]).trim()))
         .collect::<HashMap<_, _>>();
 
     if config.workspace.is_none() {
@@ -97,24 +95,32 @@ fn parse_config() -> anyhow::Result<Config> {
     if config.execution_root.is_none() {
         config.execution_root = bazel_info.get("execution_root").map(Into::into);
     }
+    if config.output_base.is_none() {
+        config.output_base = bazel_info.get("output_base").map(Into::into);
+    }
 
     Ok(config)
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 struct Config {
-    // If not specified, uses the result of `bazel info workspace`.
-    #[structopt(long)]
+    /// The path to the Bazel workspace directory. If not specified, uses the result of `bazel info workspace`.
+    #[clap(long, env = "BUILD_WORKSPACE_DIRECTORY")]
     workspace: Option<PathBuf>,
 
-    // If not specified, uses the result of `bazel info execution_root`.
-    #[structopt(long)]
+    /// The path to the Bazel execution root. If not specified, uses the result of `bazel info execution_root`.
+    #[clap(long)]
     execution_root: Option<PathBuf>,
 
-    #[structopt(long, default_value = "bazel")]
+    /// The path to the Bazel output user root. If not specified, uses the result of `bazel info output_base`.
+    #[clap(long, env = "OUTPUT_BASE")]
+    output_base: Option<PathBuf>,
+
+    /// The path to a Bazel binary
+    #[clap(long, default_value = "bazel")]
     bazel: PathBuf,
 
-    // Space separated list of target patterns that comes after all other args.
-    #[structopt(default_value = "@//...")]
+    /// Space separated list of target patterns that comes after all other args.
+    #[clap(default_value = "@//...")]
     targets: Vec<String>,
 }

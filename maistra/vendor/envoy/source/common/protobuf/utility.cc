@@ -158,7 +158,7 @@ void deprecatedFieldHelper(Runtime::Loader* runtime, bool proto_annotated_as_dep
   const bool runtime_overridden = (warn_default == false && warn_only == true);
 
   std::string with_overridden = fmt::format(
-      error,
+      fmt::runtime(error),
       (runtime_overridden ? "runtime overrides to continue using now fatal-by-default " : ""));
 
   validation_visitor.onDeprecatedField("type " + message.GetTypeName() + " " + with_overridden,
@@ -562,6 +562,17 @@ void MessageUtil::unpackTo(const ProtobufWkt::Any& any_message, Protobuf::Messag
   }
 }
 
+absl::Status MessageUtil::unpackToNoThrow(const ProtobufWkt::Any& any_message,
+                                          Protobuf::Message& message) {
+  if (!any_message.UnpackTo(&message)) {
+    return absl::InternalError(absl::StrCat("Unable to unpack as ",
+                                            message.GetDescriptor()->full_name(), ": ",
+                                            any_message.DebugString()));
+  }
+  // Ok Status is returned if `UnpackTo` succeeded.
+  return absl::OkStatus();
+}
+
 void MessageUtil::jsonConvert(const Protobuf::Message& source, ProtobufWkt::Struct& dest) {
   // Any proto3 message can be transformed to Struct, so there is no need to check for unknown
   // fields. There is one catch; Duration/Timestamp etc. which have non-object canonical JSON
@@ -784,6 +795,35 @@ void MessageUtil::wireCast(const Protobuf::Message& src, Protobuf::Message& dst)
   if (!dst.ParseFromString(src.SerializeAsString())) {
     throw EnvoyException("Unable to deserialize during wireCast()");
   }
+}
+
+std::string MessageUtil::sanitizeUtf8String(absl::string_view input) {
+  if (!Runtime::runtimeFeatureEnabled(
+          "envoy.reloadable_features.service_sanitize_non_utf8_strings")) {
+    return std::string(input);
+  }
+
+  // This returns the original string if it was already valid, and returns a pointer to
+  // `result.data()` if it needed to coerce. The coerced string is always
+  // the same length as the source string.
+  //
+  // Initializing `result` to `input` ensures that `result` is correctly sized to receive the
+  // modified string, or in the case where no modification is needed it already contains the correct
+  // value, so `result` can be returned in both cases.
+  //
+  // The choice of '!' is somewhat arbitrary, but we wanted to avoid any character that has
+  // special semantic meaning in URLs or similar.
+  std::string result(input);
+  const char* sanitized = google::protobuf::internal::UTF8CoerceToStructurallyValid(
+      google::protobuf::StringPiece(input.data(), input.length()), result.data(), '!');
+  ASSERT(sanitized == result.data() || sanitized == input.data());
+
+  // Validate requirement that if the input string is returned from
+  // `UTF8CoerceToStructurallyValid`, no modification was made to result so it still contains the
+  // correct return value.
+  ASSERT(sanitized == result.data() || result == input);
+
+  return result;
 }
 
 ProtobufWkt::Value ValueUtil::loadFromYaml(const std::string& yaml) {

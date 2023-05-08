@@ -9,35 +9,23 @@
 #include <map>
 #include <memory>
 #include <sstream>
+#include <type_traits>
 
 // Clients of this interface shouldn't depend on lots of compiler internals.
 // Do not include anything from src/compiler here!
 #include "include/cppgc/source-location.h"
 #include "src/base/macros.h"
 #include "src/base/optional.h"
-#include "src/base/type-traits.h"
 #include "src/builtins/builtins.h"
 #include "src/codegen/atomic-memory-order.h"
-#include "src/codegen/code-factory.h"
+#include "src/codegen/callable.h"
 #include "src/codegen/machine-type.h"
 #include "src/codegen/source-position.h"
 #include "src/codegen/tnode.h"
 #include "src/heap/heap.h"
-#include "src/objects/arguments.h"
-#include "src/objects/data-handler.h"
-#include "src/objects/heap-number.h"
-#include "src/objects/js-array-buffer.h"
-#include "src/objects/js-collection.h"
-#include "src/objects/js-proxy.h"
-#include "src/objects/map.h"
-#include "src/objects/maybe-object.h"
 #include "src/objects/object-type.h"
 #include "src/objects/objects.h"
-#include "src/objects/oddball.h"
-#include "src/objects/smi.h"
-#include "src/objects/tagged-index.h"
 #include "src/runtime/runtime.h"
-#include "src/utils/allocation.h"
 #include "src/zone/zone-containers.h"
 
 namespace v8 {
@@ -159,6 +147,7 @@ OBJECT_TYPE_CASE(Object)
 OBJECT_TYPE_CASE(Smi)
 OBJECT_TYPE_CASE(TaggedIndex)
 OBJECT_TYPE_CASE(HeapObject)
+OBJECT_TYPE_CASE(HeapObjectReference)
 OBJECT_TYPE_LIST(OBJECT_TYPE_CASE)
 HEAP_OBJECT_ORDINARY_TYPE_LIST(OBJECT_TYPE_CASE)
 STRUCT_LIST(OBJECT_TYPE_STRUCT_CASE)
@@ -437,7 +426,8 @@ class V8_EXPORT_PRIVATE CodeAssembler {
 
       static_assert(types_have_common_values<A, PreviousType>::value,
                     "Incompatible types: this cast can never succeed.");
-      static_assert(std::is_convertible<TNode<A>, TNode<Object>>::value,
+      static_assert(std::is_convertible<TNode<A>, TNode<MaybeObject>>::value ||
+                        std::is_convertible<TNode<A>, TNode<Object>>::value,
                     "Coercion to untagged values cannot be "
                     "checked.");
       static_assert(
@@ -446,10 +436,6 @@ class V8_EXPORT_PRIVATE CodeAssembler {
           "Unnecessary CAST: types are convertible.");
 #ifdef DEBUG
       if (FLAG_debug_code) {
-        if (std::is_same<PreviousType, MaybeObject>::value) {
-          code_assembler_->GenerateCheckMaybeObjectIsObject(
-              TNode<MaybeObject>::UncheckedCast(node_), location_);
-        }
         TNode<ExternalReference> function = code_assembler_->ExternalConstant(
             ExternalReference::check_object_type());
         code_assembler_->CallCFunction(
@@ -514,27 +500,23 @@ class V8_EXPORT_PRIVATE CodeAssembler {
 #define TORQUE_CAST(x) ca_.Cast(x)
 #endif
 
-#ifdef DEBUG
-  void GenerateCheckMaybeObjectIsObject(TNode<MaybeObject> node,
-                                        const char* location);
-#endif
-
   // Constants.
   TNode<Int32T> Int32Constant(int32_t value);
   TNode<Int64T> Int64Constant(int64_t value);
   TNode<Uint64T> Uint64Constant(uint64_t value) {
-    return Unsigned(Int64Constant(bit_cast<int64_t>(value)));
+    return Unsigned(Int64Constant(base::bit_cast<int64_t>(value)));
   }
   TNode<IntPtrT> IntPtrConstant(intptr_t value);
   TNode<Uint32T> Uint32Constant(uint32_t value) {
-    return Unsigned(Int32Constant(bit_cast<int32_t>(value)));
+    return Unsigned(Int32Constant(base::bit_cast<int32_t>(value)));
   }
   TNode<UintPtrT> UintPtrConstant(uintptr_t value) {
-    return Unsigned(IntPtrConstant(bit_cast<intptr_t>(value)));
+    return Unsigned(IntPtrConstant(base::bit_cast<intptr_t>(value)));
   }
   TNode<TaggedIndex> TaggedIndexConstant(intptr_t value);
   TNode<RawPtrT> PointerConstant(void* value) {
-    return ReinterpretCast<RawPtrT>(IntPtrConstant(bit_cast<intptr_t>(value)));
+    return ReinterpretCast<RawPtrT>(
+        IntPtrConstant(base::bit_cast<intptr_t>(value)));
   }
   TNode<Number> NumberConstant(double value);
   TNode<Smi> SmiConstant(Smi value);
@@ -542,7 +524,7 @@ class V8_EXPORT_PRIVATE CodeAssembler {
   template <typename E,
             typename = typename std::enable_if<std::is_enum<E>::value>::type>
   TNode<Smi> SmiConstant(E value) {
-    STATIC_ASSERT(sizeof(E) <= sizeof(int));
+    static_assert(sizeof(E) <= sizeof(int));
     return SmiConstant(static_cast<int>(value));
   }
   TNode<HeapObject> UntypedHeapConstant(Handle<HeapObject> object);
@@ -873,6 +855,8 @@ class V8_EXPORT_PRIVATE CodeAssembler {
                                       TNode<UintPtrT> old_value_high,
                                       TNode<UintPtrT> new_value_high);
 
+  void MemoryBarrier(AtomicMemoryOrder order);
+
   // Store a value to the root array.
   void StoreRoot(RootIndex root_index, TNode<Object> value);
 
@@ -1086,6 +1070,20 @@ class V8_EXPORT_PRIVATE CodeAssembler {
   TNode<Word32T> Word32Shr(TNode<Word32T> value, int shift);
   TNode<Word32T> Word32Sar(TNode<Word32T> value, int shift);
 
+  // Convenience overloads.
+  TNode<Int32T> Int32Sub(TNode<Int32T> left, int right) {
+    return Int32Sub(left, Int32Constant(right));
+  }
+  TNode<Word32T> Word32And(TNode<Word32T> left, int right) {
+    return Word32And(left, Int32Constant(right));
+  }
+  TNode<Int32T> Word32Shl(TNode<Int32T> left, int right) {
+    return Word32Shl(left, Int32Constant(right));
+  }
+  TNode<BoolT> Word32Equal(TNode<Word32T> left, int right) {
+    return Word32Equal(left, Int32Constant(right));
+  }
+
 // Unary
 #define DECLARE_CODE_ASSEMBLER_UNARY_OP(name, ResType, ArgType) \
   TNode<ResType> name(TNode<ArgType> a);
@@ -1253,9 +1251,9 @@ class V8_EXPORT_PRIVATE CodeAssembler {
   template <class... CArgs>
   Node* CallCFunction(Node* function, base::Optional<MachineType> return_type,
                       CArgs... cargs) {
-    static_assert(v8::internal::conjunction<
-                      std::is_convertible<CArgs, CFunctionArg>...>::value,
-                  "invalid argument types");
+    static_assert(
+        std::conjunction_v<std::is_convertible<CArgs, CFunctionArg>...>,
+        "invalid argument types");
     return CallCFunction(function, return_type, {cargs...});
   }
 
@@ -1264,9 +1262,9 @@ class V8_EXPORT_PRIVATE CodeAssembler {
   Node* CallCFunctionWithoutFunctionDescriptor(Node* function,
                                                MachineType return_type,
                                                CArgs... cargs) {
-    static_assert(v8::internal::conjunction<
-                      std::is_convertible<CArgs, CFunctionArg>...>::value,
-                  "invalid argument types");
+    static_assert(
+        std::conjunction_v<std::is_convertible<CArgs, CFunctionArg>...>,
+        "invalid argument types");
     return CallCFunctionWithoutFunctionDescriptor(function, return_type,
                                                   {cargs...});
   }
@@ -1277,9 +1275,9 @@ class V8_EXPORT_PRIVATE CodeAssembler {
                                               MachineType return_type,
                                               SaveFPRegsMode mode,
                                               CArgs... cargs) {
-    static_assert(v8::internal::conjunction<
-                      std::is_convertible<CArgs, CFunctionArg>...>::value,
-                  "invalid argument types");
+    static_assert(
+        std::conjunction_v<std::is_convertible<CArgs, CFunctionArg>...>,
+        "invalid argument types");
     return CallCFunctionWithCallerSavedRegisters(function, return_type, mode,
                                                  {cargs...});
   }
@@ -1570,7 +1568,7 @@ class CodeAssemblerParameterizedLabel
             {PhiMachineRepresentationOf<Types>...});
     auto it = phi_nodes.begin();
     USE(it);
-    ITERATE_PACK(AssignPhi(results, *(it++)));
+    (AssignPhi(results, *(it++)), ...);
   }
   template <class T>
   static void AssignPhi(TNode<T>* result, Node* phi) {

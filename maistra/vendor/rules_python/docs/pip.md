@@ -5,8 +5,8 @@
 ## compile_pip_requirements
 
 <pre>
-compile_pip_requirements(<a href="#compile_pip_requirements-name">name</a>, <a href="#compile_pip_requirements-extra_args">extra_args</a>, <a href="#compile_pip_requirements-visibility">visibility</a>, <a href="#compile_pip_requirements-requirements_in">requirements_in</a>, <a href="#compile_pip_requirements-requirements_txt">requirements_txt</a>, <a href="#compile_pip_requirements-tags">tags</a>,
-                         <a href="#compile_pip_requirements-kwargs">kwargs</a>)
+compile_pip_requirements(<a href="#compile_pip_requirements-name">name</a>, <a href="#compile_pip_requirements-extra_args">extra_args</a>, <a href="#compile_pip_requirements-visibility">visibility</a>, <a href="#compile_pip_requirements-requirements_in">requirements_in</a>, <a href="#compile_pip_requirements-requirements_txt">requirements_txt</a>,
+                         <a href="#compile_pip_requirements-requirements_linux">requirements_linux</a>, <a href="#compile_pip_requirements-requirements_darwin">requirements_darwin</a>, <a href="#compile_pip_requirements-requirements_windows">requirements_windows</a>, <a href="#compile_pip_requirements-tags">tags</a>, <a href="#compile_pip_requirements-kwargs">kwargs</a>)
 </pre>
 
 Generates targets for managing pip dependencies with pip-compile.
@@ -31,6 +31,9 @@ It also generates two targets for running pip-compile:
 | visibility |  passed to both the _test and .update rules   |  <code>["//visibility:private"]</code> |
 | requirements_in |  file expressing desired dependencies   |  <code>None</code> |
 | requirements_txt |  result of "compiling" the requirements.in file   |  <code>None</code> |
+| requirements_linux |  File of linux specific resolve output to check validate if requirement.in has changes.   |  <code>None</code> |
+| requirements_darwin |  File of darwin specific resolve output to check validate if requirement.in has changes.   |  <code>None</code> |
+| requirements_windows |  File of windows specific resolve output to check validate if requirement.in has changes.   |  <code>None</code> |
 | tags |  tagging attribute common to all build rules, passed to both the _test and .update rules   |  <code>None</code> |
 | kwargs |  other bazel attributes passed to the "_test" rule   |  none |
 
@@ -74,7 +77,8 @@ Accepts a `requirements.txt` file and installs the dependencies listed within.
 
 Those dependencies become available in a generated `requirements.bzl` file.
 
-This macro runs a repository rule that invokes `pip`. In your WORKSPACE file:
+This macro wraps the [`pip_repository`](./pip_repository.md) rule that invokes `pip`.
+In your WORKSPACE file:
 
 ```python
 pip_install(
@@ -140,9 +144,9 @@ alias(
 
 | Name  | Description | Default Value |
 | :-------------: | :-------------: | :-------------: |
-| requirements |  A 'requirements.txt' pip requirements file.   |  none |
+| requirements |  A 'requirements.txt' pip requirements file.   |  <code>None</code> |
 | name |  A unique name for the created external repository (default 'pip').   |  <code>"pip"</code> |
-| kwargs |  Keyword arguments passed directly to the <code>pip_repository</code> repository rule.   |  none |
+| kwargs |  Additional arguments to the [<code>pip_repository</code>](./pip_repository.md) repository rule.   |  none |
 
 
 <a name="#pip_parse"></a>
@@ -156,8 +160,10 @@ pip_parse(<a href="#pip_parse-requirements_lock">requirements_lock</a>, <a href=
 Accepts a locked/compiled requirements file and installs the dependencies listed within.
 
 Those dependencies become available in a generated `requirements.bzl` file.
+You can instead check this `requirements.bzl` file into your repo, see the "vendoring" section below.
 
-This macro runs a repository rule that invokes `pip`. In your WORKSPACE file:
+This macro wraps the [`pip_repository`](./pip_repository.md) rule that invokes `pip`, with `incremental` set.
+In your WORKSPACE file:
 
 ```python
 load("@rules_python//python:pip.bzl", "pip_parse")
@@ -218,28 +224,31 @@ alias(
 )
 ```
 
+## Vendoring the requirements.bzl file
+
+In some cases you may not want to generate the requirements.bzl file as a repository rule
+while Bazel is fetching dependencies. For example, if you produce a reusable Bazel module
+such as a ruleset, you may want to include the requirements.bzl file rather than make your users
+install the WORKSPACE setup to generate it.
+See https://github.com/bazelbuild/rules_python/issues/608
+
+This is the same workflow as Gazelle, which creates `go_repository` rules with
+[`update-repos`](https://github.com/bazelbuild/bazel-gazelle#update-repos)
+
+To do this, use the "write to source file" pattern documented in
+https://blog.aspect.dev/bazel-can-write-to-the-source-folder
+to put a copy of the generated requirements.bzl into your project.
+Then load the requirements.bzl file directly rather than from the generated repository.
+See the example in rules_python/examples/pip_parse_vendored.
+
 
 **PARAMETERS**
 
 
 | Name  | Description | Default Value |
 | :-------------: | :-------------: | :-------------: |
-| requirements_lock |  A fully resolved 'requirements.txt' pip requirement file     containing the transitive set of your dependencies. If this file is passed instead     of 'requirements' no resolve will take place and pip_repository will create     individual repositories for each of your dependencies so that wheels are     fetched/built only for the targets specified by 'build/run/test'.   |  none |
+| requirements_lock |  A fully resolved 'requirements.txt' pip requirement file     containing the transitive set of your dependencies. If this file is passed instead     of 'requirements' no resolve will take place and pip_repository will create     individual repositories for each of your dependencies so that wheels are     fetched/built only for the targets specified by 'build/run/test'.     Note that if your lockfile is platform-dependent, you can use the <code>requirements_[platform]</code>     attributes.   |  none |
 | name |  The name of the generated repository. The generated repositories     containing each requirement will be of the form &lt;name&gt;_&lt;requirement-name&gt;.   |  <code>"pip_parsed_deps"</code> |
-| kwargs |  Additional keyword arguments for the underlying     <code>pip_repository</code> rule.   |  none |
-
-
-<a name="#pip_repositories"></a>
-
-## pip_repositories
-
-<pre>
-pip_repositories()
-</pre>
-
-    Obsolete macro to pull in dependencies needed to use the pip_import rule.
-
-**PARAMETERS**
-
+| kwargs |  Additional arguments to the [<code>pip_repository</code>](./pip_repository.md) repository rule.   |  none |
 
 

@@ -19,6 +19,14 @@
     <DefineConstants>$(DefineConstants);ENABLE_SPAN_T</DefineConstants>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
   <ItemGroup>
     <Compile Include="..\..\net\FlatBuffers\ByteBuffer.cs">
       <Link>FlatBuffers\ByteBuffer.cs</Link>
@@ -95,6 +103,9 @@
     <Compile Include="..\MyGame\Example\NestedStruct.cs">
       <Link>MyGame\Example\NestedStruct.cs</Link>
     </Compile>
+    <Compile Include="..\MyGame\Example\LongEnum.cs">
+      <Link>MyGame\Example\LongEnum.cs</Link>
+    </Compile>
     <Compile Include="..\MyGame\Example\TestEnum.cs">
       <Link>MyGame\Example\TestEnum.cs</Link>
     </Compile>
@@ -137,6 +148,27 @@
     <Compile Include="..\optional_scalars\ScalarStuff.cs">
       <Link>optional_scalars\ScalarStuff.cs</Link>
     </Compile>
+    <Compile Include="..\KeywordTest\ABC.cs">
+      <Link>KeywordTest\ABC.cs</Link>
+    </Compile>
+    <Compile Include="..\KeywordTest\public.cs">
+      <Link>KeywordTest\public.cs</Link>
+    </Compile>
+    <Compile Include="..\KeywordTest\KeywordsInTable.cs">
+      <Link>KeywordTest\KeywordsInTable.cs</Link>
+    </Compile>
+    <Compile Include="..\KeywordTest\KeywordsInUnion.cs">
+      <Link>KeywordTest\KeywordsInUnion.cs</Link>
+    </Compile>
+    <Compile Include="..\nested_namespace_test\nested_namespace_test1_generated.cs">
+      <Link>nested_namespace_test\nested_namespace_test1_generated.cs</Link>
+    </Compile>
+    <Compile Include="..\nested_namespace_test\nested_namespace_test2_generated.cs">
+      <Link>nested_namespace_test\nested_namespace_test2_generated.cs</Link>
+    </Compile>
+    <Compile Include="..\nested_namespace_test\nested_namespace_test3_generated.cs">
+      <Link>nested_namespace_test\nested_namespace_test3_generated.cs</Link>
+    </Compile>
   </ItemGroup>
 
   <ItemGroup>
@@ -159,7 +191,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Newtonsoft.Json" Version="12.0.3" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
   </ItemGroup>
 
 </Project>

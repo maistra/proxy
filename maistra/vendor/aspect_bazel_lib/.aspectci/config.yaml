@@ -1,0 +1,9 @@
+---
+env:
+  CC: /bin/false
+workspaces:
+  - .
+  - e2e/bzlmod
+  - e2e/copy_to_directory
+tasks:
+  test:

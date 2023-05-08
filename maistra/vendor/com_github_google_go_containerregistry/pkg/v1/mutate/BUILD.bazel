@@ -12,10 +12,10 @@ go_library(
     importpath = "github.com/google/go-containerregistry/pkg/v1/mutate",
     visibility = ["//visibility:public"],
     deps = [
+        "//internal/gzip",
         "//pkg/logs",
         "//pkg/v1:pkg",
         "//pkg/v1/empty",
-        "//pkg/v1/internal/gzip",
         "//pkg/v1/match",
         "//pkg/v1/partial",
         "//pkg/v1/stream",

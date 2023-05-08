@@ -10,6 +10,7 @@
 #include "quiche/http2/adapter/http2_protocol.h"
 #include "quiche/http2/adapter/http2_util.h"
 #include "quiche/http2/adapter/http2_visitor_interface.h"
+#include "quiche/http2/adapter/noop_header_validator.h"
 #include "quiche/http2/adapter/oghttp2_util.h"
 #include "quiche/spdy/core/spdy_protocol.h"
 
@@ -22,14 +23,6 @@ using ConnectionError = Http2VisitorInterface::ConnectionError;
 using SpdyFramerError = Http2DecoderAdapter::SpdyFramerError;
 
 using ::spdy::SpdySettingsIR;
-
-// #define OGHTTP2_DEBUG_TRACE 1
-
-#ifdef OGHTTP2_DEBUG_TRACE
-const bool kTraceLoggingEnabled = true;
-#else
-const bool kTraceLoggingEnabled = false;
-#endif
 
 const uint32_t kMaxAllowedMetadataFrameSize = 65536u;
 const uint32_t kDefaultHpackTableCapacity = 4096u;
@@ -216,6 +209,18 @@ bool IsNonAckSettings(const spdy::SpdyFrameIR& frame) {
 
 }  // namespace
 
+OgHttp2Session::PassthroughHeadersHandler::PassthroughHeadersHandler(
+    OgHttp2Session& session, Http2VisitorInterface& visitor)
+    : session_(session), visitor_(visitor) {
+  if (session_.options_.validate_http_headers) {
+    QUICHE_VLOG(2) << "instantiating regular header validator";
+    validator_ = absl::make_unique<HeaderValidator>();
+  } else {
+    QUICHE_VLOG(2) << "instantiating noop header validator";
+    validator_ = absl::make_unique<NoopHeaderValidator>();
+  }
+}
+
 void OgHttp2Session::PassthroughHeadersHandler::OnHeaderBlockStart() {
   result_ = Http2VisitorInterface::HEADER_OK;
   const bool status = visitor_.OnBeginHeadersForStream(stream_id_);
@@ -224,13 +229,14 @@ void OgHttp2Session::PassthroughHeadersHandler::OnHeaderBlockStart() {
         << "Visitor rejected header block, returning HEADER_CONNECTION_ERROR";
     result_ = Http2VisitorInterface::HEADER_CONNECTION_ERROR;
   }
-  validator_.StartHeaderBlock();
+  validator_->StartHeaderBlock();
 }
 
 Http2VisitorInterface::OnHeaderResult InterpretHeaderStatus(
     HeaderValidator::HeaderStatus status) {
   switch (status) {
     case HeaderValidator::HEADER_OK:
+    case HeaderValidator::HEADER_SKIP:
       return Http2VisitorInterface::HEADER_OK;
     case HeaderValidator::HEADER_FIELD_INVALID:
       return Http2VisitorInterface::HEADER_FIELD_INVALID;
@@ -241,14 +247,16 @@ Http2VisitorInterface::OnHeaderResult InterpretHeaderStatus(
 }
 
 void OgHttp2Session::PassthroughHeadersHandler::OnHeader(
-    absl::string_view key,
-    absl::string_view value) {
+    absl::string_view key, absl::string_view value) {
   if (result_ != Http2VisitorInterface::HEADER_OK) {
     QUICHE_VLOG(2) << "Early return; status not HEADER_OK";
     return;
   }
   const HeaderValidator::HeaderStatus validation_result =
-      validator_.ValidateSingleHeader(key, value);
+      validator_->ValidateSingleHeader(key, value);
+  if (validation_result == HeaderValidator::HEADER_SKIP) {
+    return;
+  }
   if (validation_result != HeaderValidator::HEADER_OK) {
     QUICHE_VLOG(2) << "Header validation failed with result "
                    << static_cast<int>(validation_result);
@@ -262,7 +270,7 @@ void OgHttp2Session::PassthroughHeadersHandler::OnHeaderBlockEnd(
     size_t /* uncompressed_header_bytes */,
     size_t /* compressed_header_bytes */) {
   if (result_ == Http2VisitorInterface::HEADER_OK) {
-    if (!validator_.FinishHeaderBlock(type_)) {
+    if (!validator_->FinishHeaderBlock(type_)) {
       QUICHE_VLOG(1) << "FinishHeaderBlock returned false; returning "
                         "HEADER_HTTP_MESSAGING";
       result_ = Http2VisitorInterface::HEADER_HTTP_MESSAGING;
@@ -323,13 +331,20 @@ struct OgHttp2Session::ProcessBytesResultVisitor {
 
 OgHttp2Session::OgHttp2Session(Http2VisitorInterface& visitor, Options options)
     : visitor_(visitor),
+      options_(options),
       event_forwarder_([this]() { return !latched_error_; }, *this),
       receive_logger_(
           &event_forwarder_, TracePerspectiveAsString(options.perspective),
-          []() { return kTraceLoggingEnabled; }, this),
+          [logging_enabled = GetQuicheFlag(quiche_oghttp2_debug_trace)]() {
+            return logging_enabled;
+          },
+          this),
       send_logger_(
           TracePerspectiveAsString(options.perspective),
-          []() { return kTraceLoggingEnabled; }, this),
+          [logging_enabled = GetQuicheFlag(quiche_oghttp2_debug_trace)]() {
+            return logging_enabled;
+          },
+          this),
       headers_handler_(*this, visitor),
       noop_headers_handler_(/*listener=*/nullptr),
       connection_window_manager_(
@@ -338,10 +353,8 @@ OgHttp2Session::OgHttp2Session(Http2VisitorInterface& visitor, Options options)
             SendWindowUpdate(kConnectionStreamId, window_update_delta);
           },
           options.should_window_update_fn,
-          /*update_window_on_notify=*/false),
-      options_(options) {
+          /*update_window_on_notify=*/false) {
   decoder_.set_visitor(&receive_logger_);
-  decoder_.set_extension_visitor(this);
   if (options_.max_header_list_bytes) {
     // Limit buffering of encoded HPACK data to 2x the decoded limit.
     decoder_.GetHpackDecoder()->set_max_decode_buffer_size_bytes(
@@ -357,6 +370,7 @@ OgHttp2Session::OgHttp2Session(Http2VisitorInterface& visitor, Options options)
   if (options_.max_header_field_size.has_value()) {
     headers_handler_.SetMaxFieldSize(options_.max_header_field_size.value());
   }
+  headers_handler_.SetAllowObsText(options_.allow_obs_text);
 }
 
 OgHttp2Session::~OgHttp2Session() {}
@@ -588,10 +602,6 @@ int OgHttp2Session::Send() {
     // case, return early here to avoid sending other frames.
     return InterpretSendResult(continue_writing);
   }
-  while (continue_writing == SendResult::SEND_OK &&
-         !connection_metadata_.empty()) {
-    continue_writing = SendMetadata(0, connection_metadata_);
-  }
   // Notify on new/pending streams closed due to GOAWAY receipt.
   CloseGoAwayRejectedStreams();
   // Wake streams for writes.
@@ -618,18 +628,12 @@ int OgHttp2Session::InterpretSendResult(SendResult result) {
 }
 
 bool OgHttp2Session::HasReadyStream() const {
-  return !metadata_ready_.empty() || !trailers_ready_.empty() ||
+  return !trailers_ready_.empty() ||
          (write_scheduler_.HasReadyStreams() && connection_send_window_ > 0);
 }
 
 Http2StreamId OgHttp2Session::GetNextReadyStream() {
   QUICHE_DCHECK(HasReadyStream());
-  if (!metadata_ready_.empty()) {
-    const Http2StreamId stream_id = *metadata_ready_.begin();
-    // WriteForStream() will re-mark the stream as ready, if necessary.
-    write_scheduler_.MarkStreamNotReady(stream_id);
-    return stream_id;
-  }
   if (!trailers_ready_.empty()) {
     const Http2StreamId stream_id = *trailers_ready_.begin();
     // WriteForStream() will re-mark the stream as ready, if necessary.
@@ -786,14 +790,10 @@ OgHttp2Session::SendResult OgHttp2Session::WriteForStream(
     // HEADERS.
     state.outbound_body = nullptr;
     state.trailers = nullptr;
-    state.outbound_metadata.clear();
     return SendResult::SEND_OK;
   }
-  SendResult connection_can_write = SendResult::SEND_OK;
-  if (!state.outbound_metadata.empty()) {
-    connection_can_write = SendMetadata(stream_id, state.outbound_metadata);
-  }
 
+  SendResult connection_can_write = SendResult::SEND_OK;
   if (state.outbound_body == nullptr ||
       (!options_.trailers_require_end_data && state.data_deferred)) {
     // No data to send, but there might be trailers.
@@ -900,19 +900,18 @@ OgHttp2Session::SendResult OgHttp2Session::WriteForStream(
                                       : SendResult::SEND_OK;
 }
 
-OgHttp2Session::SendResult OgHttp2Session::SendMetadata(
-    Http2StreamId stream_id, OgHttp2Session::MetadataSequence& sequence) {
+void OgHttp2Session::SerializeMetadata(Http2StreamId stream_id,
+                                       std::unique_ptr<MetadataSource> source) {
   const uint32_t max_payload_size =
       std::min(kMaxAllowedMetadataFrameSize, max_frame_payload_);
   auto payload_buffer = absl::make_unique<uint8_t[]>(max_payload_size);
-  while (!sequence.empty()) {
-    MetadataSource& source = *sequence.front();
 
+  while (true) {
     auto [written, end_metadata] =
-        source.Pack(payload_buffer.get(), max_payload_size);
+        source->Pack(payload_buffer.get(), max_payload_size);
     if (written < 0) {
-      // Did not touch the connection, so perhaps writes are still possible.
-      return SendResult::SEND_OK;
+      // Unable to pack any metadata.
+      return;
     }
     QUICHE_DCHECK_LE(static_cast<size_t>(written), max_payload_size);
     auto payload = absl::string_view(
@@ -921,11 +920,9 @@ OgHttp2Session::SendResult OgHttp2Session::SendMetadata(
         stream_id, kMetadataFrameType, end_metadata ? kMetadataEndFlag : 0u,
         std::string(payload)));
     if (end_metadata) {
-      sequence.erase(sequence.begin());
-      metadata_ready_.erase(stream_id);
+      return;
     }
   }
-  return SendQueuedFrames();
 }
 
 int32_t OgHttp2Session::SubmitRequest(
@@ -993,7 +990,7 @@ int OgHttp2Session::SubmitTrailer(Http2StreamId stream_id,
         << "DataFrameSource will send fin, preventing trailers!";
     // Save trailers so they can be written once data is done.
     state.trailers =
-        absl::make_unique<spdy::SpdyHeaderBlock>(ToHeaderBlock(trailers));
+        absl::make_unique<spdy::Http2HeaderBlock>(ToHeaderBlock(trailers));
     if (!options_.trailers_require_end_data || !iter->second.data_deferred) {
       trailers_ready_.insert(stream_id);
     }
@@ -1003,13 +1000,7 @@ int OgHttp2Session::SubmitTrailer(Http2StreamId stream_id,
 
 void OgHttp2Session::SubmitMetadata(Http2StreamId stream_id,
                                     std::unique_ptr<MetadataSource> source) {
-  if (stream_id == 0) {
-    connection_metadata_.push_back(std::move(source));
-  } else {
-    auto iter = CreateStream(stream_id);
-    iter->second.outbound_metadata.push_back(std::move(source));
-    metadata_ready_.insert(stream_id);
-  }
+  SerializeMetadata(stream_id, std::move(source));
 }
 
 void OgHttp2Session::SubmitSettings(absl::Span<const Http2Setting> settings) {
@@ -1026,10 +1017,8 @@ void OgHttp2Session::OnError(SpdyFramerError error,
   LatchErrorAndNotify(GetHttp2ErrorCode(error), ConnectionError::kParseError);
 }
 
-void OgHttp2Session::OnCommonHeader(spdy::SpdyStreamId stream_id,
-                                    size_t length,
-                                    uint8_t type,
-                                    uint8_t flags) {
+void OgHttp2Session::OnCommonHeader(spdy::SpdyStreamId stream_id, size_t length,
+                                    uint8_t type, uint8_t flags) {
   highest_received_stream_id_ = std::max(static_cast<Http2StreamId>(stream_id),
                                          highest_received_stream_id_);
   if (streams_reset_.contains(stream_id)) {
@@ -1097,8 +1086,7 @@ void OgHttp2Session::OnDataFrameHeader(spdy::SpdyStreamId stream_id,
 }
 
 void OgHttp2Session::OnStreamFrameData(spdy::SpdyStreamId stream_id,
-                                       const char* data,
-                                       size_t len) {
+                                       const char* data, size_t len) {
   // Count the data against flow control, even if the stream is unknown.
   MarkDataBuffered(stream_id, len);
 
@@ -1227,16 +1215,6 @@ void OgHttp2Session::OnSettings() {
 
 void OgHttp2Session::OnSetting(spdy::SpdySettingsId id, uint32_t value) {
   switch (id) {
-    case MAX_FRAME_SIZE:
-      max_frame_payload_ = value;
-      break;
-    case MAX_CONCURRENT_STREAMS:
-      max_outbound_concurrent_streams_ = value;
-      if (!IsServerSession()) {
-        // We may now be able to start pending streams.
-        StartPendingStreams();
-      }
-      break;
     case HEADER_TABLE_SIZE:
       value = std::min(value, HpackCapacityBound(options_));
       if (value < framer_.GetHpackEncoder()->CurrentHeaderTableSizeSetting()) {
@@ -1252,6 +1230,25 @@ void OgHttp2Session::OnSetting(spdy::SpdySettingsId id, uint32_t value) {
         encoder_header_table_capacity_when_acking_ = value;
       }
       break;
+    case ENABLE_PUSH:
+      if (value > 1u) {
+        visitor_.OnInvalidFrame(
+            0, Http2VisitorInterface::InvalidFrameError::kProtocol);
+        // The specification says this is a connection-level protocol error.
+        LatchErrorAndNotify(
+            Http2ErrorCode::PROTOCOL_ERROR,
+            Http2VisitorInterface::ConnectionError::kInvalidSetting);
+        return;
+      }
+      // Aside from validation, this setting is ignored.
+      break;
+    case MAX_CONCURRENT_STREAMS:
+      max_outbound_concurrent_streams_ = value;
+      if (!IsServerSession()) {
+        // We may now be able to start pending streams.
+        StartPendingStreams();
+      }
+      break;
     case INITIAL_WINDOW_SIZE:
       if (value > spdy::kSpdyMaximumWindowSize) {
         visitor_.OnInvalidFrame(
@@ -1265,6 +1262,30 @@ void OgHttp2Session::OnSetting(spdy::SpdySettingsId id, uint32_t value) {
         UpdateStreamSendWindowSizes(value);
       }
       break;
+    case MAX_FRAME_SIZE:
+      if (value < kDefaultFramePayloadSizeLimit ||
+          value > kMaximumFramePayloadSizeLimit) {
+        visitor_.OnInvalidFrame(
+            0, Http2VisitorInterface::InvalidFrameError::kProtocol);
+        // The specification says this is a connection-level protocol error.
+        LatchErrorAndNotify(
+            Http2ErrorCode::PROTOCOL_ERROR,
+            Http2VisitorInterface::ConnectionError::kInvalidSetting);
+        return;
+      }
+      max_frame_payload_ = value;
+      break;
+    case ENABLE_CONNECT_PROTOCOL:
+      if (value > 1u || (value == 0 && peer_enables_connect_protocol_)) {
+        visitor_.OnInvalidFrame(
+            0, Http2VisitorInterface::InvalidFrameError::kProtocol);
+        LatchErrorAndNotify(
+            Http2ErrorCode::PROTOCOL_ERROR,
+            Http2VisitorInterface::ConnectionError::kInvalidSetting);
+        return;
+      }
+      peer_enables_connect_protocol_ = (value == 1u);
+      break;
     default:
       // TODO(bnc): See if C++17 inline constants are allowed in QUICHE.
       if (id == kMetadataExtensionId) {
@@ -1276,9 +1297,7 @@ void OgHttp2Session::OnSetting(spdy::SpdySettingsId id, uint32_t value) {
   visitor_.OnSetting({id, value});
 }
 
-void OgHttp2Session::OnSettingsEnd() {
-  visitor_.OnSettingsEnd();
-}
+void OgHttp2Session::OnSettingsEnd() { visitor_.OnSettingsEnd(); }
 
 void OgHttp2Session::OnSettingsAck() {
   if (!settings_ack_callbacks_.empty()) {
@@ -1301,8 +1320,23 @@ void OgHttp2Session::OnPing(spdy::SpdyPingId unique_id, bool is_ack) {
 
 void OgHttp2Session::OnGoAway(spdy::SpdyStreamId last_accepted_stream_id,
                               spdy::SpdyErrorCode error_code) {
+  if (received_goaway_ &&
+      last_accepted_stream_id >
+          static_cast<spdy::SpdyStreamId>(received_goaway_stream_id_)) {
+    // This GOAWAY has a higher `last_accepted_stream_id` than a previous
+    // GOAWAY, a connection-level spec violation.
+    const bool ok = visitor_.OnInvalidFrame(
+        kConnectionStreamId,
+        Http2VisitorInterface::InvalidFrameError::kProtocol);
+    if (!ok) {
+      fatal_visitor_callback_failure_ = true;
+    }
+    LatchErrorAndNotify(Http2ErrorCode::PROTOCOL_ERROR,
+                        ConnectionError::kInvalidGoAwayLastStreamId);
+    return;
+  }
+
   received_goaway_ = true;
-  // TODO(diannahu): Validate that `last_accepted_stream_id` is non-increasing.
   received_goaway_stream_id_ = last_accepted_stream_id;
   const bool result = visitor_.OnGoAway(last_accepted_stream_id,
                                         TranslateErrorCode(error_code), "");
@@ -1334,7 +1368,8 @@ bool OgHttp2Session::OnGoAwayFrameData(const char* /*goaway_data*/, size_t
 }
 
 void OgHttp2Session::OnHeaders(spdy::SpdyStreamId stream_id,
-                               bool /*has_priority*/, int /*weight*/,
+                               size_t /*payload_length*/, bool /*has_priority*/,
+                               int /*weight*/,
                                spdy::SpdyStreamId /*parent_stream_id*/,
                                bool /*exclusive*/, bool fin, bool /*end*/) {
   if (stream_id % 2 == 0) {
@@ -1411,12 +1446,13 @@ void OgHttp2Session::OnWindowUpdate(spdy::SpdyStreamId stream_id,
       if (streams_reset_.contains(stream_id)) {
         return;
       }
-      if (it->second.send_window == 0) {
+      const bool was_blocked = (it->second.send_window <= 0);
+      it->second.send_window += delta_window_size;
+      if (was_blocked && it->second.send_window > 0) {
         // The stream was blocked on flow control.
         QUICHE_VLOG(1) << "Marking stream " << stream_id << " ready to write.";
         write_scheduler_.MarkStreamReady(stream_id, false);
       }
-      it->second.send_window += delta_window_size;
     }
   }
   visitor_.OnWindowUpdate(stream_id, delta_window_size);
@@ -1430,8 +1466,8 @@ void OgHttp2Session::OnPushPromise(spdy::SpdyStreamId /*stream_id*/,
                       ConnectionError::kInvalidPushPromise);
 }
 
-void OgHttp2Session::OnContinuation(spdy::SpdyStreamId /*stream_id*/, bool
-                                    /*end*/) {}
+void OgHttp2Session::OnContinuation(spdy::SpdyStreamId /*stream_id*/,
+                                    size_t /*payload_length*/, bool /*end*/) {}
 
 void OgHttp2Session::OnAltSvc(spdy::SpdyStreamId /*stream_id*/,
                               absl::string_view /*origin*/,
@@ -1450,6 +1486,53 @@ void OgHttp2Session::OnPriorityUpdate(
 bool OgHttp2Session::OnUnknownFrame(spdy::SpdyStreamId /*stream_id*/,
                                     uint8_t /*frame_type*/) {
   return true;
+}
+
+void OgHttp2Session::OnUnknownFrameStart(spdy::SpdyStreamId stream_id,
+                                         size_t length, uint8_t type,
+                                         uint8_t flags) {
+  process_metadata_ = false;
+  if (streams_reset_.contains(stream_id)) {
+    return;
+  }
+  if (type == kMetadataFrameType) {
+    QUICHE_DCHECK_EQ(metadata_length_, 0u);
+    visitor_.OnBeginMetadataForStream(stream_id, length);
+    metadata_length_ = length;
+    process_metadata_ = true;
+    end_metadata_ = flags & kMetadataEndFlag;
+
+    // Empty metadata payloads will not trigger OnUnknownFramePayload(), so
+    // handle that possibility here.
+    MaybeHandleMetadataEndForStream(stream_id);
+  } else {
+    QUICHE_DLOG(INFO) << "Received unexpected frame type "
+                      << static_cast<int>(type);
+  }
+}
+
+void OgHttp2Session::OnUnknownFramePayload(spdy::SpdyStreamId stream_id,
+                                           absl::string_view payload) {
+  if (!process_metadata_) {
+    return;
+  }
+  if (streams_reset_.contains(stream_id)) {
+    return;
+  }
+  if (metadata_length_ > 0) {
+    QUICHE_DCHECK_LE(payload.size(), metadata_length_);
+    const bool payload_success =
+        visitor_.OnMetadataForStream(stream_id, payload);
+    if (payload_success) {
+      metadata_length_ -= payload.size();
+      MaybeHandleMetadataEndForStream(stream_id);
+    } else {
+      fatal_visitor_callback_failure_ = true;
+      decoder_.StopProcessing();
+    }
+  } else {
+    QUICHE_DLOG(INFO) << "Unexpected metadata payload for stream " << stream_id;
+  }
 }
 
 void OgHttp2Session::OnHeaderStatus(
@@ -1493,51 +1576,6 @@ void OgHttp2Session::OnHeaderStatus(
   } else if (result == Http2VisitorInterface::HEADER_COMPRESSION_ERROR) {
     LatchErrorAndNotify(Http2ErrorCode::COMPRESSION_ERROR,
                         ConnectionError::kHeaderError);
-  }
-}
-
-bool OgHttp2Session::OnFrameHeader(spdy::SpdyStreamId stream_id, size_t length,
-                                   uint8_t type, uint8_t flags) {
-  if (streams_reset_.contains(stream_id)) {
-    return false;
-  }
-  if (type == kMetadataFrameType) {
-    QUICHE_DCHECK_EQ(metadata_length_, 0u);
-    visitor_.OnBeginMetadataForStream(stream_id, length);
-    metadata_stream_id_ = stream_id;
-    metadata_length_ = length;
-    end_metadata_ = flags & kMetadataEndFlag;
-
-    // Empty metadata payloads will not trigger OnFramePayload(), so handle
-    // that possibility here.
-    MaybeHandleMetadataEndForStream(metadata_stream_id_);
-
-    return true;
-  } else {
-    QUICHE_DLOG(INFO) << "Unexpected frame type " << static_cast<int>(type)
-                      << " received by the extension visitor.";
-    return false;
-  }
-}
-
-void OgHttp2Session::OnFramePayload(const char* data, size_t len) {
-  if (streams_reset_.contains(metadata_stream_id_)) {
-    return;
-  }
-  if (metadata_length_ > 0) {
-    QUICHE_DCHECK_LE(len, metadata_length_);
-    const bool payload_success = visitor_.OnMetadataForStream(
-        metadata_stream_id_, absl::string_view(data, len));
-    if (payload_success) {
-      metadata_length_ -= len;
-      MaybeHandleMetadataEndForStream(metadata_stream_id_);
-    } else {
-      fatal_visitor_callback_failure_ = true;
-      decoder_.StopProcessing();
-    }
-  } else {
-    QUICHE_DLOG(INFO) << "Unexpected metadata payload for stream "
-                      << metadata_stream_id_;
   }
 }
 
@@ -1594,7 +1632,7 @@ void OgHttp2Session::HandleOutboundSettings(
         if (value == 1u && IsServerSession()) {
           // Allow extended CONNECT semantics even before SETTINGS are acked, to
           // make things easier for clients.
-          headers_handler_.AllowConnect();
+          headers_handler_.SetAllowExtendedConnect();
         }
         break;
       case HEADER_TABLE_SIZE:
@@ -1647,7 +1685,7 @@ void OgHttp2Session::SendWindowUpdate(Http2StreamId stream_id,
 }
 
 void OgHttp2Session::SendHeaders(Http2StreamId stream_id,
-                                 spdy::SpdyHeaderBlock headers,
+                                 spdy::Http2HeaderBlock headers,
                                  bool end_stream) {
   auto frame =
       absl::make_unique<spdy::SpdyHeadersIR>(stream_id, std::move(headers));
@@ -1656,7 +1694,7 @@ void OgHttp2Session::SendHeaders(Http2StreamId stream_id,
 }
 
 void OgHttp2Session::SendTrailers(Http2StreamId stream_id,
-                                  spdy::SpdyHeaderBlock trailers) {
+                                  spdy::Http2HeaderBlock trailers) {
   auto frame =
       absl::make_unique<spdy::SpdyHeadersIR>(stream_id, std::move(trailers));
   frame->set_fin(true);
@@ -1706,7 +1744,7 @@ OgHttp2Session::StreamStateMap::iterator OgHttp2Session::CreateStream(
 }
 
 void OgHttp2Session::StartRequest(Http2StreamId stream_id,
-                                  spdy::SpdyHeaderBlock headers,
+                                  spdy::Http2HeaderBlock headers,
                                   std::unique_ptr<DataFrameSource> data_source,
                                   void* user_data) {
   if (received_goaway_) {
@@ -1744,9 +1782,22 @@ void OgHttp2Session::CloseStream(Http2StreamId stream_id,
   }
   stream_map_.erase(stream_id);
   trailers_ready_.erase(stream_id);
-  metadata_ready_.erase(stream_id);
   streams_reset_.erase(stream_id);
-  queued_frames_.erase(stream_id);
+  auto queued_it = queued_frames_.find(stream_id);
+  if (queued_it != queued_frames_.end()) {
+    // Remove any queued frames for this stream.
+    int frames_remaining = queued_it->second;
+    queued_frames_.erase(queued_it);
+    for (auto it = frames_.begin();
+         frames_remaining > 0 && it != frames_.end();) {
+      if (static_cast<Http2StreamId>((*it)->stream_id()) == stream_id) {
+        it = frames_.erase(it);
+        --frames_remaining;
+      } else {
+        ++it;
+      }
+    }
+  }
   if (write_scheduler_.StreamRegistered(stream_id)) {
     write_scheduler_.UnregisterStream(stream_id);
   }
@@ -1849,7 +1900,7 @@ void OgHttp2Session::MaybeHandleMetadataEndForStream(Http2StreamId stream_id) {
       fatal_visitor_callback_failure_ = true;
       decoder_.StopProcessing();
     }
-    metadata_stream_id_ = 0;
+    process_metadata_ = false;
     end_metadata_ = false;
   }
 }

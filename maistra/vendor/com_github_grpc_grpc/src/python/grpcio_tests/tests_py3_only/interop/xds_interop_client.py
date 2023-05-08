@@ -14,26 +14,23 @@
 
 import argparse
 import collections
+from concurrent import futures
 import datetime
 import logging
 import signal
+import sys
 import threading
 import time
-import sys
-
-from typing import DefaultDict, Dict, List, Mapping, Set, Sequence, Tuple
-import collections
-
-from concurrent import futures
+from typing import DefaultDict, Dict, List, Mapping, Sequence, Set, Tuple
 
 import grpc
-from grpc_channelz.v1 import channelz
 import grpc_admin
+from grpc_channelz.v1 import channelz
 
+from src.proto.grpc.testing import empty_pb2
+from src.proto.grpc.testing import messages_pb2
 from src.proto.grpc.testing import test_pb2
 from src.proto.grpc.testing import test_pb2_grpc
-from src.proto.grpc.testing import messages_pb2
-from src.proto.grpc.testing import empty_pb2
 
 logger = logging.getLogger()
 console_handler = logging.StreamHandler()
@@ -126,6 +123,7 @@ _global_rpc_statuses: Mapping[str, Mapping[int, int]] = collections.defaultdict(
 
 
 def _handle_sigint(sig, frame) -> None:
+    logger.warning("Received SIGINT")
     _stop_event.set()
     _global_server.stop(None)
 
@@ -200,7 +198,8 @@ def _on_rpc_done(rpc_id: int, future: grpc.Future, method: str,
                  print_response: bool) -> None:
     exception = future.exception()
     hostname = ""
-    _global_rpc_statuses[method][future.code().value[0]] += 1
+    with _global_lock:
+        _global_rpc_statuses[method][future.code().value[0]] += 1
     if exception is not None:
         with _global_lock:
             _global_rpcs_failed[method] += 1
@@ -296,18 +295,17 @@ def _run_single_channel(config: _ChannelConfiguration) -> None:
                     continue
                 else:
                     duration_per_query = 1.0 / float(config.qps)
-            request_id = None
-            with _global_lock:
-                request_id = _global_rpc_id
-                _global_rpc_id += 1
-                _global_rpcs_started[config.method] += 1
-            start = time.time()
-            end = start + duration_per_query
-            with config.condition:
+                request_id = None
+                with _global_lock:
+                    request_id = _global_rpc_id
+                    _global_rpc_id += 1
+                    _global_rpcs_started[config.method] += 1
+                start = time.time()
+                end = start + duration_per_query
                 _start_rpc(config.method, config.metadata, request_id, stub,
                            float(config.rpc_timeout_sec), futures)
-            with config.condition:
-                _remove_completed_rpcs(futures, config.print_response)
+                print_response = config.print_response
+            _remove_completed_rpcs(futures, config.print_response)
             logger.debug(f"Currently {len(futures)} in-flight RPCs")
             now = time.time()
             while now < end:
@@ -330,7 +328,7 @@ class _XdsUpdateClientConfigureServicer(
             context: grpc.ServicerContext
     ) -> messages_pb2.ClientConfigureResponse:
         logger.info("Received Configure RPC: %s", request)
-        method_strs = (_METHOD_ENUM_TO_STR[t] for t in request.types)
+        method_strs = [_METHOD_ENUM_TO_STR[t] for t in request.types]
         for method in _SUPPORTED_METHODS:
             method_enum = _METHOD_STR_TO_ENUM[method]
             channel_config = self._per_method_configs[method]

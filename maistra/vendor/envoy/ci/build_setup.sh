@@ -30,13 +30,16 @@ function setup_gcc_toolchain() {
     echo "gcc toolchain doesn't support ${ENVOY_STDLIB}."
     exit 1
   fi
+
+  BAZEL_BUILD_OPTIONS+=("--config=gcc")
+
   if [[ -z "${ENVOY_RBE}" ]]; then
     export CC=gcc
     export CXX=g++
     export BAZEL_COMPILER=gcc
     echo "$CC/$CXX toolchain configured"
   else
-    BAZEL_BUILD_OPTIONS=("--config=remote-gcc" "${BAZEL_BUILD_OPTIONS[@]}")
+    BAZEL_BUILD_OPTIONS+=("--config=remote-gcc")
   fi
 }
 
@@ -44,15 +47,15 @@ function setup_clang_toolchain() {
   ENVOY_STDLIB="${ENVOY_STDLIB:-libc++}"
   if [[ -z "${ENVOY_RBE}" ]]; then
     if [[ "${ENVOY_STDLIB}" == "libc++" ]]; then
-      BAZEL_BUILD_OPTIONS=("--config=libc++" "${BAZEL_BUILD_OPTIONS[@]}")
+      BAZEL_BUILD_OPTIONS+=("--config=libc++")
     else
-      BAZEL_BUILD_OPTIONS=("--config=clang" "${BAZEL_BUILD_OPTIONS[@]}")
+      BAZEL_BUILD_OPTIONS+=("--config=clang")
     fi
   else
     if [[ "${ENVOY_STDLIB}" == "libc++" ]]; then
-      BAZEL_BUILD_OPTIONS=("--config=remote-clang-libc++" "${BAZEL_BUILD_OPTIONS[@]}")
+      BAZEL_BUILD_OPTIONS+=("--config=remote-clang-libc++")
     else
-      BAZEL_BUILD_OPTIONS=("--config=remote-clang" "${BAZEL_BUILD_OPTIONS[@]}")
+      BAZEL_BUILD_OPTIONS+=("--config=remote-clang")
     fi
   fi
   echo "clang toolchain with ${ENVOY_STDLIB} configured"
@@ -86,7 +89,13 @@ trap cleanup EXIT
 
 "$(dirname "$0")"/../bazel/setup_clang.sh "${LLVM_ROOT}"
 
-[[ "${BUILD_REASON}" != "PullRequest" ]] && BAZEL_EXTRA_TEST_OPTIONS+=("--nocache_test_results")
+if [[ "${BUILD_REASON}" != "PullRequest" ]]; then
+    VERSION_DEV="$(cut -d- -f2 "${ENVOY_SRCDIR}/VERSION.txt")"
+    # Use uncached test results for non-release commits to a branch.
+    if [[ $VERSION_DEV == "dev" ]]; then
+        BAZEL_EXTRA_TEST_OPTIONS+=("--nocache_test_results")
+    fi
+fi
 
 # Use https://docs.bazel.build/versions/master/command-line-reference.html#flag--experimental_repository_cache_hardlinks
 # to save disk space.
@@ -99,6 +108,7 @@ BAZEL_BUILD_OPTIONS=(
   "--noshow_loading_progress"
   "--repository_cache=${BUILD_DIR}/repository_cache"
   "--experimental_repository_cache_hardlinks"
+  "--action_env=CLANG_FORMAT"
   "${BAZEL_BUILD_EXTRA_OPTIONS[@]}"
   "${BAZEL_EXTRA_TEST_OPTIONS[@]}")
 

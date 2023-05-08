@@ -65,17 +65,21 @@ def _annotation(
         additive_build_file = None,
         additive_build_file_content = None,
         build_script_data = None,
+        build_script_tools = None,
         build_script_data_glob = None,
         build_script_deps = None,
         build_script_env = None,
         build_script_proc_macro_deps = None,
         build_script_rustc_env = None,
+        build_script_toolchains = None,
         compile_data = None,
         compile_data_glob = None,
         crate_features = None,
         data = None,
         data_glob = None,
         deps = None,
+        gen_binaries = [],
+        disable_pipelining = False,
         gen_build_script = None,
         patch_args = None,
         patch_tool = None,
@@ -88,11 +92,13 @@ def _annotation(
     """A collection of extra attributes and settings for a particular crate
 
     Args:
-        version (str, optional): The version or semver-conditions to match with a crate.
+        version (str, optional): The version or semver-conditions to match with a crate. The wildcard `*`
+            matches any version, including prerelease versions.
         additive_build_file_content (str, optional): Extra contents to write to the bottom of generated BUILD files.
         additive_build_file (str, optional): A file containing extra contents to write to the bottom of
             generated BUILD files.
         build_script_data (list, optional): A list of labels to add to a crate's `cargo_build_script::data` attribute.
+        build_script_tools (list, optional): A list of labels to add to a crate's `cargo_build_script::tools` attribute.
         build_script_data_glob (list, optional): A list of glob patterns to add to a crate's `cargo_build_script::data`
             attribute.
         build_script_deps (list, optional): A list of labels to add to a crate's `cargo_build_script::deps` attribute.
@@ -102,6 +108,7 @@ def _annotation(
             `cargo_build_script::proc_macro_deps` attribute.
         build_script_rustc_env (dict, optional): Additional environment variables to set on a crate's
             `cargo_build_script::env` attribute.
+        build_script_toolchains (list, optional): A list of labels to set on a crates's `cargo_build_script::toolchains` attribute.
         compile_data (list, optional): A list of labels to add to a crate's `rust_library::compile_data` attribute.
         compile_data_glob (list, optional): A list of glob patterns to add to a crate's `rust_library::compile_data`
             attribute.
@@ -110,6 +117,9 @@ def _annotation(
         data (list, optional): A list of labels to add to a crate's `rust_library::data` attribute.
         data_glob (list, optional): A list of glob patterns to add to a crate's `rust_library::data` attribute.
         deps (list, optional): A list of labels to add to a crate's `rust_library::deps` attribute.
+        gen_binaries (list or bool, optional): As a list, the subset of the crate's bins that should get `rust_binary`
+            targets produced. Or `True` to generate all, `False` to generate none.
+        disable_pipelining (bool, optional): If True, disables pipelining for library targets for this crate.
         gen_build_script (bool, optional): An authorative flag to determine whether or not to produce
             `cargo_build_script` targets for the current crate.
         patch_args (list, optional): The `patch_args` attribute of a Bazel repository rule. See
@@ -142,17 +152,21 @@ def _annotation(
             additive_build_file = additive_build_file,
             additive_build_file_content = additive_build_file_content,
             build_script_data = build_script_data,
+            build_script_tools = build_script_tools,
             build_script_data_glob = build_script_data_glob,
             build_script_deps = build_script_deps,
             build_script_env = build_script_env,
             build_script_proc_macro_deps = build_script_proc_macro_deps,
             build_script_rustc_env = build_script_rustc_env,
+            build_script_toolchains = build_script_toolchains,
             compile_data = compile_data,
             compile_data_glob = compile_data_glob,
             crate_features = crate_features,
             data = data,
             data_glob = data_glob,
             deps = deps,
+            gen_binaries = gen_binaries,
+            disable_pipelining = disable_pipelining,
             gen_build_script = gen_build_script,
             patch_args = patch_args,
             patch_tool = patch_tool,

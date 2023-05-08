@@ -4,9 +4,9 @@
 
 namespace {
 #if defined(__GNUC__)
-std::uint64_t double_up(const std::uint64_t x) __attribute__((const));
+std::int64_t double_up(const std::int64_t x) __attribute__((const));
 #endif
-std::uint64_t double_up(const std::uint64_t x) { return x * 2; }
+std::int64_t double_up(const std::int64_t x) { return x * 2; }
 }  // namespace
 
 // Using DoNotOptimize on types like BitRef seem to cause a lot of problems
@@ -29,6 +29,15 @@ struct BitRef {
 int main(int, char*[]) {
   // this test verifies compilation of DoNotOptimize() for some types
 
+  char buffer1[1] = "";
+  benchmark::DoNotOptimize(buffer1);
+
+  char buffer2[2] = "";
+  benchmark::DoNotOptimize(buffer2);
+
+  char buffer3[3] = "";
+  benchmark::DoNotOptimize(buffer3);
+
   char buffer8[8] = "";
   benchmark::DoNotOptimize(buffer8);
 
@@ -38,6 +47,25 @@ int main(int, char*[]) {
   char buffer1024[1024] = "";
   benchmark::DoNotOptimize(buffer1024);
   benchmark::DoNotOptimize(&buffer1024[0]);
+
+  const char const_buffer1[1] = "";
+  benchmark::DoNotOptimize(const_buffer1);
+
+  const char const_buffer2[2] = "";
+  benchmark::DoNotOptimize(const_buffer2);
+
+  const char const_buffer3[3] = "";
+  benchmark::DoNotOptimize(const_buffer3);
+
+  const char const_buffer8[8] = "";
+  benchmark::DoNotOptimize(const_buffer8);
+
+  const char const_buffer20[20] = "";
+  benchmark::DoNotOptimize(const_buffer20);
+
+  const char const_buffer1024[1024] = "";
+  benchmark::DoNotOptimize(const_buffer1024);
+  benchmark::DoNotOptimize(&const_buffer1024[0]);
 
   int x = 123;
   benchmark::DoNotOptimize(x);

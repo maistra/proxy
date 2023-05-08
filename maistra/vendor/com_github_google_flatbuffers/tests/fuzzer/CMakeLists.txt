@@ -53,7 +53,7 @@ target_compile_options(
   fuzzer_config
   INTERFACE
     $<$<NOT:$<BOOL:${OSS_FUZZ}>>:
-      -fsanitize-coverage=edge,trace-cmp
+      -fsanitize-coverage=trace-cmp
     >
     $<$<BOOL:${USE_ASAN}>:
       -fsanitize=fuzzer,undefined,address
@@ -85,26 +85,43 @@ target_link_libraries(
 set(FLATBUFFERS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../")
 
 set(FlatBuffers_Library_SRCS
+    ${FLATBUFFERS_DIR}/include/flatbuffers/allocator.h
+    ${FLATBUFFERS_DIR}/include/flatbuffers/array.h
     ${FLATBUFFERS_DIR}/include/flatbuffers/base.h
+    ${FLATBUFFERS_DIR}/include/flatbuffers/buffer.h
+    ${FLATBUFFERS_DIR}/include/flatbuffers/buffer_ref.h
+    ${FLATBUFFERS_DIR}/include/flatbuffers/default_allocator.h
+    ${FLATBUFFERS_DIR}/include/flatbuffers/detached_buffer.h
+    ${FLATBUFFERS_DIR}/include/flatbuffers/flatbuffer_builder.h
     ${FLATBUFFERS_DIR}/include/flatbuffers/flatbuffers.h
+    ${FLATBUFFERS_DIR}/include/flatbuffers/flexbuffers.h
+    ${FLATBUFFERS_DIR}/include/flatbuffers/flex_flat_util.h
     ${FLATBUFFERS_DIR}/include/flatbuffers/hash.h
     ${FLATBUFFERS_DIR}/include/flatbuffers/idl.h
-    ${FLATBUFFERS_DIR}/include/flatbuffers/util.h
+    ${FLATBUFFERS_DIR}/include/flatbuffers/minireflect.h
     ${FLATBUFFERS_DIR}/include/flatbuffers/reflection.h
     ${FLATBUFFERS_DIR}/include/flatbuffers/reflection_generated.h
-    ${FLATBUFFERS_DIR}/include/flatbuffers/stl_emulation.h
-    ${FLATBUFFERS_DIR}/include/flatbuffers/flexbuffers.h
     ${FLATBUFFERS_DIR}/include/flatbuffers/registry.h
-    ${FLATBUFFERS_DIR}/include/flatbuffers/minireflect.h
+    ${FLATBUFFERS_DIR}/include/flatbuffers/stl_emulation.h
+    ${FLATBUFFERS_DIR}/include/flatbuffers/string.h
+    ${FLATBUFFERS_DIR}/include/flatbuffers/struct.h
+    ${FLATBUFFERS_DIR}/include/flatbuffers/table.h
+    ${FLATBUFFERS_DIR}/include/flatbuffers/util.h
+    ${FLATBUFFERS_DIR}/include/flatbuffers/vector.h
+    ${FLATBUFFERS_DIR}/include/flatbuffers/vector_downward.h
+    ${FLATBUFFERS_DIR}/include/flatbuffers/verifier.h
     ${FLATBUFFERS_DIR}/src/idl_parser.cpp
     ${FLATBUFFERS_DIR}/src/idl_gen_text.cpp
     ${FLATBUFFERS_DIR}/src/reflection.cpp
+    ${FLATBUFFERS_DIR}/src/binary_annotator.h
+    ${FLATBUFFERS_DIR}/src/binary_annotator.cpp
     ${FLATBUFFERS_DIR}/src/util.cpp
     ${FLATBUFFERS_DIR}/tests/test_assert.cpp
 )
 
 include_directories(${FLATBUFFERS_DIR}/include)
 include_directories(${FLATBUFFERS_DIR}/tests)
+include_directories(${FLATBUFFERS_DIR}/src)
 
 add_library(flatbuffers_fuzzed STATIC ${FlatBuffers_Library_SRCS})
 # Use PUBLIC to force 'fuzzer_config' for all dependent targets
@@ -133,6 +150,9 @@ target_link_libraries(parser_fuzzer PRIVATE flatbuffers_fuzzed)
 add_executable(verifier_fuzzer flatbuffers_verifier_fuzzer.cc)
 target_link_libraries(verifier_fuzzer PRIVATE flatbuffers_fuzzed)
 
+add_executable(flexverifier_fuzzer flexbuffers_verifier_fuzzer.cc)
+target_link_libraries(flexverifier_fuzzer PRIVATE flatbuffers_fuzzed)
+
 add_executable(monster_fuzzer flatbuffers_monster_fuzzer.cc)
 target_link_libraries(monster_fuzzer PRIVATE flatbuffers_fuzzed)
 add_custom_command(
@@ -140,7 +160,20 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
   ${CMAKE_SOURCE_DIR}/../monster_test.bfbs
   ${CMAKE_CURRENT_BINARY_DIR}/monster_test.bfbs)
-  
+
+add_executable(annotator_fuzzer flatbuffers_annotator_fuzzer.cc)
+target_link_libraries(annotator_fuzzer PRIVATE flatbuffers_fuzzed)
+add_custom_command(
+  TARGET annotator_fuzzer PRE_BUILD
+
+  COMMAND ${CMAKE_COMMAND} -E copy
+  ${CMAKE_SOURCE_DIR}/../annotated_binary/annotated_binary.bfbs
+  ${CMAKE_CURRENT_BINARY_DIR}/annotated_binary.bfbs
+
+  COMMAND ${CMAKE_COMMAND} -E copy
+  ${CMAKE_SOURCE_DIR}/../annotated_binary/annotated_binary.bin
+  ${CMAKE_CURRENT_BINARY_DIR}/seed_annotator/annotated_binary.bin
+)
 
 # Build debugger for weird cases found with fuzzer.
 if(BUILD_DEBUGGER)

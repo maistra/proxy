@@ -1,0 +1,4 @@
+exports_files([
+    "f1",
+    "f2",
+])

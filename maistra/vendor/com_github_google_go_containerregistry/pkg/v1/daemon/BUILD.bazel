@@ -33,8 +33,9 @@ go_test(
     ],
     embed = [":daemon"],
     deps = [
-        "//pkg/internal/compare",
+        "//internal/compare",
         "//pkg/name",
+        "//pkg/v1/empty",
         "//pkg/v1/tarball",
         "//vendor/github.com/docker/docker/api/types",
     ],

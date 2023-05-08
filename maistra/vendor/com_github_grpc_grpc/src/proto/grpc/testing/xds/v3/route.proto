@@ -19,6 +19,7 @@ syntax = "proto3";
 package envoy.config.route.v3;
 
 import "src/proto/grpc/testing/xds/v3/base.proto";
+import "src/proto/grpc/testing/xds/v3/extension.proto";
 import "src/proto/grpc/testing/xds/v3/regex.proto";
 import "src/proto/grpc/testing/xds/v3/percent.proto";
 import "src/proto/grpc/testing/xds/v3/range.proto";
@@ -30,6 +31,18 @@ import "google/protobuf/wrappers.proto";
 // [#protodoc-title: HTTP route components]
 // * Routing :ref:`architecture overview <arch_overview_http_routing>`
 // * HTTP :ref:`router filter <config_http_filters_router>`
+
+message RetryPolicy {
+  string retry_on = 1;
+  google.protobuf.UInt32Value num_retries = 2;
+
+  message RetryBackOff {
+    google.protobuf.Duration base_interval = 1;
+    google.protobuf.Duration max_interval = 2;
+  }
+
+  RetryBackOff retry_back_off = 8;
+}
 
 // The top level element in the routing configuration is a virtual host. Each virtual host has
 // a logical name as well as a set of domains that get routed to it based on the incoming request's
@@ -72,6 +85,8 @@ message VirtualHost {
   // specific; see the :ref:`HTTP filter documentation <config_http_filters>`
   // for if and how it is utilized.
   map<string, google.protobuf.Any> typed_per_filter_config = 15;
+
+  RetryPolicy retry_policy = 16;
 }
 
 // A route is both a specification of how to match a request as well as an indication of what to do
@@ -89,12 +104,21 @@ message Route {
   // Route matching parameters.
   RouteMatch match = 1;
 
+  message NonForwardingAction {
+  }  
+
   oneof action {
     // Route request to some upstream cluster.
     RouteAction route = 2;
 
     // Return a redirect.
     RedirectAction redirect = 3;
+
+    // An action used when the route will generate a response directly,
+    // without forwarding to an upstream host. This will be used in non-proxy
+    // xDS clients like the gRPC server. It could also be used in the future
+    // in Envoy for a filter that directly generates responses for requests.
+    NonForwardingAction non_forwarding_action = 18;
   }
 
   // The typed_per_filter_config field can be used to provide route-specific
@@ -245,6 +269,13 @@ message RouteAction {
     // :ref:`traffic splitting <config_http_conn_man_route_table_traffic_splitting_split>`
     // for additional documentation.
     WeightedCluster weighted_clusters = 3;
+
+    // Name of the cluster specifier plugin to use to determine the cluster for
+    // requests on this route. The plugin name must be defined in the associated
+    // :ref:`envoy_v3_api_field_config.route.v3.RouteConfiguration.cluster_specifier_plugins`
+    // in the
+    // :ref:`envoy_v3_api_field_config.core.v3.TypedExtensionConfig.name` field.
+    string cluster_specifier_plugin = 37;
   }
 
   message HashPolicy {
@@ -317,6 +348,8 @@ message RouteAction {
   }
 
   repeated HashPolicy hash_policy = 15;
+
+  RetryPolicy retry_policy = 9;
 
   // Specifies the maximum stream duration for this route.
   MaxStreamDuration max_stream_duration = 36;
@@ -410,6 +443,19 @@ message HeaderMatcher {
 message QueryParameterMatcher {
 }
 
+// Configuration for a cluster specifier plugin.
+message ClusterSpecifierPlugin {
+  // The name of the plugin and its opaque configuration.
+  core.v3.TypedExtensionConfig extension = 1;
+
+  // If is_optional is not set and the plugin defined by this message is not
+  // a supported type, the containing resource is NACKed. If is_optional is
+  // set, the resource would not be NACKed for this reason. In this case,
+  // routes referencing this plugin's name would not be treated as an illegal
+  // configuration, but would result in a failure if the route is selected.
+  bool is_optional = 2;
+}
+
 // [#protodoc-title: HTTP route configuration]
 // * Routing :ref:`architecture overview <arch_overview_http_routing>`
 // * HTTP :ref:`router filter <config_http_filters_router>`
@@ -424,6 +470,11 @@ message RouteConfiguration {
 
   // An array of virtual hosts that make up the route table.
   repeated VirtualHost virtual_hosts = 2;
+
+  // A list of plugins and their configurations which may be used by a
+  // :ref:`envoy_v3_api_field_config.route.v3.RouteAction.cluster_specifier_plugin`
+  // within the route. All *extension.name* fields in this list must be unique.
+  repeated ClusterSpecifierPlugin cluster_specifier_plugins = 12;
 }
 
 message RedirectAction {

@@ -42,6 +42,7 @@ rust_library(
         "getrandom",
         "libc",
         "rand_chacha",
+        "small_rng",
         "std",
         "std_rng",
     ],
@@ -60,7 +61,7 @@ rust_library(
     # buildifier: leave-alone
     deps = [
         "@wasmtime__rand_chacha__0_3_1//:rand_chacha",
-        "@wasmtime__rand_core__0_6_3//:rand_core",
+        "@wasmtime__rand_core__0_6_4//:rand_core",
     ] + selects.with_or({
         # cfg(unix)
         (
@@ -81,7 +82,7 @@ rust_library(
             "@rules_rust//rust/platform:x86_64-linux-android",
             "@rules_rust//rust/platform:x86_64-unknown-freebsd",
         ): [
-            "@wasmtime__libc__0_2_122//:libc",
+            "@wasmtime__libc__0_2_140//:libc",
         ],
         "//conditions:default": [],
     }),

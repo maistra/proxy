@@ -51,16 +51,14 @@ TimeWaitConnectionInfo::TimeWaitConnectionInfo(
     bool ietf_quic,
     std::vector<std::unique_ptr<QuicEncryptedPacket>>* termination_packets,
     std::vector<QuicConnectionId> active_connection_ids)
-    : TimeWaitConnectionInfo(ietf_quic,
-                             termination_packets,
+    : TimeWaitConnectionInfo(ietf_quic, termination_packets,
                              std::move(active_connection_ids),
                              QuicTime::Delta::Zero()) {}
 
 TimeWaitConnectionInfo::TimeWaitConnectionInfo(
     bool ietf_quic,
     std::vector<std::unique_ptr<QuicEncryptedPacket>>* termination_packets,
-    std::vector<QuicConnectionId> active_connection_ids,
-    QuicTime::Delta srtt)
+    std::vector<QuicConnectionId> active_connection_ids, QuicTime::Delta srtt)
     : ietf_quic(ietf_quic),
       active_connection_ids(std::move(active_connection_ids)),
       srtt(srtt) {
@@ -70,12 +68,10 @@ TimeWaitConnectionInfo::TimeWaitConnectionInfo(
 }
 
 QuicTimeWaitListManager::QuicTimeWaitListManager(
-    QuicPacketWriter* writer,
-    Visitor* visitor,
-    const QuicClock* clock,
+    QuicPacketWriter* writer, Visitor* visitor, const QuicClock* clock,
     QuicAlarmFactory* alarm_factory)
     : time_wait_period_(QuicTime::Delta::FromSeconds(
-          GetQuicFlag(FLAGS_quic_time_wait_list_seconds))),
+          GetQuicFlag(quic_time_wait_list_seconds))),
       connection_id_clean_up_alarm_(
           alarm_factory->CreateAlarm(new ConnectionIdCleanUpAlarm(this))),
       clock_(clock),
@@ -99,10 +95,8 @@ QuicTimeWaitListManager::FindConnectionIdDataInMap(
 }
 
 void QuicTimeWaitListManager::AddConnectionIdDataToMap(
-    const QuicConnectionId& canonical_connection_id,
-    int num_packets,
-    TimeWaitAction action,
-    TimeWaitConnectionInfo info) {
+    const QuicConnectionId& canonical_connection_id, int num_packets,
+    TimeWaitAction action, TimeWaitConnectionInfo info) {
   for (const auto& cid : info.active_connection_ids) {
     indirect_connection_id_map_[cid] = canonical_connection_id;
   }
@@ -121,8 +115,7 @@ void QuicTimeWaitListManager::RemoveConnectionDataFromMap(
 }
 
 void QuicTimeWaitListManager::AddConnectionIdToTimeWait(
-    TimeWaitAction action,
-    TimeWaitConnectionInfo info) {
+    TimeWaitAction action, TimeWaitConnectionInfo info) {
   QUICHE_DCHECK(!info.active_connection_ids.empty());
   const QuicConnectionId& canonical_connection_id =
       info.active_connection_ids.front();
@@ -137,8 +130,7 @@ void QuicTimeWaitListManager::AddConnectionIdToTimeWait(
     RemoveConnectionDataFromMap(it);
   }
   TrimTimeWaitListIfNeeded();
-  int64_t max_connections =
-      GetQuicFlag(FLAGS_quic_time_wait_list_max_connections);
+  int64_t max_connections = GetQuicFlag(quic_time_wait_list_max_connections);
   QUICHE_DCHECK(connection_id_map_.empty() ||
                 num_connections() < static_cast<size_t>(max_connections));
   if (new_connection_id) {
@@ -168,10 +160,8 @@ void QuicTimeWaitListManager::OnBlockedWriterCanWrite() {
 
 void QuicTimeWaitListManager::ProcessPacket(
     const QuicSocketAddress& self_address,
-    const QuicSocketAddress& peer_address,
-    QuicConnectionId connection_id,
-    PacketHeaderFormat header_format,
-    size_t received_packet_length,
+    const QuicSocketAddress& peer_address, QuicConnectionId connection_id,
+    PacketHeaderFormat header_format, size_t received_packet_length,
     std::unique_ptr<QuicPerPacketContext> packet_context) {
   QUICHE_DCHECK(IsConnectionIdInTimeWait(connection_id));
   // TODO(satyamshekhar): Think about handling packets from different peer
@@ -264,10 +254,8 @@ void QuicTimeWaitListManager::ProcessPacket(
 
 void QuicTimeWaitListManager::SendVersionNegotiationPacket(
     QuicConnectionId server_connection_id,
-    QuicConnectionId client_connection_id,
-    bool ietf_quic,
-    bool use_length_prefix,
-    const ParsedQuicVersionVector& supported_versions,
+    QuicConnectionId client_connection_id, bool ietf_quic,
+    bool use_length_prefix, const ParsedQuicVersionVector& supported_versions,
     const QuicSocketAddress& self_address,
     const QuicSocketAddress& peer_address,
     std::unique_ptr<QuicPerPacketContext> packet_context) {
@@ -295,10 +283,8 @@ bool QuicTimeWaitListManager::ShouldSendResponse(int received_packet_count) {
 
 void QuicTimeWaitListManager::SendPublicReset(
     const QuicSocketAddress& self_address,
-    const QuicSocketAddress& peer_address,
-    QuicConnectionId connection_id,
-    bool ietf_quic,
-    size_t received_packet_length,
+    const QuicSocketAddress& peer_address, QuicConnectionId connection_id,
+    bool ietf_quic, size_t received_packet_length,
     std::unique_ptr<QuicPerPacketContext> packet_context) {
   if (ietf_quic) {
     std::unique_ptr<QuicEncryptedPacket> ietf_reset_packet =
@@ -354,8 +340,7 @@ std::unique_ptr<QuicEncryptedPacket> QuicTimeWaitListManager::BuildPublicReset(
 
 std::unique_ptr<QuicEncryptedPacket>
 QuicTimeWaitListManager::BuildIetfStatelessResetPacket(
-    QuicConnectionId connection_id,
-    size_t received_packet_length) {
+    QuicConnectionId connection_id, size_t received_packet_length) {
   return QuicFramer::BuildIetfStatelessResetPacket(
       connection_id, received_packet_length,
       GetStatelessResetToken(connection_id));
@@ -371,7 +356,7 @@ bool QuicTimeWaitListManager::SendOrQueuePacket(
     return true;
   }
   if (pending_packets_queue_.size() >=
-      GetQuicFlag(FLAGS_quic_time_wait_list_max_pending_packets)) {
+      GetQuicFlag(quic_time_wait_list_max_pending_packets)) {
     // There are too many pending packets.
     QUIC_CODE_COUNT(quic_too_many_pending_packets_in_time_wait);
     return true;
@@ -470,7 +455,7 @@ void QuicTimeWaitListManager::CleanUpOldConnectionIds() {
 
 void QuicTimeWaitListManager::TrimTimeWaitListIfNeeded() {
   const int64_t kMaxConnections =
-      GetQuicFlag(FLAGS_quic_time_wait_list_max_connections);
+      GetQuicFlag(quic_time_wait_list_max_connections);
   if (kMaxConnections < 0) {
     return;
   }
@@ -481,9 +466,7 @@ void QuicTimeWaitListManager::TrimTimeWaitListIfNeeded() {
 }
 
 QuicTimeWaitListManager::ConnectionIdData::ConnectionIdData(
-    int num_packets,
-    QuicTime time_added,
-    TimeWaitAction action,
+    int num_packets, QuicTime time_added, TimeWaitAction action,
     TimeWaitConnectionInfo info)
     : num_packets(num_packets),
       time_added(time_added),

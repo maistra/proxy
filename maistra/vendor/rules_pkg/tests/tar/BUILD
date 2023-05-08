@@ -12,32 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # -*- coding: utf-8 -*-
+"""Tests for pkg_tar."""
 
-load("//pkg:pkg.bzl", "SUPPORTED_TAR_COMPRESSIONS", "pkg_tar")
+# buildifier: disable=bzl-visibility
+load("//pkg:mappings.bzl", "pkg_files", "strip_prefix")
+load("//pkg/private/tar:tar.bzl", "SUPPORTED_TAR_COMPRESSIONS", "pkg_tar")
 load("//tests:my_package_name.bzl", "my_package_naming")
 load("//tests/util:defs.bzl", "directory", "fake_artifact")
 load("@rules_python//python:defs.bzl", "py_test")
 load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 
+package(default_applicable_licenses = ["//:license"])
+
 py_test(
-    name = "archive_test",
+    name = "tar_writer_test",
     srcs = [
-        "archive_test.py",
+        "tar_writer_test.py",
     ],
     data = [
         ":compressor",
         ":test_tar_compression",
         ":test_tar_package_dir",
         ":test_tar_package_dir_file",
-        # TODO(aiuto): Some of these are used by pkg_deb tests. Figure out why
-        # and eliminate the weird cross coupling.
-        "//tests:testdata/empty.ar",
-        "//tests:testdata/a_ab.ar",
-        "//tests:testdata/a.ar",
-        "//tests:testdata/a_b_ab.ar",
-        "//tests:testdata/a_b.ar",
-        "//tests:testdata/ab.ar",
-        "//tests:testdata/b.ar",
         "//tests:testdata/tar_test.tar",
         "//tests:testdata/tar_test.tar.bz2",
         "//tests:testdata/tar_test.tar.gz",
@@ -47,7 +43,7 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        "//pkg/private:archive",
+        "//pkg/private/tar:tar_writer",
         "@bazel_tools//tools/python/runfiles",
     ],
 )
@@ -158,7 +154,7 @@ pkg_tar(
 
 [pkg_tar(
     name = "test-tar-inclusion-%s" % ext,
-    build_tar = "//pkg/private:build_tar",
+    build_tar = "//pkg/private/tar:build_tar",
     deps = [
         ":test-tar-basic-%s" % ext,
         ":test_tar_naming",
@@ -263,8 +259,48 @@ pkg_tar(
     name = "test-tar-tree-artifact",
     srcs = [
         ":generate_tree",
+        "//tests:loremipsum_txt",
     ],
     package_dir = "a_tree",
+)
+
+pkg_files(
+    name = "tree_noroot",
+    srcs = [
+        ":generate_tree",
+    ],
+    strip_prefix = "generate_tree",
+)
+
+pkg_tar(
+    name = "test-tar-tree-artifact-noroot",
+    srcs = [
+        ":tree_noroot",
+        "//tests:loremipsum_txt",
+    ],
+    package_dir = "a_tree",
+)
+
+fake_artifact(
+    name = "a_program",
+    files = ["//tests:testdata/executable.sh"],
+    runfiles = ["BUILD"],
+)
+
+pkg_tar(
+    name = "test-tar-with-runfiles",
+    srcs = [
+        ":a_program",
+    ],
+    include_runfiles = True,
+)
+
+pkg_tar(
+    name = "test_tar_leading_dotslash",
+    srcs = [
+        "//tests:loremipsum_txt",
+    ],
+    package_dir = ".",
 )
 
 py_test(
@@ -283,10 +319,12 @@ py_test(
         ":test-tar-strip_prefix-etc.tar",
         ":test-tar-strip_prefix-none.tar",
         ":test-tar-strip_prefix-substring.tar",
+        ":test_tar_leading_dotslash",
         ":test_tar_package_dir_substitution.tar",
         ":test-tar-long-filename",
         ":test-tar-repackaging-long-filename.tar",
         ":test-tar-tree-artifact",
+        ":test-tar-tree-artifact-noroot",
         ":test-tar-with-runfiles",
         "//tests:testdata/tar_test.tar",
         "//tests:testdata/tar_test.tar.bz2",
@@ -302,7 +340,7 @@ py_test(
     ],
     python_version = "PY3",
     deps = [
-        "//pkg/private:archive",
+        "//pkg/private/tar:tar_writer",
         "@bazel_tools//tools/python/runfiles",
     ],
 )
@@ -318,15 +356,6 @@ test_suite(
 test_suite(
     name = "all_windows_tests",
     tests = [":windows_tests"],
-)
-
-# Used within experimental/tests/ for external repo genpkg tests
-filegroup(
-    name = "loremipsum_txt",
-    srcs = [
-        "//tests:testdata/loremipsum.txt",
-    ],
-    visibility = ["//visibility:public"],
 )
 
 pkg_tar(
@@ -351,20 +380,6 @@ pkg_tar(
         "//tests:testdata/loremipsum.txt",
     ],
     extension = ".bz2",
-)
-
-fake_artifact(
-    name = "a_program",
-    files = ["//tests:testdata/executable.sh"],
-    runfiles = ["BUILD"],
-)
-
-pkg_tar(
-    name = "test-tar-with-runfiles",
-    srcs = [
-        ":a_program",
-    ],
-    include_runfiles = True,
 )
 
 py_test(

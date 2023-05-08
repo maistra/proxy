@@ -19,6 +19,10 @@
 #include <memory>
 #include <thread>
 
+#include <gtest/gtest.h>
+
+#include "absl/memory/memory.h"
+
 #include <grpc/grpc.h>
 #include <grpc/support/time.h>
 #include <grpcpp/channel.h>
@@ -32,14 +36,10 @@
 #include <grpcpp/server_context.h>
 #include <grpcpp/support/slice.h>
 
-#include "absl/memory/memory.h"
-
 #include "src/proto/grpc/testing/echo.grpc.pb.h"
 #include "test/core/util/port.h"
 #include "test/core/util/test_config.h"
 #include "test/cpp/util/byte_buffer_proto_helper.h"
-
-#include <gtest/gtest.h>
 
 using grpc::testing::EchoRequest;
 using grpc::testing::EchoResponse;
@@ -229,7 +229,7 @@ class GenericEnd2endTest : public ::testing::Test {
         switch (event) {
           case Event::kCallReceived:
             reader_writer.Finish(
-                ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "go away"),
+                grpc::Status(grpc::StatusCode::UNIMPLEMENTED, "go away"),
                 reinterpret_cast<void*>(Event::kResponseSent));
             break;
 
@@ -425,7 +425,7 @@ TEST_F(GenericEnd2endTest, ShortDeadline) {
 }  // namespace grpc
 
 int main(int argc, char** argv) {
-  grpc::testing::TestEnvironment env(argc, argv);
+  grpc::testing::TestEnvironment env(&argc, argv);
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

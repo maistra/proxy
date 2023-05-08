@@ -12,7 +12,7 @@ go_library(
     importpath = "github.com/google/go-containerregistry/pkg/registry",
     visibility = ["//visibility:public"],
     deps = [
-        "//pkg/internal/httptest",
+        "//internal/httptest",
         "//pkg/v1:pkg",
         "//pkg/v1/types",
     ],

@@ -59,6 +59,9 @@ cc_library(
     ],
     deps = [
         ":protobuf",
+        ":status_error_listener",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -116,6 +119,19 @@ cc_library(
 )
 
 cc_library(
+    name = "percent_encoding_lib",
+    hdrs = [
+        "include/grpc_transcoding/percent_encoding.h",
+    ],
+    includes = [
+        "include/",
+    ],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "path_matcher",
     srcs = [
         "include/grpc_transcoding/path_matcher_node.h",
@@ -129,6 +145,7 @@ cc_library(
     ],
     deps = [
         ":http_template",
+        ":percent_encoding_lib",
     ],
 )
 
@@ -255,8 +272,27 @@ cc_library(
         "include/",
     ],
     deps = [
+        ":percent_encoding_lib",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_protobuf//:protobuf",
+    ],
+)
+
+cc_library(
+    name = "status_error_listener",
+    srcs = [
+        "status_error_listener.cc",
+    ],
+    hdrs = [
+        "include/grpc_transcoding/status_error_listener.h",
+    ],
+    includes = [
+        "include/",
+    ],
+    deps = [
+        ":protobuf",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )

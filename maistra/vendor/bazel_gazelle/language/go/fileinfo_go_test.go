@@ -19,9 +19,18 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
+)
+
+var (
+	fileInfoCmpOption = cmp.AllowUnexported(
+		fileInfo{},
+		fileEmbed{},
+		taggedOpts{},
+	)
 )
 
 func TestGoFileInfo(t *testing.T) {
@@ -160,7 +169,7 @@ var src string
 			}
 			defer os.RemoveAll(dir)
 			path := filepath.Join(dir, tc.name)
-			if err := ioutil.WriteFile(path, []byte(tc.source), 0600); err != nil {
+			if err := ioutil.WriteFile(path, []byte(tc.source), 0o600); err != nil {
 				t.Fatal(err)
 			}
 
@@ -178,9 +187,10 @@ var src string
 				got.embeds[i] = fileEmbed{path: got.embeds[i].path}
 			}
 
-			if !reflect.DeepEqual(got, tc.want) {
-				t.Errorf("case %q: got %#v; want %#v", tc.desc, got, tc.want)
+			if diff := cmp.Diff(tc.want, got, fileInfoCmpOption); diff != "" {
+				t.Errorf("(-want, +got): %s", diff)
 			}
+
 		})
 	}
 }
@@ -193,7 +203,7 @@ func TestGoFileInfoFailure(t *testing.T) {
 	defer os.RemoveAll(dir)
 	name := "foo_linux_amd64.go"
 	path := filepath.Join(dir, name)
-	if err := ioutil.WriteFile(path, []byte("pakcage foo"), 0600); err != nil {
+	if err := ioutil.WriteFile(path, []byte("pakcage foo"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -205,9 +215,10 @@ func TestGoFileInfoFailure(t *testing.T) {
 		goos:   "linux",
 		goarch: "amd64",
 	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("got %#v ; want %#v", got, want)
+	if diff := cmp.Diff(want, got, fileInfoCmpOption); diff != "" {
+		t.Errorf("(-want, +got): %s", diff)
 	}
+
 }
 
 func TestCgo(t *testing.T) {
@@ -316,7 +327,7 @@ import ("C")
 			defer os.RemoveAll(dir)
 			name := "TestCgo.go"
 			path := filepath.Join(dir, name)
-			if err := ioutil.WriteFile(path, []byte(tc.source), 0600); err != nil {
+			if err := ioutil.WriteFile(path, []byte(tc.source), 0o600); err != nil {
 				t.Fatal(err)
 			}
 
@@ -331,9 +342,10 @@ import ("C")
 				clinkopts: got.clinkopts,
 			}
 
-			if !reflect.DeepEqual(got, tc.want) {
-				t.Errorf("case %q: got %#v; want %#v", tc.desc, got, tc.want)
+			if diff := cmp.Diff(tc.want, got, fileInfoCmpOption); diff != "" {
+				t.Errorf("(-want, +got): %s", diff)
 			}
+
 		})
 	}
 }
@@ -371,13 +383,23 @@ func TestExpandSrcDir(t *testing.T) {
 	}
 }
 
+var (
+	goPackageCmpOption = cmp.AllowUnexported(
+		goPackage{},
+		goTarget{},
+		protoTarget{},
+		platformStringsBuilder{},
+		platformStringInfo{},
+	)
+)
+
 func TestExpandSrcDirRepoRelative(t *testing.T) {
 	repo, err := ioutil.TempDir(os.Getenv("TEST_TEMPDIR"), "repo")
 	if err != nil {
 		t.Fatal(err)
 	}
 	sub := filepath.Join(repo, "sub")
-	if err := os.Mkdir(sub, 0755); err != nil {
+	if err := os.Mkdir(sub, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	goFile := filepath.Join(sub, "sub.go")
@@ -388,7 +410,7 @@ func TestExpandSrcDirRepoRelative(t *testing.T) {
 */
 import "C"
 `)
-	if err := ioutil.WriteFile(goFile, content, 0644); err != nil {
+	if err := ioutil.WriteFile(goFile, content, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	c, _, _ := testConfig(
@@ -409,9 +431,10 @@ import "C"
 	}
 	want.library.sources.addGenericString("sub.go")
 	want.library.copts.addGenericString("-Isub/..")
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("got %#v ; want %#v", got, want)
+	if diff := cmp.Diff(want, got, goPackageCmpOption); diff != "" {
+		t.Errorf("(-want, +got): %s", diff)
 	}
+
 }
 
 // Copied from go/build build_test.go

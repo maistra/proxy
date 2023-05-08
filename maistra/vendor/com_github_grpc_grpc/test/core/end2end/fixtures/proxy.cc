@@ -18,15 +18,23 @@
 
 #include "test/core/end2end/fixtures/proxy.h"
 
+#include <stdlib.h>
 #include <string.h>
 
+#include <string>
+#include <utility>
+
+#include <grpc/byte_buffer.h>
+#include <grpc/impl/codegen/propagation_bits.h>
+#include <grpc/slice.h>
+#include <grpc/status.h>
 #include <grpc/support/alloc.h>
 #include <grpc/support/log.h>
 #include <grpc/support/sync.h>
+#include <grpc/support/time.h>
 
-#include "src/core/lib/gpr/useful.h"
+#include "src/core/lib/channel/channel_args.h"
 #include "src/core/lib/gprpp/host_port.h"
-#include "src/core/lib/gprpp/memory.h"
 #include "src/core/lib/gprpp/thd.h"
 #include "src/core/lib/surface/call.h"
 #include "test/core/util/port.h"
@@ -84,9 +92,9 @@ typedef struct {
 static void thread_main(void* arg);
 static void request_call(grpc_end2end_proxy* proxy);
 
-grpc_end2end_proxy* grpc_end2end_proxy_create(const grpc_end2end_proxy_def* def,
-                                              grpc_channel_args* client_args,
-                                              grpc_channel_args* server_args) {
+grpc_end2end_proxy* grpc_end2end_proxy_create(
+    const grpc_end2end_proxy_def* def, const grpc_channel_args* client_args,
+    const grpc_channel_args* server_args) {
   int proxy_port = grpc_pick_unused_port_or_die();
   int server_port = grpc_pick_unused_port_or_die();
 
@@ -104,7 +112,7 @@ grpc_end2end_proxy* grpc_end2end_proxy_create(const grpc_end2end_proxy_def* def,
   const char* arg_to_remove = GRPC_ARG_ENABLE_RETRIES;
   grpc_arg arg_to_add = grpc_channel_arg_integer_create(
       const_cast<char*>(GRPC_ARG_ENABLE_RETRIES), 0);
-  grpc_channel_args* proxy_client_args =
+  const grpc_channel_args* proxy_client_args =
       grpc_channel_args_copy_and_add_and_remove(client_args, &arg_to_remove, 1,
                                                 &arg_to_add, 1);
   proxy->client =
@@ -353,8 +361,7 @@ static void on_new_call(void* arg, int success) {
     proxy_call* pc = static_cast<proxy_call*>(gpr_malloc(sizeof(*pc)));
     memset(pc, 0, sizeof(*pc));
     pc->proxy = proxy;
-    GPR_SWAP(grpc_metadata_array, pc->c2p_initial_metadata,
-             proxy->new_call_metadata);
+    std::swap(pc->c2p_initial_metadata, proxy->new_call_metadata);
     pc->c2p = proxy->new_call;
     pc->p2s = grpc_channel_create_call(
         proxy->client, pc->c2p, GRPC_PROPAGATE_DEFAULTS, proxy->cq,
@@ -375,7 +382,7 @@ static void on_new_call(void* arg, int success) {
     GPR_ASSERT(err == GRPC_CALL_OK);
 
     op.op = GRPC_OP_SEND_INITIAL_METADATA;
-    op.flags = proxy->new_call_details.flags;
+    op.flags = 0;
     op.data.send_initial_metadata.count = pc->c2p_initial_metadata.count;
     op.data.send_initial_metadata.metadata = pc->c2p_initial_metadata.metadata;
     refpc(pc, "on_p2s_sent_initial_metadata");

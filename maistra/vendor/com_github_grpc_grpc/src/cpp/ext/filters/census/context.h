@@ -21,26 +21,22 @@
 
 #include <grpc/support/port_platform.h>
 
-#include <grpc/status.h>
+#include <stddef.h>
+#include <stdint.h>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
-
-#include "opencensus/context/context.h"
 #include "opencensus/tags/tag_map.h"
-#include "opencensus/trace/context_util.h"
+#include "opencensus/trace/attribute_value_ref.h"
 #include "opencensus/trace/span.h"
 #include "opencensus/trace/span_context.h"
-#include "opencensus/trace/trace_params.h"
 
-#include "src/core/lib/slice/slice_internal.h"
-#include "src/cpp/common/channel_filter.h"
-#include "src/cpp/ext/filters/census/rpc_encoding.h"
+#include <grpc/grpc.h>
+#include <grpc/slice.h>
+#include <grpc/status.h>
 
-// This is needed because grpc has hardcoded CensusContext with a
-// forward declaration of 'struct census_context;'
-struct census_context;
+#include "src/core/lib/channel/channel_stack.h"
+#include "src/core/lib/slice/slice.h"
 
 namespace grpc {
 
@@ -63,6 +59,11 @@ class CensusContext {
       : span_(::opencensus::trace::Span::StartSpanWithRemoteParent(
             name, parent_ctxt)),
         tags_({}) {}
+
+  void AddSpanAttribute(absl::string_view key,
+                        opencensus::trace::AttributeValueRef attribute) {
+    span_.AddAttribute(key, attribute);
+  }
 
   const ::opencensus::trace::Span& Span() const { return span_; }
   const ::opencensus::tags::TagMap& tags() const { return tags_; }
@@ -122,15 +123,12 @@ uint64_t GetOutgoingDataSize(const grpc_call_final_info* final_info);
 // Returns a string representation of the StatusCode enum.
 absl::string_view StatusCodeToString(grpc_status_code code);
 
-inline absl::string_view GetMethod(const grpc_slice* path) {
-  if (GRPC_SLICE_IS_EMPTY(*path)) {
+inline absl::string_view GetMethod(const grpc_core::Slice& path) {
+  if (path.empty()) {
     return "";
   }
   // Check for leading '/' and trim it if present.
-  return absl::StripPrefix(absl::string_view(reinterpret_cast<const char*>(
-                                                 GRPC_SLICE_START_PTR(*path)),
-                                             GRPC_SLICE_LENGTH(*path)),
-                           "/");
+  return absl::StripPrefix(path.as_string_view(), "/");
 }
 
 }  // namespace grpc

@@ -77,7 +77,7 @@ void LockfreeEvent::DestroyEvent() {
   do {
     curr = gpr_atm_no_barrier_load(&state_);
     if (curr & kShutdownBit) {
-      GRPC_ERROR_UNREF((grpc_error_handle)(curr & ~kShutdownBit));
+      internal::StatusFreeHeapPtr(curr & ~kShutdownBit);
     } else {
       GPR_ASSERT(curr == kClosureNotReady || curr == kClosureReady);
     }
@@ -140,7 +140,7 @@ void LockfreeEvent::NotifyOn(grpc_closure* closure) {
            schedule the closure with the shutdown error */
         if ((curr & kShutdownBit) > 0) {
           grpc_error_handle shutdown_err =
-              reinterpret_cast<grpc_error_handle>(curr & ~kShutdownBit);
+              internal::StatusGetFromHeapPtr(curr & ~kShutdownBit);
           ExecCtx::Run(DEBUG_LOCATION, closure,
                        GRPC_ERROR_CREATE_REFERENCING_FROM_STATIC_STRING(
                            "FD Shutdown", &shutdown_err, 1));
@@ -160,7 +160,8 @@ void LockfreeEvent::NotifyOn(grpc_closure* closure) {
 }
 
 bool LockfreeEvent::SetShutdown(grpc_error_handle shutdown_error) {
-  gpr_atm new_state = reinterpret_cast<gpr_atm>(shutdown_error) | kShutdownBit;
+  intptr_t status_ptr = internal::StatusAllocHeapPtr(shutdown_error);
+  gpr_atm new_state = status_ptr | kShutdownBit;
 
   while (true) {
     gpr_atm curr = gpr_atm_no_barrier_load(&state_);
@@ -184,7 +185,7 @@ bool LockfreeEvent::SetShutdown(grpc_error_handle shutdown_error) {
 
         /* If fd is already shutdown, we are done */
         if ((curr & kShutdownBit) > 0) {
-          GRPC_ERROR_UNREF(shutdown_error);
+          internal::StatusFreeHeapPtr(status_ptr);
           return false;
         }
 

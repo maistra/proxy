@@ -84,6 +84,10 @@ jobs:
     - name: Install dependencies
       run: cargo install cargo-raze --version 0.14.1
 
+    - name: Format (bazel query)
+      run: |
+        bazel query 'deps(//bazel/cargo/...)'
+
     - name: Format (cargo raze)
       working-directory: bazel/cargo
       run: |
@@ -118,7 +122,7 @@ jobs:
     - uses: actions/checkout@v2
 
     - name: Install dependencies (Linux)
-      run: sudo apt update -y && sudo apt install -y clang-tidy-12
+      run: sudo apt update -y && sudo apt install -y clang-tidy-12 lld-12 && sudo ln -sf /usr/bin/lld-12 /usr/bin/lld
 
     - name: Bazel cache
       uses: PiotrSikora/cache@v2.1.7-with-skip-cache

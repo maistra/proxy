@@ -20,7 +20,7 @@ load("//go/private:nogo.bzl", "DEFAULT_NOGO", "go_register_nogo")
 load("//proto:gogo.bzl", "gogo_special_proto")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
-def go_rules_dependencies():
+def go_rules_dependencies(force = False):
     """Declares workspaces the Go rules depend on. Workspaces that use
     rules_go should call this.
 
@@ -38,50 +38,39 @@ def go_rules_dependencies():
     if getattr(native, "bazel_version", None):
         versions.check(MINIMUM_BAZEL_VERSION, bazel_version = native.bazel_version)
 
-    # Repository of standard constraint settings and values.
-    # Bazel declares this automatically after 0.28.0, but it's better to
-    # define an explicit version.
-    # releaser:upgrade-dep bazelbuild platforms
-    _maybe(
-        http_archive,
-        name = "platforms",
-        # 0.0.5, latest as of 2022-03-14
-        urls = [
-            "https://mirror.bazel.build/github.com/bazelbuild/platforms/releases/download/0.0.5/platforms-0.0.5.tar.gz",
-            "https://github.com/bazelbuild/platforms/releases/download/0.0.5/platforms-0.0.5.tar.gz",
-        ],
-        sha256 = "379113459b0feaf6bfbb584a91874c065078aa673222846ac765f86661c27407",
-        strip_prefix = "",
-    )
+    if force:
+        wrapper = _always
+    else:
+        wrapper = _maybe
 
     # Needed by rules_go implementation and tests.
     # We can't call bazel_skylib_workspace from here. At the moment, it's only
     # used to register unittest toolchains, which rules_go does not need.
     # releaser:upgrade-dep bazelbuild bazel-skylib
-    _maybe(
+    wrapper(
         http_archive,
         name = "bazel_skylib",
-        # 1.2.1, latest as of 2022-03-14
+        # 1.3.0, latest as of 2022-09-10
         urls = [
-            "https://mirror.bazel.build/github.com/bazelbuild/bazel-skylib/releases/download/1.2.1/bazel-skylib-1.2.1.tar.gz",
-            "https://github.com/bazelbuild/bazel-skylib/releases/download/1.2.1/bazel-skylib-1.2.1.tar.gz",
+            "https://mirror.bazel.build/github.com/bazelbuild/bazel-skylib/releases/download/1.3.0/bazel-skylib-1.3.0.tar.gz",
+            "https://github.com/bazelbuild/bazel-skylib/releases/download/1.3.0/bazel-skylib-1.3.0.tar.gz",
         ],
-        sha256 = "f7be3474d42aae265405a592bb7da8e171919d74c16f082a5457840f06054728",
+        sha256 = "74d544d96f4a5bb630d465ca8bbcfe231e3594e5aae57e1edbf17a6eb3ca2506",
         strip_prefix = "",
     )
 
     # Needed for nogo vet checks and go/packages.
     # releaser:upgrade-dep golang tools
-    _maybe(
+    wrapper(
         http_archive,
         name = "org_golang_x_tools",
-        # v0.1.9, latest as of 2022-03-14
+        # v0.1.12, latest as of 2022-09-10
         urls = [
-            "https://mirror.bazel.build/github.com/golang/tools/archive/v0.1.9.zip",
-            "https://github.com/golang/tools/archive/v0.1.9.zip",
+            "https://mirror.bazel.build/github.com/golang/tools/archive/refs/tags/v0.1.12.zip",
+            "https://github.com/golang/tools/archive/refs/tags/v0.1.12.zip",
         ],
-        sha256 = "1d338afb3cd8013cfb035da6831dea2210efb0386c17b9c99b5e84724e3d733a",
-        strip_prefix = "tools-0.1.9",
+        sha256 = "4e3d94e7bf8dde5dad681c5ddddda6e634f8c8c500683fdf3d2f77a9c086702d",
+        strip_prefix = "tools-0.1.12",
         patches = [
             # deletegopls removes the gopls subdirectory. It contains a nested
             # module with additional dependencies. It's not needed by rules_go.
@@ -94,16 +83,16 @@ def go_rules_dependencies():
     )
 
     # releaser:upgrade-dep golang sys
-    _maybe(
+    wrapper(
         http_archive,
         name = "org_golang_x_sys",
-        # master, as of 2022-03-14
+        # master, as of 2022-09-10
         urls = [
-            "https://mirror.bazel.build/github.com/golang/sys/archive/b874c991c1a50803422b257fb721b0b2dee3cf72.zip",
-            "https://github.com/golang/sys/archive/b874c991c1a50803422b257fb721b0b2dee3cf72.zip",
+            "https://mirror.bazel.build/github.com/golang/sys/archive/aba9fc2a8ff2c9439446386f616b860442f0cf9a.zip",
+            "https://github.com/golang/sys/archive/aba9fc2a8ff2c9439446386f616b860442f0cf9a.zip",
         ],
-        sha256 = "1b1e185f2ad0c6d66b4847c274c95c1271071746fe7d07d258151f4e9caf5d08",
-        strip_prefix = "sys-b874c991c1a50803422b257fb721b0b2dee3cf72",
+        sha256 = "ed02417470528e20fca4c422043984e565c4d8acaa0cb946408125f676acb1ea",
+        strip_prefix = "sys-aba9fc2a8ff2c9439446386f616b860442f0cf9a",
         patches = [
             # releaser:patch-cmd gazelle -repo_root . -go_prefix golang.org/x/sys -go_naming_convention import_alias
             Label("//third_party:org_golang_x_sys-gazelle.patch"),
@@ -113,16 +102,16 @@ def go_rules_dependencies():
 
     # Needed by golang.org/x/tools/go/packages
     # releaser:upgrade-dep golang xerrors
-    _maybe(
+    wrapper(
         http_archive,
         name = "org_golang_x_xerrors",
-        # master, as of 2022-03-14
+        # master, as of 2022-09-10
         urls = [
-            "https://mirror.bazel.build/github.com/golang/xerrors/archive/5ec99f83aff198f5fbd629d6c8d8eb38a04218ca.zip",
-            "https://github.com/golang/xerrors/archive/5ec99f83aff198f5fbd629d6c8d8eb38a04218ca.zip",
+            "https://mirror.bazel.build/github.com/golang/xerrors/archive/04be3eba64a22a838cdb17b8dca15a52871c08b4.zip",
+            "https://github.com/golang/xerrors/archive/04be3eba64a22a838cdb17b8dca15a52871c08b4.zip",
         ],
-        sha256 = "cd9de801daf63283be91a76d7f91e8a9541798c5c0e8bcfb7ee804b78a493b02",
-        strip_prefix = "xerrors-5ec99f83aff198f5fbd629d6c8d8eb38a04218ca",
+        sha256 = "ffad2b06ef2e09d040da2ff08077865e99ab95d4d0451737fc8e33706bb01634",
+        strip_prefix = "xerrors-04be3eba64a22a838cdb17b8dca15a52871c08b4",
         patches = [
             # releaser:patch-cmd gazelle -repo_root . -go_prefix golang.org/x/xerrors -go_naming_convention import_alias
             Label("//third_party:org_golang_x_xerrors-gazelle.patch"),
@@ -148,16 +137,16 @@ def go_rules_dependencies():
 
     # Go protobuf runtime library and utilities.
     # releaser:upgrade-dep protocolbuffers protobuf-go
-    _maybe(
+    wrapper(
         http_archive,
         name = "org_golang_google_protobuf",
-        sha256 = "a01b25899f598fbac3c2626376b74fc15229f009904c262658f8da1c1c392386",
-        # v1.27.1, latest as of 2022-03-14
+        sha256 = "cbaac40c1faf6a3647316d46ec9c614e99aa92c539a78b7c1e4dec3ff5f73694",
+        # v1.28.1, latest as of 2022-09-10
         urls = [
-            "https://mirror.bazel.build/github.com/protocolbuffers/protobuf-go/archive/v1.27.1.zip",
-            "https://github.com/protocolbuffers/protobuf-go/archive/v1.27.1.zip",
+            "https://mirror.bazel.build/github.com/protocolbuffers/protobuf-go/archive/refs/tags/v1.28.1.zip",
+            "https://github.com/protocolbuffers/protobuf-go/archive/refs/tags/v1.28.1.zip",
         ],
-        strip_prefix = "protobuf-go-1.27.1",
+        strip_prefix = "protobuf-go-1.28.1",
         patches = [
             # releaser:patch-cmd gazelle -repo_root . -go_prefix google.golang.org/protobuf -go_naming_convention import_alias -proto disable_global
             Label("//third_party:org_golang_google_protobuf-gazelle.patch"),
@@ -171,13 +160,13 @@ def go_rules_dependencies():
     # We need to apply a patch to enable both go_proto_library and
     # go_library with pre-generated sources.
     # releaser:upgrade-dep golang protobuf
-    _maybe(
+    wrapper(
         http_archive,
         name = "com_github_golang_protobuf",
-        # v1.5.2, latest as of 2022-03-14
+        # v1.5.2, latest as of 2022-09-10
         urls = [
-            "https://mirror.bazel.build/github.com/golang/protobuf/archive/v1.5.2.zip",
-            "https://github.com/golang/protobuf/archive/v1.5.2.zip",
+            "https://mirror.bazel.build/github.com/golang/protobuf/archive/refs/tags/v1.5.2.zip",
+            "https://github.com/golang/protobuf/archive/refs/tags/v1.5.2.zip",
         ],
         sha256 = "5bd0a70e2f3829db9d0e340887af4e921c5e0e5bb3f8d1be49a934204cb16445",
         strip_prefix = "protobuf-1.5.2",
@@ -191,13 +180,13 @@ def go_rules_dependencies():
     # Extra protoc plugins and libraries.
     # Doesn't belong here, but low maintenance.
     # releaser:upgrade-dep mwitkow go-proto-validators
-    _maybe(
+    wrapper(
         http_archive,
         name = "com_github_mwitkow_go_proto_validators",
-        # v0.3.2, latest as of 2022-03-14
+        # v0.3.2, latest as of 2022-09-10
         urls = [
-            "https://mirror.bazel.build/github.com/mwitkow/go-proto-validators/archive/v0.3.2.zip",
-            "https://github.com/mwitkow/go-proto-validators/archive/v0.3.2.zip",
+            "https://mirror.bazel.build/github.com/mwitkow/go-proto-validators/archive/refs/tags/v0.3.2.zip",
+            "https://github.com/mwitkow/go-proto-validators/archive/refs/tags/v0.3.2.zip",
         ],
         sha256 = "d8697f05a2f0eaeb65261b480e1e6035301892d9fc07ed945622f41b12a68142",
         strip_prefix = "go-proto-validators-0.3.2",
@@ -205,13 +194,13 @@ def go_rules_dependencies():
     )
 
     # releaser:upgrade-dep gogo protobuf
-    _maybe(
+    wrapper(
         http_archive,
         name = "com_github_gogo_protobuf",
-        # v1.3.2, latest as of 2022-03-14
+        # v1.3.2, latest as of 2022-09-10
         urls = [
-            "https://mirror.bazel.build/github.com/gogo/protobuf/archive/v1.3.2.zip",
-            "https://github.com/gogo/protobuf/archive/v1.3.2.zip",
+            "https://mirror.bazel.build/github.com/gogo/protobuf/archive/refs/tags/v1.3.2.zip",
+            "https://github.com/gogo/protobuf/archive/refs/tags/v1.3.2.zip",
         ],
         sha256 = "f89f8241af909ce3226562d135c25b28e656ae173337b3e58ede917aa26e1e3c",
         strip_prefix = "protobuf-1.3.2",
@@ -222,7 +211,7 @@ def go_rules_dependencies():
         patch_args = ["-p1"],
     )
 
-    _maybe(
+    wrapper(
         gogo_special_proto,
         name = "gogo_special_proto",
     )
@@ -232,16 +221,16 @@ def go_rules_dependencies():
     # Doesn't belong here, but it would be an annoying source of errors if
     # this weren't generated with -proto disable_global.
     # releaser:upgrade-dep googleapis go-genproto
-    _maybe(
+    wrapper(
         http_archive,
         name = "org_golang_google_genproto",
-        # main, as of 2022-03-14
+        # main, as of 2022-09-10
         urls = [
-            "https://mirror.bazel.build/github.com/googleapis/go-genproto/archive/57ef72a4c106086f9e50d41d88cdb1dbbce5486e.zip",
-            "https://github.com/googleapis/go-genproto/archive/57ef72a4c106086f9e50d41d88cdb1dbbce5486e.zip",
+            "https://mirror.bazel.build/github.com/googleapis/go-genproto/archive/69f6226f97e558dbaa68715071622af0d86b3a17.zip",
+            "https://github.com/googleapis/go-genproto/archive/69f6226f97e558dbaa68715071622af0d86b3a17.zip",
         ],
-        sha256 = "6fec9c3360c896545f10b5271b90ec30829fd079c105f0aeb33ebdbb1d74ecfa",
-        strip_prefix = "go-genproto-57ef72a4c106086f9e50d41d88cdb1dbbce5486e",
+        sha256 = "0d47b1ae576fffd1280538ba0b2bca5d08d6dc8df9b2a41e0ce096e37d73e2c9",
+        strip_prefix = "go-genproto-69f6226f97e558dbaa68715071622af0d86b3a17",
         patches = [
             # releaser:patch-cmd gazelle -repo_root . -go_prefix google.golang.org/genproto -go_naming_convention import_alias -proto disable_global
             Label("//third_party:org_golang_google_genproto-gazelle.patch"),
@@ -255,16 +244,16 @@ def go_rules_dependencies():
     # here. Gazelle should resolve dependencies to com_google_googleapis
     # instead, and we should remove this.
     # releaser:upgrade-dep googleapis googleapis
-    _maybe(
+    wrapper(
         http_archive,
         name = "go_googleapis",
-        # master, as of 2022-03-14
+        # master, as of 2022-09-10
         urls = [
-            "https://mirror.bazel.build/github.com/googleapis/googleapis/archive/9acf39829240ef41f5adb762a29b87bc6eeee728.zip",
-            "https://github.com/googleapis/googleapis/archive/9acf39829240ef41f5adb762a29b87bc6eeee728.zip",
+            "https://mirror.bazel.build/github.com/googleapis/googleapis/archive/8167badf3ce86086c69db2942a8995bb2de56c51.zip",
+            "https://github.com/googleapis/googleapis/archive/8167badf3ce86086c69db2942a8995bb2de56c51.zip",
         ],
-        sha256 = "69712ea6f6a132e77d788b9b0ed8e974e0a3d377e88c7283f6950e13c4e60438",
-        strip_prefix = "googleapis-9acf39829240ef41f5adb762a29b87bc6eeee728",
+        sha256 = "b97d75f1c937ed2235c501fafc475f51a3280d26f9410831686fdfd1b4f612f9",
+        strip_prefix = "googleapis-8167badf3ce86086c69db2942a8995bb2de56c51",
         patches = [
             # releaser:patch-cmd find . -name BUILD.bazel -delete
             Label("//third_party:go_googleapis-deletebuild.patch"),
@@ -276,10 +265,28 @@ def go_rules_dependencies():
         patch_args = ["-E", "-p1"],
     )
 
+    # releaser:upgrade-dep golang mock
+    _maybe(
+        http_archive,
+        name = "com_github_golang_mock",
+        # v1.7.0-rc.1, latest as of 2022-09-10
+        urls = [
+            "https://mirror.bazel.build/github.com/golang/mock/archive/refs/tags/v1.7.0-rc.1.zip",
+            "https://github.com/golang/mock/archive/refs/tags/v1.7.0-rc.1.zip",
+        ],
+        patches = [
+            # releaser:patch-cmd gazelle -repo_root . -go_prefix github.com/golang/mock -go_naming_convention import_alias
+            Label("//third_party:com_github_golang_mock-gazelle.patch"),
+        ],
+        patch_args = ["-p1"],
+        sha256 = "5359c78b0c1649cf7beb3b48ff8b1d1aaf0243b22ea4789aba94805280075d8e",
+        strip_prefix = "mock-1.7.0-rc.1",
+    )
+
     # This may be overridden by go_register_toolchains, but it's not mandatory
     # for users to call that function (they may declare their own @go_sdk and
     # register their own toolchains).
-    _maybe(
+    wrapper(
         go_register_nogo,
         name = "io_bazel_rules_nogo",
         nogo = DEFAULT_NOGO,
@@ -288,3 +295,6 @@ def go_rules_dependencies():
 def _maybe(repo_rule, name, **kwargs):
     if name not in native.existing_rules():
         repo_rule(name = name, **kwargs)
+
+def _always(repo_rule, name, **kwargs):
+    repo_rule(name = name, **kwargs)

@@ -32,7 +32,7 @@ fn run_buildrs() -> Result<(), String> {
     let exec_root = env::current_dir().expect("Failed to get current directory");
     let manifest_dir_env = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR was not set");
     let rustc_env = env::var("RUSTC").expect("RUSTC was not set");
-    let manifest_dir = exec_root.join(&manifest_dir_env);
+    let manifest_dir = exec_root.join(manifest_dir_env);
     let rustc = exec_root.join(&rustc_env);
     let Options {
         progname,
@@ -48,7 +48,7 @@ fn run_buildrs() -> Result<(), String> {
         input_dep_env_paths,
     } = parse_args()?;
 
-    let out_dir_abs = exec_root.join(&out_dir);
+    let out_dir_abs = exec_root.join(out_dir);
     // For some reason Google's RBE does not create the output directory, force create it.
     create_dir_all(&out_dir_abs)
         .unwrap_or_else(|_| panic!("Failed to make output directory: {:?}", out_dir_abs));
@@ -56,7 +56,7 @@ fn run_buildrs() -> Result<(), String> {
     let target_env_vars =
         get_target_env_vars(&rustc_env).expect("Error getting target env vars from rustc");
 
-    let mut command = Command::new(exec_root.join(&progname));
+    let mut command = Command::new(exec_root.join(progname));
     command
         .current_dir(&manifest_dir)
         .envs(target_env_vars)
@@ -72,9 +72,8 @@ fn run_buildrs() -> Result<(), String> {
                 if line.is_empty() {
                     continue;
                 }
-                let mut key_val = line.splitn(2, '=');
-                match (key_val.next(), key_val.next()) {
-                    (Some(key), Some(value)) => {
+                match line.split_once('=') {
+                    Some((key, value)) => {
                         command.env(key, value.replace("${pwd}", &exec_root.to_string_lossy()));
                     }
                     _ => {
@@ -89,14 +88,9 @@ fn run_buildrs() -> Result<(), String> {
         }
     }
 
-    for compiler_env_var in &["CC", "CXX"] {
-        if let Some(compiler_path) = env::var_os(compiler_env_var) {
-            let mut compiler_path = exec_root.join(compiler_path).into_os_string();
-            if let Some(sysroot_path) = env::var_os("SYSROOT") {
-                compiler_path.push(" --sysroot=");
-                compiler_path.push(&exec_root.join(sysroot_path));
-            }
-            command.env(compiler_env_var, compiler_path);
+    for tool_env_var in &["CC", "CXX", "LD"] {
+        if let Some(tool_path) = env::var_os(tool_env_var) {
+            command.env(tool_env_var, exec_root.join(tool_path));
         }
     }
 
@@ -109,10 +103,6 @@ fn run_buildrs() -> Result<(), String> {
         } else {
             command.env("AR", exec_root.join(ar_path));
         }
-    }
-
-    if let Some(ld_path) = env::var_os("LD") {
-        command.env("LD", exec_root.join(ld_path));
     }
 
     // replace env vars with a ${pwd} prefix with the exec_root
@@ -137,7 +127,7 @@ fn run_buildrs() -> Result<(), String> {
         format!(
             "Build script process failed{}\n--stdout:\n{}\n--stderr:\n{}",
             if let Some(exit_code) = process_output.status.code() {
-                format!(" with exit code {}", exit_code)
+                format!(" with exit code {exit_code}")
             } else {
                 String::new()
             },
@@ -246,15 +236,14 @@ fn get_target_env_vars<P: AsRef<Path>>(rustc: &P) -> Result<BTreeMap<String, Str
             env::var("TARGET").expect("missing TARGET")
         ))
         .output()
-        .map_err(|err| format!("Error running rustc to get target information: {}", err))?;
+        .map_err(|err| format!("Error running rustc to get target information: {err}"))?;
     if !output.status.success() {
         return Err(format!(
-            "Error running rustc to get target information: {:?}",
-            output
+            "Error running rustc to get target information: {output:?}",
         ));
     }
     let stdout = std::str::from_utf8(&output.stdout)
-        .map_err(|err| format!("Non-UTF8 stdout from rustc: {:?}", err))?;
+        .map_err(|err| format!("Non-UTF8 stdout from rustc: {err:?}"))?;
 
     Ok(parse_rustc_cfg_output(stdout))
 }
@@ -264,10 +253,8 @@ fn parse_rustc_cfg_output(stdout: &str) -> BTreeMap<String, String> {
 
     for line in stdout.lines() {
         if line.starts_with("target_") && line.contains('=') {
-            let mut parts = line.splitn(2, '=');
             // UNWRAP: Verified that line contains = and split into exactly 2 parts.
-            let key = parts.next().unwrap();
-            let value = parts.next().unwrap();
+            let (key, value) = line.split_once('=').unwrap();
             if value.starts_with('"') && value.ends_with('"') && value.len() >= 2 {
                 values
                     .entry(key)
@@ -292,7 +279,7 @@ fn main() {
         Ok(_) => 0,
         Err(err) => {
             // Neatly print errors
-            eprintln!("{}", err);
+            eprintln!("{err}");
             1
         }
     });

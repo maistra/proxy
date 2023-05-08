@@ -1,6 +1,8 @@
 #include "eval/eval/comprehension_step.h"
 
 #include <cstdint>
+#include <string>
+#include <utility>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -94,7 +96,7 @@ absl::Status ComprehensionNextStep::Evaluate(ExecutionFrame* frame) const {
       return frame->JumpTo(error_jump_offset_);
     }
     frame->value_stack().Push(
-        CreateNoMatchingOverloadError(frame->arena(), "<iter_range>"));
+        CreateNoMatchingOverloadError(frame->memory_manager(), "<iter_range>"));
     return frame->JumpTo(error_jump_offset_);
   }
   const CelList* cel_list = iter_range.ListOrDie();
@@ -111,16 +113,16 @@ absl::Status ComprehensionNextStep::Evaluate(ExecutionFrame* frame) const {
 
   int64_t current_index = current_index_value.Int64OrDie();
   if (current_index == -1) {
-    CEL_RETURN_IF_ERROR(frame->PushIterFrame());
+    CEL_RETURN_IF_ERROR(frame->PushIterFrame(iter_var_, accu_var_));
   }
 
   // Update stack for breaking out of loop or next round.
   CelValue loop_step = state[POS_LOOP_STEP];
   frame->value_stack().Pop(5);
   frame->value_stack().Push(loop_step);
-  CEL_RETURN_IF_ERROR(frame->SetIterVar(accu_var_, loop_step));
+  CEL_RETURN_IF_ERROR(frame->SetAccuVar(loop_step));
   if (current_index >= cel_list->size() - 1) {
-    CEL_RETURN_IF_ERROR(frame->ClearIterVar(iter_var_));
+    CEL_RETURN_IF_ERROR(frame->ClearIterVar());
     return frame->JumpTo(jump_offset_);
   }
   frame->value_stack().Push(iter_range, iter_range_attr);
@@ -130,9 +132,9 @@ absl::Status ComprehensionNextStep::Evaluate(ExecutionFrame* frame) const {
   frame->value_stack().Push(CelValue::CreateInt64(current_index));
   auto iter_trail = iter_range_attr.Step(
       CelAttributeQualifier::Create(CelValue::CreateInt64(current_index)),
-      frame->arena());
+      frame->memory_manager());
   frame->value_stack().Push(current_value, iter_trail);
-  CEL_RETURN_IF_ERROR(frame->SetIterVar(iter_var_, current_value, iter_trail));
+  CEL_RETURN_IF_ERROR(frame->SetIterVar(current_value, iter_trail));
   return absl::OkStatus();
 }
 
@@ -167,8 +169,8 @@ absl::Status ComprehensionCondStep::Evaluate(ExecutionFrame* frame) const {
     if (loop_condition_value.IsError() || loop_condition_value.IsUnknownSet()) {
       frame->value_stack().Push(loop_condition_value);
     } else {
-      frame->value_stack().Push(
-          CreateNoMatchingOverloadError(frame->arena(), "<loop_condition>"));
+      frame->value_stack().Push(CreateNoMatchingOverloadError(
+          frame->memory_manager(), "<loop_condition>"));
     }
     // The error jump skips the ComprehensionFinish clean-up step, so we
     // need to update the iteration variable stack here.
@@ -231,8 +233,11 @@ absl::Status ListKeysStep::ProjectKeys(ExecutionFrame* frame) const {
   }
 
   const CelValue& map = frame->value_stack().Peek();
-  frame->value_stack().PopAndPush(
-      CelValue::CreateList(map.MapOrDie()->ListKeys()));
+  auto list_keys = map.MapOrDie()->ListKeys();
+  if (!list_keys.ok()) {
+    return std::move(list_keys).status();
+  }
+  frame->value_stack().PopAndPush(CelValue::CreateList(*list_keys));
   return absl::OkStatus();
 }
 

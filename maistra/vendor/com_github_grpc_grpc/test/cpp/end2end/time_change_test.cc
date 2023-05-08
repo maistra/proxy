@@ -16,6 +16,14 @@
  *
  */
 
+#include <sys/time.h>
+
+#include <thread>
+
+#include <gtest/gtest.h>
+
+#include "absl/memory/memory.h"
+
 #include <grpc/grpc.h>
 #include <grpc/support/log.h>
 #include <grpc/support/time.h>
@@ -26,18 +34,12 @@
 #include <grpcpp/server_builder.h>
 #include <grpcpp/server_context.h>
 
-#include "absl/memory/memory.h"
-
 #include "src/core/lib/iomgr/timer.h"
 #include "src/proto/grpc/testing/echo.grpc.pb.h"
 #include "test/core/util/port.h"
 #include "test/core/util/test_config.h"
 #include "test/cpp/end2end/test_service_impl.h"
 #include "test/cpp/util/subprocess.h"
-
-#include <gtest/gtest.h>
-#include <sys/time.h>
-#include <thread>
 
 using grpc::testing::EchoRequest;
 using grpc::testing::EchoResponse;
@@ -120,7 +122,9 @@ TEST(TimespecTest, GprTimeSubNegativeNs) {
 // Add negative milliseconds to gpr_timespec
 TEST(TimespecTest, GrpcNegativeMillisToTimespec) {
   // -1500 milliseconds converts to timespec (-2 secs, 5 * 10^8 nsec)
-  gpr_timespec ts = grpc_millis_to_timespec(-1500, GPR_CLOCK_MONOTONIC);
+  gpr_timespec ts =
+      grpc_core::Timestamp::FromMillisecondsAfterProcessEpoch(-1500)
+          .as_timespec(GPR_CLOCK_MONOTONIC);
   GPR_ASSERT(ts.tv_sec = -2);
   GPR_ASSERT(ts.tv_nsec = 5e8);
   GPR_ASSERT(ts.clock_type == GPR_CLOCK_MONOTONIC);
@@ -362,7 +366,7 @@ int main(int argc, char** argv) {
   gpr_mu_init(&g_mu);
   gpr_now_impl = now_impl;
 
-  grpc::testing::TestEnvironment env(argc, argv);
+  grpc::testing::TestEnvironment env(&argc, argv);
   ::testing::InitGoogleTest(&argc, argv);
   auto ret = RUN_ALL_TESTS();
   return ret;

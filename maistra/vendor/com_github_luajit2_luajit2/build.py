@@ -29,7 +29,7 @@ def main():
 
     arch = subprocess.check_output(["uname","-m"]).decode("utf-8").strip()
     compiler = os.environ.get("CC", "")
-    if "clang" in compiler and arch in ["s390x"]:
+    if "clang" in compiler and arch in ["s390x","ppc64le"]:
         extra_clang_cflags = " -fgnuc-version=10 -fno-integrated-as -Wno-implicit-function-declaration -D_Float32=float -D_Float64=double -D_Float128=double -D_Float32x=double -D_Float64x=double"
         os.environ["TARGET_CFLAGS"] += extra_clang_cflags
         os.environ["TARGET_LDFLAGS"] += " -fgnuc-version=10"

@@ -71,7 +71,7 @@ pub fn get_crate_specs(
     log::debug!("Get crate specs with targets: {:?}", targets);
     let target_pattern = targets
         .iter()
-        .map(|t| format!("deps({})", t))
+        .map(|t| format!("deps({t})"))
         .collect::<Vec<_>>()
         .join("+");
 
@@ -80,13 +80,11 @@ pub fn get_crate_specs(
         .arg("aquery")
         .arg("--include_aspects")
         .arg(format!(
-            "--aspects={}//rust:defs.bzl%rust_analyzer_aspect",
-            rules_rust_name
+            "--aspects={rules_rust_name}//rust:defs.bzl%rust_analyzer_aspect"
         ))
         .arg("--output_groups=rust_analyzer_crate_spec")
         .arg(format!(
-            r#"outputs(".*[.]rust_analyzer_crate_spec",{})"#,
-            target_pattern
+            r#"outputs(".*[.]rust_analyzer_crate_spec",{target_pattern})"#
         ))
         .arg("--output=jsonproto")
         .output()?;
@@ -164,10 +162,13 @@ fn path_from_fragments(
 /// a rust_test depends on a rust_library, for example.
 fn consolidate_crate_specs(crate_specs: Vec<CrateSpec>) -> anyhow::Result<BTreeSet<CrateSpec>> {
     let mut consolidated_specs: BTreeMap<String, CrateSpec> = BTreeMap::new();
-    for spec in crate_specs.into_iter() {
+    for mut spec in crate_specs.into_iter() {
         log::debug!("{:?}", spec);
         if let Some(existing) = consolidated_specs.get_mut(&spec.crate_id) {
             existing.deps.extend(spec.deps);
+
+            spec.cfg.retain(|cfg| !existing.cfg.contains(cfg));
+            existing.cfg.extend(spec.cfg);
 
             // display_name should match the library's crate name because Rust Analyzer
             // seems to use display_name for matching crate entries in rust-project.json

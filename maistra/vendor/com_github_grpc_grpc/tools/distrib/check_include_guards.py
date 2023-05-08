@@ -18,8 +18,8 @@ import argparse
 import os
 import os.path
 import re
-import sys
 import subprocess
+import sys
 
 
 def build_valid_guard(fpath):
@@ -46,6 +46,9 @@ class GuardValidator(object):
         self.endif_c_core_re = re.compile(
             r'#endif /\* (?: *\\\n *)?([A-Z][A-Z_1-9]*) (?:\\\n *)?\*/$')
         self.endif_re = re.compile(r'#endif  // ([A-Z][A-Z_1-9]*)')
+        self.comments_then_includes_re = re.compile(
+            r'^((//.*?$|/\*.*?\*/|[ \r\n\t])*)(([ \r\n\t]|#include .*)*)(#ifndef [^\n]*\n#define [^\n]*\n)',
+            re.DOTALL | re.MULTILINE)
         self.failed = False
 
     def _is_c_core_header(self, fpath):
@@ -66,15 +69,15 @@ class GuardValidator(object):
                         if c_core_header else '#endif  // {2}')
         if not match_txt:
             print(
-                invalid_guards_msg_template.format(fpath, regexp.pattern,
-                                                   build_valid_guard(fpath)))
+                (invalid_guards_msg_template.format(fpath, regexp.pattern,
+                                                    build_valid_guard(fpath))))
             return fcontents
 
-        print(('{}: Wrong preprocessor guards (RE {}):'
-               '\n\tFound {}, expected {}').format(fpath, regexp.pattern,
-                                                   match_txt, correct))
+        print((('{}: Wrong preprocessor guards (RE {}):'
+                '\n\tFound {}, expected {}').format(fpath, regexp.pattern,
+                                                    match_txt, correct)))
         if fix:
-            print('Fixing {}...\n'.format(fpath))
+            print(('Fixing {}...\n'.format(fpath)))
             fixed_fcontents = re.sub(match_txt, correct, fcontents)
             if fixed_fcontents:
                 self.failed = False
@@ -91,7 +94,7 @@ class GuardValidator(object):
 
         match = self.ifndef_re.search(fcontents)
         if not match:
-            print('something drastically wrong with: %s' % fpath)
+            print(('something drastically wrong with: %s' % fpath))
             return False  # failed
         if match.lastindex is None:
             # No ifndef. Request manual addition with hints
@@ -154,6 +157,18 @@ class GuardValidator(object):
             fcontents = self.fail(fpath, self.endif_re, fcontents,
                                   match.group(1), valid_guard, fix)
             if fix:
+                save(fpath, fcontents)
+
+        match = self.comments_then_includes_re.search(fcontents)
+        assert (match)
+        bad_includes = match.group(3)
+        if bad_includes:
+            print(
+                "includes after initial comments but before include guards in",
+                fpath)
+            if fix:
+                fcontents = fcontents[:match.start(3)] + match.group(
+                    5) + match.group(3) + fcontents[match.end(5):]
                 save(fpath, fcontents)
 
         return not self.failed  # Did the check succeed? (ie, not failed)

@@ -595,6 +595,24 @@ TEST_F(ValueSerializerTest, DecodeBigInt) {
           0x2A,        // Digit: 42
       },
       [this](Local<Value> value) { ExpectScriptTrue("result === 42n"); });
+  InvalidDecodeTest({
+      0xFF, 0x0F,  // Version 15
+      0x5A,        // BigInt
+      0x01,        // Bitfield: sign = true, bytelength = 0
+  });
+  // From a philosophical standpoint, we could reject this case as invalid as
+  // well, but it would require extra code and probably isn't worth it, so
+  // we quietly normalize this invalid input to {0n}.
+  DecodeTestFutureVersions(
+      {
+          0xFF, 0x0F,             // Version 15
+          0x5A,                   // BigInt
+          0x09,                   // Bitfield: sign = true, bytelength = 4
+          0x00, 0x00, 0x00, 0x00  // Digits.
+      },
+      [this](Local<Value> value) {
+        ExpectScriptTrue("(result | result) === 0n");
+      });
 }
 
 // String constants (in UTF-8) used for string encoding tests.
@@ -2334,6 +2352,23 @@ TEST_F(ValueSerializerTest, DecodeTypedArrayBackwardsCompatiblity) {
       });
 }
 
+TEST_F(ValueSerializerTest, DecodeTypedArrayBrokenData) {
+  // Test decoding the broken data where the version is 13 but the
+  // JSArrayBufferView flags are present.
+
+  // The data below is produced by the following code + changing the version
+  // to 13:
+  // std::vector<uint8_t> encoded =
+  //     EncodeTest("({ a: new Uint8Array(), b: 13 })");
+
+  Local<Value> value = DecodeTest({0xFF, 0xD,  0x6F, 0x22, 0x1,  0x61, 0x42,
+                                   0x0,  0x56, 0x42, 0x0,  0x0,  0xE8, 0x47,
+                                   0x22, 0x1,  0x62, 0x49, 0x1A, 0x7B, 0x2});
+  ASSERT_TRUE(value->IsObject());
+  ExpectScriptTrue("Object.getPrototypeOf(result.a) === Uint8Array.prototype");
+  ExpectScriptTrue("result.b === 13");
+}
+
 TEST_F(ValueSerializerTest, DecodeInvalidTypedArray) {
   // Byte offset out of range.
   InvalidDecodeTest(
@@ -2451,7 +2486,8 @@ class ValueSerializerTestWithSharedArrayBufferClone
       auto pages = byte_length / i::wasm::kWasmPageSize;
       auto i_isolate = reinterpret_cast<i::Isolate*>(isolate());
       auto backing_store = i::BackingStore::AllocateWasmMemory(
-          i_isolate, pages, pages, i::SharedFlag::kShared);
+          i_isolate, pages, pages, i::WasmMemoryFlag::kWasmMemory32,
+          i::SharedFlag::kShared);
       memcpy(backing_store->buffer_start(), data, byte_length);
       i::Handle<i::JSArrayBuffer> buffer =
           i_isolate->factory()->NewJSSharedArrayBuffer(
@@ -2466,14 +2502,14 @@ class ValueSerializerTestWithSharedArrayBufferClone
     return sab;
   }
 
-  static void SetUpTestCase() {
+  static void SetUpTestSuite() {
     flag_was_enabled_ = i::FLAG_harmony_sharedarraybuffer;
     i::FLAG_harmony_sharedarraybuffer = true;
-    ValueSerializerTest::SetUpTestCase();
+    ValueSerializerTest::SetUpTestSuite();
   }
 
-  static void TearDownTestCase() {
-    ValueSerializerTest::TearDownTestCase();
+  static void TearDownTestSuite() {
+    ValueSerializerTest::TearDownTestSuite();
     i::FLAG_harmony_sharedarraybuffer = flag_was_enabled_;
     flag_was_enabled_ = false;
   }
@@ -2923,14 +2959,14 @@ class ValueSerializerTestWithWasm : public ValueSerializerTest {
   }
 
  protected:
-  static void SetUpTestCase() {
+  static void SetUpTestSuite() {
     g_saved_flag = i::FLAG_expose_wasm;
     i::FLAG_expose_wasm = true;
-    ValueSerializerTest::SetUpTestCase();
+    ValueSerializerTest::SetUpTestSuite();
   }
 
-  static void TearDownTestCase() {
-    ValueSerializerTest::TearDownTestCase();
+  static void TearDownTestSuite() {
+    ValueSerializerTest::TearDownTestSuite();
     i::FLAG_expose_wasm = g_saved_flag;
     g_saved_flag = false;
   }
@@ -3279,6 +3315,21 @@ TEST_F(ValueSerializerTest, NonStringErrorStack) {
   ASSERT_TRUE(error->Get(deserialization_context(), StringFromUtf8("stack"))
                   .ToLocal(&stack));
   EXPECT_TRUE(stack->IsUndefined());
+}
+
+TEST_F(ValueSerializerTest, InvalidLegacyFormatData) {
+  std::vector<uint8_t> data = {0xFF, 0x0, 0xDE, 0xAD, 0xDA, 0xDA};
+  Local<Context> context = deserialization_context();
+  Context::Scope scope(context);
+  TryCatch try_catch(isolate());
+  ValueDeserializer deserializer(isolate(), &data[0],
+                                 static_cast<int>(data.size()),
+                                 GetDeserializerDelegate());
+  deserializer.SetSupportsLegacyWireFormat(true);
+  BeforeDecode(&deserializer);
+  CHECK(deserializer.ReadHeader(context).FromMaybe(false));
+  CHECK(deserializer.ReadValue(context).IsEmpty());
+  CHECK(try_catch.HasCaught());
 }
 
 }  // namespace

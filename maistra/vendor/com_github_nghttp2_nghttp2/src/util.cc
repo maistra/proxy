@@ -90,7 +90,7 @@ int nghttp2_inet_pton(int af, const char *src, void *dst) {
 
   int size = sizeof(struct in6_addr);
 
-  if (WSAStringToAddress(addr, af, NULL, (LPSOCKADDR)dst, &size) == 0)
+  if (WSAStringToAddress(addr, af, nullptr, (LPSOCKADDR)dst, &size) == 0)
     return 1;
   return 0;
 #  endif
@@ -1688,6 +1688,19 @@ int daemonize(int nochdir, int noclose) {
 #endif // !__APPLE__
 }
 
+StringRef rstrip(BlockAllocator &balloc, const StringRef &s) {
+  auto it = std::rbegin(s);
+  for (; it != std::rend(s) && (*it == ' ' || *it == '\t'); ++it)
+    ;
+
+  auto len = it - std::rbegin(s);
+  if (len == 0) {
+    return s;
+  }
+
+  return make_string_ref(balloc, StringRef{s.c_str(), s.size() - len});
+}
+
 #ifdef ENABLE_HTTP3
 int msghdr_get_local_addr(Address &dest, msghdr *msg, int family) {
   switch (family) {
@@ -1718,6 +1731,52 @@ int msghdr_get_local_addr(Address &dest, msghdr *msg, int family) {
     }
 
     return -1;
+  }
+
+  return -1;
+}
+
+unsigned int msghdr_get_ecn(msghdr *msg, int family) {
+  switch (family) {
+  case AF_INET:
+    for (auto cmsg = CMSG_FIRSTHDR(msg); cmsg; cmsg = CMSG_NXTHDR(msg, cmsg)) {
+      if (cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_TOS &&
+          cmsg->cmsg_len) {
+        return *reinterpret_cast<uint8_t *>(CMSG_DATA(cmsg));
+      }
+    }
+
+    return 0;
+  case AF_INET6:
+    for (auto cmsg = CMSG_FIRSTHDR(msg); cmsg; cmsg = CMSG_NXTHDR(msg, cmsg)) {
+      if (cmsg->cmsg_level == IPPROTO_IPV6 && cmsg->cmsg_type == IPV6_TCLASS &&
+          cmsg->cmsg_len) {
+        return *reinterpret_cast<uint8_t *>(CMSG_DATA(cmsg));
+      }
+    }
+
+    return 0;
+  }
+
+  return 0;
+}
+
+int fd_set_send_ecn(int fd, int family, unsigned int ecn) {
+  switch (family) {
+  case AF_INET:
+    if (setsockopt(fd, IPPROTO_IP, IP_TOS, &ecn,
+                   static_cast<socklen_t>(sizeof(ecn))) == -1) {
+      return -1;
+    }
+
+    return 0;
+  case AF_INET6:
+    if (setsockopt(fd, IPPROTO_IPV6, IPV6_TCLASS, &ecn,
+                   static_cast<socklen_t>(sizeof(ecn))) == -1) {
+      return -1;
+    }
+
+    return 0;
   }
 
   return -1;

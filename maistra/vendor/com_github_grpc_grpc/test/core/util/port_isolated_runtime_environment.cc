@@ -16,19 +16,21 @@
  *
  */
 
+#if defined(GRPC_PORT_ISOLATED_RUNTIME)
+
 /* When individual tests run in an isolated runtime environment (e.g. each test
  * runs in a separate container) the framework takes a round-robin pick of a
  * port within certain range. There is no need to recycle ports.
  */
+#include <stdlib.h>
+
 #include <grpc/support/atm.h>
 #include <grpc/support/log.h>
 #include <grpc/support/time.h>
-#include <stdlib.h>
-#include "src/core/lib/iomgr/port.h"
-#include "test/core/util/test_config.h"
-#if defined(GRPC_PORT_ISOLATED_RUNTIME)
 
+#include "src/core/lib/iomgr/port.h"
 #include "test/core/util/port.h"
+#include "test/core/util/test_config.h"
 
 #define MIN_PORT 1025
 #define MAX_PORT 32766

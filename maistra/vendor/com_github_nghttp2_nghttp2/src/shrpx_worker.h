@@ -133,6 +133,9 @@ struct DownstreamAddr {
   // Weight of the weight group which this address belongs to.  Its
   // range is [1, 256], inclusive.
   uint32_t group_weight;
+  // affinity hash for this address.  It is assigned when strict
+  // stickiness is enabled.
+  uint32_t affinity_hash;
   // true if TLS is used in this backend
   bool tls;
   // true if dynamic DNS is enabled
@@ -215,6 +218,9 @@ struct SharedDownstreamAddr {
   // Bunch of session affinity hash.  Only used if affinity ==
   // SessionAffinity::IP.
   std::vector<AffinityHash> affinity_hash;
+  // Maps affinity hash of each DownstreamAddr to its index in addrs.
+  // It is only assigned when strict stickiness is enabled.
+  std::unordered_map<uint32_t, size_t> affinity_hash_map;
 #ifdef HAVE_MRUBY
   std::shared_ptr<mruby::MRubyContext> mruby_ctx;
 #endif // HAVE_MRUBY
@@ -258,15 +264,18 @@ struct WorkerStat {
 #ifdef ENABLE_HTTP3
 struct QUICPacket {
   QUICPacket(size_t upstream_addr_index, const Address &remote_addr,
-             const Address &local_addr, const uint8_t *data, size_t datalen)
+             const Address &local_addr, const ngtcp2_pkt_info &pi,
+             const uint8_t *data, size_t datalen)
       : upstream_addr_index{upstream_addr_index},
         remote_addr{remote_addr},
         local_addr{local_addr},
+        pi{pi},
         data{data, data + datalen} {}
-  QUICPacket() {}
+  QUICPacket() : upstream_addr_index{}, remote_addr{}, local_addr{}, pi{} {}
   size_t upstream_addr_index;
   Address remote_addr;
   Address local_addr;
+  ngtcp2_pkt_info pi;
   std::vector<uint8_t> data;
 };
 #endif // ENABLE_HTTP3
@@ -436,7 +445,7 @@ private:
   std::shared_ptr<TicketKeys> ticket_keys_;
   std::vector<std::shared_ptr<DownstreamAddrGroup>> downstream_addr_groups_;
   // Worker level blocker for downstream connection.  For example,
-  // this is used when file decriptor is exhausted.
+  // this is used when file descriptor is exhausted.
   std::unique_ptr<ConnectBlocker> connect_blocker_;
 
   bool graceful_shutdown_;

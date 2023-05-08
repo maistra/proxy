@@ -16,6 +16,8 @@
  *
  */
 
+#include "src/cpp/client/create_channel_internal.h"
+
 #include <memory>
 #include <string>
 #include <utility>
@@ -23,16 +25,12 @@
 
 #include <grpcpp/channel.h>
 
-#include "src/cpp/client/create_channel_internal.h"
-
-struct grpc_channel;
-
 namespace grpc {
 
 std::shared_ptr<Channel> CreateChannelInternal(
     const std::string& host, grpc_channel* c_channel,
-    std::vector<std::unique_ptr<
-        ::grpc::experimental::ClientInterceptorFactoryInterface>>
+    std::vector<
+        std::unique_ptr<grpc::experimental::ClientInterceptorFactoryInterface>>
         interceptor_creators) {
   return std::shared_ptr<Channel>(
       new Channel(host, c_channel, std::move(interceptor_creators)));

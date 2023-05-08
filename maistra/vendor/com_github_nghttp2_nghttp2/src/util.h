@@ -572,7 +572,7 @@ std::string ascii_dump(const uint8_t *data, size_t len);
 
 // Returns absolute path of executable path.  If argc == 0 or |cwd| is
 // nullptr, this function returns nullptr.  If argv[0] starts with
-// '/', this function returns argv[0].  Oterwise return cwd + "/" +
+// '/', this function returns argv[0].  Otherwise return cwd + "/" +
 // argv[0].  If non-null is returned, it is NULL-terminated string and
 // dynamically allocated by malloc.  The caller is responsible to free
 // it.
@@ -879,6 +879,26 @@ void random_bytes(OutputIt first, OutputIt last, Generator &gen) {
   std::generate(first, last, [&dis, &gen]() { return dis(gen); });
 }
 
+// Shuffles the range [|first|, |last|] by calling swap function |fun|
+// for each pair.  |fun| takes 2 RandomIt iterators.  If |fun| is
+// noop, no modification is made.
+template <typename RandomIt, typename Generator, typename SwapFun>
+void shuffle(RandomIt first, RandomIt last, Generator &&gen, SwapFun fun) {
+  auto len = std::distance(first, last);
+  if (len < 2) {
+    return;
+  }
+
+  for (unsigned int i = 0; i < static_cast<unsigned int>(len - 1); ++i) {
+    auto dis = std::uniform_int_distribution<unsigned int>(i, len - 1);
+    auto j = dis(gen);
+    if (i == j) {
+      continue;
+    }
+    fun(first + i, first + j);
+  }
+}
+
 template <typename OutputIterator, typename CharT, size_t N>
 OutputIterator copy_lit(OutputIterator it, CharT (&s)[N]) {
   return std::copy_n(s, N - 1, it);
@@ -916,8 +936,18 @@ std::mt19937 make_mt19937();
 // daemon() using fork().
 int daemonize(int nochdir, int noclose);
 
+// Returns |s| from which trailing white spaces (SPC or HTAB) are
+// removed.  If any white spaces are removed, new string is allocated
+// by |balloc| and returned.  Otherwise, the copy of |s| is returned
+// without allocation.
+StringRef rstrip(BlockAllocator &balloc, const StringRef &s);
+
 #ifdef ENABLE_HTTP3
 int msghdr_get_local_addr(Address &dest, msghdr *msg, int family);
+
+unsigned int msghdr_get_ecn(msghdr *msg, int family);
+
+int fd_set_send_ecn(int fd, int family, unsigned int ecn);
 #endif // ENABLE_HTTP3
 
 } // namespace util

@@ -129,8 +129,7 @@ class QUIC_EXPORT_PRIVATE QuicUtils {
 
   // Returns true if the stream ID represents a stream initiated by the
   // provided perspective.
-  static bool IsOutgoingStreamId(ParsedQuicVersion version,
-                                 QuicStreamId id,
+  static bool IsOutgoingStreamId(ParsedQuicVersion version, QuicStreamId id,
                                  Perspective perspective);
 
   // Returns true if |id| is considered as bidirectional stream ID. Only used in
@@ -141,8 +140,7 @@ class QUIC_EXPORT_PRIVATE QuicUtils {
   // Returns stream type.  Either |perspective| or |peer_initiated| would be
   // enough together with |id|.  This method enforces that the three parameters
   // are consistent.  Only used in v99.
-  static StreamType GetStreamType(QuicStreamId id,
-                                  Perspective perspective,
+  static StreamType GetStreamType(QuicStreamId id, Perspective perspective,
                                   bool peer_initiated,
                                   ParsedQuicVersion version);
 
@@ -151,13 +149,11 @@ class QUIC_EXPORT_PRIVATE QuicUtils {
 
   // Returns the first initiated bidirectional stream ID of |perspective|.
   static QuicStreamId GetFirstBidirectionalStreamId(
-      QuicTransportVersion version,
-      Perspective perspective);
+      QuicTransportVersion version, Perspective perspective);
 
   // Returns the first initiated unidirectional stream ID of |perspective|.
   static QuicStreamId GetFirstUnidirectionalStreamId(
-      QuicTransportVersion version,
-      Perspective perspective);
+      QuicTransportVersion version, Perspective perspective);
 
   // Returns the largest possible client initiated bidirectional stream ID.
   static QuicStreamId GetMaxClientInitiatedBidirectionalStreamId(
@@ -194,13 +190,11 @@ class QUIC_EXPORT_PRIVATE QuicUtils {
 
   // Returns true if the connection ID length is valid for this QUIC version.
   static bool IsConnectionIdLengthValidForVersion(
-      size_t connection_id_length,
-      QuicTransportVersion transport_version);
+      size_t connection_id_length, QuicTransportVersion transport_version);
 
   // Returns true if the connection ID is valid for this QUIC version.
   static bool IsConnectionIdValidForVersion(
-      QuicConnectionId connection_id,
-      QuicTransportVersion transport_version);
+      QuicConnectionId connection_id, QuicTransportVersion transport_version);
 
   // Returns a connection ID suitable for QUIC use-cases that do not need the
   // connection ID for multiplexing. If the version allows variable lengths,
@@ -215,8 +209,8 @@ class QUIC_EXPORT_PRIVATE QuicUtils {
   static PacketNumberSpace GetPacketNumberSpace(
       EncryptionLevel encryption_level);
 
-  // Determines encryption level to send packets in |packet_number_space|.
-  static EncryptionLevel GetEncryptionLevel(
+  // Determines encryption level to send ACK in |packet_number_space|.
+  static EncryptionLevel GetEncryptionLevelToSendAckofSpace(
       PacketNumberSpace packet_number_space);
 
   // Get the maximum value for a V99/IETF QUIC stream count. If a count

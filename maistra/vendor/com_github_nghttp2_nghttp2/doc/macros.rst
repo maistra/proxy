@@ -101,3 +101,23 @@ Macros
     
       The maximum number of outgoing concurrent streams is 100 by
       default.
+.. macro:: NGHTTP2_EXTPRI_DEFAULT_URGENCY
+
+    
+    :macro:`NGHTTP2_EXTPRI_DEFAULT_URGENCY` is the default urgency
+    level for :rfc:`9218` extensible priorities.
+.. macro:: NGHTTP2_EXTPRI_URGENCY_HIGH
+
+    
+    :macro:`NGHTTP2_EXTPRI_URGENCY_HIGH` is the highest urgency level
+    for :rfc:`9218` extensible priorities.
+.. macro:: NGHTTP2_EXTPRI_URGENCY_LOW
+
+    
+    :macro:`NGHTTP2_EXTPRI_URGENCY_LOW` is the lowest urgency level for
+    :rfc:`9218` extensible priorities.
+.. macro:: NGHTTP2_EXTPRI_URGENCY_LEVELS
+
+    
+    :macro:`NGHTTP2_EXTPRI_URGENCY_LEVELS` is the number of urgency
+    levels for :rfc:`9218` extensible priorities.

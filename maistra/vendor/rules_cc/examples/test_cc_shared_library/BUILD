@@ -1,6 +1,5 @@
-load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
-load("//examples:experimental_cc_shared_library.bzl", "LINKABLE_MORE_THAN_ONCE")
+load("//examples:experimental_cc_shared_library.bzl", "LINKABLE_MORE_THAN_ONCE", "cc_shared_library")
 load(":starlark_tests.bzl", "additional_inputs_test", "build_failure_test", "linking_suffix_test", "paths_test")
 
 package(
@@ -18,16 +17,6 @@ cc_binary(
     name = "binary",
     srcs = ["main.cc"],
     dynamic_deps = ["foo_so"],
-    deps = ["foo"],
-)
-
-cc_binary(
-    name = "binary_with_bar_so_twice",
-    srcs = ["main.cc"],
-    dynamic_deps = [
-        "foo_so",
-        "bar_so",
-    ],
     deps = ["foo"],
 )
 
@@ -205,32 +194,4 @@ build_failure_test(
     name = "forbidden_target_permissions_test",
     message = "can only list targets that are in the same package or a sub-package",
     target_under_test = "//examples/test_cc_shared_library/failing_targets:permissions_fail",
-)
-
-bzl_library(
-    name = "test_cc_shared_library_starlark_tests_bzl",
-    srcs = ["starlark_tests.bzl"],
-    visibility = ["//visibility:private"],
-)
-
-cc_shared_library_permissions(
-    name = "permissions",
-    targets = [
-        "//examples/test_cc_shared_library:a_suffix",
-        "//examples/test_cc_shared_library:qux",
-        "//examples/test_cc_shared_library:qux2",
-    ],
-    visibility = ["//examples/test_cc_shared_library/diamond_inheritance:__pkg__"],
-)
-
-build_failure_test(
-    name = "two_dynamic_deps_same_export_in_so_test",
-    message = "Two shared libraries in dependencies export the same symbols",
-    target_under_test = "//examples/test_cc_shared_library/failing_targets:two_dynamic_deps_same_export_in_so",
-)
-
-build_failure_test(
-    name = "two_dynamic_deps_same_export_in_binary_test",
-    message = "Two shared libraries in dependencies export the same symbols",
-    target_under_test = "//examples/test_cc_shared_library/failing_targets:two_dynamic_deps_same_export_in_binary",
 )

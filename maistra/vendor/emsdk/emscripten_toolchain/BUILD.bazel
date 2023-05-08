@@ -13,7 +13,6 @@ filegroup(
         "env.sh",
         "env.bat",
         "@emsdk//:binaries",
-        "@emsdk//:node_modules",
     ],
 )
 

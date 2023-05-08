@@ -2,16 +2,28 @@
 
 #include <algorithm>
 
-namespace google {
-namespace api {
-namespace expr {
-namespace runtime {
+namespace google::api::expr::runtime {
 namespace {
 
 // Default implementation is operator<.
 // Note: for UnknownSet, Error and Message, this is ptr less than.
 template <typename T>
 int ComparisonImpl(T lhs, T rhs) {
+  if (lhs < rhs) {
+    return -1;
+  } else if (lhs > rhs) {
+    return 1;
+  } else {
+    return 0;
+  }
+}
+
+// Message wrapper specialization
+template <>
+int ComparisonImpl(CelValue::MessageWrapper lhs_wrapper,
+                   CelValue::MessageWrapper rhs_wrapper) {
+  auto* lhs = lhs_wrapper.message_ptr();
+  auto* rhs = rhs_wrapper.message_ptr();
   if (lhs < rhs) {
     return -1;
   } else if (lhs > rhs) {
@@ -56,8 +68,8 @@ int ComparisonImpl(const CelMap* lhs, const CelMap* rhs) {
   lhs_keys.reserve(lhs->size());
   rhs_keys.reserve(lhs->size());
 
-  const CelList* lhs_key_view = lhs->ListKeys();
-  const CelList* rhs_key_view = rhs->ListKeys();
+  const CelList* lhs_key_view = lhs->ListKeys().value();
+  const CelList* rhs_key_view = rhs->ListKeys().value();
 
   for (int i = 0; i < lhs->size(); i++) {
     lhs_keys.push_back(lhs_key_view->operator[](i));
@@ -88,7 +100,6 @@ int ComparisonImpl(const CelMap* lhs, const CelMap* rhs) {
 }
 
 struct ComparisonVisitor {
-  CelValue rhs;
   explicit ComparisonVisitor(CelValue rhs) : rhs(rhs) {}
   template <typename T>
   int operator()(T lhs_value) {
@@ -99,27 +110,26 @@ struct ComparisonVisitor {
     }
     return ComparisonImpl(lhs_value, rhs_value);
   }
+
+  CelValue rhs;
 };
 
 }  // namespace
 
 int CelValueCompare(CelValue lhs, CelValue rhs) {
-  return lhs.Visit<int>(ComparisonVisitor(rhs));
+  return lhs.InternalVisit<int>(ComparisonVisitor(rhs));
 }
 
 bool CelValueLessThan(CelValue lhs, CelValue rhs) {
-  return lhs.Visit<int>(ComparisonVisitor(rhs)) < 0;
+  return lhs.InternalVisit<int>(ComparisonVisitor(rhs)) < 0;
 }
 
 bool CelValueEqual(CelValue lhs, CelValue rhs) {
-  return lhs.Visit<int>(ComparisonVisitor(rhs)) == 0;
+  return lhs.InternalVisit<int>(ComparisonVisitor(rhs)) == 0;
 }
 
 bool CelValueGreaterThan(CelValue lhs, CelValue rhs) {
-  return lhs.Visit<int>(ComparisonVisitor(rhs)) > 0;
+  return lhs.InternalVisit<int>(ComparisonVisitor(rhs)) > 0;
 }
 
-}  // namespace runtime
-}  // namespace expr
-}  // namespace api
-}  // namespace google
+}  // namespace google::api::expr::runtime
