@@ -1,0 +1,41 @@
+[package]
+edition = "2018"
+name = "wasmtime-c-api-bazel"
+version = "2.0.2"
+
+[lib]
+path = "fake_lib.rs"
+
+[dependencies]
+env_logger = "0.9"
+anyhow = "1.0"
+once_cell = "1.3"
+wasmtime = {version = "6.0.1", default-features = false, features = ['cranelift']}
+wasmtime-c-api-macros = {git = "https://github.com/bytecodealliance/wasmtime", tag = "v6.0.1"}
+
+[package.metadata.raze]
+rust_rules_workspace_name = "rules_rust"
+gen_workspace_prefix = "wasmtime"
+genmode = "Remote"
+package_aliases_dir = "."
+workspace_path = "//bazel/cargo/wasmtime"
+
+[package.metadata.raze.crates.cranelift-isle.'*']
+patches = [
+    "@proxy_wasm_cpp_host//bazel/cargo/wasmtime:cranelift-isle.patch",
+]
+patch_args = ["-p4"]
+
+[package.metadata.raze.crates.bumpalo.'*']
+patches = [
+    "@proxy_wasm_cpp_host//bazel/cargo/wasmtime:bumpalo.patch",
+]
+patch_args = ["-p1"]
+
+[package.metadata.raze.crates.rustix.'*']
+additional_flags = [
+    "--cfg=feature=\\\"cc\\\"",
+]
+buildrs_additional_deps = [
+    "@wasmtime__cc__1_0_79//:cc",
+]

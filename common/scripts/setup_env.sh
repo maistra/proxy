@@ -73,7 +73,7 @@ fi
 
 # Build image to use
 if [[ "${IMAGE_VERSION:-}" == "" ]]; then
-  IMAGE_VERSION=release-1.16-197486ebbabeeb1cb4624986c6f6e8ea8f5f0840
+  IMAGE_VERSION=release-1.16-22432d63476f49d7868d86c62f141e5322402879
 fi
 if [[ "${IMAGE_NAME:-}" == "" ]]; then
   IMAGE_NAME=build-tools
@@ -86,8 +86,8 @@ TIMEZONE=$(readlink "$readlink_flags" /etc/localtime | sed -e 's/^.*zoneinfo\///
 TARGET_OUT="${TARGET_OUT:-$(pwd)/out/${TARGET_OS}_${TARGET_ARCH}}"
 TARGET_OUT_LINUX="${TARGET_OUT_LINUX:-$(pwd)/out/linux_${TARGET_ARCH}}"
 
-CONTAINER_TARGET_OUT="${CONTAINER_TARGET_OUT:-/work/out/${TARGET_OS}_${TARGET_ARCH}}"
-CONTAINER_TARGET_OUT_LINUX="${CONTAINER_TARGET_OUT_LINUX:-/work/out/linux_${TARGET_ARCH}}"
+CONTAINER_TARGET_OUT="${CONTAINER_TARGET_OUT:-${ROOT_DIR}/out/${TARGET_OS}_${TARGET_ARCH}}"
+CONTAINER_TARGET_OUT_LINUX="${CONTAINER_TARGET_OUT_LINUX:-${ROOT_DIR}/out/linux_${TARGET_ARCH}}"
 
 IMG="${IMG:-gcr.io/istio-testing/${IMAGE_NAME}:${IMAGE_VERSION}}"
 
@@ -179,7 +179,7 @@ if [[ "${FOR_BUILD_CONTAINER:-0}" -eq "1" ]]; then
   # Override variables with container specific
   TARGET_OUT=${CONTAINER_TARGET_OUT}
   TARGET_OUT_LINUX=${CONTAINER_TARGET_OUT_LINUX}
-  REPO_ROOT=/work
+  REPO_ROOT="${WORKDIR}" # /work
   LOCAL_OUT="${TARGET_OUT_LINUX}"
 else
   LOCAL_OUT="${TARGET_OUT}"

@@ -1,0 +1,52 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "tarball",
+    srcs = [
+        "doc.go",
+        "image.go",
+        "layer.go",
+        "write.go",
+    ],
+    importpath = "github.com/google/go-containerregistry/pkg/v1/tarball",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//internal/and",
+        "//internal/estargz",
+        "//internal/gzip",
+        "//pkg/name",
+        "//pkg/v1:pkg",
+        "//pkg/v1/partial",
+        "//pkg/v1/types",
+        "//vendor/github.com/containerd/stargz-snapshotter/estargz",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":tarball",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "tarball_test",
+    srcs = [
+        "image_test.go",
+        "layer_test.go",
+        "progress_test.go",
+        "write_test.go",
+    ],
+    data = glob(["testdata/**"]),
+    embed = [":tarball"],
+    deps = [
+        "//internal/compare",
+        "//pkg/name",
+        "//pkg/v1:pkg",
+        "//pkg/v1/mutate",
+        "//pkg/v1/random",
+        "//pkg/v1/remote",
+        "//pkg/v1/types",
+        "//pkg/v1/validate",
+        "//vendor/github.com/containerd/stargz-snapshotter/estargz",
+    ],
+)

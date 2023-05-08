@@ -1,0 +1,194 @@
+diff -ruN a/BUILD b/BUILD
+--- a/BUILD	2023-04-26 12:28:42.832178012 +0200
++++ b/BUILD	2023-04-26 12:28:42.842178130 +0200
+@@ -1,5 +1,8 @@
++
++
+ package(default_visibility = ["//visibility:public"])
+ 
++
+ config_setting(
+     name = "linux",
+     constraint_values = [
+@@ -34,6 +37,7 @@
+ 
+ filegroup(name = "empty")
+ 
++
+ alias(
+     name = "binaries",
+     actual = select({
+@@ -48,7 +52,6 @@
+ alias(
+     name = "node_modules",
+     actual = select({
+-        ":linux": "@emscripten_npm_linux//:node_modules",
+         ":macos": "@emscripten_npm_mac//:node_modules",
+         ":macos_arm64": "@emscripten_npm_mac//:node_modules",
+         ":windows": "@emscripten_npm_win//:node_modules",
+diff -ruN a/emscripten_deps.bzl b/emscripten_deps.bzl
+--- a/emscripten_deps.bzl	2023-04-26 12:28:42.832178012 +0200
++++ b/emscripten_deps.bzl	2023-04-26 12:28:42.842178130 +0200
+@@ -1,10 +1,13 @@
+ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+-load("@build_bazel_rules_nodejs//:index.bzl", "npm_install", "node_repositories")
++load("@build_bazel_rules_nodejs//:index.bzl", "npm_install")
+ load(":revisions.bzl", "EMSCRIPTEN_TAGS")
+ 
++load("@envoy//bazel:repositories.bzl", "envoy_dependencies", "BUILD_ALL_CONTENT")
++
+ def _parse_version(v):
+     return [int(u) for u in v.split(".")]
+ 
++
+ def emscripten_deps(emscripten_version = "latest"):
+     version = emscripten_version
+ 
+@@ -24,14 +27,8 @@
+     # This could potentially backfire for projects with multiple emscripten
+     # dependencies that use different emscripten versions
+     excludes = native.existing_rules().keys()
+-    if "nodejs_toolchains" not in excludes:
+-        # Node 16 is the first version that supports darwin_arm64
+-        node_repositories(
+-            node_version = "16.6.2",
+-        )
+-
+     if "emscripten_bin_linux" not in excludes:
+-        http_archive(
++       http_archive(
+             name = "emscripten_bin_linux",
+             strip_prefix = "install",
+             url = emscripten_url.format("linux", revision.hash, "", "tbz2"),
+@@ -39,6 +36,12 @@
+             build_file = "@emsdk//emscripten_toolchain:emscripten.BUILD",
+             type = "tar.bz2",
+         )
++    # nodejs is taken from the host
++    #if "nodejs_toolchains" not in excludes:
++        # # Node 16 is the first version that supports darwin_arm64
++        # node_repositories(
++        #     node_version = "16.6.2",
++        # )
+ 
+     if "emscripten_bin_mac" not in excludes:
+         http_archive(
+diff -ruN a/emscripten_toolchain/BUILD.bazel b/emscripten_toolchain/BUILD.bazel
+--- a/emscripten_toolchain/BUILD.bazel	2023-04-26 12:28:42.832178012 +0200
++++ b/emscripten_toolchain/BUILD.bazel	2023-04-26 12:28:42.842178130 +0200
+@@ -13,7 +13,6 @@
+         "env.sh",
+         "env.bat",
+         "@emsdk//:binaries",
+-        "@nodejs//:node_files",
+     ],
+ )
+ 
+@@ -30,7 +29,6 @@
+         "link_wrapper.py",
+         ":common-script-includes",
+         "@emsdk//:binaries",
+-        "@nodejs//:node_files",
+     ],
+ )
+ 
+@@ -40,7 +38,6 @@
+         ":compile-emscripten",
+         ":link-emscripten",
+         "@emsdk//:binaries",
+-        "@nodejs//:node_files",
+     ],
+ )
+ 
+diff -ruN a/emscripten_toolchain/crosstool.bzl b/emscripten_toolchain/crosstool.bzl
+--- a/emscripten_toolchain/crosstool.bzl	2023-04-26 12:28:42.832178012 +0200
++++ b/emscripten_toolchain/crosstool.bzl	2023-04-26 12:28:42.842178130 +0200
+@@ -676,6 +676,12 @@
+             flags = CROSSTOOL_DEFAULT_WARNINGS,
+         ),
+ 
++        # OSSM-1931: needed for successful compilation
++        flag_set(
++            actions = all_compile_actions,
++            flags = ['-DFLATBUFFERS_LOCALE_INDEPENDENT=0'],
++        ),
++
+         # Defines and Includes and Paths and such
+         flag_set(
+             actions = all_compile_actions,
+@@ -911,7 +917,19 @@
+                 "-iwithsysroot" + "/include/compat",
+                 "-iwithsysroot" + "/include",
+                 "-isystem",
+-                emscripten_dir + "/lib/clang/15.0.0/include",
++                #emscripten_dir + "/lib/clang/15.0.0/include",
++                # The following added to fix OSSM-1931
++                "/opt/emsdk/system/lib/libstdcxx/include",
++                "-isystem",
++                "/opt/emsdk/system/include/compat",
++                "-isystem",
++                "/opt/emsdk/system/lib/libc/musl/include",
++                "-isystem",
++                "/opt/emsdk/system/lib/libc/musl/arch/emscripten",
++                "-isystem",
++                "/opt/emsdk/system/include",
++                "-isystem",
++                "/opt/emsdk/system/lib/libc/musl/arch/generic",
+             ],
+         ),
+         # Inputs and outputs
+@@ -1073,7 +1091,13 @@
+         emscripten_dir + "/emscripten/cache/sysroot/include/c++/v1",
+         emscripten_dir + "/emscripten/cache/sysroot/include/compat",
+         emscripten_dir + "/emscripten/cache/sysroot/include",
+-        emscripten_dir + "/lib/clang/15.0.0/include",
++        #emscripten_dir + "/lib/clang/15.0.0/include",
++        # The following added to fix OSSM-1931
++        "/opt/emsdk/system/lib/libstdcxx/include",
++        "/opt/emsdk/system/lib/libc/musl/include",
++        "/opt/emsdk/system/lib/libc/musl/arch/emscripten",
++        "/opt/emsdk/system/include",
++        "/opt/emsdk/system/lib/libc/musl/arch/generic",               
+     ]
+ 
+     artifact_name_patterns = []
+diff -ruN a/emscripten_toolchain/emscripten_config b/emscripten_toolchain/emscripten_config
+--- a/emscripten_toolchain/emscripten_config	2023-04-26 12:28:42.832178012 +0200
++++ b/emscripten_toolchain/emscripten_config	2023-04-26 12:28:42.842178130 +0200
+@@ -2,13 +2,19 @@
+ import platform
+ 
+ ROOT_DIR = os.environ["ROOT_DIR"]
++WORKDIR = os.environ["WORKDIR"]
+ EMSCRIPTEN_ROOT = os.environ["EMSCRIPTEN"]
+-BINARYEN_ROOT = ROOT_DIR + "/" + os.environ["EM_BIN_PATH"]
+-LLVM_ROOT = BINARYEN_ROOT + "/bin"
+-FROZEN_CACHE = True
++# Take binaryen and llvm stuff locally (OSSM-1931)
++#BINARYEN_ROOT = ROOT_DIR + "/" + os.environ["EM_BIN_PATH"]
++BINARYEN_ROOT = WORKDIR + "/maistra/local"
++#LLVM_ROOT = BINARYEN_ROOT + "/bin"
++LLVM_ROOT = "/usr/bin"
++FROZEN_CACHE = False
+ 
+ system = platform.system()
+ 
+ machine = "arm64" if platform.machine() == "arm64" else "amd64"
+ nodejs_binary = "bin/nodejs/node.exe" if(system =="Windows") else "bin/node"
+-NODE_JS = ROOT_DIR + "/external/nodejs_{}_{}/{}".format(system.lower(), machine, nodejs_binary)
++# Take node stuff locally (OSSM-1931)
++#NODE_JS = ROOT_DIR + "/external/nodejs_{}_{}/{}".format(system.lower(), machine, nodejs_binary)
++NODE_JS = "/usr/bin/node"
+diff -ruN a/emscripten_toolchain/env.sh b/emscripten_toolchain/env.sh
+--- a/emscripten_toolchain/env.sh	2023-04-26 12:28:42.832178012 +0200
++++ b/emscripten_toolchain/env.sh	2023-04-26 12:28:42.842178130 +0200
+@@ -1,5 +1,7 @@
+ #!/bin/bash
+ 
+-export ROOT_DIR=${EXT_BUILD_ROOT:-$(pwd -P)}
+-export EMSCRIPTEN=$ROOT_DIR/$EM_BIN_PATH/emscripten
++export ROOT_DIR=${EXT_BUILD_ROOT:-$(pwd)}
++# Modified for OSSM-1931
++# The variable is defined in the build script
++#export EMSCRIPTEN="$ROOT_DIR/external/emscripten_bin_linux"
+ export EM_CONFIG=$ROOT_DIR/$EM_CONFIG_PATH

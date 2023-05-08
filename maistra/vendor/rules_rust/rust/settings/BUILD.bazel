@@ -1,0 +1,50 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "string_flag")
+
+package(default_visibility = ["//visibility:public"])
+
+# A flag controlling whether to rename first-party crates such that their names
+# encode the Bazel package and target name, instead of just the target name.
+#
+# First-party vs. third-party crates are identified using the value of
+# //settings:third_party_dir.
+bool_flag(
+    name = "rename_first_party_crates",
+    build_setting_default = False,
+)
+
+# A flag specifying the location of vendored third-party rust crates within this
+# repository that must not be renamed when `rename_first_party_crates` is enabled.
+#
+# Must be specified as a Bazel package, e.g. "//some/location/in/repo".
+string_flag(
+    name = "third_party_dir",
+    build_setting_default = "//third_party/rust",
+)
+
+# A flag to control whether rust_library and rust_binary targets should
+# implicitly depend on the *real* import macro, or on a no-op target.
+bool_flag(
+    name = "use_real_import_macro",
+    build_setting_default = False,
+)
+
+# When set, this flag causes rustc to emit .rmeta files and use them for rlib -> rlib dependencies.
+# While this involves one extra (short) rustc invocation to build the rmeta file,
+# it allows library dependencies to be unlocked much sooner, increasing parallelism during compilation.
+bool_flag(
+    name = "pipelined_compilation",
+    build_setting_default = False,
+)
+
+# A flag to control whether to link rust_binary and rust_test targets using
+# cc_common.link instead of rustc.
+bool_flag(
+    name = "experimental_use_cc_common_link",
+    build_setting_default = False,
+)
+
+bzl_library(
+    name = "bzl_lib",
+    srcs = glob(["**/*.bzl"]),
+)

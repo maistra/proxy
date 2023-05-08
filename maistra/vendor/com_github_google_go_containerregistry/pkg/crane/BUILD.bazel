@@ -1,0 +1,74 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "crane",
+    srcs = [
+        "append.go",
+        "catalog.go",
+        "config.go",
+        "copy.go",
+        "delete.go",
+        "digest.go",
+        "doc.go",
+        "export.go",
+        "filemap.go",
+        "get.go",
+        "list.go",
+        "manifest.go",
+        "optimize.go",
+        "options.go",
+        "pull.go",
+        "push.go",
+        "tag.go",
+    ],
+    importpath = "github.com/google/go-containerregistry/pkg/crane",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//internal/legacy",
+        "//pkg/authn",
+        "//pkg/legacy/tarball",
+        "//pkg/logs",
+        "//pkg/name",
+        "//pkg/v1:pkg",
+        "//pkg/v1/empty",
+        "//pkg/v1/layout",
+        "//pkg/v1/mutate",
+        "//pkg/v1/remote",
+        "//pkg/v1/stream",
+        "//pkg/v1/tarball",
+        "//pkg/v1/types",
+        "//vendor/github.com/containerd/stargz-snapshotter/estargz",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":crane",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "crane_test",
+    srcs = [
+        "crane_test.go",
+        "digest_test.go",
+        "example_test.go",
+        "filemap_test.go",
+        "optimize_test.go",
+    ],
+    embed = [":crane"],
+    deps = [
+        "//internal/compare",
+        "//pkg/authn",
+        "//pkg/name",
+        "//pkg/registry",
+        "//pkg/v1:pkg",
+        "//pkg/v1/empty",
+        "//pkg/v1/mutate",
+        "//pkg/v1/random",
+        "//pkg/v1/remote",
+        "//pkg/v1/types",
+        "//vendor/github.com/google/go-cmp/cmp",
+        "//vendor/github.com/google/go-cmp/cmp/cmpopts",
+    ],
+)

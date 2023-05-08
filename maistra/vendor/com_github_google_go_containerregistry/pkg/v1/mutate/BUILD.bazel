@@ -1,0 +1,54 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "mutate",
+    srcs = [
+        "doc.go",
+        "image.go",
+        "index.go",
+        "mutate.go",
+        "rebase.go",
+    ],
+    importpath = "github.com/google/go-containerregistry/pkg/v1/mutate",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//internal/gzip",
+        "//pkg/logs",
+        "//pkg/v1:pkg",
+        "//pkg/v1/empty",
+        "//pkg/v1/match",
+        "//pkg/v1/partial",
+        "//pkg/v1/stream",
+        "//pkg/v1/tarball",
+        "//pkg/v1/types",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":mutate",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "mutate_test",
+    srcs = [
+        "index_test.go",
+        "mutate_test.go",
+        "rebase_test.go",
+        "whiteout_test.go",
+    ],
+    data = glob(["testdata/**"]),
+    embed = [":mutate"],
+    deps = [
+        "//pkg/v1:pkg",
+        "//pkg/v1/empty",
+        "//pkg/v1/match",
+        "//pkg/v1/random",
+        "//pkg/v1/stream",
+        "//pkg/v1/tarball",
+        "//pkg/v1/types",
+        "//pkg/v1/validate",
+        "//vendor/github.com/google/go-cmp/cmp",
+    ],
+)

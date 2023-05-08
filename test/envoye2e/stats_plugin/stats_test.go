@@ -62,11 +62,13 @@ var Runtimes = []struct {
 		StatsFilterCode:            "filename: " + filepath.Join(env.GetBazelBinOrDie(), "extensions/stats.wasm"),
 		WasmRuntime:                "envoy.wasm.runtime.v8",
 	},
-	{
-		MetadataExchangeFilterCode: "filename: " + filepath.Join(env.GetBazelBinOrDie(), "extensions/metadata_exchange.compiled.wasm"),
-		StatsFilterCode:            "filename: " + filepath.Join(env.GetBazelBinOrDie(), "extensions/stats.compiled.wasm"),
-		WasmRuntime:                "envoy.wasm.runtime.v8",
-	},
+	// https://issues.redhat.com/browse/MAISTRA-2140
+	// FIXME: Reenable when the issue above is fixed
+	// {
+	// 	MetadataExchangeFilterCode: "filename: " + filepath.Join(env.GetBazelBinOrDie(), "extensions/metadata_exchange.compiled.wasm"),
+	// 	StatsFilterCode:            "filename: " + filepath.Join(env.GetBazelBinOrDie(), "extensions/stats.compiled.wasm"),
+	// 	WasmRuntime:                "envoy.wasm.runtime.v8",
+	// },
 }
 
 var TestCases = []struct {

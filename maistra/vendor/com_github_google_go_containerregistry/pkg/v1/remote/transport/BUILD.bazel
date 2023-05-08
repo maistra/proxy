@@ -1,0 +1,57 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "transport",
+    srcs = [
+        "basic.go",
+        "bearer.go",
+        "doc.go",
+        "error.go",
+        "logger.go",
+        "ping.go",
+        "retry.go",
+        "schemer.go",
+        "scope.go",
+        "transport.go",
+        "useragent.go",
+    ],
+    importpath = "github.com/google/go-containerregistry/pkg/v1/remote/transport",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//internal/redact",
+        "//internal/retry",
+        "//pkg/authn",
+        "//pkg/logs",
+        "//pkg/name",
+        "//vendor/github.com/docker/distribution/registry/client/auth/challenge",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":transport",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "transport_test",
+    srcs = [
+        "basic_test.go",
+        "bearer_test.go",
+        "error_test.go",
+        "logger_test.go",
+        "ping_test.go",
+        "retry_test.go",
+        "transport_test.go",
+    ],
+    embed = [":transport"],
+    deps = [
+        "//internal/redact",
+        "//internal/retry",
+        "//pkg/authn",
+        "//pkg/logs",
+        "//pkg/name",
+        "//vendor/github.com/google/go-cmp/cmp",
+        "//vendor/github.com/google/go-cmp/cmp/cmpopts",
+    ],
+)

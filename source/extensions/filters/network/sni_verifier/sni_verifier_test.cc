@@ -21,7 +21,8 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "source/common/buffer/buffer_impl.h"
-#include "source/extensions/filters/network/sni_verifier/config.h"
+#include "src/envoy/tcp/sni_verifier/config.h"
+
 #include "test/extensions/filters/listener/tls_inspector/tls_utility.h"
 #include "test/mocks/network/mocks.h"
 #include "test/mocks/server/mocks.h"
@@ -55,7 +56,9 @@ TEST(SniVerifierTest, MaxClientHelloSize) {
 
 class SniVerifierFilterTest : public testing::Test {
  protected:
-  static constexpr size_t TLS_MAX_CLIENT_HELLO = 250;
+  // The value of TLS_MAX_CLIENT_HELLO should be greater than the maximum size of clienthello in all tests
+  // (with the exception of SniTooLarge) for all tls versions
+  static constexpr size_t TLS_MAX_CLIENT_HELLO = 372;
 
   void SetUp() override {
     store_ = std::make_unique<Stats::IsolatedStoreImpl>();
@@ -175,7 +178,8 @@ TEST_F(SniVerifierFilterTest, BothSnisEmpty) {
 }
 
 TEST_F(SniVerifierFilterTest, SniTooLarge) {
-  runTestForClientHello("example.com", std::string(TLS_MAX_CLIENT_HELLO, 'a'),
+  // Inner sni hostname length is such that the total length of clienthello exceeds the TLS_MAX_CLIENT_HELLO bytes
+  runTestForClientHello("example.com", std::string(252, 'a'),
                         Network::FilterStatus::StopIteration);
   EXPECT_EQ(1, cfg_->stats().client_hello_too_large_.value());
   EXPECT_EQ(0, cfg_->stats().tls_found_.value());

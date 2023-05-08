@@ -1,0 +1,51 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "cmd",
+    srcs = [
+        "append.go",
+        "auth.go",
+        "blob.go",
+        "catalog.go",
+        "config.go",
+        "copy.go",
+        "delete.go",
+        "digest.go",
+        "export.go",
+        "list.go",
+        "manifest.go",
+        "mutate.go",
+        "optimize.go",
+        "pull.go",
+        "push.go",
+        "rebase.go",
+        "root.go",
+        "tag.go",
+        "util.go",
+        "validate.go",
+        "version.go",
+    ],
+    importpath = "github.com/google/go-containerregistry/cmd/crane/cmd",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/authn",
+        "//pkg/crane",
+        "//pkg/logs",
+        "//pkg/name",
+        "//pkg/v1:pkg",
+        "//pkg/v1/cache",
+        "//pkg/v1/empty",
+        "//pkg/v1/mutate",
+        "//pkg/v1/tarball",
+        "//pkg/v1/validate",
+        "//vendor/github.com/docker/cli/cli/config",
+        "//vendor/github.com/docker/cli/cli/config/types",
+        "//vendor/github.com/spf13/cobra",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":cmd",
+    visibility = ["//visibility:public"],
+)

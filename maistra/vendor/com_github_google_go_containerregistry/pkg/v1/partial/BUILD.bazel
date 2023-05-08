@@ -1,0 +1,53 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "partial",
+    srcs = [
+        "compressed.go",
+        "doc.go",
+        "image.go",
+        "index.go",
+        "uncompressed.go",
+        "with.go",
+    ],
+    importpath = "github.com/google/go-containerregistry/pkg/v1/partial",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//internal/gzip",
+        "//pkg/v1:pkg",
+        "//pkg/v1/match",
+        "//pkg/v1/types",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":partial",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "partial_test",
+    srcs = [
+        "compressed_test.go",
+        "configlayer_test.go",
+        "index_test.go",
+        "uncompressed_test.go",
+        "with_test.go",
+    ],
+    embed = [":partial"],
+    deps = [
+        "//internal/compare",
+        "//pkg/legacy/tarball",
+        "//pkg/name",
+        "//pkg/registry",
+        "//pkg/v1:pkg",
+        "//pkg/v1/mutate",
+        "//pkg/v1/random",
+        "//pkg/v1/remote",
+        "//pkg/v1/tarball",
+        "//pkg/v1/types",
+        "//pkg/v1/validate",
+        "//vendor/github.com/google/go-cmp/cmp",
+    ],
+)
