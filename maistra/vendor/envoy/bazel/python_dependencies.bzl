@@ -1,5 +1,5 @@
 load("@rules_python//python:pip.bzl", "pip_install", "pip_parse")
-load("@python3_10//:defs.bzl", "interpreter")
+interpreter = None
 
 def envoy_python_dependencies():
     pip_parse(
