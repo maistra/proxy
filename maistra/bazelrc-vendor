@@ -100,7 +100,6 @@ build --override_repository=pypi__setuptools=/work/maistra/vendor/pypi__setuptoo
 build --override_repository=pypi__tomli=/work/maistra/vendor/pypi__tomli
 build --override_repository=pypi__wheel=/work/maistra/vendor/pypi__wheel
 build --override_repository=pypi__zipp=/work/maistra/vendor/pypi__zipp
-build --override_repository=python3_10=/work/maistra/vendor/python3_10
 build --override_repository=python3_10_toolchains=/work/maistra/vendor/python3_10_toolchains
 build --override_repository=python3_10_x86_64-unknown-linux-gnu=/work/maistra/vendor/python3_10_x86_64-unknown-linux-gnu
 build --override_repository=remote_coverage_tools=/work/maistra/vendor/remote_coverage_tools

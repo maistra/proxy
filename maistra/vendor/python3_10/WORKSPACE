@@ -1,2 +1,0 @@
-# DO NOT EDIT: automatically generated WORKSPACE file for resolved_interpreter_os_alias rule
-workspace(name = "python3_10")
