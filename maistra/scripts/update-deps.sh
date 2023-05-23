@@ -114,6 +114,9 @@ function run_bazel() {
   # Fetch stats_plugin just to load emsdk and net_zlib dependencies
   bazel --output_base="${OUTPUT_BASE}" fetch //extensions/stats:stats_plugin || true
 
+  # Workaround to force fetch of rules_license
+  bazel --output_base="${OUTPUT_BASE}" fetch @remote_java_tools//java_tools/zlib:zlib || true
+
   apply_patches
 
   # Fetch all the rest and check everything using "build --nobuild "option
