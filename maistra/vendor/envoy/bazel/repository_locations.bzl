@@ -775,7 +775,7 @@ REPOSITORY_LOCATIONS_SPEC = dict(
         use_category = ["controlplane", "dataplane_core"],
         cpe = "N/A",
         release_date = "2021-05-18",
-    ),   
+    ),
     com_github_alibaba_hessian2_codec = dict(
         project_name = "hessian2-codec",
         project_desc = "hessian2-codec is a C++ library for hessian2 codec",
@@ -1243,7 +1243,7 @@ REPOSITORY_LOCATIONS_SPEC = dict(
         urls = ["https://github.com/edenhill/librdkafka/archive/v{version}.tar.gz"],
         use_category = ["dataplane_ext"],
         extensions = ["envoy.filters.network.kafka_mesh"],
-        release_date = "2021-05-06",
+        release_date = "2021-10-18",
         cpe = "N/A",
         license = "librdkafka",
         license_url = "https://github.com/edenhill/librdkafka/blob/v{version}/LICENSE",
