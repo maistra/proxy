@@ -8,9 +8,10 @@ minor_behavior_changes:
 
 bug_fixes:
 # *Changes expected to improve the state of the world and are unlikely to have negative effects*
-- area: boringssl
+- area: original_dst
   change: |
-    Fixed the crash that occurs when contrib is compiled with ``boringssl=fips`` defined.
+    Fixes an issue with the ORIGINAL_DST cluster cleanup timer lifetime, which
+    can occur if the cluster is removed while the timer is armed.
 
 removed_config_or_runtime:
 # *Normally occurs at the end of the* :ref:`deprecation period <deprecated>`
