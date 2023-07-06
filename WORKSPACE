@@ -14,7 +14,6 @@
 #
 ################################################################################
 #
-
 workspace(name = "io_istio_proxy")
 
 # http_archive is not a native function since bazel 0.19
@@ -40,7 +39,7 @@ new_local_repository(
 # 2. Update .bazelversion, envoy.bazelrc and .bazelrc if needed.
 #
 # Note: this is needed by release builder to resolve envoy dep sha to tag.
-# Commit date: 2022-07-29
+# Commit date: 2023-07-05
 ENVOY_SHA = "d1d9abf3b2f1e00c88305cd1bfda83ebe4f468ad"
 
 ENVOY_SHA256 = "aa91f665044d1a7ed706d0fc04e06695dbc653dce04ec26b97300cb2255360fa"
