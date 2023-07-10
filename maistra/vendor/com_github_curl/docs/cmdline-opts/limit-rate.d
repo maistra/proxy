@@ -1,4 +1,4 @@
-c: Copyright (C) 1998 - 2022, Daniel Stenberg, <daniel@haxx.se>, et al.
+c: Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al.
 SPDX-License-Identifier: curl
 Long: limit-rate
 Arg: <speed>
@@ -8,7 +8,7 @@ Example: --limit-rate 100K $URL
 Example: --limit-rate 1000 $URL
 Example: --limit-rate 10M $URL
 Added: 7.10
-See-also: speed-limit speed-time
+See-also: rate speed-limit speed-time
 Multi: single
 ---
 Specify the maximum transfer rate you want curl to use - for both downloads

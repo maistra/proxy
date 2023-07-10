@@ -5,7 +5,7 @@
 #                            | (__| |_| |  _ <| |___
 #                             \___|\___/|_| \_\_____|
 #
-# Copyright (C) 1998 - 2022, Daniel Stenberg, <daniel@haxx.se>, et al.
+# Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al.
 #
 # This software is licensed as described in the file COPYING, which
 # you should have received as part of this distribution. The terms
@@ -617,6 +617,9 @@ AC_DEFUN([CURL_CHECK_NTLM_WB], [
   if test "$curl_cv_native_windows" = "yes" ||
     test "x$SSL_ENABLED" = "x"; then
     want_ntlm_wb_file=""
+    want_ntlm_wb="no"
+  elif test "x$ac_cv_func_fork" != "xyes"; then
+    dnl ntlm_wb requires fork
     want_ntlm_wb="no"
   fi
   AC_MSG_RESULT([$want_ntlm_wb])

@@ -5,7 +5,7 @@
 #                            | (__| |_| |  _ <| |___
 #                             \___|\___/|_| \_\_____|
 #
-# Copyright (C) 1998 - 2022, Daniel Stenberg, <daniel@haxx.se>, et al.
+# Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al.
 #
 # This software is licensed as described in the file COPYING, which
 # you should have received as part of this distribution. The terms
@@ -140,6 +140,15 @@ if test "x$OPT_WOLFSSL" != xno; then
             AC_DEFINE(HAVE_WOLFSSL_DES_ECB_ENCRYPT, 1,
                       [if you have wolfSSL_DES_ecb_encrypt])
             WOLFSSL_NTLM=1
+        ]
+        )
+
+      dnl if this symbol is present, we can make use of BIO filter chains
+      AC_CHECK_FUNC(wolfSSL_BIO_set_shutdown,
+        [
+            AC_DEFINE(HAVE_WOLFSSL_FULL_BIO, 1,
+                      [if you have wolfSSL_BIO_set_shutdown])
+            WOLFSSL_FULL_BIO=1
         ]
         )
 

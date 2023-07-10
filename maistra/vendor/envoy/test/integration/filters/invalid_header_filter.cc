@@ -46,6 +46,12 @@ public:
       data[6] = '\n';
     }
 
+    if (!headers.get(Http::LowerCaseString("x-add-mixed-case-header-key")).empty()) {
+      // Insert a header key with mixed case. This should be allowed by Envoy.
+      headers.addViaMove(Http::HeaderString(absl::string_view("x-MiXeD-CaSe")),
+                         Http::HeaderString(absl::string_view("some value here")));
+    }
+
     if (Http::HeaderUtility::isConnect(headers)) {
       headers.removeHost();
     }

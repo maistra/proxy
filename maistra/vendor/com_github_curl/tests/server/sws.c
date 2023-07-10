@@ -5,7 +5,7 @@
  *                            | (__| |_| |  _ <| |___
  *                             \___|\___/|_| \_\_____|
  *
- * Copyright (C) 1998 - 2022, Daniel Stenberg, <daniel@haxx.se>, et al.
+ * Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al.
  *
  * This software is licensed as described in the file COPYING, which
  * you should have received as part of this distribution. The terms
@@ -602,10 +602,10 @@ static int ProcessRequest(struct httprequest *req)
 
   /* **** Persistence ****
    *
-   * If the request is a HTTP/1.0 one, we close the connection unconditionally
+   * If the request is an HTTP/1.0 one, we close the connection unconditionally
    * when we're done.
    *
-   * If the request is a HTTP/1.1 one, we MUST check for a "Connection:"
+   * If the request is an HTTP/1.1 one, we MUST check for a "Connection:"
    * header that might say "close". If it does, we close a connection when
    * this request is processed. Otherwise, we keep the connection alive for X
    * seconds.
@@ -872,7 +872,7 @@ static int get_request(curl_socket_t sock, struct httprequest *req)
 
   if(req->upgrade_request) {
     /* upgraded connection, work it differently until end of connection */
-    logmsg("Upgraded connection, this is a no longer HTTP/1");
+    logmsg("Upgraded connection, this is no longer HTTP/1");
     send_doc(sock, req);
 
     /* dump the request received so far to the external file */
@@ -881,33 +881,39 @@ static int get_request(curl_socket_t sock, struct httprequest *req)
     req->offset = 0;
 
     /* read websocket traffic */
-    do {
+    if(req->open) {
+      logmsg("wait for websocket traffic");
+      do {
+        got = sread(sock, reqbuf + req->offset, REQBUFSIZ - req->offset);
+        if(got > 0) {
+          req->offset += got;
+          logmsg("Got %zu bytes from client", got);
+        }
 
-      got = sread(sock, reqbuf + req->offset, REQBUFSIZ - req->offset);
-      if(got > 0)
-        req->offset += got;
-      logmsg("Got: %d", (int)got);
+        if((got == -1) && ((EAGAIN == errno) || (EWOULDBLOCK == errno))) {
+          int rc;
+          fd_set input;
+          fd_set output;
+          struct timeval timeout = {1, 0}; /* 1000 ms */
 
-      if((got == -1) && ((EAGAIN == errno) || (EWOULDBLOCK == errno))) {
-        int rc;
-        fd_set input;
-        fd_set output;
-        struct timeval timeout = {1, 0}; /* 1000 ms */
-
-        FD_ZERO(&input);
-        FD_ZERO(&output);
-        got = 0;
-        FD_SET(sock, &input);
-        do {
-          logmsg("Wait until readable");
-          rc = select((int)sock + 1, &input, &output, NULL, &timeout);
-        } while(rc < 0 && errno == EINTR && !got_exit_signal);
-        logmsg("readable %d", rc);
-        if(rc)
-          got = 1;
-      }
-    } while(got > 0);
-
+          logmsg("Got EAGAIN from sread");
+          FD_ZERO(&input);
+          FD_ZERO(&output);
+          got = 0;
+          FD_SET(sock, &input);
+          do {
+            logmsg("Wait until readable");
+            rc = select((int)sock + 1, &input, &output, NULL, &timeout);
+          } while(rc < 0 && errno == EINTR && !got_exit_signal);
+          logmsg("readable %d", rc);
+          if(rc)
+            got = 1;
+        }
+      } while(got > 0);
+    }
+    else {
+      logmsg("NO wait for websocket traffic");
+    }
     if(req->offset) {
       logmsg("log the websocket traffic");
       /* dump the incoming websocket traffic to the external file */
@@ -1916,6 +1922,9 @@ static int service_connection(curl_socket_t msgsock, struct httprequest *req,
   if(req->open) {
     logmsg("=> persistent connection request ended, awaits new request\n");
     return 1;
+  }
+  else {
+    logmsg("=> NOT a persistent connection, close close CLOSE\n");
   }
 
   return -1;

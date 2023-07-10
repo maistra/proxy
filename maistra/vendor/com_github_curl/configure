@@ -12,7 +12,7 @@
 # This configure script is free software; the Free Software Foundation
 # gives unlimited permission to copy, distribute and modify it.
 #
-# Copyright (c) 1998 - 2022 Daniel Stenberg, <daniel@haxx.se>
+# Copyright (C) Daniel Stenberg, <daniel@haxx.se>
 # This configure script may be copied, distributed and modified under the
 # terms of the curl license; see COPYING for more details
 
@@ -997,8 +997,8 @@ CURL_DISABLE_FILE
 CURL_DISABLE_FTP
 CURL_DISABLE_RTSP
 CURL_DISABLE_HTTP
-OS_WINDOWS_FALSE
-OS_WINDOWS_TRUE
+HAVE_WINDRES_FALSE
+HAVE_WINDRES_TRUE
 USE_WIN32_CRYPTO
 USE_WIN32_SMALL_FILES
 USE_WIN32_LARGE_FILES
@@ -1051,6 +1051,12 @@ build_os
 build_vendor
 build_cpu
 build
+HTTPD_NGHTTPX
+APACHECTL
+HTTPD
+APXS
+CADDY
+TEST_NGHTTPX
 PKGADD_VENDOR
 PKGADD_NAME
 PKGADD_PKG
@@ -1182,6 +1188,9 @@ with_bearssl
 with_rustls
 with_nss_deprecated
 with_nss
+with_test_nghttpx
+with_test_caddy
+with_test_httpd
 with_darwinssl
 enable_largefile
 enable_shared
@@ -1192,6 +1201,7 @@ with_aix_soname
 with_gnu_ld
 with_sysroot
 enable_libtool_lock
+with_mingw1_deprecated
 enable_http
 enable_ftp
 enable_file
@@ -1245,7 +1255,6 @@ with_quiche
 with_msh3
 with_zsh_functions_dir
 with_fish_functions_dir
-with_n64_deprecated
 enable_threaded_resolver
 enable_pthreads
 enable_verbose
@@ -2068,6 +2077,10 @@ Optional Packages:
   --with-nss-deprecated   confirm you realize NSS is going away
   --with-nss=PATH         where to look for NSS, PATH points to the
                           installation root
+  --with-test-nghttpx=PATH
+                          where to find nghttpx for testing
+  --with-test-caddy=PATH  where to find caddy for testing
+  --with-test-httpd=PATH  where to find httpd/apache2 for testing
 
   --with-pic[=PKGS]       try to use only PIC/non-PIC objects [default=use
                           both]
@@ -2077,6 +2090,8 @@ Optional Packages:
   --with-gnu-ld           assume the C compiler uses GNU ld [default=no]
   --with-sysroot[=DIR]    Search for dependent libraries within DIR (or the
                           compiler's sysroot if not specified).
+  --with-mingw1-deprecated
+                          confirm you realize support for mingw v1 is dying
   --with-hyper=PATH       Enable hyper usage
   --without-hyper         Disable hyper usage
   --with-zlib=PATH        search for zlib in PATH
@@ -2157,8 +2172,6 @@ Optional Packages:
                           Install fish completions to PATH
   --without-fish-functions-dir
                           Do not install fish completions
-  --with-n64-deprecated   confirm you realize support for systems without 64
-                          bit data types is going away
 
 Some influential environment variables:
   CC          C compiler command
@@ -2246,7 +2259,7 @@ Copyright (C) 2021 Free Software Foundation, Inc.
 This configure script is free software; the Free Software Foundation
 gives unlimited permission to copy, distribute and modify it.
 
-Copyright (c) 1998 - 2022 Daniel Stenberg, <daniel@haxx.se>
+Copyright (C) Daniel Stenberg, <daniel@haxx.se>
 This configure script may be copied, distributed and modified under the
 terms of the curl license; see COPYING for more details
 _ACEOF
@@ -6824,6 +6837,414 @@ then :
 
     TLSCHOICE="${TLSCHOICE:+$TLSCHOICE, }NSS"
   fi
+
+fi
+
+
+TEST_NGHTTPX=nghttpx
+
+# Check whether --with-test-nghttpx was given.
+if test ${with_test_nghttpx+y}
+then :
+  withval=$with_test_nghttpx; TEST_NGHTTPX=$withval
+  if test X"$OPT_TEST_NGHTTPX" = "Xno" ; then
+      TEST_NGHTTPX=""
+  fi
+
+fi
+
+
+
+CADDY=caddy
+
+# Check whether --with-test-caddy was given.
+if test ${with_test_caddy+y}
+then :
+  withval=$with_test_caddy; CADDY=$withval
+  if test X"$OPT_CADDY" = "Xno" ; then
+      CADDY=""
+  fi
+
+fi
+
+
+
+
+# Check whether --with-test-httpd was given.
+if test ${with_test_httpd+y}
+then :
+  withval=$with_test_httpd; request_httpd=$withval
+else $as_nop
+  request_httpd=check
+fi
+
+if test x"$request_httpd" = "xcheck"; then
+  if test -x "/usr/sbin/apache2" -a -x "/usr/sbin/apache2ctl"; then
+    # common location on distros (debian/ubuntu)
+    HTTPD="/usr/sbin/apache2"
+    APACHECTL="/usr/sbin/apache2ctl"
+    # Extract the first word of "apxs", so it can be a program name with args.
+set dummy apxs; ac_word=$2
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+printf %s "checking for $ac_word... " >&6; }
+if test ${ac_cv_path_APXS+y}
+then :
+  printf %s "(cached) " >&6
+else $as_nop
+  case $APXS in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_APXS="$APXS" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  case $as_dir in #(((
+    '') as_dir=./ ;;
+    */) ;;
+    *) as_dir=$as_dir/ ;;
+  esac
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir$ac_word$ac_exec_ext"; then
+    ac_cv_path_APXS="$as_dir$ac_word$ac_exec_ext"
+    printf "%s\n" "$as_me:${as_lineno-$LINENO}: found $as_dir$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  ;;
+esac
+fi
+APXS=$ac_cv_path_APXS
+if test -n "$APXS"; then
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $APXS" >&5
+printf "%s\n" "$APXS" >&6; }
+else
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+printf "%s\n" "no" >&6; }
+fi
+
+
+    if test "x$APXS" != "x"; then
+      { printf "%s\n" "$as_me:${as_lineno-$LINENO}: apache2-dev not installed, httpd tests disabled" >&5
+printf "%s\n" "$as_me: apache2-dev not installed, httpd tests disabled" >&6;}
+    fi
+  else
+    # Extract the first word of "httpd", so it can be a program name with args.
+set dummy httpd; ac_word=$2
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+printf %s "checking for $ac_word... " >&6; }
+if test ${ac_cv_path_HTTPD+y}
+then :
+  printf %s "(cached) " >&6
+else $as_nop
+  case $HTTPD in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_HTTPD="$HTTPD" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  case $as_dir in #(((
+    '') as_dir=./ ;;
+    */) ;;
+    *) as_dir=$as_dir/ ;;
+  esac
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir$ac_word$ac_exec_ext"; then
+    ac_cv_path_HTTPD="$as_dir$ac_word$ac_exec_ext"
+    printf "%s\n" "$as_me:${as_lineno-$LINENO}: found $as_dir$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  ;;
+esac
+fi
+HTTPD=$ac_cv_path_HTTPD
+if test -n "$HTTPD"; then
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $HTTPD" >&5
+printf "%s\n" "$HTTPD" >&6; }
+else
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+printf "%s\n" "no" >&6; }
+fi
+
+
+    if test "x$HTTPD" = "x"; then
+      # Extract the first word of "apache2", so it can be a program name with args.
+set dummy apache2; ac_word=$2
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+printf %s "checking for $ac_word... " >&6; }
+if test ${ac_cv_path_HTTPD+y}
+then :
+  printf %s "(cached) " >&6
+else $as_nop
+  case $HTTPD in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_HTTPD="$HTTPD" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  case $as_dir in #(((
+    '') as_dir=./ ;;
+    */) ;;
+    *) as_dir=$as_dir/ ;;
+  esac
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir$ac_word$ac_exec_ext"; then
+    ac_cv_path_HTTPD="$as_dir$ac_word$ac_exec_ext"
+    printf "%s\n" "$as_me:${as_lineno-$LINENO}: found $as_dir$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  ;;
+esac
+fi
+HTTPD=$ac_cv_path_HTTPD
+if test -n "$HTTPD"; then
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $HTTPD" >&5
+printf "%s\n" "$HTTPD" >&6; }
+else
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+printf "%s\n" "no" >&6; }
+fi
+
+
+    fi
+    # Extract the first word of "apachectl", so it can be a program name with args.
+set dummy apachectl; ac_word=$2
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+printf %s "checking for $ac_word... " >&6; }
+if test ${ac_cv_path_APACHECTL+y}
+then :
+  printf %s "(cached) " >&6
+else $as_nop
+  case $APACHECTL in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_APACHECTL="$APACHECTL" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  case $as_dir in #(((
+    '') as_dir=./ ;;
+    */) ;;
+    *) as_dir=$as_dir/ ;;
+  esac
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir$ac_word$ac_exec_ext"; then
+    ac_cv_path_APACHECTL="$as_dir$ac_word$ac_exec_ext"
+    printf "%s\n" "$as_me:${as_lineno-$LINENO}: found $as_dir$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  ;;
+esac
+fi
+APACHECTL=$ac_cv_path_APACHECTL
+if test -n "$APACHECTL"; then
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $APACHECTL" >&5
+printf "%s\n" "$APACHECTL" >&6; }
+else
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+printf "%s\n" "no" >&6; }
+fi
+
+
+    # Extract the first word of "apxs", so it can be a program name with args.
+set dummy apxs; ac_word=$2
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+printf %s "checking for $ac_word... " >&6; }
+if test ${ac_cv_path_APXS+y}
+then :
+  printf %s "(cached) " >&6
+else $as_nop
+  case $APXS in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_APXS="$APXS" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  case $as_dir in #(((
+    '') as_dir=./ ;;
+    */) ;;
+    *) as_dir=$as_dir/ ;;
+  esac
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir$ac_word$ac_exec_ext"; then
+    ac_cv_path_APXS="$as_dir$ac_word$ac_exec_ext"
+    printf "%s\n" "$as_me:${as_lineno-$LINENO}: found $as_dir$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  ;;
+esac
+fi
+APXS=$ac_cv_path_APXS
+if test -n "$APXS"; then
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $APXS" >&5
+printf "%s\n" "$APXS" >&6; }
+else
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+printf "%s\n" "no" >&6; }
+fi
+
+
+    if test "x$HTTPD" = "x" -o "x$APACHECTL" = "x"; then
+      { printf "%s\n" "$as_me:${as_lineno-$LINENO}: httpd/apache2 not in PATH, httpd tests disabled" >&5
+printf "%s\n" "$as_me: httpd/apache2 not in PATH, httpd tests disabled" >&6;}
+    fi
+    if test "x$APXS" = "x"; then
+      { printf "%s\n" "$as_me:${as_lineno-$LINENO}: apxs not in PATH, httpd tests disabled" >&5
+printf "%s\n" "$as_me: apxs not in PATH, httpd tests disabled" >&6;}
+    fi
+  fi
+else
+  HTTPD="${request_httpd}/bin/httpd"
+  APACHECTL="${request_httpd}/bin/apachectl"
+  APXS="${request_httpd}/bin/apxs"
+  if test ! -x "${HTTPD}"; then
+    { printf "%s\n" "$as_me:${as_lineno-$LINENO}: httpd not found as ${HTTPD}, httpd tests disabled" >&5
+printf "%s\n" "$as_me: httpd not found as ${HTTPD}, httpd tests disabled" >&6;}
+  elif test ! -x "${APACHECTL}"; then
+    { printf "%s\n" "$as_me:${as_lineno-$LINENO}: apachectl not found as ${APACHECTL}, httpd tests disabled" >&5
+printf "%s\n" "$as_me: apachectl not found as ${APACHECTL}, httpd tests disabled" >&6;}
+  elif test ! -x "${APXS}"; then
+    { printf "%s\n" "$as_me:${as_lineno-$LINENO}: apxs not found as ${APXS}, httpd tests disabled" >&5
+printf "%s\n" "$as_me: apxs not found as ${APXS}, httpd tests disabled" >&6;}
+  else
+    { printf "%s\n" "$as_me:${as_lineno-$LINENO}: using HTTPD=$HTTPD for tests" >&5
+printf "%s\n" "$as_me: using HTTPD=$HTTPD for tests" >&6;}
+  fi
+fi
+
+
+
+
+if test "x$TEST_NGHTTPX" != "x" -a "x$TEST_NGHTTPX" != "xnghttpx"; then
+  HTTPD_NGHTTPX="$TEST_NGHTTPX"
+else
+  # Extract the first word of "nghttpx", so it can be a program name with args.
+set dummy nghttpx; ac_word=$2
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+printf %s "checking for $ac_word... " >&6; }
+if test ${ac_cv_path_HTTPD_NGHTTPX+y}
+then :
+  printf %s "(cached) " >&6
+else $as_nop
+  case $HTTPD_NGHTTPX in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_HTTPD_NGHTTPX="$HTTPD_NGHTTPX" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+as_dummy="$PATH:/usr/bin:/usr/local/bin"
+for as_dir in $as_dummy
+do
+  IFS=$as_save_IFS
+  case $as_dir in #(((
+    '') as_dir=./ ;;
+    */) ;;
+    *) as_dir=$as_dir/ ;;
+  esac
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir$ac_word$ac_exec_ext"; then
+    ac_cv_path_HTTPD_NGHTTPX="$as_dir$ac_word$ac_exec_ext"
+    printf "%s\n" "$as_me:${as_lineno-$LINENO}: found $as_dir$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  ;;
+esac
+fi
+HTTPD_NGHTTPX=$ac_cv_path_HTTPD_NGHTTPX
+if test -n "$HTTPD_NGHTTPX"; then
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $HTTPD_NGHTTPX" >&5
+printf "%s\n" "$HTTPD_NGHTTPX" >&6; }
+else
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+printf "%s\n" "no" >&6; }
+fi
+
+
+fi
+
+
+if test "x$TEST_CADDY" != "x"; then
+  CADDY="$TEST_CADDY"
+else
+  # Extract the first word of "caddy", so it can be a program name with args.
+set dummy caddy; ac_word=$2
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+printf %s "checking for $ac_word... " >&6; }
+if test ${ac_cv_path_CADDY+y}
+then :
+  printf %s "(cached) " >&6
+else $as_nop
+  case $CADDY in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_CADDY="$CADDY" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  case $as_dir in #(((
+    '') as_dir=./ ;;
+    */) ;;
+    *) as_dir=$as_dir/ ;;
+  esac
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir$ac_word$ac_exec_ext"; then
+    ac_cv_path_CADDY="$as_dir$ac_word$ac_exec_ext"
+    printf "%s\n" "$as_me:${as_lineno-$LINENO}: found $as_dir$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  ;;
+esac
+fi
+CADDY=$ac_cv_path_CADDY
+if test -n "$CADDY"; then
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $CADDY" >&5
+printf "%s\n" "$CADDY" >&6; }
+else
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+printf "%s\n" "no" >&6; }
+fi
+
 
 fi
 
@@ -20569,6 +20990,7 @@ if ac_fn_c_try_compile "$LINENO"
 then :
 
       curl_mingw_original=yes
+      curl_mingw_die=yes
       { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: yes" >&5
 printf "%s\n" "yes" >&6; }
 
@@ -20581,6 +21003,22 @@ fi
 rm -f core conftest.err conftest.$ac_objext conftest.beam conftest.$ac_ext
     ;;
 esac
+
+
+
+# Check whether --with-mingw1-deprecated was given.
+if test ${with_mingw1_deprecated+y}
+then :
+  withval=$with_mingw1_deprecated; if test X"$withval" != Xno; then
+    curl_mingw_die=
+  fi
+
+fi
+
+
+if test -n "$curl_mingw_die"; then
+  as_fn_error $? "support for mingw v1 is going away, enable temporarily with --with-mingw1-deprecated" "$LINENO" 5
+fi
 
 
 
@@ -21202,14 +21640,21 @@ fi
 rm -f core conftest.err conftest.$ac_objext conftest.beam conftest.$ac_ext
 
 
- if test "$curl_cv_native_windows" = "yes"; then
-  OS_WINDOWS_TRUE=
-  OS_WINDOWS_FALSE='#'
+ if test "$curl_cv_native_windows" = "yes" && test -n "${RC}"; then
+  HAVE_WINDRES_TRUE=
+  HAVE_WINDRES_FALSE='#'
 else
-  OS_WINDOWS_TRUE='#'
-  OS_WINDOWS_FALSE=
+  HAVE_WINDRES_TRUE='#'
+  HAVE_WINDRES_FALSE=
 fi
 
+
+if test "$curl_cv_native_windows" = "yes"; then
+  if test -z "$HAVE_WINDRES_TRUE"; then :
+  else
+  as_fn_error $? "windres not found in PATH. Windows builds require windres. Cannot continue." "$LINENO" 5
+fi
+fi
 
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking whether to support http" >&5
 printf %s "checking whether to support http... " >&6; }
@@ -25661,7 +26106,6 @@ then :
 
 fi
 
-                              CPPFLAGS="$CPPFLAGS -DOPENSSL_SUPPRESS_DEPRECATED"
 
 else $as_nop
 
@@ -25762,7 +26206,6 @@ printf "%s\n" "$as_me: PKG_CONFIG_LIBDIR will be set to \"$OPENSSL_PCDIR\"" >&6;
       SSL_LDFLAGS="-L$LIB_OPENSSL"
       SSL_CPPFLAGS="-I$PREFIX_OPENSSL/include"
     fi
-    SSL_CPPFLAGS="$SSL_CPPFLAGS -I$PREFIX_OPENSSL/include/openssl"
     ;;
   esac
 
@@ -25992,7 +26435,7 @@ else $as_nop
      fi
      if test "$PKGCONFIG" = "no" -a -n "$PREFIX_OPENSSL" ; then
        # only set this if pkg-config wasn't used
-       CPPFLAGS="$CLEANCPPFLAGS -I$PREFIX_OPENSSL/include/openssl -I$PREFIX_OPENSSL/include"
+       CPPFLAGS="$CLEANCPPFLAGS -I$PREFIX_OPENSSL/include"
      fi
      # Linking previously failed, try extra paths from --with-openssl or
      # pkg-config.  Use a different function name to avoid reusing the earlier
@@ -26415,7 +26858,6 @@ printf "%s\n" "yes" >&6; }
 
 printf "%s\n" "#define HAVE_OPENSSL3 1" >>confdefs.h
 
-                              CPPFLAGS="$CPPFLAGS -DOPENSSL_SUPPRESS_DEPRECATED"
       ssl_msg="OpenSSL v3+"
 
 else $as_nop
@@ -27507,6 +27949,19 @@ printf "%s\n" "#define HAVE_WOLFSSL_DES_ECB_ENCRYPT 1" >>confdefs.h
 fi
 
 
+            ac_fn_c_check_func "$LINENO" "wolfSSL_BIO_set_shutdown" "ac_cv_func_wolfSSL_BIO_set_shutdown"
+if test "x$ac_cv_func_wolfSSL_BIO_set_shutdown" = xyes
+then :
+
+
+printf "%s\n" "#define HAVE_WOLFSSL_FULL_BIO 1" >>confdefs.h
+
+            WOLFSSL_FULL_BIO=1
+
+
+fi
+
+
       if test -n "$wolfssllibpath"; then
                                         if test "x$cross_compiling" != "xyes"; then
           CURL_LIBRARY_PATH="$CURL_LIBRARY_PATH:$wolfssllibpath"
@@ -27696,6 +28151,14 @@ if test "x$OPT_RUSTLS" != xno; then
     if test "$OPT_RUSTLS" = "yes"; then
       OPT_RUSTLS=""
     fi
+
+    case $host_os in
+      darwin*)
+        LDFLAGS="$LDFLAGS -framework Security"
+        ;;
+      *)
+        ;;
+    esac
 
     if test -z "$OPT_RUSTLS" ; then
 
@@ -29756,9 +30219,6 @@ rm -f core conftest.err conftest.$ac_objext conftest.beam \
   if test "$tst_links_winidn" = "yes"; then
 
 printf "%s\n" "#define USE_WIN32_IDN 1" >>confdefs.h
-
-
-printf "%s\n" "#define WANT_IDN_PROTOTYPES 1" >>confdefs.h
 
     IDN_ENABLED=1
 
@@ -32646,38 +33106,6 @@ then :
   printf "%s\n" "#define HAVE_SYS_UIO_H 1" >>confdefs.h
 
 fi
-ac_fn_c_check_header_compile "$LINENO" "assert.h" "ac_cv_header_assert_h" "
-#ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
-#endif
-#ifdef HAVE_SYS_TIME_H
-#include <sys/time.h>
-#endif
-#ifdef HAVE_SYS_SELECT_H
-#include <sys/select.h>
-#elif defined(HAVE_UNISTD_H)
-#include <unistd.h>
-#endif
-#ifdef HAVE_SYS_SOCKET_H
-#include <sys/socket.h>
-#endif
-#ifdef HAVE_NETINET_IN_H
-#include <netinet/in.h>
-#endif
-#ifdef HAVE_NETINET_IN6_H
-#include <netinet/in6.h>
-#endif
-#ifdef HAVE_SYS_UN_H
-#include <sys/un.h>
-#endif
-
-
-"
-if test "x$ac_cv_header_assert_h" = xyes
-then :
-  printf "%s\n" "#define HAVE_ASSERT_H 1" >>confdefs.h
-
-fi
 ac_fn_c_check_header_compile "$LINENO" "unistd.h" "ac_cv_header_unistd_h" "
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
@@ -33542,38 +33970,6 @@ then :
   printf "%s\n" "#define HAVE_LOCALE_H 1" >>confdefs.h
 
 fi
-ac_fn_c_check_header_compile "$LINENO" "errno.h" "ac_cv_header_errno_h" "
-#ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
-#endif
-#ifdef HAVE_SYS_TIME_H
-#include <sys/time.h>
-#endif
-#ifdef HAVE_SYS_SELECT_H
-#include <sys/select.h>
-#elif defined(HAVE_UNISTD_H)
-#include <unistd.h>
-#endif
-#ifdef HAVE_SYS_SOCKET_H
-#include <sys/socket.h>
-#endif
-#ifdef HAVE_NETINET_IN_H
-#include <netinet/in.h>
-#endif
-#ifdef HAVE_NETINET_IN6_H
-#include <netinet/in6.h>
-#endif
-#ifdef HAVE_SYS_UN_H
-#include <sys/un.h>
-#endif
-
-
-"
-if test "x$ac_cv_header_errno_h" = xyes
-then :
-  printf "%s\n" "#define HAVE_ERRNO_H 1" >>confdefs.h
-
-fi
 ac_fn_c_check_header_compile "$LINENO" "stdbool.h" "ac_cv_header_stdbool_h" "
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
@@ -34419,21 +34815,8 @@ printf "%s\n" "#define HAVE_LONGLONG 1" >>confdefs.h
 fi
 
 
-
 if test ${ac_cv_sizeof_curl_off_t} -lt 8; then
-
-# Check whether --with-n64-deprecated was given.
-if test ${with_n64_deprecated+y}
-then :
-  withval=$with_n64_deprecated; if test X"$withval" != Xno; then
-    OPT_N64_AWARE=$withval
-  fi
-
-fi
-
-  if test -z "$OPT_N64_AWARE"; then
-    as_fn_error $? "support for systems without 64 bit curl_off_t is deprecated, use --with-n64-deprecated until then" "$LINENO" 5
-  fi
+  as_fn_error $? "64 bit curl_off_t is required" "$LINENO" 5
 fi
 
 # check for ssize_t
@@ -43347,7 +43730,7 @@ fi
 
 
 
-  for ac_func in fnmatch fchmod geteuid getpass_r getppid getpwuid getpwuid_r getrlimit gettimeofday if_nametoindex mach_absolute_time pipe sched_yield sendmsg setlocale setmode setrlimit snprintf utime utimes
+  for ac_func in fnmatch fchmod fork geteuid getpass_r getppid getpwuid getpwuid_r getrlimit gettimeofday if_nametoindex mach_absolute_time pipe sched_yield sendmsg setlocale setmode setrlimit snprintf utime utimes arc4random
 do :
   as_ac_var=`printf "%s\n" "ac_cv_func_$ac_func" | $as_tr_sh`
 ac_fn_c_check_func "$LINENO" "$ac_func" "$as_ac_var"
@@ -44376,6 +44759,8 @@ printf %s "checking whether to enable NTLM delegation to winbind's helper... " >
     test "x$SSL_ENABLED" = "x"; then
     want_ntlm_wb_file=""
     want_ntlm_wb="no"
+  elif test "x$ac_cv_func_fork" != "xyes"; then
+        want_ntlm_wb="no"
   fi
   { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $want_ntlm_wb" >&5
 printf "%s\n" "$want_ntlm_wb" >&6; }
@@ -44841,6 +45226,16 @@ printf "%s\n" "$ECH_SUPPORT" >&6; }
   fi
 fi
 
+if test "x$OPENSSL_ENABLED" = "x1"; then
+  ac_fn_c_check_func "$LINENO" "SSL_set0_wbio" "ac_cv_func_SSL_set0_wbio"
+if test "x$ac_cv_func_SSL_set0_wbio" = xyes
+then :
+  printf "%s\n" "#define HAVE_SSL_SET0_WBIO 1" >>confdefs.h
+
+fi
+
+fi
+
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking whether to support WebSockets" >&5
 printf %s "checking whether to support WebSockets... " >&6; }
 # Check whether --enable-websockets was given.
@@ -45042,8 +45437,17 @@ if test "x$CURL_WITH_MULTI_SSL" = "x1"; then
 fi
 
 if test "x$https_proxy" != "xno"; then
-  if test "x$OPENSSL_ENABLED" = "x1" -o "x$GNUTLS_ENABLED" = "x1" \
-      -o "x$NSS_ENABLED" = "x1"; then
+  if test "x$OPENSSL_ENABLED" = "x1" \
+      -o "x$GNUTLS_ENABLED" = "x1" \
+      -o "x$NSS_ENABLED" = "x1" \
+      -o "x$SECURETRANSPORT_ENABLED" = "x1" \
+      -o "x$RUSTLS_ENABLED" = "x1" \
+      -o "x$BEARSSL_ENABLED" = "x1" \
+      -o "x$SCHANNEL_ENABLED" = "x1" \
+      -o "x$GNUTLS_ENABLED" = "x1" \
+      -o "x$MBEDTLS_ENABLED" = "x1"; then
+    SUPPORT_FEATURES="$SUPPORT_FEATURES HTTPS-proxy"
+  elif test "x$WOLFSSL_ENABLED" = "x1" -a "x$WOLFSSL_FULL_BIO" = "x1"; then
     SUPPORT_FEATURES="$SUPPORT_FEATURES HTTPS-proxy"
   fi
 fi
@@ -45371,7 +45775,7 @@ if test "x$want_curldebug_assumed" = "xyes" &&
   ac_configure_args="$ac_configure_args --enable-curldebug"
 fi
 
-ac_config_files="$ac_config_files Makefile docs/Makefile docs/examples/Makefile docs/libcurl/Makefile docs/libcurl/opts/Makefile docs/cmdline-opts/Makefile include/Makefile include/curl/Makefile src/Makefile lib/Makefile scripts/Makefile lib/libcurl.vers lib/libcurl.plist tests/Makefile tests/certs/Makefile tests/certs/scripts/Makefile tests/data/Makefile tests/server/Makefile tests/libtest/Makefile tests/unit/Makefile packages/Makefile packages/vms/Makefile curl-config libcurl.pc"
+ac_config_files="$ac_config_files Makefile docs/Makefile docs/examples/Makefile docs/libcurl/Makefile docs/libcurl/opts/Makefile docs/cmdline-opts/Makefile include/Makefile include/curl/Makefile src/Makefile lib/Makefile scripts/Makefile lib/libcurl.vers lib/libcurl.plist tests/Makefile tests/config tests/certs/Makefile tests/certs/scripts/Makefile tests/data/Makefile tests/server/Makefile tests/libtest/Makefile tests/unit/Makefile tests/http/config.ini tests/http/Makefile packages/Makefile packages/vms/Makefile curl-config libcurl.pc"
 
 cat >confcache <<\_ACEOF
 # This file is a shell script that caches the results of configure
@@ -45542,8 +45946,8 @@ if test -z "${DOING_NATIVE_WINDOWS_TRUE}" && test -z "${DOING_NATIVE_WINDOWS_FAL
   as_fn_error $? "conditional \"DOING_NATIVE_WINDOWS\" was never defined.
 Usually this means the macro was only invoked conditionally." "$LINENO" 5
 fi
-if test -z "${OS_WINDOWS_TRUE}" && test -z "${OS_WINDOWS_FALSE}"; then
-  as_fn_error $? "conditional \"OS_WINDOWS\" was never defined.
+if test -z "${HAVE_WINDRES_TRUE}" && test -z "${HAVE_WINDRES_FALSE}"; then
+  as_fn_error $? "conditional \"HAVE_WINDRES\" was never defined.
 Usually this means the macro was only invoked conditionally." "$LINENO" 5
 fi
 if test -z "${HAVE_LIBZ_TRUE}" && test -z "${HAVE_LIBZ_FALSE}"; then
@@ -46539,12 +46943,15 @@ do
     "lib/libcurl.vers") CONFIG_FILES="$CONFIG_FILES lib/libcurl.vers" ;;
     "lib/libcurl.plist") CONFIG_FILES="$CONFIG_FILES lib/libcurl.plist" ;;
     "tests/Makefile") CONFIG_FILES="$CONFIG_FILES tests/Makefile" ;;
+    "tests/config") CONFIG_FILES="$CONFIG_FILES tests/config" ;;
     "tests/certs/Makefile") CONFIG_FILES="$CONFIG_FILES tests/certs/Makefile" ;;
     "tests/certs/scripts/Makefile") CONFIG_FILES="$CONFIG_FILES tests/certs/scripts/Makefile" ;;
     "tests/data/Makefile") CONFIG_FILES="$CONFIG_FILES tests/data/Makefile" ;;
     "tests/server/Makefile") CONFIG_FILES="$CONFIG_FILES tests/server/Makefile" ;;
     "tests/libtest/Makefile") CONFIG_FILES="$CONFIG_FILES tests/libtest/Makefile" ;;
     "tests/unit/Makefile") CONFIG_FILES="$CONFIG_FILES tests/unit/Makefile" ;;
+    "tests/http/config.ini") CONFIG_FILES="$CONFIG_FILES tests/http/config.ini" ;;
+    "tests/http/Makefile") CONFIG_FILES="$CONFIG_FILES tests/http/Makefile" ;;
     "packages/Makefile") CONFIG_FILES="$CONFIG_FILES packages/Makefile" ;;
     "packages/vms/Makefile") CONFIG_FILES="$CONFIG_FILES packages/vms/Makefile" ;;
     "curl-config") CONFIG_FILES="$CONFIG_FILES curl-config" ;;
@@ -48000,111 +48407,6 @@ use vars qw(
 
 1;
 _EOF
-
-
-
-## ---------------------------------- ##
-##  Start of distclean amending code  ##
-## ---------------------------------- ##
-
-for xc_subdir in lib src tests/unit tests/server tests/libtest docs/examples
-do
-
-if test ! -f "$xc_subdir/Makefile"; then
-  echo "$xc_msg_err $xc_subdir/Makefile file not found. $xc_msg_abrt" >&2
-  exit 1
-fi
-
-# Fetch dependency tracking file list from Makefile include lines.
-
-xc_inc_lines=`grep '^include .*(DEPDIR)' "$xc_subdir/Makefile" 2>/dev/null`
-xc_cnt_words=`echo "$xc_inc_lines" | wc -w | tr -d "$xc_space$xc_tab"`
-
-# --disable-dependency-tracking might have been used, consequently
-# there is nothing to amend without a dependency tracking file list.
-
-if test $xc_cnt_words -gt 0; then
-
-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: amending $xc_subdir/Makefile" >&5
-printf "%s\n" "$as_me: amending $xc_subdir/Makefile" >&6;}
-
-# Build Makefile specific patch hunk.
-
-xc_p="$xc_subdir/xc_patch.tmp"
-
-xc_rm_depfiles=`echo "$xc_inc_lines" \
-  | $SED 's%include%	-rm -f%' 2>/dev/null`
-
-xc_dep_subdirs=`echo "$xc_inc_lines" \
-  | $SED 's%include[ ][ ]*%%' 2>/dev/null \
-  | $SED 's%(DEPDIR)/.*%(DEPDIR)%' 2>/dev/null \
-  | sort | uniq`
-
-echo "$xc_rm_depfiles" >$xc_p
-
-for xc_dep_dir in $xc_dep_subdirs; do
-  echo "${xc_tab}@xm_dep_cnt=\`ls $xc_dep_dir | wc -l 2>/dev/null\`; \\"            >>$xc_p
-  echo "${xc_tab}if test \$\$xm_dep_cnt -eq 0 && test -d $xc_dep_dir; then \\"      >>$xc_p
-  echo "${xc_tab}  rm -rf $xc_dep_dir; \\"                                          >>$xc_p
-  echo "${xc_tab}fi"                                                                >>$xc_p
-done
-
-# Build Makefile patching sed scripts.
-
-xc_s1="$xc_subdir/xc_script_1.tmp"
-xc_s2="$xc_subdir/xc_script_2.tmp"
-xc_s3="$xc_subdir/xc_script_3.tmp"
-
-cat >$xc_s1 <<\_EOT
-/^distclean[ ]*:/,/^[^	][^	]*:/{
-  s/^.*(DEPDIR)/___xc_depdir_line___/
-}
-/^maintainer-clean[ ]*:/,/^[^	][^	]*:/{
-  s/^.*(DEPDIR)/___xc_depdir_line___/
-}
-_EOT
-
-cat >$xc_s2 <<\_EOT
-/___xc_depdir_line___$/{
-  N
-  /___xc_depdir_line___$/D
-}
-_EOT
-
-cat >$xc_s3 <<_EOT
-/^___xc_depdir_line___/{
-  r $xc_p
-  d
-}
-_EOT
-
-# Apply patch to Makefile and cleanup.
-
-$SED -f "$xc_s1" "$xc_subdir/Makefile"      >"$xc_subdir/Makefile.tmp1"
-$SED -f "$xc_s2" "$xc_subdir/Makefile.tmp1" >"$xc_subdir/Makefile.tmp2"
-$SED -f "$xc_s3" "$xc_subdir/Makefile.tmp2" >"$xc_subdir/Makefile.tmp3"
-
-if test -f "$xc_subdir/Makefile.tmp3"; then
-  mv -f "$xc_subdir/Makefile.tmp3" "$xc_subdir/Makefile"
-fi
-
-test -f "$xc_subdir/Makefile.tmp1" && rm -f "$xc_subdir/Makefile.tmp1"
-test -f "$xc_subdir/Makefile.tmp2" && rm -f "$xc_subdir/Makefile.tmp2"
-test -f "$xc_subdir/Makefile.tmp3" && rm -f "$xc_subdir/Makefile.tmp3"
-
-test -f "$xc_p"  && rm -f "$xc_p"
-test -f "$xc_s1" && rm -f "$xc_s1"
-test -f "$xc_s2" && rm -f "$xc_s2"
-test -f "$xc_s3" && rm -f "$xc_s3"
-
-fi
-
-done
-
-## -------------------------------- ##
-##  End of distclean amending code  ##
-## -------------------------------- ##
-
 
 
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: Configured to build curl/libcurl:

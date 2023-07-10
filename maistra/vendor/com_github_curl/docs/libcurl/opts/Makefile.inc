@@ -5,7 +5,7 @@
 #                            | (__| |_| |  _ <| |___
 #                             \___|\___/|_| \_\_____|
 #
-# Copyright (C) 1998 - 2022, Daniel Stenberg, <daniel@haxx.se>, et al.
+# Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al.
 #
 # This software is licensed as described in the file COPYING, which
 # you should have received as part of this distribution. The terms
@@ -122,6 +122,7 @@ man_MANS =                                      \
   CURLOPT_CAINFO.3                              \
   CURLOPT_CAINFO_BLOB.3                         \
   CURLOPT_CAPATH.3                              \
+  CURLOPT_CA_CACHE_TIMEOUT.3                    \
   CURLOPT_CERTINFO.3                            \
   CURLOPT_CHUNK_BGN_FUNCTION.3                  \
   CURLOPT_CHUNK_DATA.3                          \

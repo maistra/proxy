@@ -6,7 +6,7 @@
 #                            | (__| |_| |  _ <| |___
 #                             \___|\___/|_| \_\_____|
 #
-# Copyright (C) 1998 - 2022, Daniel Stenberg, <daniel@haxx.se>, et al.
+# Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al.
 #
 # This software is licensed as described in the file COPYING, which
 # you should have received as part of this distribution. The terms
@@ -51,6 +51,7 @@ use POSIX qw(strftime);
 my $date = strftime "%B %d %Y", localtime;
 my $year = strftime "%Y", localtime;
 my $version = "unknown";
+my $globals;
 
 open(INC, "<../../include/curl/curlver.h");
 while(<INC>) {
@@ -104,9 +105,15 @@ sub printdesc {
         }
         # skip lines starting with space (examples)
         if($d =~ /^[^ ]/ && $d =~ /--/) {
-            for my $k (keys %optlong) {
+            # scan for options in longest-names first order
+            for my $k (sort {length($b) <=> length($a)} keys %optlong) {
+                # --tlsv1 is complicated since --tlsv1.2 etc are also
+                # acceptable options!
+                if(($k eq "tlsv1") && ($d =~ /--tlsv1\.[0-9]\\f/)) {
+                    next;
+                }
                 my $l = manpageify($k);
-                $d =~ s/--\Q$k\E([^a-z0-9_-])([^a-zA-Z0-9_])/$l$1$2/;
+                $d =~ s/\-\-$k([^a-z0-9-])/$l$1/g;
             }
         }
         # quote "bare" minuses in the output
@@ -205,6 +212,7 @@ sub single {
     my $magic; # cmdline special option
     my $line;
     my $multi;
+    my $scope;
     my $experimental;
     while(<F>) {
         $line++;
@@ -247,6 +255,9 @@ sub single {
         elsif(/^Multi: *(.*)/i) {
             $multi=$1;
         }
+        elsif(/^Scope: *(.*)/i) {
+            $scope=$1;
+        }
         elsif(/^Experimental: yes/i) {
             $experimental=1;
         }
@@ -262,10 +273,6 @@ sub single {
         elsif(/^---/) {
             if(!$long) {
                 print STDERR "ERROR: no 'Long:' in $f\n";
-                return 1;
-            }
-            if($multi !~ /(single|append|boolean|mutex)/) {
-                print STDERR "ERROR: bad 'Multi:' in $f\n";
                 return 1;
             }
             if(!$category) {
@@ -345,12 +352,23 @@ sub single {
     printdesc(@desc);
     undef @desc;
 
+    if($scope) {
+        if($scope eq "global") {
+            print "\nThis option is global and does not need to be specified for each use of --next.\n";
+        }
+        else {
+            print STDERR "$f:$line:1:ERROR: unrecognized scope: '$scope'\n";
+            return 2;
+        }
+    }
+
+    my @extra;
     if($multi eq "single") {
-        print "\nIf --$long is provided several times, the last set ".
+        push @extra, "\nIf --$long is provided several times, the last set ".
             "value will be used.\n";
     }
     elsif($multi eq "append") {
-        print "\n--$long can be used several times in a command line\n";
+        push @extra, "\n--$long can be used several times in a command line\n";
     }
     elsif($multi eq "boolean") {
         my $rev = "no-$long";
@@ -360,12 +378,23 @@ sub single {
             $rev = $long;
             $rev =~ s/^no-//;
         }
-        print "\nProviding --$long multiple times has no extra effect.\n".
+        push @extra,
+            "\nProviding --$long multiple times has no extra effect.\n".
             "Disable it again with --$rev.\n";
     }
     elsif($multi eq "mutex") {
-        print "\nProviding --$long multiple times has no extra effect.\n";
+        push @extra,
+            "\nProviding --$long multiple times has no extra effect.\n";
     }
+    elsif($multi eq "custom") {
+        ; # left for the text to describe
+    }
+    else {
+        print STDERR "$f:$line:1:ERROR: unrecognized Multi: '$multi'\n";
+        return 2;
+    }
+
+    printdesc(@extra);
 
     my @foot;
     if($seealso) {
@@ -392,6 +421,7 @@ sub single {
         }
         push @foot, seealso($standalone, $mstr);
     }
+
     if($requires) {
         my $l = manpageify($long);
         push @foot, "$l requires that the underlying libcurl".
@@ -491,6 +521,7 @@ sub header {
     while(<F>) {
         s/%DATE/$date/g;
         s/%VERSION/$version/g;
+        s/%GLOBALS/$globals/g;
         push @d, $_;
     }
     close(F);
@@ -506,7 +537,7 @@ sub listhelp {
  *                            | (__| |_| |  _ <| |___
  *                             \\___|\\___/|_| \\_\\_____|
  *
- * Copyright (C) 1998 - $year, Daniel Stenberg, <daniel@haxx.se>, et al.
+ * Copyright (C) Daniel Stenberg, <daniel\@haxx.se>, et al.
  *
  * This software is licensed as described in the file COPYING, which
  * you should have received as part of this distribution. The terms
@@ -540,7 +571,7 @@ HEAD
         my $long = $f;
         my $short = $optlong{$long};
         my @categories = split ' ', $catlong{$long};
-        my $bitmask;
+        my $bitmask = ' ';
         my $opt;
 
         if(defined($short) && $long) {
@@ -556,6 +587,7 @@ HEAD
                 $bitmask .= ' | ';
             }
         }
+        $bitmask =~ s/(?=.{76}).{1,76}\|/$&\n  /g;
         my $arg = $arglong{$long};
         if($arg) {
             $opt .= " $arg";
@@ -563,7 +595,7 @@ HEAD
         my $desc = $helplong{$f};
         $desc =~ s/\"/\\\"/g; # escape double quotes
 
-        my $line = sprintf "  {\"%s\",\n   \"%s\",\n   %s},\n", $opt, $desc, $bitmask;
+        my $line = sprintf "  {\"%s\",\n   \"%s\",\n  %s},\n", $opt, $desc, $bitmask;
 
         if(length($opt) > 78) {
             print STDERR "WARN: the --$long name is too long\n";
@@ -599,6 +631,36 @@ sub listcats {
     }
 }
 
+sub listglobals {
+    my (@files) = @_;
+    my @globalopts;
+
+    # Find all global options and output them
+    foreach my $f (sort @files) {
+        open(F, "<:crlf", "$f") ||
+            next;
+        my $long;
+        while(<F>) {
+            if(/^Long: *(.*)/i) {
+                $long=$1;
+            }
+            elsif(/^Scope: global/i) {
+                push @globalopts, $long;
+                last;
+            }
+            elsif(/^---/) {
+                last;
+            }
+        }
+        close(F);
+    }
+    return $ret if($ret);
+    for my $e (0 .. $#globalopts) {
+        $globals .= sprintf "%s--%s",  $e?($globalopts[$e+1] ? ", " : " and "):"",
+            $globalopts[$e],;
+    }
+}
+
 sub mainpage {
     my (@files) = @_;
     my $ret;
@@ -610,7 +672,9 @@ sub mainpage {
         $ret += single($f, 0);
     }
 
-    header("page-footer");
+    if(!$ret) {
+        header("page-footer");
+    }
     exit $ret if($ret);
 }
 
@@ -637,6 +701,7 @@ sub showprotocols {
 sub getargs {
     my ($f, @s) = @_;
     if($f eq "mainpage") {
+        listglobals(@s);
         mainpage(@s);
         return;
     }
