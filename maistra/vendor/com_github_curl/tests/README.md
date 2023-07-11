@@ -1,5 +1,5 @@
 <!--
-Copyright (C) 1998 - 2022 Daniel Stenberg, <daniel@haxx.se>, et al.
+Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al.
 
 SPDX-License-Identifier: curl
 -->
@@ -16,7 +16,7 @@ SPDX-License-Identifier: curl
   - diff (when a test fails, a diff is shown)
   - stunnel (for HTTPS and FTPS tests)
   - OpenSSH or SunSSH (for SCP, SFTP and SOCKS4/5 tests)
-  - nghttpx (for HTTP/2 tests)
+  - nghttpx (for HTTP/2 and HTTP/3 tests)
   - nroff (for --manual tests)
   - An available `en_US.UTF-8` locale
 
@@ -69,6 +69,11 @@ SPDX-License-Identifier: curl
 
   The HTTP server supports listening on a Unix domain socket, the default
   location is 'http.sock'.
+  
+  For HTTP/2 and HTTP/3 testing an installed `nghttpx` is used. HTTP/3
+  tests check if nghttpx supports the protocol. To override the nghttpx
+  used, set the environment variable `NGHTTPX`. The default can also be
+  changed by specifying `--with-test-nghttpx=<path>` as argument to `configure`.
 
 ### Run
 
@@ -153,7 +158,36 @@ SPDX-License-Identifier: curl
 
   All logs are generated in the log/ subdirectory (it is emptied first in the
   runtests.pl script). They remain in there after a test run.
+  
+### Log Verbosity
 
+  A curl build with `--enable-debug` offers more verbose output in the logs.
+  This applies not only for test cases, but also when running it standalone
+  with `curl -v`. While a curl debug built is
+  ***not suitable for production***, it is often helpful in tracking down
+  problems.
+  
+  Sometimes, one needs detailed logging of operations, but does not want
+  to drown in output. The newly introduced *connection filters* allows one to
+  dynamically increase log verbosity for a particular *filter type*. Example:
+  
+    CURL_DEBUG=ssl curl -v https://curl.se
+
+  will make the `ssl` connection filter log more details. One may do that for
+  every filter type and also use a combination of names, separated by `,` or 
+  space.
+  
+    CURL_DEBUG=ssl,http/2 curl -v https://curl.se
+
+   The order of filter type names is not relevant. Names used here are
+   case insensitive. Note that these names are implementation internals and
+   subject to change.
+   
+   Some, likely stable names are `tcp`, `ssl`, `http/2`. For a current list,
+   one may search the sources for `struct Curl_cftype` definitions and find
+   the names there. Also, some filters are only available with certain build
+   options, of course.
+   
 ### Test input files
 
   All test cases are put in the `data/` subdirectory. Each test is stored in

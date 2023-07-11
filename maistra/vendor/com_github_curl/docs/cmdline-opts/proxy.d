@@ -1,4 +1,4 @@
-c: Copyright (C) 1998 - 2022, Daniel Stenberg, <daniel@haxx.se>, et al.
+c: Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al.
 SPDX-License-Identifier: curl
 Long: proxy
 Short: x
@@ -45,3 +45,6 @@ or pass in a colon with %3a.
 The proxy host can be specified the same way as the proxy environment
 variables, including the protocol prefix (http://) and the embedded user +
 password.
+
+When a proxy is used, the active FTP mode as set with --ftp-port, cannot be
+used.

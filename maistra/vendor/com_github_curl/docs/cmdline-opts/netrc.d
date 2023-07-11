@@ -1,4 +1,4 @@
-c: Copyright (C) 1998 - 2022, Daniel Stenberg, <daniel@haxx.se>, et al.
+c: Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al.
 SPDX-License-Identifier: curl
 Long: netrc
 Short: n
@@ -7,6 +7,7 @@ Category: curl
 Example: --netrc $URL
 Added: 4.6
 See-also: netrc-file config user
+Mutexed: netrc-file netrc-optional
 Multi: boolean
 ---
 Makes curl scan the *.netrc* (*_netrc* on Windows) file in the user's home

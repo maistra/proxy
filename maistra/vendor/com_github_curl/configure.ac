@@ -5,7 +5,7 @@
 #                            | (__| |_| |  _ <| |___
 #                             \___|\___/|_| \_\_____|
 #
-# Copyright (C) 1998 - 2022, Daniel Stenberg, <daniel@haxx.se>, et al.
+# Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al.
 #
 # This software is licensed as described in the file COPYING, which
 # you should have received as part of this distribution. The terms
@@ -33,7 +33,7 @@ XC_OVR_ZZ60
 CURL_OVERRIDE_AUTOCONF
 
 dnl configure script copyright
-AC_COPYRIGHT([Copyright (c) 1998 - 2022 Daniel Stenberg, <daniel@haxx.se>
+AC_COPYRIGHT([Copyright (C) Daniel Stenberg, <daniel@haxx.se>
 This configure script may be copied, distributed and modified under the
 terms of the curl license; see COPYING for more details])
 
@@ -301,6 +301,89 @@ AS_HELP_STRING([--with-nss=PATH],[where to look for NSS, PATH points to the inst
   fi
 )
 
+TEST_NGHTTPX=nghttpx
+AC_ARG_WITH(test-nghttpx,dnl
+AS_HELP_STRING([--with-test-nghttpx=PATH],[where to find nghttpx for testing]),
+  TEST_NGHTTPX=$withval
+  if test X"$OPT_TEST_NGHTTPX" = "Xno" ; then
+      TEST_NGHTTPX=""
+  fi
+)
+AC_SUBST(TEST_NGHTTPX)
+
+CADDY=caddy
+AC_ARG_WITH(test-caddy,dnl
+AS_HELP_STRING([--with-test-caddy=PATH],[where to find caddy for testing]),
+  CADDY=$withval
+  if test X"$OPT_CADDY" = "Xno" ; then
+      CADDY=""
+  fi
+)
+AC_SUBST(CADDY)
+
+dnl we'd like a httpd+apachectl as test server
+dnl
+AC_ARG_WITH(test-httpd, [AS_HELP_STRING([--with-test-httpd=PATH],
+                         [where to find httpd/apache2 for testing])],
+  [request_httpd=$withval], [request_httpd=check])
+if test x"$request_httpd" = "xcheck"; then
+  if test -x "/usr/sbin/apache2" -a -x "/usr/sbin/apache2ctl"; then
+    # common location on distros (debian/ubuntu)
+    HTTPD="/usr/sbin/apache2"
+    APACHECTL="/usr/sbin/apache2ctl"
+    AC_PATH_PROG([APXS], [apxs])
+    if test "x$APXS" != "x"; then
+      AC_MSG_NOTICE([apache2-dev not installed, httpd tests disabled])
+    fi
+  else
+    AC_PATH_PROG([HTTPD], [httpd])
+    if test "x$HTTPD" = "x"; then
+      AC_PATH_PROG([HTTPD], [apache2])
+    fi
+    AC_PATH_PROG([APACHECTL], [apachectl])
+    AC_PATH_PROG([APXS], [apxs])
+    if test "x$HTTPD" = "x" -o "x$APACHECTL" = "x"; then
+      AC_MSG_NOTICE([httpd/apache2 not in PATH, httpd tests disabled])
+    fi
+    if test "x$APXS" = "x"; then
+      AC_MSG_NOTICE([apxs not in PATH, httpd tests disabled])
+    fi
+  fi
+else
+  HTTPD="${request_httpd}/bin/httpd"
+  APACHECTL="${request_httpd}/bin/apachectl"
+  APXS="${request_httpd}/bin/apxs"
+  if test ! -x "${HTTPD}"; then
+    AC_MSG_NOTICE([httpd not found as ${HTTPD}, httpd tests disabled])
+  elif test ! -x "${APACHECTL}"; then
+    AC_MSG_NOTICE([apachectl not found as ${APACHECTL}, httpd tests disabled])
+  elif test ! -x "${APXS}"; then
+    AC_MSG_NOTICE([apxs not found as ${APXS}, httpd tests disabled])
+  else
+    AC_MSG_NOTICE([using HTTPD=$HTTPD for tests])
+  fi
+fi
+AC_SUBST(HTTPD)
+AC_SUBST(APACHECTL)
+AC_SUBST(APXS)
+
+dnl the nghttpx we might use in httpd testing
+if test "x$TEST_NGHTTPX" != "x" -a "x$TEST_NGHTTPX" != "xnghttpx"; then
+  HTTPD_NGHTTPX="$TEST_NGHTTPX"
+else
+  AC_PATH_PROG([HTTPD_NGHTTPX], [nghttpx], [],
+    [$PATH:/usr/bin:/usr/local/bin])
+fi
+AC_SUBST(HTTPD_NGHTTPX)
+
+dnl the Caddy server we might use in testing
+if test "x$TEST_CADDY" != "x"; then
+  CADDY="$TEST_CADDY"
+else
+  AC_PATH_PROG([CADDY], [caddy])
+fi
+AC_SUBST(CADDY)
+
 dnl If no TLS choice has been made, check if it was explicitly disabled or
 dnl error out to force the user to decide.
 if test -z "$TLSCHOICE"; then
@@ -529,12 +612,25 @@ case $host in
       ]])
     ],[
       curl_mingw_original=yes
+      curl_mingw_die=yes
       AC_MSG_RESULT([yes])
     ],[
       AC_MSG_RESULT([no])
     ])
     ;;
 esac
+
+
+AC_ARG_WITH(mingw1-deprecated,dnl
+AS_HELP_STRING([--with-mingw1-deprecated],[confirm you realize support for mingw v1 is dying]),
+  if test X"$withval" != Xno; then
+    curl_mingw_die=
+  fi
+)
+
+if test -n "$curl_mingw_die"; then
+  AC_MSG_ERROR([support for mingw v1 is going away, enable temporarily with --with-mingw1-deprecated])
+fi
 
 dnl **********************************************************************
 dnl Compilation based checks should not be done before this point.
@@ -570,7 +666,13 @@ CURL_DARWIN_CFLAGS
 CURL_DARWIN_SYSTEMCONFIGURATION
 CURL_SUPPORTS_BUILTIN_AVAILABLE
 
-AM_CONDITIONAL([OS_WINDOWS], [test "$curl_cv_native_windows" = "yes"])
+AM_CONDITIONAL([HAVE_WINDRES],
+  [test "$curl_cv_native_windows" = "yes" && test -n "${RC}"])
+
+if test "$curl_cv_native_windows" = "yes"; then
+  AM_COND_IF([HAVE_WINDRES],,
+    [AC_MSG_ERROR([windres not found in PATH. Windows builds require windres. Cannot continue.])])
+fi
 
 dnl ************************************************************
 dnl switch off particular protocols
@@ -2479,7 +2581,6 @@ if test "$want_winidn" = "yes"; then
   #
   if test "$tst_links_winidn" = "yes"; then
     AC_DEFINE(USE_WIN32_IDN, 1, [Define to 1 if you have the `normaliz' (WinIDN) library (-lnormaliz).])
-    AC_DEFINE(WANT_IDN_PROTOTYPES, 1, [Define to 1 to provide own prototypes.])
     AC_SUBST([IDN_ENABLED], [1])
     curl_idn_msg="enabled (Windows-native)"
   else
@@ -3292,13 +3393,12 @@ AC_CHECK_HEADERS(
         sys/socket.h \
         sys/ioctl.h \
         sys/uio.h \
-        assert.h \
         unistd.h \
         stdlib.h \
         arpa/inet.h \
         net/if.h \
         netinet/in.h \
-	netinet/in6.h \
+        netinet/in6.h \
         sys/un.h \
         linux/tcp.h \
         netinet/tcp.h \
@@ -3320,7 +3420,6 @@ AC_CHECK_HEADERS(
         sys/resource.h \
         libgen.h \
         locale.h \
-        errno.h \
         stdbool.h \
         arpa/tftp.h \
         sys/filio.h \
@@ -3386,17 +3485,8 @@ AC_CHECK_TYPE(long long,
    longlong="yes"
 )
 
-
 if test ${ac_cv_sizeof_curl_off_t} -lt 8; then
-  AC_ARG_WITH(n64-deprecated,dnl
-AS_HELP_STRING([--with-n64-deprecated],[confirm you realize support for systems without 64 bit data types is going away]),
-  if test X"$withval" != Xno; then
-    OPT_N64_AWARE=$withval
-  fi
-)
-  if test -z "$OPT_N64_AWARE"; then
-    AC_MSG_ERROR([support for systems without 64 bit curl_off_t is deprecated, use --with-n64-deprecated until then])
-  fi
+  AC_MSG_ERROR([64 bit curl_off_t is required])
 fi
 
 # check for ssize_t
@@ -3531,6 +3621,7 @@ AC_CHECK_DECLS([getpwuid_r], [], [AC_DEFINE(HAVE_DECL_GETPWUID_R_MISSING, 1, "Se
 
 AC_CHECK_FUNCS([fnmatch \
   fchmod \
+  fork \
   geteuid \
   getpass_r \
   getppid \
@@ -3548,7 +3639,8 @@ AC_CHECK_FUNCS([fnmatch \
   setrlimit \
   snprintf \
   utime \
-  utimes
+  utimes \
+  arc4random
 ],[
 ],[
   func="$ac_func"
@@ -4204,6 +4296,13 @@ if test "x$want_ech" != "xno"; then
 fi
 
 dnl *************************************************************
+dnl check whether OpenSSL (lookalikes) have SSL_set0_wbio
+dnl
+if test "x$OPENSSL_ENABLED" = "x1"; then
+  AC_CHECK_FUNCS([SSL_set0_wbio])
+fi
+
+dnl *************************************************************
 dnl WebSockets
 dnl
 AC_MSG_CHECKING([whether to support WebSockets])
@@ -4381,8 +4480,17 @@ fi
 
 dnl if not explicitly turned off, HTTPS-proxy comes with some TLS backends
 if test "x$https_proxy" != "xno"; then
-  if test "x$OPENSSL_ENABLED" = "x1" -o "x$GNUTLS_ENABLED" = "x1" \
-      -o "x$NSS_ENABLED" = "x1"; then
+  if test "x$OPENSSL_ENABLED" = "x1" \
+      -o "x$GNUTLS_ENABLED" = "x1" \
+      -o "x$NSS_ENABLED" = "x1" \
+      -o "x$SECURETRANSPORT_ENABLED" = "x1" \
+      -o "x$RUSTLS_ENABLED" = "x1" \
+      -o "x$BEARSSL_ENABLED" = "x1" \
+      -o "x$SCHANNEL_ENABLED" = "x1" \
+      -o "x$GNUTLS_ENABLED" = "x1" \
+      -o "x$MBEDTLS_ENABLED" = "x1"; then
+    SUPPORT_FEATURES="$SUPPORT_FEATURES HTTPS-proxy"
+  elif test "x$WOLFSSL_ENABLED" = "x1" -a "x$WOLFSSL_FULL_BIO" = "x1"; then
     SUPPORT_FEATURES="$SUPPORT_FEATURES HTTPS-proxy"
   fi
 fi
@@ -4553,12 +4661,15 @@ AC_CONFIG_FILES([Makefile \
            lib/libcurl.vers \
            lib/libcurl.plist \
            tests/Makefile \
+           tests/config \
            tests/certs/Makefile \
            tests/certs/scripts/Makefile \
            tests/data/Makefile \
            tests/server/Makefile \
            tests/libtest/Makefile \
            tests/unit/Makefile \
+           tests/http/config.ini \
+           tests/http/Makefile \
            packages/Makefile \
            packages/vms/Makefile \
            curl-config \
@@ -4567,8 +4678,6 @@ AC_CONFIG_FILES([Makefile \
 AC_OUTPUT
 
 CURL_GENERATE_CONFIGUREHELP_PM
-
-XC_AMEND_DISTCLEAN([lib src tests/unit tests/server tests/libtest docs/examples])
 
 AC_MSG_NOTICE([Configured to build curl/libcurl:
 

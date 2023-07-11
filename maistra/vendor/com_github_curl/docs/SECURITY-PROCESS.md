@@ -63,10 +63,14 @@ announcement.
 - Update the "security advisory" with the CVE number.
 
 - The security team commits the fix in a private branch. The commit message
-  should ideally contain the CVE number.
+  should ideally contain the CVE number. If the severity level of the issue is
+  set to Low or Medium, the fix is allowed to get merged into the master
+  repository via a normal PR - but without mentioning it being a security
+  vulnerability.
 
-- The security team also decides on and delivers a monetary reward to the
-  reporter as per the bug-bounty policies.
+- The monetary reward part of the bug-bounty is managed by the Internet Bug
+  Bounty team and the reporter is asked to request the reward from them after
+  the issue has been completely handled and published by curl.
 
 - No more than 10 days before release, inform
   [distros@openwall](https://oss-security.openwall.org/wiki/mailing-lists/distros)
@@ -133,6 +137,50 @@ has been published.
 
 See [BUG-BOUNTY](https://curl.se/docs/bugbounty.html) for details on the
 bug bounty program.
+
+# Severity levels
+
+The curl project's security team rates security problems using four severity
+levels depending how serious we consider the problem to be. We use **Low**,
+**Medium**, **High** and **Critical**. We refrain from using numerical scoring
+of vulnerabilities.
+
+When deciding severity level on a particular issue, we take all the factors
+into account: attack vector, attack complexity, required privileges, necessary
+build configuration, protocols involved, platform specifics and also what
+effects a possible exploit or trigger of the issue can lead do, including
+confidentiality, integrity or availability problems.
+
+## Low
+
+This is a security problem that is truly hard or unlikely to exploit or
+trigger. Due to timing, platform requirements or the fact that options or
+protocols involved are rare etc. [Past
+example](https://curl.se/docs/CVE-2022-43552.html)
+
+## Medium
+
+This is a security problem that is less hard than **Low** to exploit or
+trigger. Less strict timing, wider platforms availability or involving more
+widely used options or protocols. A problem that usually needs something else
+to also happen to become serious. [Past
+example](https://curl.se/docs/CVE-2022-32206.html)
+
+## High
+
+This issue in itself a serious problem with real world impact. Flaws that can
+easily compromise the confidentiality, integrity or availability of resources.
+Exploiting or triggering this problem is not hard. [Past
+example](https://curl.se/docs/CVE-2019-3822.html)
+
+## Critical
+
+Easily exploitable by a remote unauthenticated attacker and lead to system
+compromise (arbitrary code execution) without requiring user interaction, with
+a common configuration on a popular platform. This issue has few restrictions
+and requirements and can be exploited easily using most curl configurations.
+
+No past curl vulnerability has had this severity level.
 
 # Not security issues
 
@@ -212,3 +260,11 @@ security vulnerabilities.
  - virtually every argument can contain sensitive data, depending on use
  - blanking all arguments would make it impractical for users to differentiate
    curl command lines in process listings
+
+## Busy-loops
+
+Busy-loops that consume 100% CPU time but eventually end (perhaps due to a set
+timeout value or otherwise) are not considered security problems. Applications
+are supposed to already handle situations when the transfer loop legitimately
+consumes 100% CPU time, so while a prolonged such busy-loop is a nasty bug, we
+do not consider it a security problem.

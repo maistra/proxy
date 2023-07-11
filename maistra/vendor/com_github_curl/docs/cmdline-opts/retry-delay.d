@@ -1,11 +1,11 @@
-c: Copyright (C) 1998 - 2022, Daniel Stenberg, <daniel@haxx.se>, et al.
+c: Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al.
 SPDX-License-Identifier: curl
 Long: retry-delay
 Arg: <seconds>
 Help: Wait time between retries
 Added: 7.12.3
 Category: curl
-Example: --retry-delay 5 --retry $URL
+Example: --retry-delay 5 --retry 7 $URL
 See-also: retry
 Multi: single
 ---

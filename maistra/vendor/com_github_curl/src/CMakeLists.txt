@@ -5,7 +5,7 @@
 #                            | (__| |_| |  _ <| |___
 #                             \___|\___/|_| \_\_____|
 #
-# Copyright (C) 1998 - 2022, Daniel Stenberg, <daniel@haxx.se>, et al.
+# Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al.
 #
 # This software is licensed as described in the file COPYING, which
 # you should have received as part of this distribution. The terms
@@ -80,8 +80,6 @@ endif()
 
 if(ENABLE_UNICODE AND MINGW)
   target_link_libraries(${EXE_NAME} -municode)
-  # GCC doesn't know about wmain
-  set_source_files_properties(tool_main.c PROPERTIES COMPILE_FLAGS "-Wno-missing-prototypes -Wno-missing-declarations")
 endif()
 
 source_group("curlX source files" FILES ${CURLX_CFILES})

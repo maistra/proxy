@@ -5,7 +5,7 @@
  *                            | (__| |_| |  _ <| |___
  *                             \___|\___/|_| \_\_____|
  *
- * Copyright (C) 2020 - 2022, Daniel Stenberg, <daniel@haxx.se>, et al.
+ * Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al.
  *
  * This software is licensed as described in the file COPYING, which
  * you should have received as part of this distribution. The terms
@@ -99,8 +99,7 @@ static CURLcode dyn_nappend(struct dynbuf *s,
        include that as well when it uses this code */
     void *p = realloc(s->bufr, a);
     if(!p) {
-      Curl_safefree(s->bufr);
-      s->leng = s->allc = 0;
+      Curl_dyn_free(s);
       return CURLE_OUT_OF_MEMORY;
     }
     s->bufr = p;

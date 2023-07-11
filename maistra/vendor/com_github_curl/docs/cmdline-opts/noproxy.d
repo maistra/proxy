@@ -1,4 +1,4 @@
-c: Copyright (C) 1998 - 2022, Daniel Stenberg, <daniel@haxx.se>, et al.
+c: Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al.
 SPDX-License-Identifier: curl
 Long: noproxy
 Arg: <no-proxy-list>
@@ -19,3 +19,8 @@ not www.notlocal.com.
 Since 7.53.0, This option overrides the environment variables that disable the
 proxy ('no_proxy' and 'NO_PROXY'). If there's an environment variable
 disabling a proxy, you can set the noproxy list to "" to override it.
+
+Since 7.86.0, IP addresses specified to this option can be provided using CIDR
+notation: an appended slash and number specifies the number of "network bits"
+out of the address to use in the comparison. For example "192.168.0.0/16"
+would match all addresses starting with "192.168".

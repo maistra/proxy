@@ -5,7 +5,7 @@
  *                            | (__| |_| |  _ <| |___
  *                             \___|\___/|_| \_\_____|
  *
- * Copyright (C) 1998 - 2022, Daniel Stenberg, <daniel@haxx.se>, et al.
+ * Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al.
  *
  * This software is licensed as described in the file COPYING, which
  * you should have received as part of this distribution. The terms
@@ -50,10 +50,10 @@
 #include "tool_doswin.h"
 #include "tool_msgs.h"
 #include "tool_operate.h"
-#include "tool_panykey.h"
 #include "tool_vms.h"
 #include "tool_main.h"
 #include "tool_libinfo.h"
+#include "tool_stderr.h"
 
 /*
  * This is low-level hard-hacking memory leak tracking and similar. Using
@@ -156,8 +156,7 @@ static CURLcode main_init(struct GlobalConfig *config)
 #endif
 
   /* Initialise the global config */
-  config->showerror = -1;             /* Will show errors */
-  config->errors = stderr;            /* Default errors to stderr */
+  config->showerror = FALSE;          /* show errors when silent */
   config->styled_output = TRUE;       /* enable detection */
   config->parallel_max = PARALLEL_DEFAULT;
 
@@ -197,10 +196,6 @@ static void free_globalconfig(struct GlobalConfig *config)
 {
   Curl_safefree(config->trace_dump);
 
-  if(config->errors_fopened && config->errors)
-    fclose(config->errors);
-  config->errors = NULL;
-
   if(config->trace_fopened && config->trace_stream)
     fclose(config->trace_stream);
   config->trace_stream = NULL;
@@ -237,6 +232,11 @@ static void main_free(struct GlobalConfig *config)
 ** curl tool main function.
 */
 #ifdef _UNICODE
+#if defined(__GNUC__)
+/* GCC doesn't know about wmain() */
+#pragma GCC diagnostic ignored "-Wmissing-prototypes"
+#pragma GCC diagnostic ignored "-Wmissing-declarations"
+#endif
 int wmain(int argc, wchar_t *argv[])
 #else
 int main(int argc, char *argv[])
@@ -245,6 +245,8 @@ int main(int argc, char *argv[])
   CURLcode result = CURLE_OK;
   struct GlobalConfig global;
   memset(&global, 0, sizeof(global));
+
+  tool_init_stderr();
 
 #ifdef WIN32
   /* Undocumented diagnostic option to list the full paths of all loaded
@@ -290,11 +292,6 @@ int main(int argc, char *argv[])
 #ifdef WIN32
   /* Flush buffers of all streams opened in write or update mode */
   fflush(NULL);
-#endif
-
-#ifdef __NOVELL_LIBC__
-  if(!getenv("_IN_NETWARE_BASH_"))
-    tool_pressanykey();
 #endif
 
 #ifdef __VMS

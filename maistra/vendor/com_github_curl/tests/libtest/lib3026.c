@@ -5,7 +5,7 @@
  *                            | (__| |_| |  _ <| |___
  *                             \___|\___/|_| \_\_____|
  *
- * Copyright (C) 1998 - 2022, Daniel Stenberg, <daniel@haxx.se>, et al.
+ * Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al.
  *
  * This software is licensed as described in the file COPYING, which
  * you should have received as part of this distribution. The terms
@@ -68,6 +68,14 @@ int test(char *URL)
             __FILE__, __LINE__);
     return -1;
   }
+
+  /* On Windows libcurl global init/cleanup calls LoadLibrary/FreeLibrary for
+     secur32.dll and iphlpapi.dll. Here we load them beforehand so that when
+     libcurl calls LoadLibrary/FreeLibrary it only increases/decreases the
+     library's refcount rather than actually loading/unloading the library,
+     which would affect the test runtime. */
+  (void)win32_load_system_library(TEXT("secur32.dll"));
+  (void)win32_load_system_library(TEXT("iphlpapi.dll"));
 
   for(i = 0; i < tid_count; i++) {
     curl_win_thread_handle_t th;
