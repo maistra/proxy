@@ -97,12 +97,15 @@ constexpr const char* runtime_features[] = {
     "envoy.reloadable_features.upstream_host_weight_change_causes_rebuild",
     "envoy.reloadable_features.use_observable_cluster_name",
     "envoy.reloadable_features.validate_connect",
+    "envoy.reloadable_features.validate_upstream_headers",
     "envoy.reloadable_features.vhds_heartbeats",
     "envoy.reloadable_features.wasm_cluster_name_envoy_grpc",
     "envoy.reloadable_features.upstream_http2_flood_checks",
     "envoy.restart_features.use_apple_api_for_dns_lookups",
     "envoy.reloadable_features.header_map_correctly_coalesce_cookies",
     "envoy.reloadable_features.sanitize_http_header_referer",
+    "envoy.reloadable_features.sanitize_original_path",
+    "envoy.reloadable_features.service_sanitize_non_utf8_strings",
     "envoy.reloadable_features.skip_dispatching_frames_for_closed_connection",
 };
 

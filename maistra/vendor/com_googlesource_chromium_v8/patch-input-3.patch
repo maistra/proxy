@@ -1,0 +1,11 @@
+--- wee8/src/objects/feedback-vector.cc	1970-01-01 10:00:00.000000000 +1000
++++ wee8.fix/src/objects/feedback-vector.cc	2023-04-04 15:13:23.239494505 +1000
+@@ -1434,7 +1434,7 @@
+ FeedbackIterator::FeedbackIterator(const FeedbackNexus* nexus)
+     : done_(false), index_(-1), state_(kOther) {
+   DCHECK(IsLoadICKind(nexus->kind()) ||
+-         IsStoreICKind(nexus->kind()) | IsKeyedLoadICKind(nexus->kind()) ||
++         IsStoreICKind(nexus->kind()) || IsKeyedLoadICKind(nexus->kind()) ||
+          IsKeyedStoreICKind(nexus->kind()) || IsStoreOwnICKind(nexus->kind()) ||
+          IsStoreDataPropertyInLiteralKind(nexus->kind()) ||
+          IsStoreInArrayLiteralICKind(nexus->kind()) ||
