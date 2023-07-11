@@ -59,7 +59,7 @@ public:
 
   static T* getExisting() { return loader_; }
 
-  static void initialize(T* value) {
+  static void initialize(T* value) { 
     RELEASE_ASSERT(value != nullptr, "InjectableSingleton initialized with non-null value.");
     RELEASE_ASSERT(loader_ == nullptr, "InjectableSingleton initialized multiple times.");
     loader_ = value;
@@ -79,6 +79,8 @@ public:
     InjectableSingleton<T>::initialize(instance_.get());
   }
   ~ScopedInjectableLoader() { InjectableSingleton<T>::clear(); }
+
+  T& instance() { return *instance_; }
 
 private:
   std::unique_ptr<T> instance_;

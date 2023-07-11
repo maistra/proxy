@@ -111,6 +111,14 @@ public:
           header_value, override_stream_error_on_invalid_http_message,
           close_connection_upon_invalid_header_);
     }
+    ASSERT(!header_name.empty());
+    if (Http::HeaderUtility::isPseudoHeader(header_name) && saw_regular_headers_) {
+      // If any regular header appears before pseudo headers, the request or response is malformed.
+      return Http::HeaderUtility::HeaderValidationResult::REJECT;
+    }
+    if (!Http::HeaderUtility::isPseudoHeader(header_name)) {
+      saw_regular_headers_ = true;
+    }
     return Http::HeaderUtility::HeaderValidationResult::ACCEPT;
   }
 
@@ -141,6 +149,8 @@ protected:
   // TODO(kbaichoo): bind the account to the QUIC buffers to enable tracking of
   // memory allocated within QUIC buffers.
   Buffer::BufferMemoryAccountSharedPtr buffer_memory_account_ = nullptr;
+  // True if a regular (non-pseudo) HTTP header has been seen before.
+  bool saw_regular_headers_{false};
 
 private:
   // Keeps track of bytes buffered in the stream send buffer in QUICHE and reacts

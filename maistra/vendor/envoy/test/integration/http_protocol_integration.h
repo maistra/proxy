@@ -58,6 +58,15 @@ public:
     setDownstreamProtocol(GetParam().downstream_protocol);
     setUpstreamProtocol(GetParam().upstream_protocol);
   }
+
+  bool skipForH2Uhv() {
+#ifdef ENVOY_ENABLE_UHV
+    // Validation of upstream responses is not wired up yet
+    return GetParam().http2_implementation == Http2Impl::Oghttp2;
+#endif
+    return false;
+  }
+
 };
 
 } // namespace Envoy

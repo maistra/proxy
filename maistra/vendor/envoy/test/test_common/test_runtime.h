@@ -40,6 +40,10 @@ public:
                                               generator_, validation_visitor_, *api_));
   }
 
+   void mergeValues(const absl::node_hash_map<std::string, std::string>& values) {
+    loader_->instance().mergeValues(values);
+  }
+
 protected:
   Event::MockDispatcher dispatcher_;
   testing::NiceMock<ThreadLocal::MockInstance> tls_;

@@ -831,6 +831,7 @@ def _com_googlesource_chromium_v8():
             "@envoy//bazel/external:wee8.patch",
             "@envoy//bazel/external:wee8-s390x-ppc64.patch",
             "@envoy//bazel/external:wee8-OSSM-2321.patch",
+	    "@envoy//bazel/external:wee8-vector.patch",
         ],
     )
     native.bind(
