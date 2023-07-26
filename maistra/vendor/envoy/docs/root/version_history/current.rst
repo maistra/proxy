@@ -1,14 +1,5 @@
-1.20.4 (Pending)
-1.22.1 (Pending)
-================
-1.22.4 (Pending)
-======================
-1.22.7 (Pending)
-================
-1.22.10 (Pending)
-=================
-1.22.11 (April 11, 2023)
-========================
+July 18, 2023
+=============
 
 Incompatible Behavior Changes
 -----------------------------
@@ -38,6 +29,14 @@ Bug Fixes
 * dependency: update Curl -> 8.0.1 to resolve CVE-2023-27535, CVE-2023-27536, CVE-2023-27538.
 * http: amend the fix for ``x-envoy-original-path`` so it removes the header only at edge.
   Previously this would also remove the header at any Envoy instance upstream of an external request, including an Envoy instance that added the header.
+* cors: Fix a use-after-free bug that occurs in the CORS filter if the ``origin`` header is removed between request header decoding and response header encoding.
+* Fix memory leak in nghttp2 when scheduled requests are cancelled due to the ``GOAWAY`` frame being received from the upstream service.
+* Fixed a cookie validator bug that meant the HMAC calculation could be the same for different payloads. This prevents malicious clients from constructing credentials with permanent validity in some specific scenarios.
+* Switched Envoy internal scheme checks from case sensitive to case insensitive. This behaviorial change can be temporarily
+  reverted by setting runtime guard ``envoy.reloadable_features.handle_uppercase_scheme`` to ``false``.
+* Fixed a bug in the open telemetry access logger. This logger now uses the server scope for stats instead of the listener's global scope. 
+  This fixes a use-after-free that can occur if the listener is drained but the cached gRPC access logger uses the listener's global scope for stats.
+
 
 Removed Config or Runtime
 -------------------------
@@ -45,6 +44,9 @@ Removed Config or Runtime
 
 New Features
 ------------
+Envoy will now lower case scheme values by default. This behaviorial change can be temporarily reverted
+by setting runtime guard ``envoy.reloadable_features.lowercase_scheme`` to ``false``.
+
 
 Deprecated
 ----------

@@ -41,9 +41,9 @@ new_local_repository(
 #
 # Note: this is needed by release builder to resolve envoy dep sha to tag.
 # Commit date: 2022-07-29
-ENVOY_SHA = "8b5171e9a9f5df5bd87b211ebc132abbf4936a76"
+ENVOY_SHA = "0da354e5c665340a23fd9a329a7a9412d4e2aaa6"
 
-ENVOY_SHA256 = "d336ad7ae62d6c33264a121bbafb99e22fff822876ad1f3caffbaf33fe62a0c8"
+ENVOY_SHA256 = "e6a4a5cdc9b129fc234772db2a723e09f7d5d5d5ff46075bf6fd4867af408ddc"
 
 ENVOY_ORG = "maistra"
 
