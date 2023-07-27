@@ -119,6 +119,12 @@ def cargo_build_script(
         build_script_kwargs["compatible_with"] = kwargs["compatible_with"]
         binary_kwargs.pop("compatible_with")
 
+    if "toolchains" in kwargs:
+        build_script_kwargs["toolchains"] = kwargs["toolchains"]
+
+    if "features" in kwargs:
+        build_script_kwargs["features"] = kwargs["features"]
+
     rust_binary(
         name = name + "_",
         crate_features = crate_features,
