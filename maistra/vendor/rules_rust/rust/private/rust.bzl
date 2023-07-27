@@ -16,6 +16,7 @@
 
 load("@bazel_skylib//lib:paths.bzl", "paths")
 load("//rust/private:common.bzl", "rust_common")
+load("//rust/private:providers.bzl", "BuildInfo")
 load("//rust/private:rustc.bzl", "rustc_compile_action")
 load(
     "//rust/private:utils.bzl",
@@ -96,7 +97,7 @@ def _determine_lib_name(name, crate_type, toolchain, lib_hash = None):
               "please file an issue!").format(crate_type))
 
     prefix = "lib"
-    if toolchain.target_triple and toolchain.target_triple.system == "windows" and crate_type not in ("lib", "rlib"):
+    if toolchain.target_triple and toolchain.target_os == "windows" and crate_type not in ("lib", "rlib"):
         prefix = ""
     if toolchain.target_arch == "wasm32" and crate_type == "cdylib":
         prefix = ""
@@ -250,14 +251,15 @@ def _rust_library_common(ctx, crate_type):
     Returns:
         list: A list of providers. See `rustc_compile_action`
     """
-
-    srcs, crate_root = _transform_sources(ctx, ctx.files.srcs, getattr(ctx.file, "crate_root", None))
-    if not crate_root:
-        crate_root = crate_root_src(ctx.attr.name, srcs, "lib")
     _assert_no_deprecated_attributes(ctx)
     _assert_correct_dep_mapping(ctx)
 
     toolchain = find_toolchain(ctx)
+
+    crate_root = getattr(ctx.file, "crate_root", None)
+    if not crate_root:
+        crate_root = crate_root_src(ctx.attr.name, ctx.files.srcs, crate_type)
+    srcs, crate_root = _transform_sources(ctx, ctx.files.srcs, crate_root)
 
     # Determine unique hash for this rlib.
     # Note that we don't include a hash for `cdylib` and `staticlib` since they are meant to be consumed externally
@@ -331,9 +333,10 @@ def _rust_binary_impl(ctx):
     deps = transform_deps(ctx.attr.deps)
     proc_macro_deps = transform_deps(ctx.attr.proc_macro_deps + get_import_macro_deps(ctx))
 
-    srcs, crate_root = _transform_sources(ctx, ctx.files.srcs, getattr(ctx.file, "crate_root", None))
+    crate_root = getattr(ctx.file, "crate_root", None)
     if not crate_root:
-        crate_root = crate_root_src(ctx.attr.name, srcs, ctx.attr.crate_type)
+        crate_root = crate_root_src(ctx.attr.name, ctx.files.srcs, ctx.attr.crate_type)
+    srcs, crate_root = _transform_sources(ctx, ctx.files.srcs, crate_root)
 
     return rustc_compile_action(
         ctx = ctx,
@@ -372,9 +375,7 @@ def _rust_test_impl(ctx):
 
     toolchain = find_toolchain(ctx)
 
-    srcs, crate_root = _transform_sources(ctx, ctx.files.srcs, getattr(ctx.file, "crate_root", None))
     crate_type = "bin"
-
     deps = transform_deps(ctx.attr.deps)
     proc_macro_deps = transform_deps(ctx.attr.proc_macro_deps + get_import_macro_deps(ctx))
 
@@ -390,6 +391,8 @@ def _rust_test_impl(ctx):
                 toolchain.binary_ext,
             ),
         )
+
+        srcs, crate_root = _transform_sources(ctx, ctx.files.srcs, getattr(ctx.file, "crate_root", None))
 
         # Optionally join compile data
         if crate.compile_data:
@@ -424,9 +427,12 @@ def _rust_test_impl(ctx):
             owner = ctx.label,
         )
     else:
+        crate_root = getattr(ctx.file, "crate_root", None)
+
         if not crate_root:
             crate_root_type = "lib" if ctx.attr.use_libtest_harness else "bin"
             crate_root = crate_root_src(ctx.attr.name, ctx.files.srcs, crate_root_type)
+        srcs, crate_root = _transform_sources(ctx, ctx.files.srcs, crate_root)
 
         output_hash = determine_output_hash(crate_root, ctx.label)
         output = ctx.actions.declare_file(
@@ -474,13 +480,54 @@ def _rust_test_impl(ctx):
         if not toolchain.llvm_profdata:
             fail("toolchain.llvm_profdata is required if toolchain.llvm_cov is set.")
 
-        env["RUST_LLVM_COV"] = toolchain.llvm_cov.path
-        env["RUST_LLVM_PROFDATA"] = toolchain.llvm_profdata.path
+        llvm_cov_path = toolchain.llvm_cov.short_path
+        if llvm_cov_path.startswith("../"):
+            llvm_cov_path = llvm_cov_path[len("../"):]
+
+        llvm_profdata_path = toolchain.llvm_profdata.short_path
+        if llvm_profdata_path.startswith("../"):
+            llvm_profdata_path = llvm_profdata_path[len("../"):]
+
+        env["RUST_LLVM_COV"] = llvm_cov_path
+        env["RUST_LLVM_PROFDATA"] = llvm_profdata_path
     components = "{}/{}".format(ctx.label.workspace_root, ctx.label.package).split("/")
     env["CARGO_MANIFEST_DIR"] = "/".join([c for c in components if c])
     providers.append(testing.TestEnvironment(env))
 
     return providers
+
+def _rust_library_group_impl(ctx):
+    dep_variant_infos = []
+    dep_variant_transitive_infos = []
+    runfiles = []
+
+    for dep in ctx.attr.deps:
+        if rust_common.crate_info in dep:
+            dep_variant_infos.append(rust_common.dep_variant_info(
+                crate_info = dep[rust_common.crate_info] if rust_common.crate_info in dep else None,
+                dep_info = dep[rust_common.dep_info] if rust_common.crate_info in dep else None,
+                build_info = dep[BuildInfo] if BuildInfo in dep else None,
+                cc_info = dep[CcInfo] if CcInfo in dep else None,
+                crate_group_info = None,
+            ))
+        elif rust_common.crate_group_info in dep:
+            dep_variant_transitive_infos.append(dep[rust_common.crate_group_info].dep_variant_infos)
+        else:
+            fail("crate_group_info targets can only depend on rust_library or rust_library_group targets.")
+
+        if dep[DefaultInfo].default_runfiles != None:
+            runfiles.append(dep[DefaultInfo].default_runfiles)
+
+    return [
+        rust_common.crate_group_info(
+            dep_variant_infos = depset(dep_variant_infos, transitive = dep_variant_transitive_infos),
+        ),
+        DefaultInfo(runfiles = ctx.runfiles().merge_all(runfiles)),
+        coverage_common.instrumented_files_info(
+            ctx,
+            dependency_attributes = ["deps"],
+        ),
+    ]
 
 def _stamp_attribute(default_value):
     return attr.int(
@@ -652,11 +699,6 @@ _common_attrs = {
         ),
         default = Label("@bazel_tools//tools/cpp:current_cc_toolchain"),
     ),
-    "_collect_cc_coverage": attr.label(
-        default = Label("//util:collect_coverage"),
-        executable = True,
-        cfg = "exec",
-    ),
     "_error_format": attr.label(
         default = Label("//:error_format"),
     ),
@@ -682,6 +724,9 @@ _common_attrs = {
     "_is_proc_macro_dep_enabled": attr.label(
         default = Label("//:is_proc_macro_dep_enabled"),
     ),
+    "_per_crate_rustc_flag": attr.label(
+        default = Label("//:experimental_per_crate_rustc_flag"),
+    ),
     "_process_wrapper": attr.label(
         doc = "A process wrapper for running rustc on all platforms.",
         default = Label("//util/process_wrapper"),
@@ -692,6 +737,28 @@ _common_attrs = {
     "_stamp_flag": attr.label(
         doc = "A setting used to determine whether or not the `--stamp` flag is enabled",
         default = Label("//rust/private:stamp"),
+    ),
+}
+
+_coverage_attrs = {
+    "_collect_cc_coverage": attr.label(
+        default = Label("//util:collect_coverage"),
+        executable = True,
+        cfg = "exec",
+    ),
+    # Bazel’s coverage runner
+    # (https://github.com/bazelbuild/bazel/blob/6.0.0/tools/test/collect_coverage.sh)
+    # needs a binary called “lcov_merge.”  Its location is passed in the
+    # LCOV_MERGER environmental variable.  For builtin rules, this variable
+    # is set automatically based on a magic “$lcov_merger” or
+    # “:lcov_merger” attribute, but it’s not possible to create such
+    # attributes in Starlark.  Therefore we specify the variable ourselves.
+    # Note that the coverage runner runs in the runfiles root instead of
+    # the execution root, therefore we use “path” instead of “short_path.”
+    "_lcov_merger": attr.label(
+        default = configuration_field(fragment = "coverage", name = "output_generator"),
+        executable = True,
+        cfg = "exec",
     ),
 }
 
@@ -707,6 +774,25 @@ _experimental_use_cc_common_link_attrs = {
         ),
         values = [-1, 0, 1],
         default = -1,
+    ),
+    "malloc": attr.label(
+        default = Label("@bazel_tools//tools/cpp:malloc"),
+        doc = """Override the default dependency on `malloc`.
+
+By default, Rust binaries linked with cc_common.link are linked against
+`@bazel_tools//tools/cpp:malloc"`, which is an empty library and the resulting binary will use
+libc's `malloc`. This label must refer to a `cc_library` rule.
+""",
+        mandatory = False,
+        providers = [[CcInfo]],
+    ),  # A late-bound attribute denoting the value of the `--custom_malloc`
+    # command line flag (or None if the flag is not provided).
+    "_custom_malloc": attr.label(
+        default = configuration_field(
+            fragment = "cpp",
+            name = "custom_malloc",
+        ),
+        providers = [[CcInfo]],
     ),
 }
 
@@ -743,7 +829,7 @@ _rust_test_attrs = dict({
         default = Label("@bazel_tools//tools/cpp:grep-includes"),
         executable = True,
     ),
-}.items() + _experimental_use_cc_common_link_attrs.items())
+}.items() + _coverage_attrs.items() + _experimental_use_cc_common_link_attrs.items())
 
 _common_providers = [
     rust_common.crate_info,
@@ -1202,6 +1288,7 @@ rust_test = rule(
             crate = ":hello_lib",
             # You may add other deps that are specific to the test configuration
             deps = ["//some/dev/dep"],
+        )
         ```
 
         Run the test with `bazel test //hello_lib:hello_lib_test`. The crate
@@ -1337,3 +1424,48 @@ def rust_test_suite(name, srcs, **kwargs):
         tests = tests,
         tags = kwargs.get("tags", None),
     )
+
+rust_library_group = rule(
+    implementation = _rust_library_group_impl,
+    provides = [rust_common.crate_group_info],
+    attrs = {
+        "deps": attr.label_list(
+            doc = "Other dependencies to forward through this crate group.",
+            providers = [[rust_common.crate_group_info], [rust_common.crate_info]],
+        ),
+    },
+    doc = dedent("""\
+        Functions as an alias for a set of dependencies.
+
+        Specifically, the following are equivalent:
+
+        ```starlark
+        rust_library_group(
+            name = "crate_group",
+            deps = [
+                ":crate1",
+                ":crate2",
+            ],
+        )
+
+        rust_library(
+            name = "foobar",
+            deps = [":crate_group"],
+            ...
+        )
+        ```
+
+        and
+
+        ```starlark
+        rust_library(
+            name = "foobar",
+            deps = [
+                ":crate1",
+                ":crate2",
+            ],
+            ...
+        )
+        ```
+    """),
+)

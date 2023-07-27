@@ -15,7 +15,7 @@
 @SET_MAKE@
 
 # aminclude_static.am generated automatically by Autoconf
-# from AX_AM_MACROS_STATIC on Mon Oct 25 23:08:32 CEST 2021
+# from AX_AM_MACROS_STATIC on Mon May 22 13:36:05 CEST 2023
 
 
 VPATH = @srcdir@
@@ -105,6 +105,7 @@ am__aclocal_m4_deps = $(top_srcdir)/../m4/ax_ac_append_to_file.m4 \
 	$(top_srcdir)/../m4/ax_check_user_namespace.m4 \
 	$(top_srcdir)/../m4/ax_check_uts_namespace.m4 \
 	$(top_srcdir)/../m4/ax_code_coverage.m4 \
+	$(top_srcdir)/../m4/ax_cxx_compile_stdcxx.m4 \
 	$(top_srcdir)/../m4/ax_cxx_compile_stdcxx_11.m4 \
 	$(top_srcdir)/../m4/ax_file_escapes.m4 \
 	$(top_srcdir)/../m4/ax_pthread.m4 \
@@ -137,11 +138,14 @@ am__v_lt_1 =
 am__objects_1 = ares-test-fuzz.$(OBJEXT) ares-fuzz.$(OBJEXT)
 am_aresfuzz_OBJECTS = $(am__objects_1)
 aresfuzz_OBJECTS = $(am_aresfuzz_OBJECTS)
-aresfuzz_DEPENDENCIES = $(ARES_BLD_DIR)/src/lib/libcares.la
+am__DEPENDENCIES_1 =
+aresfuzz_DEPENDENCIES = $(ARES_BLD_DIR)/src/lib/libcares.la \
+	$(am__DEPENDENCIES_1)
 am__objects_2 = ares-test-fuzz-name.$(OBJEXT) ares-fuzz.$(OBJEXT)
 am_aresfuzzname_OBJECTS = $(am__objects_2)
 aresfuzzname_OBJECTS = $(am_aresfuzzname_OBJECTS)
-aresfuzzname_DEPENDENCIES = $(ARES_BLD_DIR)/src/lib/libcares.la
+aresfuzzname_DEPENDENCIES = $(ARES_BLD_DIR)/src/lib/libcares.la \
+	$(am__DEPENDENCIES_1)
 am__objects_3 = ares-test-main.$(OBJEXT) ares-test-init.$(OBJEXT) \
 	ares-test.$(OBJEXT) ares-test-ns.$(OBJEXT) \
 	ares-test-parse.$(OBJEXT) ares-test-parse-a.$(OBJEXT) \
@@ -158,13 +162,14 @@ am__objects_3 = ares-test-main.$(OBJEXT) ares-test-init.$(OBJEXT) \
 am__objects_4 =
 am_arestest_OBJECTS = $(am__objects_3) $(am__objects_4)
 arestest_OBJECTS = $(am_arestest_OBJECTS)
-am__DEPENDENCIES_1 =
 arestest_DEPENDENCIES = libgmock.la \
-	$(ARES_BLD_DIR)/src/lib/libcares.la $(am__DEPENDENCIES_1)
+	$(ARES_BLD_DIR)/src/lib/libcares.la $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_1)
 am__objects_5 = dns-proto.$(OBJEXT) dns-dump.$(OBJEXT)
 am_dnsdump_OBJECTS = $(am__objects_5)
 dnsdump_OBJECTS = $(am_dnsdump_OBJECTS)
-dnsdump_DEPENDENCIES = $(ARES_BLD_DIR)/src/lib/libcares.la
+dnsdump_DEPENDENCIES = $(ARES_BLD_DIR)/src/lib/libcares.la \
+	$(am__DEPENDENCIES_1)
 AM_V_P = $(am__v_P_@AM_V@)
 am__v_P_ = $(am__v_P_@AM_DEFAULT_V@)
 am__v_P_0 = false
@@ -511,6 +516,7 @@ CODE_COVERAGE_CPPFLAGS = @CODE_COVERAGE_CPPFLAGS@
 CODE_COVERAGE_CXXFLAGS = @CODE_COVERAGE_CXXFLAGS@
 CODE_COVERAGE_ENABLED = @CODE_COVERAGE_ENABLED@
 CODE_COVERAGE_LIBS = @CODE_COVERAGE_LIBS@
+CPP = @CPP@
 
 # Note use of -isystem to force use of local gMock/gTest even if there's an installed version.
 CPPFLAGS = @CPPFLAGS@ -I$(ARES_BLD_DIR)/include \
@@ -536,6 +542,7 @@ EGREP = @EGREP@
 ETAGS = @ETAGS@
 EXEEXT = @EXEEXT@
 FGREP = @FGREP@
+FILECMD = @FILECMD@
 GCOV = @GCOV@
 GENHTML = @GENHTML@
 GREP = @GREP@
@@ -575,6 +582,7 @@ PACKAGE_VERSION = @PACKAGE_VERSION@
 PATH_SEPARATOR = @PATH_SEPARATOR@
 PTHREAD_CC = @PTHREAD_CC@
 PTHREAD_CFLAGS = @PTHREAD_CFLAGS@
+PTHREAD_CXX = @PTHREAD_CXX@
 PTHREAD_LIBS = @PTHREAD_LIBS@
 RANLIB = @RANLIB@
 SED = @SED@
@@ -690,7 +698,9 @@ libgmock_la_SOURCES = \
 libgmock_la_CPPFLAGS = -isystem $(srcdir)/gmock-1.11.0
 EXTRA_DIST = fuzzcheck.sh CMakeLists.txt Makefile.m32 Makefile.msvc README.md buildconf $(srcdir)/fuzzinput/* $(srcdir)/fuzznames/*
 arestest_SOURCES = $(TESTSOURCES) $(TESTHEADERS)
-arestest_LDADD = libgmock.la $(ARES_BLD_DIR)/src/lib/libcares.la $(PTHREAD_LIBS)
+
+# Not interested in coverage of test code, but linking the test binary needs the coverage option
+arestest_LDADD = libgmock.la $(ARES_BLD_DIR)/src/lib/libcares.la $(PTHREAD_LIBS) $(CODE_COVERAGE_LIBS)
 @CODE_COVERAGE_ENABLED_TRUE@GITIGNOREFILES := $(GITIGNOREFILES) $(CODE_COVERAGE_OUTPUT_FILE) $(CODE_COVERAGE_OUTPUT_DIRECTORY)
 @CODE_COVERAGE_ENABLED_TRUE@code_coverage_v_lcov_cap = $(code_coverage_v_lcov_cap_$(V))
 @CODE_COVERAGE_ENABLED_TRUE@code_coverage_v_lcov_cap_ = $(code_coverage_v_lcov_cap_$(AM_DEFAULT_VERBOSITY))
@@ -708,15 +718,12 @@ arestest_LDADD = libgmock.la $(ARES_BLD_DIR)/src/lib/libcares.la $(PTHREAD_LIBS)
 # sanitizes the test-name: replaces with underscores: dashes and dots
 @CODE_COVERAGE_ENABLED_TRUE@code_coverage_sanitize = $(subst -,_,$(subst .,_,$(1)))
 @CODE_COVERAGE_ENABLED_TRUE@AM_DISTCHECK_CONFIGURE_FLAGS := $(AM_DISTCHECK_CONFIGURE_FLAGS) --disable-code-coverage
-
-# Not interested in coverage of test code, but linking the test binary needs the coverage option
-arestest_LIBS = $(CODE_COVERAGE_LIBS)
 aresfuzz_SOURCES = $(FUZZSOURCES)
-aresfuzz_LDADD = $(ARES_BLD_DIR)/src/lib/libcares.la
+aresfuzz_LDADD = $(ARES_BLD_DIR)/src/lib/libcares.la $(CODE_COVERAGE_LIBS)
 aresfuzzname_SOURCES = $(FUZZNAMESOURCES)
-aresfuzzname_LDADD = $(ARES_BLD_DIR)/src/lib/libcares.la
+aresfuzzname_LDADD = $(ARES_BLD_DIR)/src/lib/libcares.la $(CODE_COVERAGE_LIBS)
 dnsdump_SOURCES = $(DUMPSOURCES)
-dnsdump_LDADD = $(ARES_BLD_DIR)/src/lib/libcares.la
+dnsdump_LDADD = $(ARES_BLD_DIR)/src/lib/libcares.la $(CODE_COVERAGE_LIBS)
 all: config.h
 	$(MAKE) $(AM_MAKEFLAGS) all-am
 

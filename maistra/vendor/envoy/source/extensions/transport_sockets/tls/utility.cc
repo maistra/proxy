@@ -18,7 +18,6 @@ namespace Extensions {
 namespace TransportSockets {
 namespace Tls {
 
-#if BORINGSSL_API_VERSION < 10
 static constexpr absl::string_view SSL_ERROR_NONE_MESSAGE = "NONE";
 static constexpr absl::string_view SSL_ERROR_SSL_MESSAGE = "SSL";
 static constexpr absl::string_view SSL_ERROR_WANT_READ_MESSAGE = "WANT_READ";
@@ -40,7 +39,6 @@ static constexpr absl::string_view SSL_ERROR_WANT_CERTIFICATE_VERIFY_MESSAGE =
     "WANT_CERTIFICATE_VERIFY";
 static constexpr absl::string_view SSL_ERROR_HANDOFF_MESSAGE = "HANDOFF";
 static constexpr absl::string_view SSL_ERROR_HANDBACK_MESSAGE = "HANDBACK";
-#endif
 static constexpr absl::string_view SSL_ERROR_UNKNOWN_ERROR_MESSAGE = "UNKNOWN_ERROR";
 
 Envoy::Ssl::CertificateDetailsPtr Utility::certificateDetails(X509* cert, const std::string& path,
@@ -143,6 +141,7 @@ std::string getRFC2253NameFromCertificate(X509& cert, CertName desired_name) {
     name = X509_get_subject_name(&cert);
     break;
   }
+
   // flags=XN_FLAG_RFC2253 is the documented parameter for single-line output in RFC 2253 format.
   // Example from the RFC:
   //   * Single value per Relative Distinguished Name (RDN): CN=Steve Kille,O=Isode Limited,C=GB
@@ -332,9 +331,7 @@ absl::optional<std::string> Utility::getLastCryptoError() {
 }
 
 absl::string_view Utility::getErrorDescription(int err) {
-#if BORINGSSL_API_VERSION < 10
-  // TODO(davidben): Remove this and the corresponding SSL_ERROR_*_MESSAGE constants when the FIPS
-  // build is updated to a later version.
+  // TODO: refine this for openssl for 2.5 and OpenSSL 3
   switch (err) {
   case SSL_ERROR_NONE:
     return SSL_ERROR_NONE_MESSAGE;
@@ -373,13 +370,8 @@ absl::string_view Utility::getErrorDescription(int err) {
   case 18: // SSL_ERROR_HANDBACK:
     return SSL_ERROR_HANDBACK_MESSAGE;
   }
-#else
-  const char* description = SSL_error_description(err);
-  if (description) {
-    return description;
-  }
-#endif
-  ENVOY_BUG(false, "Unknown BoringSSL error had occurred");
+
+  IS_ENVOY_BUG("BoringSSL error had occurred: SSL_error_description() returned nullptr");
   return SSL_ERROR_UNKNOWN_ERROR_MESSAGE;
 }
 

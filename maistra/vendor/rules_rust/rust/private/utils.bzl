@@ -15,7 +15,7 @@
 """Utility functions not specific to the rust toolchain."""
 
 load("@bazel_tools//tools/cpp:toolchain_utils.bzl", find_rules_cc_toolchain = "find_cpp_toolchain")
-load(":providers.bzl", "BuildInfo", "CrateInfo", "DepInfo", "DepVariantInfo")
+load(":providers.bzl", "BuildInfo", "CrateGroupInfo", "CrateInfo", "DepInfo", "DepVariantInfo")
 
 UNSUPPORTED_FEATURES = [
     "thin_lto",
@@ -135,7 +135,7 @@ def get_lib_name_default(lib):
 # so the following doesn't work:
 #     args.add_all(
 #         cc_toolchain.dynamic_runtime_lib(feature_configuration = feature_configuration),
-#         map_each = lambda x: get_lib_name(x, for_windows = toolchain.os.startswith("windows)),
+#         map_each = lambda x: get_lib_name(x, for_windows = toolchain.target_os.startswith("windows)),
 #         format_each = "-ldylib=%s",
 #     )
 def get_lib_name_for_windows(lib):
@@ -475,6 +475,7 @@ def transform_deps(deps):
         dep_info = dep[DepInfo] if DepInfo in dep else None,
         build_info = dep[BuildInfo] if BuildInfo in dep else None,
         cc_info = dep[CcInfo] if CcInfo in dep else None,
+        crate_group_info = dep[CrateGroupInfo] if CrateGroupInfo in dep else None,
     ) for dep in deps]
 
 def get_import_macro_deps(ctx):
@@ -679,7 +680,7 @@ def can_build_metadata(toolchain, ctx, crate_type):
     # 3) process_wrapper is enabled (this is disabled when compiling process_wrapper itself),
     # 4) the crate_type is rlib or lib.
     return toolchain._pipelined_compilation and \
-           toolchain.os != "windows" and \
+           toolchain.exec_triple.system != "windows" and \
            ctx.attr._process_wrapper and \
            crate_type in ("rlib", "lib")
 
