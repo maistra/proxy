@@ -27,7 +27,7 @@ namespace Http {
 namespace {
 
 absl::string_view getScheme(absl::string_view forwarded_proto, bool is_ssl) {
-  if (HeaderUtility::schemeIsValid(forwarded_proto)) {
+  if (Utility::schemeIsValid(forwarded_proto)) {
     return forwarded_proto;
   }
   return is_ssl ? Headers::get().SchemeValues.Https : Headers::get().SchemeValues.Http;
@@ -191,6 +191,9 @@ ConnectionManagerUtility::MutateRequestHeadersResult ConnectionManagerUtility::m
       Runtime::runtimeFeatureEnabled("envoy.reloadable_features.add_and_validate_scheme_header")) {
     request_headers.setScheme(
         getScheme(request_headers.getForwardedProtoValue(), connection.ssl() != nullptr));
+  }
+  if (Runtime::runtimeFeatureEnabled("envoy.reloadable_features.lowercase_scheme")) {
+    request_headers.setScheme(absl::AsciiStrToLower(request_headers.getSchemeValue()));
   }
 
   // At this point we can determine whether this is an internal or external request. The

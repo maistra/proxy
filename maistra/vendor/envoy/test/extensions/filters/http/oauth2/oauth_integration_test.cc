@@ -138,7 +138,7 @@ typed_config:
     validate_headers.addReferenceKey(Http::Headers::get().Cookie,
                                      absl::StrCat("BearerToken=", token));
 
-    OAuth2CookieValidator validator{api_->timeSource()};
+    OAuth2CookieValidator validator{api_->timeSource(), DEFAULT_COOKIE_NAMES};
     validator.setParams(validate_headers, std::string(hmac_secret));
     return validator.isValid();
   }

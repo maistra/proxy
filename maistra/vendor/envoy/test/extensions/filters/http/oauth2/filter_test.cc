@@ -141,6 +141,45 @@ public:
     return callbacks;
   }
 
+  // Validates the behavior of the cookie validator.
+  void expectValidCookies(const CookieNames& cookie_names) {
+    // Set SystemTime to a fixed point so we get consistent HMAC encodings between test runs.
+    test_time_.setSystemTime(SystemTime(std::chrono::seconds(0)));
+
+    const auto expires_at_s = DateUtil::nowToSeconds(test_time_.timeSystem()) + 10;
+
+    Http::TestRequestHeaderMapImpl request_headers{
+        {Http::Headers::get().Host.get(), "traffic.example.com"},
+        {Http::Headers::get().Path.get(), "/anypath"},
+        {Http::Headers::get().Method.get(), Http::Headers::get().MethodValues.Get},
+        {Http::Headers::get().Cookie.get(),
+         fmt::format("{}={};version=test", cookie_names.oauth_expires_, expires_at_s)},
+        {Http::Headers::get().Cookie.get(),
+         absl::StrCat(cookie_names.bearer_token_, "=xyztoken;version=test")},
+        {Http::Headers::get().Cookie.get(),
+         absl::StrCat(cookie_names.oauth_hmac_, "="
+                                                "NzFlZDJjZmI3MmY4NDVhYjNjM2JkZDAyYWFkZWYxNTJhMjRhMW"
+                                                "NkOWZhNDhkYWFiYjgxY2I4OTkxZjM4MTRlZg=="
+//                                                "NzQyYmI0YTJkMzFjMmU4Njg2MTdiZGUzYWQzZjkxZjJiMTgwZD"
+//                                                "I5OWQ2YzhjODBkN2Y4Zjg2OGFmMWFiMWM0Mg=="
+                                                ";version=test")},
+    };
+
+    auto cookie_validator = std::make_shared<OAuth2CookieValidator>(test_time_, cookie_names);
+    EXPECT_EQ(cookie_validator->token(), "");
+    cookie_validator->setParams(request_headers, "mock-secret");
+
+    EXPECT_TRUE(cookie_validator->hmacIsValid());
+    EXPECT_TRUE(cookie_validator->timestampIsValid());
+    EXPECT_TRUE(cookie_validator->isValid());
+
+    // If we advance time beyond 10s the timestamp should no longer be valid.
+    test_time_.advanceTimeWait(std::chrono::seconds(11));
+
+    EXPECT_FALSE(cookie_validator->timestampIsValid());
+    EXPECT_FALSE(cookie_validator->isValid());
+  }
+
   NiceMock<Event::MockTimer>* attachmentTimeout_timer_{};
   NiceMock<Server::Configuration::MockFactoryContext> factory_context_;
   NiceMock<Http::MockStreamDecoderFilterCallbacks> decoder_callbacks_;
@@ -537,25 +576,37 @@ TEST_F(OAuth2Test, OAuthOptionsRequestAndContinue) {
 
 // Validates the behavior of the cookie validator.
 TEST_F(OAuth2Test, CookieValidator) {
-  // Set SystemTime to a fixed point so we get consistent HMAC encodings between test runs.
+  expectValidCookies(DEFAULT_COOKIE_NAMES);
+}
+
+// Validates the behavior of the cookie validator with custom cookie names.
+TEST_F(OAuth2Test, CookieValidatorWithCustomNames) {
+  expectValidCookies(CookieNames{"CustomBearerToken", "CustomOauthHMAC", "CustomOauthExpires"});
+}
+
+// Validates the behavior of the cookie validator when the combination of some fields could be same.
+TEST_F(OAuth2Test, CookieValidatorSame) {
   test_time_.setSystemTime(SystemTime(std::chrono::seconds(0)));
+  auto cookie_names = CookieNames{"BearerToken", "OauthHMAC", "OauthExpires"};
+  const auto expires_at_s = DateUtil::nowToSeconds(test_time_.timeSystem()) + 5;
 
-  const auto expires_at_s = DateUtil::nowToSeconds(test_time_.timeSystem()) + 10;
-
+  // Host name is `traffic.example.com:101` and the expire time is 5.
   Http::TestRequestHeaderMapImpl request_headers{
-      {Http::Headers::get().Host.get(), "traffic.example.com"},
+      {Http::Headers::get().Host.get(), "traffic.example.com:101"},
       {Http::Headers::get().Path.get(), "/anypath"},
       {Http::Headers::get().Method.get(), Http::Headers::get().MethodValues.Get},
       {Http::Headers::get().Cookie.get(),
-       fmt::format("OauthExpires={};version=test", expires_at_s)},
-      {Http::Headers::get().Cookie.get(), "BearerToken=xyztoken;version=test"},
+       fmt::format("{}={};version=test", cookie_names.oauth_expires_, expires_at_s)},
       {Http::Headers::get().Cookie.get(),
-       "OauthHMAC="
-       "NGQ3MzVjZGExNGM5NTFiZGJjODBkMjBmYjAyYjNiOTFjMmNjYjIxMTUzNmNiNWU0NjQzMmMxMWUzZmE2ZWJjYg=="
-       ";version=test"},
+       absl::StrCat(cookie_names.bearer_token_, "=xyztoken;version=test")},
+      {Http::Headers::get().Cookie.get(),
+       absl::StrCat(cookie_names.oauth_hmac_, "="
+                                              "NDAzNGQzNmMzZGVjMjdlNzU5YTBiOWMwZTg2NDgzODI2ZGU5YTRiODk2OGY"
+                                              "xYzcyODQyYWVhZTFkOWI1MTdiMA=="
+                                              ";version=test")},
   };
 
-  auto cookie_validator = std::make_shared<OAuth2CookieValidator>(test_time_);
+  auto cookie_validator = std::make_shared<OAuth2CookieValidator>(test_time_, DEFAULT_COOKIE_NAMES);
   EXPECT_EQ(cookie_validator->token(), "");
   cookie_validator->setParams(request_headers, "mock-secret");
 
@@ -563,8 +614,40 @@ TEST_F(OAuth2Test, CookieValidator) {
   EXPECT_TRUE(cookie_validator->timestampIsValid());
   EXPECT_TRUE(cookie_validator->isValid());
 
-  // If we advance time beyond 10s the timestamp should no longer be valid.
-  test_time_.advanceTimeWait(std::chrono::seconds(11));
+  // If we advance time beyond 5s the timestamp should no longer be valid.
+  test_time_.advanceTimeWait(std::chrono::seconds(6));
+
+  EXPECT_FALSE(cookie_validator->timestampIsValid());
+  EXPECT_FALSE(cookie_validator->isValid());
+
+  test_time_.setSystemTime(SystemTime(std::chrono::seconds(0)));
+  const auto new_expires_at_s = DateUtil::nowToSeconds(test_time_.timeSystem()) + 15;
+
+  // Host name is `traffic.example.com:10` and the expire time is 15.
+  // HMAC should be different from the above one with the separator fix.
+  Http::TestRequestHeaderMapImpl request_headers_second{
+      {Http::Headers::get().Host.get(), "traffic.example.com:10"},
+      {Http::Headers::get().Path.get(), "/anypath"},
+      {Http::Headers::get().Method.get(), Http::Headers::get().MethodValues.Get},
+      {Http::Headers::get().Cookie.get(),
+       fmt::format("{}={};version=test", cookie_names.oauth_expires_, new_expires_at_s)},
+      {Http::Headers::get().Cookie.get(),
+       absl::StrCat(cookie_names.bearer_token_, "=xyztoken;version=test")},
+      {Http::Headers::get().Cookie.get(),
+       absl::StrCat(cookie_names.oauth_hmac_, "="
+                                              "NGUzNjIxZmVjYWVlOGU3MzhmYTY2MDg1Y2ZiYmMzMjdkMDliMjg2Mjc1MTN"
+                                              "kNzE4MzljZjU4MTRkODU3YzM2MQ=="
+                                              ";version=test")},
+  };
+
+  cookie_validator->setParams(request_headers_second, "mock-secret");
+
+  EXPECT_TRUE(cookie_validator->hmacIsValid());
+  EXPECT_TRUE(cookie_validator->timestampIsValid());
+  EXPECT_TRUE(cookie_validator->isValid());
+
+  // If we advance time beyond 15s the timestamp should no longer be valid.
+  test_time_.advanceTimeWait(std::chrono::seconds(16));
 
   EXPECT_FALSE(cookie_validator->timestampIsValid());
   EXPECT_FALSE(cookie_validator->isValid());
@@ -580,11 +663,11 @@ TEST_F(OAuth2Test, CookieValidatorInvalidExpiresAt) {
       {Http::Headers::get().Cookie.get(), "BearerToken=xyztoken;version=test"},
       {Http::Headers::get().Cookie.get(),
        "OauthHMAC="
-       "M2NjZmIxYWE0NzQzOGZlZTJjMjQwMzBiZTU5OTdkN2Y0NDRhZjE5MjZiOWNhY2YzNjM0MWRmMTNkMDVmZWFlOQ=="
+       "MTUxZGZkZGQzZWJlN2Q1MDQwZGYwZDJjNzIxNjg3Y2RjMDg2YWZlODM1NGI2NTRiODNkM2VlZjc3OTBjOTYxMw=="
        ";version=test"},
   };
 
-  auto cookie_validator = std::make_shared<OAuth2CookieValidator>(test_time_);
+  auto cookie_validator = std::make_shared<OAuth2CookieValidator>(test_time_, DEFAULT_COOKIE_NAMES);
   cookie_validator->setParams(request_headers, "mock-secret");
 
   EXPECT_TRUE(cookie_validator->hmacIsValid());
@@ -804,7 +887,7 @@ TEST_F(OAuth2Test, OAuthTestFullFlowPostWithParameters) {
       {Http::Headers::get().Status.get(), "302"},
       {Http::Headers::get().SetCookie.get(),
        "OauthHMAC="
-       "NWUzNzE5MWQwYTg0ZjA2NjIyMjVjMzk3MzY3MzMyZmE0NjZmMWI2MjI1NWFhNDhkYjQ4NDFlZmRiMTVmMTk0MQ==;"
+       "Nzk1ZmY2ZWZkZjliMmIyZDkzODY3MzI0ZTRmNDYxYjNiNTM0ZGYxMjcyZjMxNTMwYzUwOWI1ZDE3OTAwOWFlYw==;"
        "version=1;path=/;Max-Age=;secure;HttpOnly"},
       {Http::Headers::get().SetCookie.get(),
        "OauthExpires=;version=1;path=/;Max-Age=;secure;HttpOnly"},
@@ -817,6 +900,44 @@ TEST_F(OAuth2Test, OAuthTestFullFlowPostWithParameters) {
               encodeHeaders_(HeaderMapEqualRef(&second_response_headers), true));
 
   filter_->finishFlow();
+}
+
+/**
+ * Testing oauth response after tokens are set.
+ *
+ * Expected behavior: cookies are set.
+ */
+TEST_F(OAuth2Test, OAuthAccessTokenSucessWithTokens) {
+
+  // Set SystemTime to a fixed point so we get consistent HMAC encodings between test runs.
+  test_time_.setSystemTime(SystemTime(std::chrono::seconds(1000)));
+
+  // host_ must be set, which is guaranteed (ASAN).
+  Http::TestRequestHeaderMapImpl request_headers{
+      {Http::Headers::get().Host.get(), "traffic.example.com"},
+      {Http::Headers::get().Path.get(), "/_signout"},
+      {Http::Headers::get().Method.get(), Http::Headers::get().MethodValues.Get},
+  };
+  filter_->decodeHeaders(request_headers, false);
+
+  // Expected response after the callback is complete.
+  Http::TestRequestHeaderMapImpl expected_headers{
+      {Http::Headers::get().Status.get(), "302"},
+      {Http::Headers::get().SetCookie.get(),
+       "OauthHMAC="
+       "NGEzNWNiOTg3ZmI1ZjE0YmVkYjMzNGFmNzc1MzQxYjJjOWVjZjRjZmE5YTk4M2U0ZDhjZmYzYTE5NDg3ZjQ4Yw==;"
+       "version=1;path=/;Max-Age=1600;secure;HttpOnly"},
+      {Http::Headers::get().SetCookie.get(),
+       "OauthExpires=1600;version=1;path=/;Max-Age=1600;secure;HttpOnly"},
+      {Http::Headers::get().SetCookie.get(),
+       "BearerToken=access_code;version=1;path=/;Max-Age=1600;secure"},
+      {Http::Headers::get().Location.get(), ""},
+  };
+
+  EXPECT_CALL(decoder_callbacks_, encodeHeaders_(HeaderMapEqualRef(&expected_headers), true));
+
+  filter_->onGetAccessTokenSuccess("access_code", 
+                                   std::chrono::seconds(600));
 }
 
 TEST_F(OAuth2Test, OAuthBearerTokenFlowFromHeader) {

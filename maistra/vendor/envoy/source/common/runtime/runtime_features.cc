@@ -11,6 +11,7 @@ bool isRuntimeFeature(absl::string_view feature) {
 }
 
 bool runtimeFeatureEnabled(absl::string_view feature) {
+  std::cout << "----------- Testing for feature : " << feature << std::endl;
   ASSERT(isRuntimeFeature(feature));
   if (Runtime::LoaderSingleton::getExisting()) {
     return Runtime::LoaderSingleton::getExisting()->threadsafeSnapshot()->runtimeFeatureEnabled(
@@ -65,6 +66,7 @@ constexpr const char* runtime_features[] = {
     "envoy.reloadable_features.enable_compression_bomb_protection",
     "envoy.reloadable_features.enable_compression_without_content_length_header",
     "envoy.reloadable_features.fix_added_trailers",
+    "envoy.reloadable_features.handle_uppercase_scheme",
     "envoy.reloadable_features.grpc_bridge_stats_disabled",
     "envoy.reloadable_features.grpc_web_fix_non_proto_encoded_response_handling",
     "envoy.reloadable_features.grpc_json_transcoder_adhere_to_buffer_limits",
@@ -82,6 +84,7 @@ constexpr const char* runtime_features[] = {
     "envoy.reloadable_features.listener_reuse_port_default_enabled",
     "envoy.reloadable_features.listener_wildcard_match_ip_family",
     "envoy.reloadable_features.new_tcp_connection_pool",
+    "envoy.reloadable_features.lowercase_scheme",
     "envoy.reloadable_features.no_chunked_encoding_header_for_304",
     "envoy.reloadable_features.preserve_downstream_scheme",
     "envoy.reloadable_features.remove_forked_chromium_url",
