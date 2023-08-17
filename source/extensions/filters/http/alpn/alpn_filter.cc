@@ -69,6 +69,21 @@ Http::FilterHeadersStatus AlpnFilter::decodeHeaders(Http::RequestHeaderMap&, boo
     return Http::FilterHeadersStatus::Continue;
   }
 
+  const auto& filter_metadata = cluster->info()->metadata().filter_metadata();
+  const auto& istio = filter_metadata.find("istio");
+  if (istio != filter_metadata.end()) {
+    const auto& alpn_override = istio->second.fields().find("alpn_override");
+    if (alpn_override != istio->second.fields().end()) {
+      const auto alpn_override_value = alpn_override->second.string_value();
+      if (alpn_override_value == "false") {
+        // Skip ALPN header rewrite
+        ENVOY_LOG(debug,
+                  "Skipping ALPN header rewrite because istio.alpn_override metadata is false");
+        return Http::FilterHeadersStatus::Continue;
+      }
+    }
+  }
+
   auto protocols =
       cluster->info()->upstreamHttpProtocol(decoder_callbacks_->streamInfo().protocol());
   const auto& alpn_override = config_->alpnOverrides(protocols[0]);
