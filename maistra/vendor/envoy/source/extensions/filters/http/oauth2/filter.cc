@@ -62,6 +62,8 @@ constexpr absl::string_view REDIRECT_FOR_CREDENTIALS = "oauth.missing_credential
 constexpr absl::string_view SIGN_OUT = "oauth.sign_out";
 constexpr absl::string_view DEFAULT_AUTH_SCOPE = "user";
 
+constexpr absl::string_view HmacPayloadSeparator = "\n";
+
 template <class T>
 std::vector<Http::HeaderUtility::HeaderData> headerMatchers(const T& matcher_protos) {
   std::vector<Http::HeaderUtility::HeaderData> matchers;
@@ -115,6 +117,16 @@ std::string findValue(const absl::flat_hash_map<std::string, std::string>& map,
 }
 } // namespace
 
+std::string encodeHmac(const std::vector<uint8_t>& secret, absl::string_view host,
+                       absl::string_view expires, absl::string_view token = "") {
+  auto& crypto_util = Envoy::Common::Crypto::UtilitySingleton::get();
+  const auto hmac_payload =
+      absl::StrJoin({host, expires, token}, HmacPayloadSeparator);
+  std::string encoded_hmac;
+  absl::Base64Escape(Hex::encode(crypto_util.getSha256Hmac(secret, hmac_payload)), &encoded_hmac);
+  return encoded_hmac;
+}
+
 FilterConfig::FilterConfig(
     const envoy::extensions::filters::http::oauth2::v3::OAuth2Config& proto_config,
     Upstream::ClusterManager& cluster_manager, std::shared_ptr<SecretReader> secret_reader,
@@ -144,26 +156,21 @@ FilterStats FilterConfig::generateStats(const std::string& prefix, Stats::Scope&
 
 void OAuth2CookieValidator::setParams(const Http::RequestHeaderMap& headers,
                                       const std::string& secret) {
-  const auto& cookies = Http::Utility::parseCookies(headers, [](absl::string_view key) -> bool {
-    return key == "OauthExpires" || key == "BearerToken" || key == "OauthHMAC";
+  const auto& cookies = Http::Utility::parseCookies(headers, [this](absl::string_view key) -> bool {
+    return key == cookie_names_.oauth_expires_ || key == cookie_names_.bearer_token_ ||
+           key == cookie_names_.oauth_hmac_ || key == "IdToken" || key == "RefreshToken";
   });
 
-  expires_ = findValue(cookies, "OauthExpires");
-  token_ = findValue(cookies, "BearerToken");
-  hmac_ = findValue(cookies, "OauthHMAC");
+  expires_ = findValue(cookies, cookie_names_.oauth_expires_);
+  token_ = findValue(cookies, cookie_names_.bearer_token_);
+  hmac_ = findValue(cookies, cookie_names_.oauth_hmac_);
   host_ = headers.Host()->value().getStringView();
 
   secret_.assign(secret.begin(), secret.end());
 }
 
 bool OAuth2CookieValidator::hmacIsValid() const {
-  auto& crypto_util = Envoy::Common::Crypto::UtilitySingleton::get();
-  const auto hmac_payload = absl::StrCat(host_, expires_, token_);
-  const auto pre_encoded_hmac = Hex::encode(crypto_util.getSha256Hmac(secret_, hmac_payload));
-  std::string encoded_hmac;
-  absl::Base64Escape(pre_encoded_hmac, &encoded_hmac);
-
-  return encoded_hmac == hmac_;
+  return encodeHmac(secret_, host_, expires_, token_) == hmac_;
 }
 
 bool OAuth2CookieValidator::timestampIsValid() const {
@@ -180,7 +187,7 @@ bool OAuth2CookieValidator::isValid() const { return hmacIsValid() && timestampI
 
 OAuth2Filter::OAuth2Filter(FilterConfigSharedPtr config,
                            std::unique_ptr<OAuth2Client>&& oauth_client, TimeSource& time_source)
-    : validator_(std::make_shared<OAuth2CookieValidator>(time_source)),
+    : validator_(std::make_shared<OAuth2CookieValidator>(time_source, DEFAULT_COOKIE_NAMES)),
       oauth_client_(std::move(oauth_client)), config_(std::move(config)),
       time_source_(time_source) {
 
@@ -275,9 +282,7 @@ Http::FilterHeadersStatus OAuth2Filter::decodeHeaders(Http::RequestHeaderMap& he
     // reason, we also use "http" when constructing our redirect uri to the authorization server.
     auto scheme = Http::Headers::get().SchemeValues.Https;
 
-    const auto* scheme_header = headers.Scheme();
-    if ((scheme_header != nullptr &&
-         scheme_header->value().getStringView() == Http::Headers::get().SchemeValues.Http)) {
+    if (Http::Utility::schemeIsHttp(headers.getSchemeValue())) {
       scheme = Http::Headers::get().SchemeValues.Http;
     }
 
@@ -391,21 +396,16 @@ void OAuth2Filter::onGetAccessTokenSuccess(const std::string& access_code,
 }
 
 void OAuth2Filter::finishFlow() {
-  std::string token_payload;
-  if (config_->forwardBearerToken()) {
-    token_payload = absl::StrCat(host_, new_expires_, access_token_);
-  } else {
-    token_payload = absl::StrCat(host_, new_expires_);
-  }
-
-  auto& crypto_util = Envoy::Common::Crypto::UtilitySingleton::get();
-
   auto token_secret = config_->tokenSecret();
   std::vector<uint8_t> token_secret_vec(token_secret.begin(), token_secret.end());
-  const std::string pre_encoded_token =
-      Hex::encode(crypto_util.getSha256Hmac(token_secret_vec, token_payload));
   std::string encoded_token;
-  absl::Base64Escape(pre_encoded_token, &encoded_token);
+
+  if (config_->forwardBearerToken()) {
+    encoded_token =
+        encodeHmac(token_secret_vec, host_, new_expires_, access_token_);
+  } else {
+    encoded_token = encodeHmac(token_secret_vec, host_, new_expires_);
+  }
 
   // We use HTTP Only cookies for the HMAC and Expiry.
   const std::string cookie_tail = fmt::format(CookieTailFormatString, new_expires_);

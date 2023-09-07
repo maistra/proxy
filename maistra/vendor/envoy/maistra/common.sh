@@ -23,6 +23,11 @@ if [ -n "${CI}" ]; then
   LOCAL_RAM_RESOURCES="${LOCAL_RAM_RESOURCES:-12288}"
   LOCAL_JOBS="${LOCAL_JOBS:-3}"
 
+  # Reduce resource usage to 2/3 of what's specified
+  LOCAL_CPU_RESOURCES=$((${LOCAL_CPU_RESOURCES} / 3 * 2))
+  LOCAL_RAM_RESOURCES=$((${LOCAL_RAM_RESOURCES} / 3 * 2))
+  LOCAL_JOBS=$((${LOCAL_JOBS} / 3 * 2))
+
   COMMON_FLAGS+=" --local_cpu_resources=${LOCAL_CPU_RESOURCES} "
   COMMON_FLAGS+=" --local_ram_resources=${LOCAL_RAM_RESOURCES} "
   COMMON_FLAGS+=" --jobs=${LOCAL_JOBS} "

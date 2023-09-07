@@ -33,9 +33,9 @@ LookupRequest::LookupRequest(const Http::RequestHeaderMap& request_headers, Syst
                                  "with null Path.");
   ASSERT(request_headers.Host(), "Can't form cache lookup key for malformed Http::RequestHeaderMap "
                                  "with null Host.");
-  absl::string_view scheme = Http::Utility::getScheme(request_headers);
-  const auto& scheme_values = Http::Headers::get().SchemeValues;
-  ASSERT(scheme == scheme_values.Http || scheme == scheme_values.Https);
+
+  absl::string_view scheme = request_headers.getSchemeValue();
+  ASSERT(Http::Utility::schemeIsValid(scheme));
 
   initializeRequestCacheControl(request_headers);
   // TODO(toddmgreer): Let config determine whether to include scheme, host, and
@@ -50,7 +50,11 @@ LookupRequest::LookupRequest(const Http::RequestHeaderMap& request_headers, Syst
   key_.set_cluster_name("cluster_name_goes_here");
   key_.set_host(std::string(request_headers.getHostValue()));
   key_.set_path(std::string(request_headers.getPathValue()));
-  key_.set_clear_http(scheme == scheme_values.Http);
+  if (Http::Utility::schemeIsHttp(scheme)) {
+    key_.set_scheme(Key::HTTP);
+  } else if (Http::Utility::schemeIsHttps(scheme)) {
+    key_.set_scheme(Key::HTTPS);
+  }
 }
 
 // Unless this API is still alpha, calls to stableHashKey() must always return
