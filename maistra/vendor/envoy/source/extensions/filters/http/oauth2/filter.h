@@ -94,6 +94,23 @@ struct FilterStats {
   ALL_OAUTH_FILTER_STATS(GENERATE_COUNTER_STRUCT)
 };
 
+/**    
+ * Helper structure to hold custom cookie names.    
+ */    
+struct CookieNames {    
+  CookieNames(const std::string& bearer_token, const std::string& oauth_hmac,    
+              const std::string& oauth_expires)    
+      : bearer_token_(bearer_token.empty() ? "BearerToken" : bearer_token),    
+        oauth_hmac_(oauth_hmac.empty() ? "OauthHMAC" : oauth_hmac),    
+        oauth_expires_(oauth_expires.empty() ? "OauthExpires" : oauth_expires) {}    
+    
+  const std::string bearer_token_;    
+  const std::string oauth_hmac_;    
+  const std::string oauth_expires_;    
+}; 
+
+static const CookieNames DEFAULT_COOKIE_NAMES = CookieNames{"BearerToken", "OauthHMAC", "OauthExpires"};
+
 /**
  * This class encapsulates all data needed for the filter to operate so that we don't pass around
  * raw protobufs and other arbitrary data.
@@ -164,7 +181,8 @@ public:
 
 class OAuth2CookieValidator : public CookieValidator {
 public:
-  explicit OAuth2CookieValidator(TimeSource& time_source) : time_source_(time_source) {}
+  explicit OAuth2CookieValidator(TimeSource& time_source, const CookieNames& cookie_names)
+      : time_source_(time_source), cookie_names_(cookie_names) {}
 
   const std::string& token() const override { return token_; }
   void setParams(const Http::RequestHeaderMap& headers, const std::string& secret) override;
@@ -179,6 +197,7 @@ private:
   std::vector<uint8_t> secret_;
   absl::string_view host_;
   TimeSource& time_source_;
+  const CookieNames cookie_names_;
 };
 
 /**

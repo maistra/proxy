@@ -1006,6 +1006,11 @@ Status ServerConnectionImpl::handlePath(RequestHeaderMap& headers, absl::string_
   // This forces the behavior to be backwards compatible with the old codec behavior.
   // CONNECT "urls" are actually host:port so look like absolute URLs to the above checks.
   // Absolute URLS in CONNECT requests will be rejected below by the URL class validation.
+
+ /**
+   * @param scheme the scheme to validate
+   * @return bool true if the scheme is http.
+   */
   if (!codec_settings_.allow_absolute_url_ && !is_connect) {
     headers.addViaMove(std::move(path), std::move(active_request.request_url_));
     return okStatus();
@@ -1029,12 +1034,12 @@ Status ServerConnectionImpl::handlePath(RequestHeaderMap& headers, absl::string_
   if (!is_connect &&
       Runtime::runtimeFeatureEnabled("envoy.reloadable_features.add_and_validate_scheme_header")) {
     headers.setScheme(absolute_url.scheme());
-    if (!HeaderUtility::schemeIsValid(absolute_url.scheme())) {
+    if (!Utility::schemeIsValid(absolute_url.scheme())) {
       RETURN_IF_ERROR(sendProtocolError(Http1ResponseCodeDetails::get().InvalidScheme));
       return codecProtocolError("http/1.1 protocol error: invalid scheme");
     }
-    if (codec_settings_.validate_scheme_ &&
-        absolute_url.scheme() == header_values.SchemeValues.Https && !connection().ssl()) {
+    if (codec_settings_.validate_scheme_ && Utility::schemeIsHttps(absolute_url.scheme()) &&
+        !connection().ssl()) {
       error_code_ = Http::Code::Forbidden;
       RETURN_IF_ERROR(sendProtocolError(Http1ResponseCodeDetails::get().HttpsInPlaintext));
       return codecProtocolError("http/1.1 protocol error: https in the clear");

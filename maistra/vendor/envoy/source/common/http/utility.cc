@@ -1106,5 +1106,23 @@ Utility::convertCoreToRouteRetryPolicy(const envoy::config::core::v3::RetryPolic
   return route_retry_policy;
 }
 
+bool Utility::schemeIsValid(const absl::string_view scheme) {
+  return schemeIsHttp(scheme) || schemeIsHttps(scheme);
+}
+
+bool Utility::schemeIsHttp(const absl::string_view scheme) {
+  if (!Runtime::runtimeFeatureEnabled("envoy.reloadable_features.handle_uppercase_scheme")) {
+    return scheme == Headers::get().SchemeValues.Http;
+  }
+  return absl::EqualsIgnoreCase(scheme, Headers::get().SchemeValues.Http);
+}
+
+bool Utility::schemeIsHttps(const absl::string_view scheme) {
+  if (!Runtime::runtimeFeatureEnabled("envoy.reloadable_features.handle_uppercase_scheme")) {
+    return scheme == Headers::get().SchemeValues.Https;
+  }
+  return absl::EqualsIgnoreCase(scheme, Headers::get().SchemeValues.Https);
+}
+
 } // namespace Http
 } // namespace Envoy
