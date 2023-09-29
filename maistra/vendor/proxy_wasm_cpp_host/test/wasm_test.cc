@@ -43,7 +43,7 @@ TEST_P(TestVm, GetOrCreateThreadLocalWasmFailCallbacks) {
   // Define callbacks.
   WasmHandleFactory wasm_handle_factory =
       [this, vm_id, vm_config](std::string_view vm_key) -> std::shared_ptr<WasmHandleBase> {
-    auto base_wasm = std::make_shared<WasmBase>(newVm(), vm_id, vm_config, vm_key,
+    auto base_wasm = std::make_shared<WasmBase>(makeVm(engine_), vm_id, vm_config, vm_key,
                                                 std::unordered_map<std::string, std::string>{},
                                                 AllowedCapabilitiesMap{});
     return std::make_shared<WasmHandleBase>(base_wasm);
@@ -52,8 +52,8 @@ TEST_P(TestVm, GetOrCreateThreadLocalWasmFailCallbacks) {
   WasmHandleCloneFactory wasm_handle_clone_factory =
       [this](const std::shared_ptr<WasmHandleBase> &base_wasm_handle)
       -> std::shared_ptr<WasmHandleBase> {
-    auto wasm = std::make_shared<WasmBase>(base_wasm_handle,
-                                           [this]() -> std::unique_ptr<WasmVm> { return newVm(); });
+    auto wasm = std::make_shared<WasmBase>(
+        base_wasm_handle, [this]() -> std::unique_ptr<WasmVm> { return makeVm(engine_); });
     return std::make_shared<WasmHandleBase>(wasm);
   };
 
@@ -133,8 +133,8 @@ TEST_P(TestVm, AlwaysApplyCanary) {
   WasmHandleCloneFactory wasm_handle_clone_factory_for_canary =
       [&canary_count, this](const std::shared_ptr<WasmHandleBase> &base_wasm_handle)
       -> std::shared_ptr<WasmHandleBase> {
-    auto wasm = std::make_shared<TestWasm>(base_wasm_handle,
-                                           [this]() -> std::unique_ptr<WasmVm> { return newVm(); });
+    auto wasm = std::make_shared<TestWasm>(
+        base_wasm_handle, [this]() -> std::unique_ptr<WasmVm> { return makeVm(engine_); });
     canary_count++;
     return std::make_shared<WasmHandleBase>(wasm);
   };
@@ -150,8 +150,9 @@ TEST_P(TestVm, AlwaysApplyCanary) {
 
   WasmHandleFactory wasm_handle_factory_baseline =
       [this, vm_ids, vm_configs](std::string_view vm_key) -> std::shared_ptr<WasmHandleBase> {
-    auto base_wasm = std::make_shared<TestWasm>(
-        newVm(), std::unordered_map<std::string, std::string>(), vm_ids[0], vm_configs[0], vm_key);
+    auto base_wasm =
+        std::make_shared<TestWasm>(makeVm(engine_), std::unordered_map<std::string, std::string>(),
+                                   vm_ids[0], vm_configs[0], vm_key);
     return std::make_shared<WasmHandleBase>(base_wasm);
   };
 
@@ -171,6 +172,7 @@ TEST_P(TestVm, AlwaysApplyCanary) {
   // For each create Wasm, canary should be done.
   EXPECT_EQ(canary_count, 1);
 
+  bool first = true;
   std::unordered_set<std::shared_ptr<WasmHandleBase>> reference_holder;
 
   for (const auto &root_id : root_ids) {
@@ -184,7 +186,7 @@ TEST_P(TestVm, AlwaysApplyCanary) {
                 [this, vm_id,
                  vm_config](std::string_view vm_key) -> std::shared_ptr<WasmHandleBase> {
               auto base_wasm = std::make_shared<TestWasm>(
-                  newVm(), std::unordered_map<std::string, std::string>(), vm_id, vm_config,
+                  makeVm(engine_), std::unordered_map<std::string, std::string>(), vm_id, vm_config,
                   vm_key);
               return std::make_shared<WasmHandleBase>(base_wasm);
             };
@@ -195,8 +197,15 @@ TEST_P(TestVm, AlwaysApplyCanary) {
             auto wasm_handle_comp =
                 createWasm(vm_key, source, plugin_comp, wasm_handle_factory_comp,
                            wasm_handle_clone_factory_for_canary, false);
-            // For each create Wasm, canary should be done.
-            EXPECT_EQ(canary_count, 1);
+            // Validate that canarying is cached for the first baseline plugin variant.
+            if (first) {
+              first = false;
+              EXPECT_EQ(canary_count, 0);
+            } else {
+              // For each create Wasm, canary should be done.
+              EXPECT_EQ(canary_count, 1);
+              EXPECT_TRUE(TestContext::isGlobalLogged("onConfigure: " + root_id));
+            }
 
             if (plugin_config.empty()) {
               // canary_check.wasm should raise the error at `onConfigure` in canary when the
@@ -210,8 +219,6 @@ TEST_P(TestVm, AlwaysApplyCanary) {
             // cache of createWasm. If we don't keep the reference, WasmHandleBase and VM will be
             // destroyed for each iteration.
             reference_holder.insert(wasm_handle_comp);
-
-            EXPECT_TRUE(TestContext::isGlobalLogged("onConfigure: " + root_id));
 
             // Wasm VM is unique for vm_key.
             if (vm_key == vm_key_baseline) {

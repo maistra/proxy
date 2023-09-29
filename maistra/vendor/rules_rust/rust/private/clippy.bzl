@@ -220,8 +220,8 @@ rust_clippy_aspect = aspect(
         "_extra_rustc_flag": attr.label(
             default = Label("//:extra_rustc_flag"),
         ),
-        "_extra_rustc_flags": attr.label(
-            default = Label("//:extra_rustc_flags"),
+        "_per_crate_rustc_flag": attr.label(
+            default = Label("//:experimental_per_crate_rustc_flag"),
         ),
         "_process_wrapper": attr.label(
             doc = "A process wrapper for running clippy on all platforms",
@@ -282,7 +282,10 @@ rust_clippy = rule(
     attrs = {
         "deps": attr.label_list(
             doc = "Rust targets to run clippy on.",
-            providers = [rust_common.crate_info],
+            providers = [
+                [rust_common.crate_info],
+                [rust_common.test_crate_info],
+            ],
             aspects = [rust_clippy_aspect],
         ),
     },

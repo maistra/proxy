@@ -42,7 +42,7 @@ def _runfiles_path(file, is_windows):
 
 def _is_windows(ctx):
     toolchain = ctx.toolchains[Label("@rules_rust//rust:toolchain_type")]
-    return toolchain.target_triple.system == "windows"
+    return toolchain.target_os == "windows"
 
 def _get_output_package(ctx):
     # Determine output directory
@@ -126,16 +126,17 @@ def _write_splicing_manifest(ctx):
     return args, runfiles
 
 def _write_config_file(ctx):
-    rendering_config = dict(json.decode(render_config(
-        regen_command = "bazel run {}".format(
-            ctx.label,
-        ),
-    )))
+    default_render_config = dict(json.decode(render_config()))
+
+    if ctx.attr.render_config:
+        rendering_config = dict(json.decode(ctx.attr.render_config))
+    else:
+        rendering_config = default_render_config
 
     output_pkg = _get_output_package(ctx)
 
     workspace_name = ctx.workspace_name
-    if ctx.workspace_name == "__main__":
+    if ctx.workspace_name == "__main__" or ctx.workspace_name == "_main":
         workspace_name = ""
 
     if ctx.attr.mode == "local":
@@ -147,7 +148,7 @@ def _write_config_file(ctx):
         build_file_base_template = "@{}//{}:BUILD.{{name}}-{{version}}.bazel"
         crate_label_template = rendering_config["crate_label_template"]
 
-    rendering_config.update({
+    updates = {
         "build_file_template": build_file_base_template.format(
             workspace_name,
             output_pkg,
@@ -158,12 +159,26 @@ def _write_config_file(ctx):
             output_pkg,
         ),
         "vendor_mode": ctx.attr.mode,
-    })
+    }
+
+    for key in updates:
+        if rendering_config[key] != default_render_config[key]:
+            fail("The `crates_vendor.render_config` attribute does not support the `{}` parameter. Please update {} to remove this value.".format(
+                key,
+                ctx.label,
+            ))
+
+    rendering_config.update(updates)
+
+    # Allow users to override the regen command.
+    if "regen_command" not in rendering_config or not rendering_config["regen_command"]:
+        rendering_config.update({"regen_command": "bazel run {}".format(ctx.label)})
 
     config_data = compile_config(
         crate_annotations = ctx.attr.annotations,
         generate_binaries = ctx.attr.generate_binaries,
         generate_build_scripts = ctx.attr.generate_build_scripts,
+        generate_target_compatible_with = ctx.attr.generate_target_compatible_with,
         cargo_config = None,
         render_config = rendering_config,
         supported_platform_triples = ctx.attr.supported_platform_triples,
@@ -276,7 +291,7 @@ This rule is useful for users whose workspaces are expected to be consumed in ot
 rendered `BUILD` files reduce the number of workspace dependencies, allowing for easier loads. This rule
 handles all the same [workflows](#workflows) `crate_universe` rules do.
 
-Example: 
+Example:
 
 Given the following workspace structure:
 
@@ -331,7 +346,7 @@ bazel run //3rdparty:crates_vendor -- --repin
 ```
 
 Under the hood, `--repin` will trigger a [cargo update](https://doc.rust-lang.org/cargo/commands/cargo-update.html)
-call against the generated workspace. The following table describes how to controll particular values passed to the
+call against the generated workspace. The following table describes how to control particular values passed to the
 `cargo update` command.
 
 | Value | Cargo command |
@@ -391,6 +406,13 @@ call against the generated workspace. The following table describes how to contr
             ),
             default = True,
         ),
+        "generate_target_compatible_with": attr.bool(
+            doc = (
+                "Whether to generate `target_compatible_with` annotations on the generated BUILD files.  This catches a `target_triple` " +
+                "being targeted that isn't declared in `supported_platform_triples."
+            ),
+            default = True,
+        ),
         "manifests": attr.label_list(
             doc = "A list of Cargo manifests (`Cargo.toml` files).",
             allow_files = ["Cargo.toml"],
@@ -409,6 +431,12 @@ call against the generated workspace. The following table describes how to contr
         ),
         "packages": attr.string_dict(
             doc = "A set of crates (packages) specifications to depend on. See [crate.spec](#crate.spec).",
+        ),
+        "render_config": attr.string(
+            doc = (
+                "The configuration flags to use for rendering. Use `//crate_universe:defs.bzl\\%render_config` to " +
+                "generate the value for this field. If unset, the defaults defined there will be used."
+            ),
         ),
         "repository_name": attr.string(
             doc = "The name of the repository to generate for `remote` vendor modes. If unset, the label name will be used",

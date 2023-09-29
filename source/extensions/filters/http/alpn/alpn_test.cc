@@ -182,6 +182,27 @@ TEST_F(AlpnFilterTest, EmptyOverrideAlpn) {
   }
 }
 
+TEST_F(AlpnFilterTest, AlpnOverrideFalse) {
+  NiceMock<StreamInfo::MockStreamInfo> stream_info;
+  auto metadata = TestUtility::parseYaml<envoy::config::core::v3::Metadata>(R"EOF(
+        filter_metadata:
+          istio:
+            alpn_override: "false"
+      )EOF");
+
+  ON_CALL(callbacks_, streamInfo()).WillByDefault(ReturnRef(stream_info));
+  ON_CALL(cluster_manager_, getThreadLocalCluster(_)).WillByDefault(Return(fake_cluster_.get()));
+  ON_CALL(*fake_cluster_, info()).WillByDefault(Return(cluster_info_));
+  ON_CALL(*cluster_info_, metadata()).WillByDefault(ReturnRef(metadata));
+
+  const AlpnOverrides alpn = {{Http::Protocol::Http10, {"foo", "bar"}},
+                              {Http::Protocol::Http11, {"baz"}}};
+  auto filter = makeAlpnOverrideFilter(alpn);
+
+  EXPECT_CALL(*cluster_info_, upstreamHttpProtocol(_)).Times(0);
+  EXPECT_EQ(filter->decodeHeaders(headers_, false), Http::FilterHeadersStatus::Continue);
+}
+
 }  // namespace
 }  // namespace Alpn
 }  // namespace Http

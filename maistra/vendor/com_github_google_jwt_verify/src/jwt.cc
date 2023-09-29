@@ -107,25 +107,14 @@ Status Jwt::parseFromString(const std::string& jwt) {
     return Status::JwtPayloadParseErrorSubNotString;
   }
 
-  auto result = payload_getter.GetUInt64("iat", &iat_);
-  if (result == StructUtils::WRONG_TYPE) {
+  if (payload_getter.GetInt64("iat", &iat_) == StructUtils::WRONG_TYPE) {
     return Status::JwtPayloadParseErrorIatNotInteger;
-  } else if (result == StructUtils::NOT_POSITIVE) {
-    return Status::JwtPayloadParseErrorIatNotPositive;
   }
-
-  result = payload_getter.GetUInt64("nbf", &nbf_);
-  if (result == StructUtils::WRONG_TYPE) {
+  if (payload_getter.GetInt64("nbf", &nbf_) == StructUtils::WRONG_TYPE) {
     return Status::JwtPayloadParseErrorNbfNotInteger;
-  } else if (result == StructUtils::NOT_POSITIVE) {
-    return Status::JwtPayloadParseErrorNbfNotPositive;
   }
-
-  result = payload_getter.GetUInt64("exp", &exp_);
-  if (result == StructUtils::WRONG_TYPE) {
+  if (payload_getter.GetInt64("exp", &exp_) == StructUtils::WRONG_TYPE) {
     return Status::JwtPayloadParseErrorExpNotInteger;
-  } else if (result == StructUtils::NOT_POSITIVE) {
-    return Status::JwtPayloadParseErrorExpNotPositive;
   }
 
   if (payload_getter.GetString("jti", &jti_) == StructUtils::WRONG_TYPE) {

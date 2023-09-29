@@ -12,7 +12,6 @@ load(
     "@rules_rust//bindgen:repositories.bzl",
     _rust_bindgen_dependencies = "rust_bindgen_dependencies",
     _rust_bindgen_register_toolchains = "rust_bindgen_register_toolchains",
-    _rust_bindgen_repositories = "rust_bindgen_repositories",
 )
 load(
     "@rules_rust//cargo:defs.bzl",
@@ -29,21 +28,22 @@ load(
     _crates_vendor = "crates_vendor",
 )
 load(
-    "@rules_rust//proto:proto.bzl",
+    "@rules_rust//proto:defs.bzl",
     _rust_grpc_library = "rust_grpc_library",
+    _rust_prost_library = "rust_prost_library",
     _rust_proto_library = "rust_proto_library",
 )
 load(
     "@rules_rust//proto:repositories.bzl",
-    _rust_proto_repositories = "rust_proto_repositories",
-)
-load(
-    "@rules_rust//proto:toolchain.bzl",
-    _rust_proto_toolchain = "rust_proto_toolchain",
+    _rust_proto_dependencies = "rust_proto_dependencies",
 )
 load(
     "@rules_rust//proto:transitive_repositories.bzl",
     _rust_proto_transitive_repositories = "rust_proto_transitive_repositories",
+)
+load(
+    "@rules_rust//proto/protobuf:toolchain.bzl",
+    _rust_proto_toolchain = "rust_proto_toolchain",
 )
 load(
     "@rules_rust//rust:defs.bzl",
@@ -58,6 +58,7 @@ load(
     _rust_doc = "rust_doc",
     _rust_doc_test = "rust_doc_test",
     _rust_library = "rust_library",
+    _rust_library_group = "rust_library_group",
     _rust_proc_macro = "rust_proc_macro",
     _rust_shared_library = "rust_shared_library",
     _rust_static_library = "rust_static_library",
@@ -113,6 +114,7 @@ load(
 
 rust_binary = _rust_binary
 rust_library = _rust_library
+rust_library_group = _rust_library_group
 rust_static_library = _rust_static_library
 rust_shared_library = _rust_shared_library
 rust_proc_macro = _rust_proc_macro
@@ -123,17 +125,17 @@ rust_doc_test = _rust_doc_test
 
 rust_proto_library = _rust_proto_library
 rust_grpc_library = _rust_grpc_library
+rust_prost_library = _rust_prost_library
 
 rust_bindgen = _rust_bindgen
 rust_bindgen_dependencies = _rust_bindgen_dependencies
 rust_bindgen_library = _rust_bindgen_library
 rust_bindgen_register_toolchains = _rust_bindgen_register_toolchains
-rust_bindgen_repositories = _rust_bindgen_repositories
 rust_bindgen_toolchain = _rust_bindgen_toolchain
 
 rust_toolchain = _rust_toolchain
 rust_proto_toolchain = _rust_proto_toolchain
-rust_proto_repositories = _rust_proto_repositories
+rust_proto_dependencies = _rust_proto_dependencies
 rust_stdlib_filegroup = _rust_stdlib_filegroup
 rust_proto_transitive_repositories = _rust_proto_transitive_repositories
 
