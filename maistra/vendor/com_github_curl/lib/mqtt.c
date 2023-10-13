@@ -605,7 +605,7 @@ static CURLcode mqtt_read_publish(struct Curl_easy *data, bool *done)
   unsigned char packet;
 
   switch(mqtt->state) {
-  MQTT_SUBACK_COMING:
+MQTT_SUBACK_COMING:
   case MQTT_SUBACK_COMING:
     result = mqtt_verify_suback(data);
     if(result)
@@ -636,7 +636,7 @@ static CURLcode mqtt_read_publish(struct Curl_easy *data, bool *done)
 
     /* -- switched state -- */
     remlen = mq->remaining_length;
-    infof(data, "Remaining length: %zd bytes", remlen);
+    infof(data, "Remaining length: %zu bytes", remlen);
     if(data->set.max_filesize &&
        (curl_off_t)remlen > data->set.max_filesize) {
       failf(data, "Maximum file size exceeded");
@@ -688,7 +688,7 @@ static CURLcode mqtt_read_publish(struct Curl_easy *data, bool *done)
     result = CURLE_WEIRD_SERVER_REPLY;
     goto end;
   }
-  end:
+end:
   return result;
 }
 

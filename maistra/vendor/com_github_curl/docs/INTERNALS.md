@@ -30,7 +30,7 @@ versions of libs and build tools.
  - GSKit        V5R3M0
  - NSS          3.14.x
  - Heimdal      ?
- - nghttp2      1.12.0
+ - nghttp2      1.15.0
  - WinSock      2.2 (on Windows 95+ and Windows CE .NET 4.1+)
 
 ## Build tools
@@ -43,7 +43,7 @@ versions of libs and build tools.
  - GNU Autoconf 2.59
  - GNU Automake 1.7
  - GNU M4       1.4
- - perl         5.004
+ - perl         5.6
  - roffit       0.5
  - nroff        any version that supports `-man [in] [out]`
  - cmake        3.7

@@ -65,15 +65,30 @@ add_library(
   )
 
 add_library(
+  curlu # special libcurlu library just for unittests
+  STATIC
+  EXCLUDE_FROM_ALL
+  ${HHEADERS} ${CSOURCES}
+)
+target_compile_definitions(curlu PUBLIC UNITTESTS CURL_STATICLIB)
+
+add_library(
   ${PROJECT_NAME}::${LIB_NAME}
   ALIAS ${LIB_NAME}
   )
+
+if(ENABLE_CURLDEBUG)
+  # We must compile memdebug.c separately to avoid memdebug.h redefinitions
+  # being applied to memdebug.c itself.
+  set_source_files_properties(memdebug.c PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
+endif()
 
 if(NOT BUILD_SHARED_LIBS)
     set_target_properties(${LIB_NAME} PROPERTIES INTERFACE_COMPILE_DEFINITIONS CURL_STATICLIB)
 endif()
 
 target_link_libraries(${LIB_NAME} PRIVATE ${CURL_LIBS})
+target_link_libraries(curlu PRIVATE ${CURL_LIBS})
 
 transform_makefile_inc("Makefile.soname" "${CMAKE_CURRENT_BINARY_DIR}/Makefile.soname.cmake")
 include(${CMAKE_CURRENT_BINARY_DIR}/Makefile.soname.cmake)
@@ -86,6 +101,7 @@ set_target_properties(${LIB_NAME} PROPERTIES
 if(CMAKE_SYSTEM_NAME STREQUAL "AIX" OR
   CMAKE_SYSTEM_NAME STREQUAL "Linux" OR
   CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR
+  CMAKE_SYSTEM_NAME STREQUAL "SunOS" OR
   CMAKE_SYSTEM_NAME STREQUAL "GNU/kFreeBSD" OR
 
   # FreeBSD comes with the a.out and elf flavours
@@ -130,6 +146,17 @@ if(WIN32)
       set_target_properties(${LIB_NAME} PROPERTIES IMPORT_SUFFIX "_imp.lib")
     endif()
   endif()
+elseif(NOT CMAKE_CROSSCOMPILING)
+  # on not-Windows and not-crosscompiling, check for writable argv[]
+    include(CheckCSourceRuns)
+    check_c_source_runs("
+int main(int argc, char **argv)
+{
+  (void)argc;
+  argv[0][0] = ' ';
+  return (argv[0][0] == ' ')?0:1;
+}"
+      HAVE_WRITABLE_ARGV)
 endif()
 
 target_include_directories(${LIB_NAME} INTERFACE

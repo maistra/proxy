@@ -770,16 +770,23 @@ static void printsub(struct Curl_easy *data,
   }
 }
 
+#ifdef _MSC_VER
+#pragma warning(push)
+/* warning C4706: assignment within conditional expression */
+#pragma warning(disable:4706)
+#endif
 static bool str_is_nonascii(const char *str)
 {
-  size_t len = strlen(str);
-  while(len--) {
-    if(*str & 0x80)
+  char c;
+  while((c = *str++))
+    if(c & 0x80)
       return TRUE;
-    str++;
-  }
+
   return FALSE;
 }
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 static CURLcode check_telnet_options(struct Curl_easy *data)
 {
@@ -1103,7 +1110,7 @@ CURLcode telrcv(struct Curl_easy *data,
       break;
 
     case CURL_TS_IAC:
-    process_iac:
+process_iac:
       DEBUGASSERT(startwrite < 0);
       switch(c) {
       case CURL_WILL:
@@ -1527,7 +1534,7 @@ static CURLcode telnet_do(struct Curl_easy *data, bool *done)
   }
 
   while(keepon) {
-    DEBUGF(infof(data, "telnet_do(handle=%p), poll %d fds", data, poll_cnt));
+    DEBUGF(infof(data, "telnet_do, poll %d fds", poll_cnt));
     switch(Curl_poll(pfd, poll_cnt, interval_ms)) {
     case -1:                    /* error, stop reading */
       keepon = FALSE;
@@ -1551,8 +1558,7 @@ static CURLcode telnet_do(struct Curl_easy *data, bool *done)
            * in a clean way? Seems to be timing related, happens more
            * on slow debug build */
           if(data->state.os_errno == ECONNRESET) {
-            DEBUGF(infof(data, "telnet_do(handle=%p), unexpected ECONNRESET"
-                         " on recv", data));
+            DEBUGF(infof(data, "telnet_do, unexpected ECONNRESET on recv"));
           }
           break;
         }

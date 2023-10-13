@@ -30,6 +30,7 @@ DPAGES = \
   append.d \
   aws-sigv4.d \
   basic.d \
+  ca-native.d \
   cacert.d \
   capath.d \
   cert-status.d \
@@ -95,6 +96,7 @@ DPAGES = \
   globoff.d \
   happy-eyeballs-timeout-ms.d \
   haproxy-protocol.d \
+  haproxy-clientip.d \
   head.d \
   header.d \
   help.d \
@@ -170,6 +172,7 @@ DPAGES = \
   proto.d \
   proxy-anyauth.d \
   proxy-basic.d \
+  proxy-ca-native.d \
   proxy-cacert.d \
   proxy-capath.d \
   proxy-cert-type.d \
@@ -178,6 +181,7 @@ DPAGES = \
   proxy-crlfile.d \
   proxy-digest.d \
   proxy-header.d \
+  proxy-http2.d \
   proxy-insecure.d \
   proxy-key-type.d \
   proxy-key.d \
@@ -261,6 +265,7 @@ DPAGES = \
   tlsv1.d \
   tr-encoding.d \
   trace-ascii.d \
+  trace-ids.d \
   trace-time.d \
   trace.d \
   unix-socket.d \

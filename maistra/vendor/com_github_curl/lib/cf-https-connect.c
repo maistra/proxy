@@ -376,9 +376,9 @@ static bool cf_hc_data_pending(struct Curl_cfilter *cf,
          || cf_hc_baller_data_pending(&ctx->h21_baller, data);
 }
 
-static struct curltime get_max_baller_time(struct Curl_cfilter *cf,
-                                          struct Curl_easy *data,
-                                          int query)
+static struct curltime cf_get_max_baller_time(struct Curl_cfilter *cf,
+                                              struct Curl_easy *data,
+                                              int query)
 {
   struct cf_hc_ctx *ctx = cf->ctx;
   struct Curl_cfilter *cfb;
@@ -408,12 +408,12 @@ static CURLcode cf_hc_query(struct Curl_cfilter *cf,
     switch(query) {
     case CF_QUERY_TIMER_CONNECT: {
       struct curltime *when = pres2;
-      *when = get_max_baller_time(cf, data, CF_QUERY_TIMER_CONNECT);
+      *when = cf_get_max_baller_time(cf, data, CF_QUERY_TIMER_CONNECT);
       return CURLE_OK;
     }
     case CF_QUERY_TIMER_APPCONNECT: {
       struct curltime *when = pres2;
-      *when = get_max_baller_time(cf, data, CF_QUERY_TIMER_APPCONNECT);
+      *when = cf_get_max_baller_time(cf, data, CF_QUERY_TIMER_APPCONNECT);
       return CURLE_OK;
     }
     default:
@@ -432,7 +432,7 @@ static void cf_hc_close(struct Curl_cfilter *cf, struct Curl_easy *data)
   cf->connected = FALSE;
 
   if(cf->next) {
-    cf->next->cft->close(cf->next, data);
+    cf->next->cft->do_close(cf->next, data);
     Curl_conn_cf_discard_chain(&cf->next, data);
   }
 }
@@ -496,11 +496,11 @@ out:
   return result;
 }
 
-CURLcode Curl_cf_http_connect_add(struct Curl_easy *data,
-                                  struct connectdata *conn,
-                                  int sockindex,
-                                  const struct Curl_dns_entry *remotehost,
-                                  bool try_h3, bool try_h21)
+static CURLcode cf_http_connect_add(struct Curl_easy *data,
+                                    struct connectdata *conn,
+                                    int sockindex,
+                                    const struct Curl_dns_entry *remotehost,
+                                    bool try_h3, bool try_h21)
 {
   struct Curl_cfilter *cf;
   CURLcode result = CURLE_OK;
@@ -510,24 +510,6 @@ CURLcode Curl_cf_http_connect_add(struct Curl_easy *data,
   if(result)
     goto out;
   Curl_conn_cf_add(data, conn, sockindex, cf);
-out:
-  return result;
-}
-
-CURLcode
-Curl_cf_http_connect_insert_after(struct Curl_cfilter *cf_at,
-                                  struct Curl_easy *data,
-                                  const struct Curl_dns_entry *remotehost,
-                                  bool try_h3, bool try_h21)
-{
-  struct Curl_cfilter *cf;
-  CURLcode result;
-
-  DEBUGASSERT(data);
-  result = cf_hc_create(&cf, data, remotehost, try_h3, try_h21);
-  if(result)
-    goto out;
-  Curl_conn_cf_insert_after(cf_at, cf);
 out:
   return result;
 }
@@ -560,8 +542,8 @@ CURLcode Curl_cf_https_setup(struct Curl_easy *data,
     try_h21 = TRUE;
   }
 
-  result = Curl_cf_http_connect_add(data, conn, sockindex, remotehost,
-                                    try_h3, try_h21);
+  result = cf_http_connect_add(data, conn, sockindex, remotehost,
+                               try_h3, try_h21);
 out:
   return result;
 }

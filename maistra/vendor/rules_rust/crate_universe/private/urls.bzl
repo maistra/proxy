@@ -11,14 +11,14 @@ the binaries produced for it.
 #     "x86_64-pc-windows-msvc": "https://domain.com/downloads/cargo-bazel-x86_64-pc-windows-msvc",
 # }
 CARGO_BAZEL_URLS = {
-  "aarch64-apple-darwin": "https://github.com/bazelbuild/rules_rust/releases/download/0.25.1/cargo-bazel-aarch64-apple-darwin",
-  "aarch64-pc-windows-msvc": "https://github.com/bazelbuild/rules_rust/releases/download/0.25.1/cargo-bazel-aarch64-pc-windows-msvc.exe",
-  "aarch64-unknown-linux-gnu": "https://github.com/bazelbuild/rules_rust/releases/download/0.25.1/cargo-bazel-aarch64-unknown-linux-gnu",
-  "x86_64-apple-darwin": "https://github.com/bazelbuild/rules_rust/releases/download/0.25.1/cargo-bazel-x86_64-apple-darwin",
-  "x86_64-pc-windows-gnu": "https://github.com/bazelbuild/rules_rust/releases/download/0.25.1/cargo-bazel-x86_64-pc-windows-gnu.exe",
-  "x86_64-pc-windows-msvc": "https://github.com/bazelbuild/rules_rust/releases/download/0.25.1/cargo-bazel-x86_64-pc-windows-msvc.exe",
-  "x86_64-unknown-linux-gnu": "https://github.com/bazelbuild/rules_rust/releases/download/0.25.1/cargo-bazel-x86_64-unknown-linux-gnu",
-  "x86_64-unknown-linux-musl": "https://github.com/bazelbuild/rules_rust/releases/download/0.25.1/cargo-bazel-x86_64-unknown-linux-musl"
+  "aarch64-apple-darwin": "https://github.com/bazelbuild/rules_rust/releases/download/0.26.0/cargo-bazel-aarch64-apple-darwin",
+  "aarch64-pc-windows-msvc": "https://github.com/bazelbuild/rules_rust/releases/download/0.26.0/cargo-bazel-aarch64-pc-windows-msvc.exe",
+  "aarch64-unknown-linux-gnu": "https://github.com/bazelbuild/rules_rust/releases/download/0.26.0/cargo-bazel-aarch64-unknown-linux-gnu",
+  "x86_64-apple-darwin": "https://github.com/bazelbuild/rules_rust/releases/download/0.26.0/cargo-bazel-x86_64-apple-darwin",
+  "x86_64-pc-windows-gnu": "https://github.com/bazelbuild/rules_rust/releases/download/0.26.0/cargo-bazel-x86_64-pc-windows-gnu.exe",
+  "x86_64-pc-windows-msvc": "https://github.com/bazelbuild/rules_rust/releases/download/0.26.0/cargo-bazel-x86_64-pc-windows-msvc.exe",
+  "x86_64-unknown-linux-gnu": "https://github.com/bazelbuild/rules_rust/releases/download/0.26.0/cargo-bazel-x86_64-unknown-linux-gnu",
+  "x86_64-unknown-linux-musl": "https://github.com/bazelbuild/rules_rust/releases/download/0.26.0/cargo-bazel-x86_64-unknown-linux-musl"
 }
 
 # Example:
@@ -28,14 +28,14 @@ CARGO_BAZEL_URLS = {
 #     "x86_64-pc-windows-msvc": "f5647261d989f63dafb2c3cb8e131b225338a790386c06cf7112e43dd9805882",
 # }
 CARGO_BAZEL_SHA256S = {
-  "aarch64-apple-darwin": "e0756e4c11fe459502a8cbf7e4e0ccc6141f352d40274ac625753ec52b998c6d",
-  "aarch64-pc-windows-msvc": "0c0d67d528bbb283dc8a020da5612c582b74436f197a34622806a91233261154",
-  "aarch64-unknown-linux-gnu": "d28587856721782ad2878b20f24f5e01987d0079711c15bd3b98546d716421d1",
-  "x86_64-apple-darwin": "6b80c992f3eb9860b63b5c2c25b6cd34ff90453e40ac9a87197fb6131f64e9d7",
-  "x86_64-pc-windows-gnu": "75e3b0fd61a03e96ed7b49f009fb8a1a574cbedd7afa580afe81ec678805e9c1",
-  "x86_64-pc-windows-msvc": "a51d0db5a0c5ce9622d0f87cf8828b7c15825a48558c05d9861563f65837f115",
-  "x86_64-unknown-linux-gnu": "885c4bd890ace1cf35d19edbeaff4f7ceb99c57f28464d3e979d496a95648866",
-  "x86_64-unknown-linux-musl": "d90e613e498e5202759c43260b07a5ddccdd5aa5c28036c8a1d6c211f7a97b8e"
+  "aarch64-apple-darwin": "dfb4c75aab86cb5c6c71015e61d09ba45ad3a99ee6209eca8671bfe18e0ebe73",
+  "aarch64-pc-windows-msvc": "f49949ee1faf2945efcb1dd4f377beaec6487b55f4f9f1e2cc2af3addc5e0868",
+  "aarch64-unknown-linux-gnu": "d66b7ad9eb00c7982a8abcd6b86d95ac101952adf40213aa0ca7d9d278f2c6ee",
+  "x86_64-apple-darwin": "4f50e6bd01c4ef7ad53ecb932c3ac8c167fc87f204690193d34c4f809ebbdd90",
+  "x86_64-pc-windows-gnu": "06d129d807836dd8337e0e86fc02b359af89851499a53ecbf437256e4fff0fd0",
+  "x86_64-pc-windows-msvc": "33ba74559e64a3766cdeede86c1c047fc877c63c3e71a87043f607b51dff6a5d",
+  "x86_64-unknown-linux-gnu": "f8bd09f7fab9d926491e313def9de7a4b80466c2e890b3253257d732fdc52db4",
+  "x86_64-unknown-linux-musl": "2a60f67c661170599badbc54346d9273cdcec239b14cc9bccb999099b0ee413d"
 }
 
 # Example:

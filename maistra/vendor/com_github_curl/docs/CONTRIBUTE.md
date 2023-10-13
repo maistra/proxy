@@ -205,12 +205,12 @@ A short guide to how to write git commit messages in the curl project.
         followed by an -- empty line -- ]
     [Bug: URL to the source of the report or more related discussion; use Fixes
         for GitHub issues instead when that is appropriate]
-    [Approved-by: John Doe - credit someone who approved the PR; if you're
+    [Approved-by: John Doe - credit someone who approved the PR; if you are
         committing this for someone else using --author=... you don't need this
-        as you're implicitly approving it by committing]
+        as you are implicitly approving it by committing]
     [Authored-by: John Doe - credit the original author of the code; only use
         this if you can't use "git commit --author=..."]
-    {Signed-off-by: John Doe - we don't use this, but don't bother removing it]
+    [Signed-off-by: John Doe - we don't use this, but don't bother removing it]
     [whatever-else-by: credit all helpers, finders, doers; try to use one of
         the following keywords if at all possible, for consistency:
         Acked-by:, Assisted-by:, Co-authored-by:, Found-by:, Reported-by:,
@@ -308,12 +308,9 @@ still fine.
 
 This means that all files need to have their license and copyright information
 clearly stated. Ideally by having the standard curl source code header, with
-an accurate copyright year range and the SPDX-License-Identifier included. If
-the header does not work, you can use a smaller header or add the information
-for a specific file to the `.reuse/dep5` file.
-
-We update copyright year ranges to end on the year of the most recent change
-of the individual file.
+the SPDX-License-Identifier included. If the header does not work, you can use a
+smaller header or add the information for a specific file to the `.reuse/dep5`
+file.
 
 You can manually verify the copyright and compliance status by running the
 `./scripts/copyright.pl` script in the root of the git repository.
