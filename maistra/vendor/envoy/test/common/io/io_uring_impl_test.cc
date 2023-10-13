@@ -69,6 +69,18 @@ INSTANTIATE_TEST_SUITE_P(InvalidPrepareMethodParamsTest, IoUringImplParamTest,
                                return uring.prepareClose(fd, nullptr);
                              }));
 
+// Wait for a char to be written until timeout
+
+  static void CheckEqual(volatile char *pactual,  char expected)
+  {
+     static const uint32_t check_eq_timout_ms_ = 10;
+     uint32_t timer = 0;
+     while(*pactual != expected && timer < check_eq_timout_ms_) {
+       std::this_thread::sleep_for(std::chrono::milliseconds(1));
+       timer ++;
+       }
+  }
+
 TEST_P(IoUringImplParamTest, InvalidParams) {
   os_fd_t fd;
   SET_SOCKET_INVALID(fd);
@@ -214,6 +226,11 @@ TEST_F(IoUringImplTest, PrepareReadvQueueOverflow) {
   res = uring.submit();
   EXPECT_EQ(res, IoUringResult::Ok);
 
+  CheckEqual(& (static_cast<volatile char*>(iov1.iov_base)[0]), 'a');
+  CheckEqual(& (static_cast<volatile char*>(iov1.iov_base)[1]), 'b');
+  CheckEqual(& (static_cast<volatile char*>(iov2.iov_base)[0]), 'c');
+  CheckEqual(& (static_cast<volatile char*>(iov2.iov_base)[1]), 'd');
+
   // Even though we haven't been notified about ops completion the buffers
   // are filled already.
   EXPECT_EQ(static_cast<char*>(iov1.iov_base)[0], 'a');
@@ -232,6 +249,9 @@ TEST_F(IoUringImplTest, PrepareReadvQueueOverflow) {
   EXPECT_EQ(res, IoUringResult::Ok);
   res = uring.submit();
   EXPECT_EQ(res, IoUringResult::Ok);
+
+  CheckEqual(& (static_cast<volatile char*>(iov3.iov_base)[0]), 'e');
+  CheckEqual(& (static_cast<volatile char*>(iov3.iov_base)[1]), 'f');
 
   EXPECT_EQ(static_cast<char*>(iov3.iov_base)[0], 'e');
   EXPECT_EQ(static_cast<char*>(iov3.iov_base)[1], 'f');

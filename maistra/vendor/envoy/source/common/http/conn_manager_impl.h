@@ -115,6 +115,15 @@ public:
   void setClearHopByHopResponseHeaders(bool value) { clear_hop_by_hop_response_headers_ = value; }
   bool clearHopByHopResponseHeaders() const { return clear_hop_by_hop_response_headers_; }
 
+  // This runtime key configures the number of streams which must be closed on a connection before
+  // envoy will potentially drain a connection due to excessive prematurely reset streams.
+  static const absl::string_view PrematureResetTotalStreamCountKey;
+
+  // The minimum lifetime of a stream, in seconds, in order not to be considered
+  // prematurely closed.
+  static const absl::string_view PrematureResetMinStreamLifetimeSecondsKey;
+  static const absl::string_view MaxRequestsPerIoCycle;
+
 private:
   struct ActiveStream;
   class MobileConnectionManagerImpl;
@@ -186,6 +195,9 @@ private:
     // Http::StreamDecoder
     void decodeData(Buffer::Instance& data, bool end_stream) override;
     void decodeMetadata(MetadataMapPtr&&) override;
+
+    // Mark that the last downstream byte is received, and the downstream stream is complete.
+    void maybeEndDecode(bool end_stream);
 
     // Http::RequestDecoder
     void decodeHeaders(RequestHeaderMapPtr&& headers, bool end_stream) override;
@@ -303,7 +315,8 @@ private:
     struct State {
       State()
           : codec_saw_local_complete_(false), saw_connection_close_(false),
-            successful_upgrade_(false), is_internally_created_(false), decorated_propagate_(true) {}
+            successful_upgrade_(false), is_internally_created_(false), is_tunneling_(false),
+            decorated_propagate_(true), deferred_to_next_io_iteration_(false) {}
 
       bool codec_saw_local_complete_ : 1; // This indicates that local is complete as written all
                                           // the way through to the codec.
@@ -314,7 +327,19 @@ private:
       // internal redirects or other streams created via recreateStream().
       bool is_internally_created_ : 1;
 
+      // True if the response headers indicate a successful upgrade or connect
+      // response.
+      bool is_tunneling_ : 1;
+
       bool decorated_propagate_ : 1;
+
+      // Indicates that sending headers to the filter manager is deferred to the
+      // next I/O cycle. If data or trailers are received when this flag is set
+      // they are deferred too.
+      // TODO(yanavlasov): encapsulate the entire state of deferred streams into a separate
+      // structure, so it can be atomically created and cleared.
+      bool deferred_to_next_io_iteration_ : 1;
+      bool deferred_end_stream_ : 1;
     };
 
     // Per-stream idle timeout callback.
@@ -341,6 +366,16 @@ private:
       }
       return *tracing_custom_tags_;
     }
+
+    // Note: this method is a noop unless ENVOY_ENABLE_UHV is defined
+    // Call header validator extension to validate request header map after it was deserialized.
+    // If header map failed validation, it sends an error response and returns false.
+    bool validateHeaders();
+
+    // Dispatch deferred headers, body and trailers to the filter manager.
+    // Return true if this stream was deferred and dispatched pending headers, body and trailers (if
+    // present). Return false if this stream was not deferred.
+    bool onDeferredRequestProcessing();
 
     ConnectionManagerImpl& connection_manager_;
     // TODO(snowp): It might make sense to move this to the FilterManager to avoid storing it in
@@ -385,6 +420,8 @@ private:
     std::unique_ptr<Tracing::CustomTagMap> tracing_custom_tags_{nullptr};
 
     friend FilterManager;
+
+    std::unique_ptr<Buffer::OwnedImpl> deferred_data_;
   };
 
   using ActiveStreamPtr = std::unique_ptr<ActiveStream>;
@@ -417,6 +454,18 @@ private:
   void doConnectionClose(absl::optional<Network::ConnectionCloseType> close_type,
                          absl::optional<StreamInfo::ResponseFlag> response_flag,
                          absl::string_view details);
+  // Returns true if a RST_STREAM for the given stream is premature. Premature
+  // means the RST_STREAM arrived before response headers were sent and than
+  // the stream was alive for short period of time. This period is specified
+  // by the optional runtime value PrematureResetMinStreamLifetimeSecondsKey,
+  // or one second if that is not present.
+  bool isPrematureRstStream(const ActiveStream& stream) const;
+  // Sends a GOAWAY if both sufficient streams have been closed on a connection
+  // and at least half have been prematurely reset?
+  void maybeDrainDueToPrematureResets();
+
+  bool shouldDeferRequestProxyingToNextIoCycle();
+  void onDeferredRequestProcessing();
 
   enum class DrainState { NotDraining, Draining, Closing };
 
@@ -455,7 +504,16 @@ private:
   bool clear_hop_by_hop_response_headers_{true};
   // The number of requests accumulated on the current connection.
   uint64_t accumulated_requests_{};
+  // The number of requests closed on the current connection which were
+  // not internally destroyed
+  uint64_t closed_non_internally_destroyed_requests_{};
+  // The number of requests that received a premature RST_STREAM, according to
+  // the definition given in `isPrematureRstStream()`.
+  uint64_t number_premature_stream_resets_{0};
   const std::string proxy_name_; // for Proxy-Status.
+  uint32_t requests_during_dispatch_count_{0};
+  const uint32_t max_requests_during_dispatch_{UINT32_MAX};
+  Event::SchedulableCallbackPtr deferred_request_processing_callback_;
 };
 
 } // namespace Http
