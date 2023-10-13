@@ -20,7 +20,8 @@ public:
     config_helper_.addConfigModifier(
         [&](envoy::extensions::filters::network::http_connection_manager::v3::HttpConnectionManager&
                 hcm) {
-          ConfigHelper::setConnectConfig(hcm, true, allow_post_,
+          hcm.mutable_delayed_close_timeout()->set_seconds(delay_close_seconds_);
+          ConfigHelper::setConnectConfig(hcm, !terminate_via_cluster_config_, allow_post_,
                                          downstream_protocol_ == Http::CodecType::HTTP3);
 
           if (enable_timeout_) {
@@ -92,6 +93,8 @@ public:
 
   FakeRawConnectionPtr fake_raw_upstream_connection_;
   IntegrationStreamDecoderPtr response_;
+  uint32_t delay_close_seconds_ = 200;
+  bool terminate_via_cluster_config_{};
   bool enable_timeout_{};
   bool exact_match_{};
   bool allow_post_{};
@@ -113,6 +116,8 @@ TEST_P(ConnectTerminationIntegrationTest, Basic) {
 }
 
 TEST_P(ConnectTerminationIntegrationTest, BasicAllowPost) {
+  // This case does not handle delay close well.
+  delay_close_seconds_ = 1;
   allow_post_ = true;
   initialize();
 
@@ -173,8 +178,10 @@ TEST_P(ConnectTerminationIntegrationTest, UpstreamClose) {
     // In HTTP/3 end stream will be sent when the upstream connection is closed, and
     // STOP_SENDING frame sent instead of reset.
     ASSERT_TRUE(response_->waitForEndStream());
-  } else {
+  } else if (downstream_protocol_ == Http::CodecType::HTTP2) {
     ASSERT_TRUE(response_->waitForReset());
+  } else {
+    ASSERT_TRUE(codec_client_->waitForDisconnect());
   }
 }
 
