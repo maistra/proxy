@@ -40,9 +40,9 @@ new_local_repository(
 #
 # Note: this is needed by release builder to resolve envoy dep sha to tag.
 # Commit date: 2023-07-05
-ENVOY_SHA = "78bfca7dda816088cd6066add2ff3e21fb5b3085"
+ENVOY_SHA = "74bef1192be8a85421c809f0053f01fb0cc5d333"
 
-ENVOY_SHA256 = "c33e690548c44cfd744517c857b4f2f0217a63f7cd60228ee42f8afe4d0405e7"
+ENVOY_SHA256 = "254c73459468751f261bcd27c7d651118fa63c352f40003cb01efb26fd3be6d3"
 
 ENVOY_ORG = "maistra"
 
@@ -91,12 +91,12 @@ local_repository(
     path = "maistra/local",
 )
 
-# load("@envoy//bazel:repositories_extra.bzl", "envoy_dependencies_extra")
-# envoy_dependencies_extra()
+load("@envoy//bazel:repositories_extra.bzl", "envoy_dependencies_extra")
+envoy_dependencies_extra()
 
-# load("@envoy//bazel:python_dependencies.bzl", "envoy_python_dependencies")
+load("@envoy//bazel:python_dependencies.bzl", "envoy_python_dependencies")
 
-# envoy_python_dependencies()
+envoy_python_dependencies()
 
 load("@base_pip3//:requirements.bzl", "install_deps")
 install_deps()

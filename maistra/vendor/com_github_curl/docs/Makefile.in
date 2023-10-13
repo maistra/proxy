@@ -407,7 +407,7 @@ USE_NGHTTP2 = @USE_NGHTTP2@
 USE_NGHTTP3 = @USE_NGHTTP3@
 USE_NGTCP2 = @USE_NGTCP2@
 USE_NGTCP2_CRYPTO_GNUTLS = @USE_NGTCP2_CRYPTO_GNUTLS@
-USE_NGTCP2_CRYPTO_OPENSSL = @USE_NGTCP2_CRYPTO_OPENSSL@
+USE_NGTCP2_CRYPTO_QUICTLS = @USE_NGTCP2_CRYPTO_QUICTLS@
 USE_NGTCP2_CRYPTO_WOLFSSL = @USE_NGTCP2_CRYPTO_WOLFSSL@
 USE_NSS = @USE_NSS@
 USE_OPENLDAP = @USE_OPENLDAP@
@@ -541,6 +541,7 @@ EXTRA_DIST = \
  RELEASE-PROCEDURE.md                           \
  RUSTLS.md                                      \
  ROADMAP.md                                     \
+ SECURITY-ADVISORY.md                           \
  SECURITY-PROCESS.md                            \
  SSL-PROBLEMS.md                                \
  SSLCERTS.md                                    \

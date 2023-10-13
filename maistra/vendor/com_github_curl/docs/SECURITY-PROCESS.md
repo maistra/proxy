@@ -55,7 +55,8 @@ announcement.
 - Write a security advisory draft about the problem that explains what the
   problem is, its impact, which versions it affects, solutions or workarounds,
   when the release is out and make sure to credit all contributors properly.
-  Figure out the CWE (Common Weakness Enumeration) number for the flaw.
+  Figure out the CWE (Common Weakness Enumeration) number for the flaw. See
+  [SECURITY-ADVISORY](SECURITY-ADVISORY.md) for help on creating the advisory.
 
 - Request a CVE number from
   [HackerOne](https://docs.hackerone.com/programs/cve-requests.html)
@@ -179,8 +180,7 @@ Easily exploitable by a remote unauthenticated attacker and lead to system
 compromise (arbitrary code execution) without requiring user interaction, with
 a common configuration on a popular platform. This issue has few restrictions
 and requirements and can be exploited easily using most curl configurations.
-
-No past curl vulnerability has had this severity level.
+[Past example](https://curl.se/docs/CVE-2000-0973.html)
 
 # Not security issues
 
