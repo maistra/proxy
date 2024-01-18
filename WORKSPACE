@@ -122,23 +122,6 @@ load(
     "container_pull",
 )
 
-container_pull(
-    name = "distroless_cc",
-    # Latest as of 10/21/2019. To update, remove this line, re-build, and copy the suggested digest.
-    digest = "sha256:86f16733f25964c40dcd34edf14339ddbb2287af2f7c9dfad88f0366723c00d7",
-    registry = "gcr.io",
-    repository = "distroless/cc",
-)
-
-container_pull(
-    name = "bionic",
-    # Latest as of 10/21/2019. To update, remove this line, re-build, and copy the suggested digest.
-    digest = "sha256:3e83eca7870ee14a03b8026660e71ba761e6919b6982fb920d10254688a363d4",
-    registry = "index.docker.io",
-    repository = "library/ubuntu",
-    tag = "bionic",
-)
-
 # End of docker dependencies
 
 load("//bazel:wasm.bzl", "wasm_dependencies")
