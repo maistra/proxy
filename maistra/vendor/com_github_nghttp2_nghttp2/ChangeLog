@@ -1,0 +1,318 @@
+commit 6f41cc72718a1c0fca39e83d9537c1a91efa6d18 (HEAD, tag: v1.57.0, origin/master, origin/HEAD, master)
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2023-10-10
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2023-10-10
+
+    Update manual pages
+
+commit 9b781ca734792eeffce3f673d127ec998823f724
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2023-10-10
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2023-10-10
+
+    Bump package and library versions
+
+commit aa0973caf584b199510c9ab1b28632ba074d4d5b
+Merge: d40829b1 72b4af61
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2023-10-10
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2023-10-10
+
+    Merge pull request #1961 from nghttp2/rework-session-mgmt
+    
+    Rework session management
+
+commit 72b4af6143681f528f1d237b21a9a7aee1738832
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2023-10-01
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2023-10-10
+
+    Rework session management
+
+commit d40829b1335480597d9371d67df035f271573bee
+Merge: e62ef924 939506b6
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2023-10-05
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2023-10-05
+
+    Merge pull request #1959 from nghttp2/fix-clang-format
+    
+    Fix clang-format
+
+commit 939506b68bbc721eeeeef2862ca79dc8919f6e14
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2023-10-05
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2023-10-05
+
+    Fix clang-format
+
+commit e62ef924fba31ac9bb8fa71bd88cf372a6aed708
+Merge: e761014c 8bad736d
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2023-10-01
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2023-10-01
+
+    Merge pull request #1958 from nghttp2/nghttpx-fix
+    
+    nghttpx: Fix bug that --single-process does not work
+
+commit 8bad736d48f7cdd0db18e80ac46cd6c5340c91fc
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2023-10-01
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2023-10-01
+
+    nghttpx: Fix bug that --single-process does not work
+
+commit e761014ca5294705ea515347e70038d836ef2239
+Merge: e37fe554 e6ca4ff1
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2023-10-01
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2023-10-01
+
+    Merge pull request #1957 from nghttp2/apps-fix
+    
+    Apps fix
+
+commit e6ca4ff1736abda6b993f9b38cd2a07660f45200
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2023-10-01
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2023-10-01
+
+    nghttpd: Do not read too greedy for TLS connection
+
+commit 62d58bdabc0f6fd8883502712b5cbf43ec998bd0
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2023-09-30
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2023-09-30
+
+    nghttpx: Fix the bug that TLS connection is not rate limited
+
+commit e37fe5543fb23a5a704566b4c330331b76d92f11
+Merge: d54750b3 06da1808
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2023-09-23
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2023-09-23
+
+    Merge pull request #1945 from nghttp2/bump-quictls
+    
+    Bump quictls
+
+commit d54750b36531b2dcf0d249c0447c03411f0d93ac
+Merge: 5c1b0f26 8ebe7b10
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2023-09-22
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2023-09-22
+
+    Merge pull request #1953 from nghttp2/nghttpx-field-name-lowercase
+    
+    nghttpx: Header field name must be lowercase
+
+commit 8ebe7b10fca51a11592f7ebb58228132bb81c4ad
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2023-09-22
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2023-09-22
+
+    nghttpx: Header field name must be lowercase
+
+commit 5c1b0f261ebffeb67c151943b0f3ffa5c0afca81
+Merge: 0866ceff 1ee16fde
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2023-09-15
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2023-09-15
+
+    Merge pull request #1951 from nghttp2/docker-debian12
+    
+    docker: Bump base image to debian 12
+
+commit 0866ceffc7db567e6cf0cdb6dee11a389b1336a2
+Merge: 3c6f9425 8cafb048
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2023-09-15
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2023-09-15
+
+    Merge pull request #1947 from nghttp2/dependabot/github_actions/actions/upload-artifact-3
+    
+    Bump actions/upload-artifact from 1 to 3
+
+commit 3c6f94258f941634602fca6e6616a3091629f874
+Merge: 959a55f9 b809beac
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2023-09-15
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2023-09-15
+
+    Merge pull request #1949 from nghttp2/dependabot/github_actions/actions/checkout-4
+    
+    Bump actions/checkout from 3 to 4
+
+commit 959a55f95f9dd36613c523b0768f4f341b00203c
+Merge: 52cb8c35 7d0d8775
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2023-09-15
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2023-09-15
+
+    Merge pull request #1948 from nghttp2/dependabot/github_actions/actions/setup-go-4
+    
+    Bump actions/setup-go from 3 to 4
+
+commit 7d0d8775c9c0c721ef3227e9bdbca432d7b0297b
+Author:     dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+AuthorDate: 2023-09-15
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2023-09-15
+
+    Bump actions/setup-go from 3 to 4
+    
+    Bumps [actions/setup-go](https://github.com/actions/setup-go) from 3 to 4.
+    - [Release notes](https://github.com/actions/setup-go/releases)
+    - [Commits](https://github.com/actions/setup-go/compare/v3...v4)
+    
+    ---
+    updated-dependencies:
+    - dependency-name: actions/setup-go
+      dependency-type: direct:production
+      update-type: version-update:semver-major
+    ...
+    
+    Signed-off-by: dependabot[bot] <support@github.com>
+
+commit 52cb8c35c8ce401af5cfd634809946454ba02d1a
+Merge: 627b2408 d19bc4bb
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2023-09-15
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2023-09-15
+
+    Merge pull request #1950 from nghttp2/bump-golang.org/x/net
+    
+    Bump golang.org/x/net to v0.15.0
+
+commit d19bc4bb671627c9ac0eca4d8532d48749d9e8a5
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2023-09-15
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2023-09-15
+
+    Bump golang.org/x/net to v0.15.0
+
+commit 1ee16fdeca456bfacc66286b7c5089e83ac12080
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2023-09-15
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2023-09-15
+
+    docker: Bump base image to debian 12
+
+commit b809beacab15c1c63ebe091cade8114487d16e48
+Author:     dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+AuthorDate: 2023-09-15
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2023-09-15
+
+    Bump actions/checkout from 3 to 4
+    
+    Bumps [actions/checkout](https://github.com/actions/checkout) from 3 to 4.
+    - [Release notes](https://github.com/actions/checkout/releases)
+    - [Changelog](https://github.com/actions/checkout/blob/main/CHANGELOG.md)
+    - [Commits](https://github.com/actions/checkout/compare/v3...v4)
+    
+    ---
+    updated-dependencies:
+    - dependency-name: actions/checkout
+      dependency-type: direct:production
+      update-type: version-update:semver-major
+    ...
+    
+    Signed-off-by: dependabot[bot] <support@github.com>
+
+commit 8cafb048bea2cfada24309a1cdabc25282b37695
+Author:     dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+AuthorDate: 2023-09-15
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2023-09-15
+
+    Bump actions/upload-artifact from 1 to 3
+    
+    Bumps [actions/upload-artifact](https://github.com/actions/upload-artifact) from 1 to 3.
+    - [Release notes](https://github.com/actions/upload-artifact/releases)
+    - [Commits](https://github.com/actions/upload-artifact/compare/v1...v3)
+    
+    ---
+    updated-dependencies:
+    - dependency-name: actions/upload-artifact
+      dependency-type: direct:production
+      update-type: version-update:semver-major
+    ...
+    
+    Signed-off-by: dependabot[bot] <support@github.com>
+
+commit 627b2408e5c2bfe3a06a1541fb293f570a9b0952
+Merge: 19697bd4 0d36a2a0
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2023-09-15
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2023-09-15
+
+    Merge pull request #1946 from nghttp2/dependabot-actions
+    
+    Add dependabot to update actions
+
+commit 0d36a2a050c4fed9c75b756cec4a98c9da488afa
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2023-09-15
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2023-09-15
+
+    Add dependabot to update actions
+
+commit 06da18089fc599abb2d9f29fa88bf90157ac127b (origin/bump-quictls)
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2023-09-12
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2023-09-12
+
+    Bump quictls
+
+commit 19697bd44ad7575cef8c3f2abdd118cc767f2e99
+Merge: b7f98539 2e6c8ddd
+Author:     Tatsuhiro Tsujikawa <404610+tatsuhiro-t@users.noreply.github.com>
+AuthorDate: 2023-09-12
+Commit:     GitHub <noreply@github.com>
+CommitDate: 2023-09-12
+
+    Merge pull request #1944 from nghttp2/bump-ngtcp2
+    
+    Bump ngtcp2
+
+commit 2e6c8ddd1579266fb025beeb68ed4ec7e8689da5
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2023-09-06
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2023-09-06
+
+    Bump ngtcp2
+
+commit b7f98539687d4857ff34e9b8306bbe5b722e2916
+Author:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+AuthorDate: 2023-09-04
+Commit:     Tatsuhiro Tsujikawa <tatsuhiro.t@gmail.com>
+CommitDate: 2023-09-04
+
+    Bump package version
