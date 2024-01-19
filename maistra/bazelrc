@@ -21,7 +21,9 @@ build --@envoy//bazel:http3=false
 build:x86_64 --linkopt=-fuse-ld=lld
 # build:s390x --@envoy//source/extensions/filters/common/lua:luajit2=1 --cxxopt='-includeoptional' --copt=-Wno-error=type-limits --copt=-Wno-error=uninitialized --linkopt=-fuse-ld=gold --copt=-fno-builtin-strlen
 # build:ppc --linkopt=-fuse-ld=lld --@envoy//source/extensions/filters/common/lua:luajit2=1
-# build:aarch64 --linkopt=-fuse-ld=lld
+build:s390x --cxxopt='-includeoptional' --copt=-Wno-error=type-limits --copt=-Wno-error=uninitialized --linkopt=-fuse-ld=gold --copt=-fno-builtin-strlen
+build:ppc --linkopt=-fuse-ld=lld
+build:aarch64 --linkopt=-fuse-ld=lld
 
 # Colored ouput messes with some of the logging systems in CI, so we disable that.
 build:ci-config --color=no
