@@ -17,7 +17,7 @@ load("@aspect_bazel_lib//lib:repositories.bzl", "register_jq_toolchains", "regis
 load("@com_google_cel_cpp//bazel:deps.bzl", "parser_deps")
 
 # go version for rules_go
-GO_VERSION = "1.18"
+GO_VERSION = "host"
 
 JQ_VERSION = "1.6"
 YQ_VERSION = "4.24.4"

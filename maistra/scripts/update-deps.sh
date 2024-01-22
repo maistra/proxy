@@ -100,16 +100,11 @@ function copy_files() {
   find "${VENDOR_DIR}" -name '*.pyc' -delete
 }
 
-# function apply_patches() {
-#    # Patch emsdk and net_zlib
-#   pushd "${OUTPUT_BASE}/external/emsdk" 
-#   patch -p1 -i "${PATCH_DIR}"/emsdk.patch
-#   popd
-
-#   pushd "${OUTPUT_BASE}/external/net_zlib"
-#   patch -p1  -i "${PATCH_DIR}"/net_zlib.patch
-#   popd
-# }
+function apply_patches() {
+  pushd "${OUTPUT_BASE}/external/envoy"
+  sed -i 's|GO_VERSION = .*|GO_VERSION = "host"|' bazel/dependency_imports.bzl
+  popd
+}
 
 function run_bazel() {
   # Fetch stats_plugin just to load emsdk and net_zlib dependencies
@@ -118,14 +113,12 @@ function run_bazel() {
   # Workaround to force fetch of rules_license
   bazel --output_base="${OUTPUT_BASE}" fetch @remote_java_tools//java_tools/zlib:zlib || true
 
-  #apply_patches
-
   # Fetch all the rest and check everything using "build --nobuild "option
-  #for config in s390x ppc x86_64; do
-  for config in x86_64; do
+  for config in s390x ppc x86_64; do
     bazel --output_base="${OUTPUT_BASE}" build --nobuild --config="${config}" //src/... //test/...  //extensions/...
   done
- 
+
+  apply_patches
 }
 
 function main() {
