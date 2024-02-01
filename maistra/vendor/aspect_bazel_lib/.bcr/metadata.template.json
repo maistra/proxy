@@ -1,0 +1,13 @@
+{
+  "homepage": "https://docs.aspect.build/rules/aspect_bazel_lib",
+  "maintainers": [
+    {
+      "email": "hello@aspect.dev",
+      "github": "aspect-build",
+      "name": "Aspect team"
+    }
+  ],
+  "repository": ["github:aspect-build/bazel-lib"],
+  "versions": [],
+  "yanked_versions": {}
+}

@@ -1,0 +1,22 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "diffp",
+    srcs = ["diff.go"],
+    importpath = "golang.org/x/tools/internal/diffp",
+    visibility = ["//:__subpackages__"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":diffp",
+    visibility = ["//:__subpackages__"],
+)
+
+go_test(
+    name = "diffp_test",
+    srcs = ["diff_test.go"],
+    data = glob(["testdata/**"]),
+    embed = [":diffp"],
+    deps = ["//txtar"],
+)

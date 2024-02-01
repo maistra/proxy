@@ -1,0 +1,20 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "edit",
+    srcs = ["edit.go"],
+    importpath = "golang.org/x/tools/internal/edit",
+    visibility = ["//:__subpackages__"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":edit",
+    visibility = ["//:__subpackages__"],
+)
+
+go_test(
+    name = "edit_test",
+    srcs = ["edit_test.go"],
+    embed = [":edit"],
+)

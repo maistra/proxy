@@ -1,0 +1,2 @@
+# DO NOT EDIT: automatically generated WORKSPACE file for whl_library rule
+workspace(name = "base_pip3_jinja2")

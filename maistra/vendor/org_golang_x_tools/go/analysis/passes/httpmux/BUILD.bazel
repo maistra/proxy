@@ -1,0 +1,29 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "httpmux",
+    srcs = ["httpmux.go"],
+    importpath = "golang.org/x/tools/go/analysis/passes/httpmux",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/analysis",
+        "//go/analysis/passes/inspect",
+        "//go/analysis/passes/internal/analysisutil",
+        "//go/ast/inspector",
+        "//go/types/typeutil",
+        "@org_golang_x_mod//semver:go_default_library",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":httpmux",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "httpmux_test",
+    srcs = ["httpmux_test.go"],
+    embed = [":httpmux"],
+    deps = ["//go/analysis/analysistest"],
+)

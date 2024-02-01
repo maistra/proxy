@@ -1,0 +1,35 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "slog",
+    srcs = [
+        "doc.go",
+        "slog.go",
+    ],
+    embedsrcs = ["doc.go"],
+    importpath = "golang.org/x/tools/go/analysis/passes/slog",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/analysis",
+        "//go/analysis/passes/inspect",
+        "//go/analysis/passes/internal/analysisutil",
+        "//go/ast/inspector",
+        "//go/types/typeutil",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":slog",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "slog_test",
+    srcs = ["slog_test.go"],
+    embed = [":slog"],
+    deps = [
+        "//go/analysis/analysistest",
+        "//internal/testenv",
+    ],
+)

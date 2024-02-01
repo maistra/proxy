@@ -1,0 +1,31 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
+
+go_library(
+    name = "gonew_lib",
+    srcs = ["main.go"],
+    importpath = "golang.org/x/tools/cmd/gonew",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//internal/edit",
+        "@org_golang_x_mod//modfile:go_default_library",
+        "@org_golang_x_mod//module:go_default_library",
+    ],
+)
+
+go_binary(
+    name = "gonew",
+    embed = [":gonew_lib"],
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "gonew_test",
+    srcs = ["main_test.go"],
+    data = glob(["testdata/**"]),
+    embed = [":gonew_lib"],
+    deps = [
+        "//internal/diffp",
+        "//internal/testenv",
+        "//txtar",
+    ],
+)

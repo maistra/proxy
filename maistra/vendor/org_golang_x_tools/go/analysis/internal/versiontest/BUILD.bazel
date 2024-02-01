@@ -1,0 +1,13 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_test")
+
+go_test(
+    name = "versiontest_test",
+    srcs = ["version_test.go"],
+    deps = [
+        "//go/analysis",
+        "//go/analysis/analysistest",
+        "//go/analysis/multichecker",
+        "//go/analysis/singlechecker",
+        "//internal/testenv",
+    ],
+)

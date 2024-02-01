@@ -1,0 +1,35 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "nilfunc",
+    srcs = [
+        "doc.go",
+        "nilfunc.go",
+    ],
+    embedsrcs = ["doc.go"],
+    importpath = "golang.org/x/tools/go/analysis/passes/nilfunc",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/analysis",
+        "//go/analysis/passes/inspect",
+        "//go/analysis/passes/internal/analysisutil",
+        "//go/ast/inspector",
+        "//internal/typeparams",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":nilfunc",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "nilfunc_test",
+    srcs = ["nilfunc_test.go"],
+    deps = [
+        ":nilfunc",
+        "//go/analysis/analysistest",
+        "//internal/typeparams",
+    ],
+)

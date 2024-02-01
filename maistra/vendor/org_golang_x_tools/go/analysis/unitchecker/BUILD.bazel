@@ -1,0 +1,69 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "unitchecker",
+    srcs = ["unitchecker.go"],
+    importpath = "golang.org/x/tools/go/analysis/unitchecker",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/analysis",
+        "//go/analysis/internal/analysisflags",
+        "//internal/facts",
+        "//internal/typeparams",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":unitchecker",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "unitchecker_test",
+    srcs = [
+        "export_test.go",
+        "separate_test.go",
+        "unitchecker_test.go",
+        "vet_std_test.go",
+    ],
+    embed = [":unitchecker"],
+    deps = [
+        "//go/analysis/passes/appends",
+        "//go/analysis/passes/asmdecl",
+        "//go/analysis/passes/assign",
+        "//go/analysis/passes/atomic",
+        "//go/analysis/passes/bools",
+        "//go/analysis/passes/buildtag",
+        "//go/analysis/passes/cgocall",
+        "//go/analysis/passes/composite",
+        "//go/analysis/passes/copylock",
+        "//go/analysis/passes/defers",
+        "//go/analysis/passes/directive",
+        "//go/analysis/passes/errorsas",
+        "//go/analysis/passes/findcall",
+        "//go/analysis/passes/framepointer",
+        "//go/analysis/passes/httpresponse",
+        "//go/analysis/passes/ifaceassert",
+        "//go/analysis/passes/loopclosure",
+        "//go/analysis/passes/lostcancel",
+        "//go/analysis/passes/nilfunc",
+        "//go/analysis/passes/printf",
+        "//go/analysis/passes/shift",
+        "//go/analysis/passes/sigchanyzer",
+        "//go/analysis/passes/stdmethods",
+        "//go/analysis/passes/stringintconv",
+        "//go/analysis/passes/structtag",
+        "//go/analysis/passes/testinggoroutine",
+        "//go/analysis/passes/tests",
+        "//go/analysis/passes/timeformat",
+        "//go/analysis/passes/unmarshal",
+        "//go/analysis/passes/unreachable",
+        "//go/analysis/passes/unusedresult",
+        "//go/gcexportdata",
+        "//go/packages",
+        "//go/packages/packagestest",
+        "//internal/testenv",
+        "//txtar",
+    ],
+)

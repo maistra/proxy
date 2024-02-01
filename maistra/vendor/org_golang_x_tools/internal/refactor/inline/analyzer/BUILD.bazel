@@ -1,0 +1,31 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "analyzer",
+    srcs = ["analyzer.go"],
+    importpath = "golang.org/x/tools/internal/refactor/inline/analyzer",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//go/analysis",
+        "//go/analysis/passes/inspect",
+        "//go/ast/inspector",
+        "//go/types/typeutil",
+        "//internal/diff",
+        "//internal/refactor/inline",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":analyzer",
+    visibility = ["//:__subpackages__"],
+)
+
+go_test(
+    name = "analyzer_test",
+    srcs = ["analyzer_test.go"],
+    deps = [
+        ":analyzer",
+        "//go/analysis/analysistest",
+    ],
+)

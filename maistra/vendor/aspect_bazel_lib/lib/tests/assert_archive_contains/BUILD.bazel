@@ -1,0 +1,17 @@
+load("//lib:testing.bzl", "assert_archive_contains")
+
+assert_archive_contains(
+    name = "check_zip",
+    archive = "bazel_runfiles.whl",
+    expected = "expected_wheel.txt",
+)
+
+assert_archive_contains(
+    name = "check_tar",
+    archive = "lib_tests.tar",
+    expected = [
+        "lib/tests/assert_archive_contains/bazel_runfiles.whl",
+        "lib/tests/assert_archive_contains/expected_wheel.txt",
+        "lib/tests/assert_archive_contains/BUILD.bazel",
+    ],
+)

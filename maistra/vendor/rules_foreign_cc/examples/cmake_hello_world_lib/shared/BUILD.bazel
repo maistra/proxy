@@ -1,0 +1,38 @@
+# example code is taken from https://github.com/Akagi201/learning-cmake/tree/master/hello-world-lib
+# for test only
+
+load("@rules_cc//cc:defs.bzl", "cc_test")
+load("@rules_foreign_cc//foreign_cc:defs.bzl", "cmake")
+
+filegroup(
+    name = "srcs",
+    srcs = glob(["**"]),
+    visibility = ["//visibility:public"],
+)
+
+cmake(
+    name = "libhello",
+    # Probably this variable should be set by default.
+    # Apparently, it needs to be set for shared libraries on Mac OS
+    cache_entries = {
+        "CMAKE_MACOSX_RPATH": "True",
+    },
+    lib_source = ":srcs",
+    out_shared_libs = select({
+        "//:macos": ["libhello.dylib"],
+        "//:windows": ["libhello.dll"],
+        "//conditions:default": ["libhello.so"],
+    }),
+    # TODO: The `.dll` is installed in the `bin` directory. To account for this, windows
+    # moves it to the `lib` directory. The rules should account for this case.
+    postfix_script = select({
+        "//:windows": "cp -p $$INSTALLDIR$$/bin/libhello.dll $$INSTALLDIR$$/lib",
+        "//conditions:default": None,
+    }),
+)
+
+cc_test(
+    name = "test_libhello",
+    srcs = ["hello_client.c"],
+    deps = [":libhello"],
+)
