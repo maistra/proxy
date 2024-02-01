@@ -17,6 +17,7 @@
 
 #include "envoy/network/filter.h"
 #include "envoy/stats/scope.h"
+#include "bssl_wrapper/bssl_wrapper.h"
 #include "openssl/ssl.h"
 #include "source/common/common/logger.h"
 
