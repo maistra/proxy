@@ -48,7 +48,9 @@ TEST(SniVerifierTest, ConfigTest) {
 
 class SniVerifierFilterTest : public testing::Test {
 protected:
-  static constexpr size_t TLS_MAX_CLIENT_HELLO = 250;
+  // The value of TLS_MAX_CLIENT_HELLO should be greater than the maximum size of clienthello in all tests
+  // (with the exception of SniTooLarge) for all tls versions
+  static constexpr size_t TLS_MAX_CLIENT_HELLO = 372;
 
   void SetUp() override {
     store_ = std::make_unique<Stats::IsolatedStoreImpl>();
@@ -162,7 +164,8 @@ TEST_F(SniVerifierFilterTest, BothSnisEmpty) {
 }
 
 TEST_F(SniVerifierFilterTest, SniTooLarge) {
-  runTestForClientHello("example.com", std::string(TLS_MAX_CLIENT_HELLO, 'a'),
+  // Inner sni hostname length is such that the total length of clienthello exceeds the TLS_MAX_CLIENT_HELLO bytes
+  runTestForClientHello("example.com", std::string(252, 'a'),
                         Network::FilterStatus::StopIteration);
   EXPECT_EQ(1, cfg_->stats().client_hello_too_large_.value());
   EXPECT_EQ(0, cfg_->stats().tls_found_.value());
