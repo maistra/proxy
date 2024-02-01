@@ -1,0 +1,31 @@
+# Common build flags
+build --cxxopt -w
+
+build --host_force_python=PY3
+build --extra_toolchains=@local_jdk//:all
+build --tool_java_runtime_version=local_jdk
+build --verbose_failures
+build --config=clang
+build --define=crypto=system
+
+# Test flags
+build --test_env=ENVOY_IP_TEST_VERSIONS=v4only
+build --test_env=HEAPCHECK=minimal
+build --test_output=all
+
+# As of today we do not support QUIC/HTTP3 -- hence we exclude it from the build, always.
+build --deleted_packages=@envoy//test/common/quic,@envoy//test/common/quic/platform
+build --@envoy//bazel:http3=false
+
+# Arch-specific build flags, triggered with --config=$ARCH in bazel build command
+build:x86_64 --linkopt=-fuse-ld=lld
+build:s390x --@envoy//source/extensions/filters/common/lua:luajit2=1 --cxxopt='-includeoptional' --copt=-Wno-error=type-limits --copt=-Wno-error=uninitialized --linkopt=-fuse-ld=gold --copt=-fno-builtin-strlen
+build:ppc --linkopt=-fuse-ld=lld --@envoy//source/extensions/filters/common/lua:luajit2=1
+build:aarch64 --linkopt=-fuse-ld=lld
+
+# Colored ouput messes with some of the logging systems in CI, so we disable that.
+build:ci-config --color=no
+build:ci-config --show_progress_rate_limit=10
+
+# Import vendor flags
+import %workspace%/maistra/bazelrc-vendor

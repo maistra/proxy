@@ -26,21 +26,22 @@ load(
 
 istioapi_dependencies()
 
-bind(
-    name = "boringssl_crypto",
-    actual = "//external:ssl",
+new_local_repository(
+    name = "openssl",
+    path = "/usr/lib64/",
+    build_file = "openssl.BUILD"
 )
 
 # 1. Determine SHA256 `wget https://github.com/envoyproxy/envoy/archive/$COMMIT.tar.gz && sha256sum $COMMIT.tar.gz`
 # 2. Update .bazelversion, envoy.bazelrc and .bazelrc if needed.
 #
 
-# Commit date: 2023-12-18
-ENVOY_SHA = "ffdedd22c877a4fdfef1d58334ca3c93c1b8b663"
+# Commit date: 2024-01-30
+ENVOY_SHA = "c41a40c917b65ee67079c6db2426be289a8f1c61"
 
-ENVOY_SHA256 = "3c3f12189c59cab17105a5677e5c2982eed070fe3090e8d4855b5dea87f3b152"
+ENVOY_SHA256 = "3f1dcc8d67225da0b5436df0d6327e5b65c7bd6020058e056973f4061e083192"
 
-ENVOY_ORG = "envoyproxy"
+ENVOY_ORG = "maistra"
 
 ENVOY_REPO = "envoy"
 
@@ -120,23 +121,6 @@ container_deps()
 load(
     "@io_bazel_rules_docker//container:container.bzl",
     "container_pull",
-)
-
-container_pull(
-    name = "distroless_cc",
-    # Latest as of 10/21/2019. To update, remove this line, re-build, and copy the suggested digest.
-    digest = "sha256:86f16733f25964c40dcd34edf14339ddbb2287af2f7c9dfad88f0366723c00d7",
-    registry = "gcr.io",
-    repository = "distroless/cc",
-)
-
-container_pull(
-    name = "bionic",
-    # Latest as of 10/21/2019. To update, remove this line, re-build, and copy the suggested digest.
-    digest = "sha256:3e83eca7870ee14a03b8026660e71ba761e6919b6982fb920d10254688a363d4",
-    registry = "index.docker.io",
-    repository = "library/ubuntu",
-    tag = "bionic",
 )
 
 # End of docker dependencies
