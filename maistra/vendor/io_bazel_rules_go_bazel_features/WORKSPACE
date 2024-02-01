@@ -1,0 +1,2 @@
+# DO NOT EDIT: automatically generated WORKSPACE file for polyfill_bazel_features rule
+workspace(name = "io_bazel_rules_go_bazel_features")

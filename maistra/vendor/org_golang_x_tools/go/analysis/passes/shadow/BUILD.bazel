@@ -1,0 +1,33 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "shadow",
+    srcs = [
+        "doc.go",
+        "shadow.go",
+    ],
+    embedsrcs = ["doc.go"],
+    importpath = "golang.org/x/tools/go/analysis/passes/shadow",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/analysis",
+        "//go/analysis/passes/inspect",
+        "//go/analysis/passes/internal/analysisutil",
+        "//go/ast/inspector",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":shadow",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "shadow_test",
+    srcs = ["shadow_test.go"],
+    deps = [
+        ":shadow",
+        "//go/analysis/analysistest",
+    ],
+)

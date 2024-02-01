@@ -1,0 +1,34 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "appends",
+    srcs = [
+        "appends.go",
+        "doc.go",
+    ],
+    embedsrcs = ["doc.go"],
+    importpath = "golang.org/x/tools/go/analysis/passes/appends",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/analysis",
+        "//go/analysis/passes/inspect",
+        "//go/analysis/passes/internal/analysisutil",
+        "//go/ast/inspector",
+        "//go/types/typeutil",
+    ],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":appends",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "appends_test",
+    srcs = ["appends_test.go"],
+    deps = [
+        ":appends",
+        "//go/analysis/analysistest",
+    ],
+)

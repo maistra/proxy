@@ -1,0 +1,24 @@
+# This file is sourced in /.bazelrc, and therefore is always interpreted for all bazel invocations
+
+# FIXME: https://issues.redhat.com/browse/OSSM-1201
+build --cxxopt -w
+
+build --copt -DOPENSSL_IS_BORINGSSL=0
+build --verbose_failures
+build --config=clang
+build --test_env=ENVOY_IP_TEST_VERSIONS=v4only
+
+# As of today we do not support QUIC/HTTP3 -- hence we exclude it from the build, always.
+build --deleted_packages=test/common/quic,test/common/quic/platform
+build "--//bazel:http3"=false
+
+# Arch-specific build flags, triggered with --config=$ARCH in bazel build command
+build:x86_64 --linkopt=-fuse-ld=lld --linkopt=-pie
+build:s390x --//source/extensions/filters/common/lua:luajit2=1 --copt="-Wno-deprecated-declarations" --linkopt=-fuse-ld=gold
+build:ppc --//source/extensions/filters/common/lua:luajit2=1 --linkopt=-fuse-ld=lld
+build:aarch64 --linkopt=-fuse-ld=lld
+
+# Colored ouput messes with some of the logging systems in CI, so we disable that.
+build:ci-config --color=no
+
+build:ci-config --test_output=all

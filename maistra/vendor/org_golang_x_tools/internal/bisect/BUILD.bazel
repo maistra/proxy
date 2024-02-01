@@ -1,0 +1,20 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "bisect",
+    srcs = ["bisect.go"],
+    importpath = "golang.org/x/tools/internal/bisect",
+    visibility = ["//:__subpackages__"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":bisect",
+    visibility = ["//:__subpackages__"],
+)
+
+go_test(
+    name = "bisect_test",
+    srcs = ["bisect_test.go"],
+    embed = [":bisect"],
+)

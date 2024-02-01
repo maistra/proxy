@@ -1,0 +1,35 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
+
+go_library(
+    name = "deadcode_lib",
+    srcs = [
+        "deadcode.go",
+        "doc.go",
+    ],
+    embedsrcs = ["doc.go"],
+    importpath = "golang.org/x/tools/internal/cmd/deadcode",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//go/callgraph",
+        "//go/callgraph/rta",
+        "//go/packages",
+        "//go/ssa",
+        "//go/ssa/ssautil",
+    ],
+)
+
+go_binary(
+    name = "deadcode",
+    embed = [":deadcode_lib"],
+    visibility = ["//:__subpackages__"],
+)
+
+go_test(
+    name = "deadcode_test",
+    srcs = ["deadcode_test.go"],
+    data = glob(["testdata/**"]),
+    deps = [
+        "//internal/testenv",
+        "//txtar",
+    ],
+)

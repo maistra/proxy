@@ -1,0 +1,19 @@
+date: October 17, 2023
+
+new_features:
+- area: tls
+  change: |
+    added support for SNI-based cert selection in tls downstream transport socket. Detailed documentation is available :ref:`cert selection<arch_overview_ssl_cert_select>`.
+    New config option :ref:`full_scan_certs_on_sni_mismatch <envoy_v3_api_field_extensions.transport_sockets.tls.v3.DownstreamTlsContext.full_scan_certs_on_sni_mismatch>`
+    is introduced to disable or enable full scan when no cert matches to SNI, defaults to false.
+    New runtime flag ``envoy.reloadable_features.no_full_scan_certs_on_sni_mismatch`` can be used for override the default value.
+
+
+bug_fixes:
+- area: tracing
+  change: |
+    Fixed a bug in the Datadog tracer where Datadog's "operation name" field would contain what should be in the "resource name" field.
+- area: http
+  change: |
+    Fixed a bug where processing of deferred streams with the value of ``http.max_requests_per_io_cycle`` more than 1,
+    can cause a crash.

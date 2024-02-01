@@ -1,0 +1,33 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
+
+go_library(
+    name = "bisect_lib",
+    srcs = [
+        "go119.go",
+        "go120.go",
+        "main.go",
+        "rand.go",
+    ],
+    importpath = "golang.org/x/tools/cmd/bisect",
+    visibility = ["//visibility:private"],
+    deps = ["//internal/bisect"],
+)
+
+go_binary(
+    name = "bisect",
+    embed = [":bisect_lib"],
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "bisect_test",
+    srcs = ["main_test.go"],
+    data = glob(["testdata/**"]),
+    embed = [":bisect_lib"],
+    deps = [
+        "//internal/bisect",
+        "//internal/compat",
+        "//internal/diffp",
+        "//txtar",
+    ],
+)

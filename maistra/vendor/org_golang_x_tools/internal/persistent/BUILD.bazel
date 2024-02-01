@@ -1,0 +1,28 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "persistent",
+    srcs = [
+        "map.go",
+        "set.go",
+    ],
+    importpath = "golang.org/x/tools/internal/persistent",
+    visibility = ["//:__subpackages__"],
+    deps = ["//internal/constraints"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":persistent",
+    visibility = ["//:__subpackages__"],
+)
+
+go_test(
+    name = "persistent_test",
+    srcs = [
+        "map_test.go",
+        "set_test.go",
+    ],
+    embed = [":persistent"],
+    deps = ["//internal/constraints"],
+)

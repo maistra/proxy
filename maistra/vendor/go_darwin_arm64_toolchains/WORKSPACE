@@ -1,0 +1,2 @@
+# DO NOT EDIT: automatically generated WORKSPACE file for _go_toolchains rule
+workspace(name = "go_darwin_arm64_toolchains")

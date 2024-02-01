@@ -1,0 +1,20 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "tokeninternal",
+    srcs = ["tokeninternal.go"],
+    importpath = "golang.org/x/tools/internal/tokeninternal",
+    visibility = ["//:__subpackages__"],
+)
+
+alias(
+    name = "go_default_library",
+    actual = ":tokeninternal",
+    visibility = ["//:__subpackages__"],
+)
+
+go_test(
+    name = "tokeninternal_test",
+    srcs = ["tokeninternal_test.go"],
+    deps = [":tokeninternal"],
+)
