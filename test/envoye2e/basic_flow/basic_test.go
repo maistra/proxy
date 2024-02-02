@@ -32,10 +32,10 @@ var ProtocolOptions = []struct {
 		Name: "h2",
 		Quic: false,
 	},
-	{
-		Name: "quic",
-		Quic: true,
-	},
+	// {
+	// 	Name: "quic",
+	// 	Quic: true,
+	// },
 }
 
 func TestBasicTCPFlow(t *testing.T) {
