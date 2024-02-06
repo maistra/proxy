@@ -95,9 +95,12 @@ function run_bazel() {
   # Workaround to force fetch of rules_license
   bazel --output_base="${OUTPUT_BASE}" fetch @remote_java_tools//java_tools/zlib:zlib || true
 
+  # Workaround to force fetch of protoc for arm
+  bazel --output_base="${OUTPUT_BASE}" fetch @com_google_protobuf_protoc_linux_aarch_64//:protoc
+
   # Fetch all the rest and check everything using "build --nobuild "option
-  for config in s390x ppc x86_64; do
-    bazel --output_base="${OUTPUT_BASE}" build --nobuild --config="${config}" //src/... //test/...  //extensions/...
+  for config in s390x ppc x86_64 aarch64; do
+    bazel --output_base="${OUTPUT_BASE}" build --nobuild --config="${config}" //...
   done
 }
 
