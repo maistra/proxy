@@ -19,18 +19,6 @@ namespace Extensions {
 namespace TransportSockets {
 namespace Tls {
 
-TEST(DefaultCertValidatorTest, TestDnsNameMatching) {
-  EXPECT_TRUE(DefaultCertValidator::dnsNameMatch("lyft.com", "lyft.com"));
-  EXPECT_TRUE(DefaultCertValidator::dnsNameMatch("a.lyft.com", "*.lyft.com"));
-  EXPECT_FALSE(DefaultCertValidator::dnsNameMatch("a.b.lyft.com", "*.lyft.com"));
-  EXPECT_FALSE(DefaultCertValidator::dnsNameMatch("foo.test.com", "*.lyft.com"));
-  EXPECT_FALSE(DefaultCertValidator::dnsNameMatch("lyft.com", "*.lyft.com"));
-  EXPECT_FALSE(DefaultCertValidator::dnsNameMatch("alyft.com", "*.lyft.com"));
-  EXPECT_FALSE(DefaultCertValidator::dnsNameMatch("alyft.com", "*lyft.com"));
-  EXPECT_FALSE(DefaultCertValidator::dnsNameMatch("lyft.com", "*lyft.com"));
-  EXPECT_FALSE(DefaultCertValidator::dnsNameMatch("", "*lyft.com"));
-  EXPECT_FALSE(DefaultCertValidator::dnsNameMatch("lyft.com", ""));
-}
 using TestCertificateValidationContextConfigPtr =
     std::unique_ptr<TestCertificateValidationContextConfig>;
 using X509StoreContextPtr = CSmartPtr<X509_STORE_CTX, X509_STORE_CTX_free>;
@@ -161,7 +149,8 @@ TEST(DefaultCertValidatorTest, TestCertificateVerificationWithSANMatcher) {
   std::vector<SanMatcherPtr> san_matchers;
   san_matchers.push_back(SanMatcherPtr{std::make_unique<StringSanMatcher>(GEN_DNS, matcher)});
   // Verify the certificate with correct SAN regex matcher.
-  EXPECT_EQ(default_validator->verifyCertificate(cert.get(), /*verify_san_list=*/{}, san_matchers),
+  EXPECT_EQ(default_validator->verifyCertificate(cert.get(), /*verify_san_list=*/{}, san_matchers,
+                                                 nullptr, nullptr),
             Envoy::Ssl::ClientValidationStatus::Validated);
   EXPECT_EQ(stats.fail_verify_san_.value(), 0);
 
@@ -169,9 +158,10 @@ TEST(DefaultCertValidatorTest, TestCertificateVerificationWithSANMatcher) {
   std::vector<SanMatcherPtr> invalid_san_matchers;
   invalid_san_matchers.push_back(
       SanMatcherPtr{std::make_unique<StringSanMatcher>(GEN_DNS, matcher)});
+  std::string error;
   // Verify the certificate with incorrect SAN exact matcher.
   EXPECT_EQ(default_validator->verifyCertificate(cert.get(), /*verify_san_list=*/{},
-                                                 invalid_san_matchers),
+                                                 invalid_san_matchers, &error, nullptr),
             Envoy::Ssl::ClientValidationStatus::Failed);
   EXPECT_EQ(stats.fail_verify_san_.value(), 1);
 }
@@ -186,10 +176,12 @@ TEST(DefaultCertValidatorTest, TestCertificateVerificationWithNoValidationContex
           Event::GlobalTimeSystem().timeSystem());
 
   EXPECT_EQ(default_validator->verifyCertificate(/*cert=*/nullptr, /*verify_san_list=*/{},
-                                                 /*subject_alt_name_matchers=*/{}),
+                                                 /*subject_alt_name_matchers=*/{}, nullptr,
+                                                 nullptr),
             Envoy::Ssl::ClientValidationStatus::NotValidated);
   bssl::UniquePtr<X509> cert(X509_new());
-  EXPECT_EQ(default_validator->doSynchronousVerifyCertChain(/*store_ctx=*/nullptr,
+  bssl::UniquePtr<X509_STORE_CTX> store_ctx(X509_STORE_CTX_new());
+  EXPECT_EQ(default_validator->doSynchronousVerifyCertChain(/*store_ctx=*/store_ctx.get(),
                                                             /*ssl_extended_info=*/nullptr,
                                                             /*leaf_cert=*/*cert,
                                                             /*transport_socket_options=*/nullptr),

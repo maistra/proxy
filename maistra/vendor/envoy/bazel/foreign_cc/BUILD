@@ -55,8 +55,8 @@ cc_library(
 configure_make(
     name = "librdkafka_build",
     configure_in_place = True,
-    configure_options = ["--CFLAGS=\"${CFLAGS:-} -Werror=implicit-function-declaration\" --disable-ssl --disable-gssapi --disable-lz4-ext --disable-zstd && cp Makefile.config src/.. && cp config.h src/.."],
-    lib_source = "@edenhill_librdkafka//:all",
+    configure_options = ["--CFLAGS=\"${CFLAGS:-} -Werror=implicit-function-declaration\" --disable-ssl --disable-gssapi --disable-lz4-ext --disable-zstd --disable-curl && cp Makefile.config src/.. && cp config.h src/.."],
+    lib_source = "@confluentinc_librdkafka//:all",
     out_static_libs = [
         "librdkafka.a",
         "librdkafka++.a",

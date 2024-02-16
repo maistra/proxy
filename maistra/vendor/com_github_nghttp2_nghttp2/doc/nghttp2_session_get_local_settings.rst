@@ -12,4 +12,4 @@ Synopsis
     
     Returns the value of SETTINGS *id* of local endpoint acknowledged
     by the remote endpoint.  The *id* must be one of the values defined
-    in :macro:`nghttp2_settings_id`.
+    in :enum:`nghttp2_settings_id`.

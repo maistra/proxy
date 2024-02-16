@@ -4302,7 +4302,6 @@ TEST_F(RouterTest, HttpInternalRedirectMatchedToDirectResponseSucceeded) {
                    ->value());
 }
 
-
 TEST_F(RouterTest, InternalRedirectStripsFragment) {
   enableRedirects();
   default_request_headers_.setForwardedProto("http");

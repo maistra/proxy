@@ -13,15 +13,15 @@ Synopsis
     Submits RST_STREAM frame to cancel/reject the stream *stream_id*
     with the error code *error_code*.
     
-    The pre-defined error code is one of :macro:`nghttp2_error_code`.
+    The pre-defined error code is one of :enum:`nghttp2_error_code`.
     
     The *flags* is currently ignored and should be
-    :macro:`nghttp2_flag.NGHTTP2_FLAG_NONE`.
+    :enum:`nghttp2_flag.NGHTTP2_FLAG_NONE`.
     
     This function returns 0 if it succeeds, or one of the following
     negative error codes:
     
-    :macro:`nghttp2_error.NGHTTP2_ERR_NOMEM`
+    :enum:`nghttp2_error.NGHTTP2_ERR_NOMEM`
         Out of memory.
-    :macro:`nghttp2_error.NGHTTP2_ERR_INVALID_ARGUMENT`
+    :enum:`nghttp2_error.NGHTTP2_ERR_INVALID_ARGUMENT`
         The *stream_id* is 0.

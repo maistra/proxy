@@ -176,8 +176,7 @@ int SPIFFEValidator::doSynchronousVerifyCertChain(X509_STORE_CTX* store_ctx,
   X509_VERIFY_PARAM_inherit(verify_params, X509_STORE_CTX_get0_param(store_ctx));
   X509_STORE_CTX_set0_param(verify_ctx.get(), verify_params);
   if (allow_expired_certificate_) {
-    X509_STORE_CTX_set_verify_cb(verify_ctx.get(),
-                                 CertValidatorUtil::ignoreCertificateExpirationCallback);
+    CertValidatorUtil::setIgnoreCertificateExpiration(verify_ctx.get());
   }
   auto ret = X509_verify_cert(verify_ctx.get());
   if (!ret) {

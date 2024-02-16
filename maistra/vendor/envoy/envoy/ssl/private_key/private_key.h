@@ -23,7 +23,7 @@ namespace Ssl {
 // TODO (dmitri-d) figure out a way to propagate -D compiler option to sub-projects, atm only the
 // top-level is affected
 #ifdef OPENSSL_IS_BORINGSSL
-// using BoringSslPrivateKeyMethodSharedPtr = std::shared_ptr<SSL_PRIVATE_KEY_METHOD>;
+//using BoringSslPrivateKeyMethodSharedPtr = std::shared_ptr<SSL_PRIVATE_KEY_METHOD>;
 #endif
 
 class PrivateKeyMethodProvider {

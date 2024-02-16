@@ -780,8 +780,12 @@ bool ConnectionImpl::bothSidesHalfClosed() {
 
 absl::string_view ConnectionImpl::transportFailureReason() const {
   if (!failure_reason_.empty()) {
+//    printf("ConnectionImpl::transportFailureReason 1 = %s\n", failure_reason_.c_str());
     return failure_reason_;
   }
+//  absl::string_view tsfr = transport_socket_->failureReason();
+//  printf("ConnectionImpl::transportFailureReason 2 = %s\n", std::string(tsfr).c_str());
+//  return tsfr;
   return transport_socket_->failureReason();
 }
 

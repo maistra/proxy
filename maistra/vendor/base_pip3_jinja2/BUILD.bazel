@@ -27,5 +27,5 @@ py_library(
     # search path for anything that depends on this.
     imports = ["site-packages"],
     deps = ["@base_pip3_markupsafe//:pkg"],
-    tags = ["pypi_name=jinja2","pypi_version=3.1.2"],
+    tags = ["pypi_name=jinja2","pypi_version=3.1.3"],
 )

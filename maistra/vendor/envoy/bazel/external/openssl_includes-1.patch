@@ -1,7 +1,7 @@
 diff --git a/ssl/packet_locl.h b/ssl/packet_locl.h
 index 860360b8b2..49c719285f 100644
---- a/ssl/packet_locl.h
-+++ b/ssl/packet_locl.h
+--- a/ssl/packet_local.h
++++ b/ssl/packet_local.h
 @@ -426,7 +426,7 @@ __owur static ossl_inline int PACKET_memdup(const PACKET *pkt,
      if (length == 0)
          return 1;

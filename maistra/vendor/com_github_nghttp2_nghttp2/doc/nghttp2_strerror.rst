@@ -11,4 +11,4 @@ Synopsis
 
     
     Returns string describing the *lib_error_code*.  The
-    *lib_error_code* must be one of the :macro:`nghttp2_error`.
+    *lib_error_code* must be one of the :enum:`nghttp2_error`.

@@ -16,10 +16,10 @@ Synopsis
     
     The *flags* is bitwise OR of 0 or more of the following value.
     
-    * :macro:`nghttp2_flag.NGHTTP2_FLAG_ACK`
+    * :enum:`nghttp2_flag.NGHTTP2_FLAG_ACK`
     
     Unless `nghttp2_option_set_no_auto_ping_ack()` is used, the *flags*
-    should be :macro:`nghttp2_flag.NGHTTP2_FLAG_NONE`.
+    should be :enum:`nghttp2_flag.NGHTTP2_FLAG_NONE`.
     
     If the *opaque_data* is non ``NULL``, then it should point to the 8
     bytes array of memory to specify opaque data to send with PING
@@ -29,5 +29,5 @@ Synopsis
     This function returns 0 if it succeeds, or one of the following
     negative error codes:
     
-    :macro:`nghttp2_error.NGHTTP2_ERR_NOMEM`
+    :enum:`nghttp2_error.NGHTTP2_ERR_NOMEM`
         Out of memory.

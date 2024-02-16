@@ -12,7 +12,7 @@ Synopsis
     
     Submits one or more DATA frames to the stream *stream_id*.  The
     data to be sent are provided by *data_prd*.  If *flags* contains
-    :macro:`nghttp2_flag.NGHTTP2_FLAG_END_STREAM`, the last DATA frame
+    :enum:`nghttp2_flag.NGHTTP2_FLAG_END_STREAM`, the last DATA frame
     has END_STREAM flag set.
     
     This function does not take ownership of the *data_prd*.  The
@@ -21,14 +21,14 @@ Synopsis
     This function returns 0 if it succeeds, or one of the following
     negative error codes:
     
-    :macro:`nghttp2_error.NGHTTP2_ERR_NOMEM`
+    :enum:`nghttp2_error.NGHTTP2_ERR_NOMEM`
         Out of memory.
-    :macro:`nghttp2_error.NGHTTP2_ERR_DATA_EXIST`
+    :enum:`nghttp2_error.NGHTTP2_ERR_DATA_EXIST`
         DATA or HEADERS has been already submitted and not fully
         processed yet.
-    :macro:`nghttp2_error.NGHTTP2_ERR_INVALID_ARGUMENT`
+    :enum:`nghttp2_error.NGHTTP2_ERR_INVALID_ARGUMENT`
         The *stream_id* is 0.
-    :macro:`nghttp2_error.NGHTTP2_ERR_STREAM_CLOSED`
+    :enum:`nghttp2_error.NGHTTP2_ERR_STREAM_CLOSED`
         The stream was already closed; or the *stream_id* is invalid.
     
     .. note::
@@ -36,12 +36,12 @@ Synopsis
       Currently, only one DATA or HEADERS is allowed for a stream at a
       time.  Submitting these frames more than once before first DATA
       or HEADERS is finished results in
-      :macro:`nghttp2_error.NGHTTP2_ERR_DATA_EXIST` error code.  The
+      :enum:`nghttp2_error.NGHTTP2_ERR_DATA_EXIST` error code.  The
       earliest callback which tells that previous frame is done is
       :type:`nghttp2_on_frame_send_callback`.  In side that callback,
       new data can be submitted using `nghttp2_submit_data()`.  Of
       course, all data except for last one must not have
-      :macro:`nghttp2_flag.NGHTTP2_FLAG_END_STREAM` flag set in *flags*.
+      :enum:`nghttp2_flag.NGHTTP2_FLAG_END_STREAM` flag set in *flags*.
       This sounds a bit complicated, and we recommend to use
       `nghttp2_submit_request()` and `nghttp2_submit_response()` to
       avoid this cascading issue.  The experience shows that for HTTP

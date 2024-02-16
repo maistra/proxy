@@ -37,16 +37,16 @@ Synopsis
     is make stream depend on root stream with weight 16.
     
     If
-    :macro:`nghttp2_settings_id.NGHTTP2_SETTINGS_NO_RFC7540_PRIORITIES`
+    :enum:`nghttp2_settings_id.NGHTTP2_SETTINGS_NO_RFC7540_PRIORITIES`
     of value of 1 is submitted via `nghttp2_submit_settings()`, this
     function does nothing and returns 0.
     
     This function returns 0 if it succeeds, or one of the following
     negative error codes:
     
-    :macro:`nghttp2_error.NGHTTP2_ERR_NOMEM`
+    :enum:`nghttp2_error.NGHTTP2_ERR_NOMEM`
         Out of memory.
-    :macro:`nghttp2_error.NGHTTP2_ERR_INVALID_ARGUMENT`
+    :enum:`nghttp2_error.NGHTTP2_ERR_INVALID_ARGUMENT`
         Attempted to depend on itself; or stream denoted by *stream_id*
         already exists; or *stream_id* cannot be used to create idle
         stream (in other words, local endpoint has already opened

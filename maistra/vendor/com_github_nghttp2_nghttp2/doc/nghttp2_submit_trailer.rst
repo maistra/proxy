@@ -19,10 +19,10 @@ Synopsis
     This function creates copies of all name/value pairs in *nva*.  It
     also lower-cases all names in *nva*.  The order of elements in
     *nva* is preserved.  For header fields with
-    :macro:`nghttp2_nv_flag.NGHTTP2_NV_FLAG_NO_COPY_NAME` and
-    :macro:`nghttp2_nv_flag.NGHTTP2_NV_FLAG_NO_COPY_VALUE` are set,
+    :enum:`nghttp2_nv_flag.NGHTTP2_NV_FLAG_NO_COPY_NAME` and
+    :enum:`nghttp2_nv_flag.NGHTTP2_NV_FLAG_NO_COPY_VALUE` are set,
     header field name and value are not copied respectively.  With
-    :macro:`nghttp2_nv_flag.NGHTTP2_NV_FLAG_NO_COPY_NAME`, application
+    :enum:`nghttp2_nv_flag.NGHTTP2_NV_FLAG_NO_COPY_NAME`, application
     is responsible to pass header field name in lowercase.  The
     application should maintain the references to them until
     :type:`nghttp2_on_frame_send_callback` or
@@ -36,15 +36,15 @@ Synopsis
     *nva* will be sent as response headers, which will result in error.
     
     This function has the same effect with `nghttp2_submit_headers()`,
-    with flags = :macro:`nghttp2_flag.NGHTTP2_FLAG_END_STREAM` and both
+    with flags = :enum:`nghttp2_flag.NGHTTP2_FLAG_END_STREAM` and both
     pri_spec and stream_user_data to NULL.
     
     To submit trailer fields after `nghttp2_submit_response()` is
     called, the application has to specify
     :type:`nghttp2_data_provider` to `nghttp2_submit_response()`.
     Inside of :type:`nghttp2_data_source_read_callback`, when setting
-    :macro:`nghttp2_data_flag.NGHTTP2_DATA_FLAG_EOF`, also set
-    :macro:`nghttp2_data_flag.NGHTTP2_DATA_FLAG_NO_END_STREAM`.  After
+    :enum:`nghttp2_data_flag.NGHTTP2_DATA_FLAG_EOF`, also set
+    :enum:`nghttp2_data_flag.NGHTTP2_DATA_FLAG_NO_END_STREAM`.  After
     that, the application can send trailer fields using
     `nghttp2_submit_trailer()`.  `nghttp2_submit_trailer()` can be used
     inside :type:`nghttp2_data_source_read_callback`.
@@ -53,7 +53,7 @@ Synopsis
     Otherwise, this function returns 0 if it succeeds, or one of the
     following negative error codes:
     
-    :macro:`nghttp2_error.NGHTTP2_ERR_NOMEM`
+    :enum:`nghttp2_error.NGHTTP2_ERR_NOMEM`
         Out of memory.
-    :macro:`nghttp2_error.NGHTTP2_ERR_INVALID_ARGUMENT`
+    :enum:`nghttp2_error.NGHTTP2_ERR_INVALID_ARGUMENT`
         The *stream_id* is 0.

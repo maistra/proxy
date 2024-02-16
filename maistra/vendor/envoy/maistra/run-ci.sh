@@ -18,9 +18,6 @@ time bazel build \
 echo "Build succeeded. Binary generated:"
 bazel-bin/source/exe/envoy-static --version
 
-# FIXME: Do not run tests
-exit 0
-
 # By default, `bazel test` command performs simultaneous
 # build and test activity.
 # The following build step helps reduce resources usage
@@ -30,14 +27,14 @@ time bazel build \
   ${COMMON_FLAGS} \
   --build_tests_only \
   -- \
-  //test/...
-  # -//test/server:listener_manager_impl_quic_only_test
+  //test/... \
+  -//test/extensions/listener_managers/listener_manager:listener_manager_impl_quic_only_test
 
 # Run tests
 time bazel test \
   ${COMMON_FLAGS} \
   --build_tests_only \
   -- \
-  //test/...
- # -//test/server:listener_manager_impl_quic_only_test
+  //test/... \
+  -//test/extensions/listener_managers/listener_manager:listener_manager_impl_quic_only_test
 

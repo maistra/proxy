@@ -12,16 +12,21 @@
 #include "source/common/network/connection_impl.h"
 #include "source/common/network/utility.h"
 #include "source/extensions/transport_sockets/tls/context_config_impl.h"
+#include "source/extensions/transport_sockets/tls/context_impl.h"
 #include "source/extensions/transport_sockets/tls/context_manager_impl.h"
 #include "source/extensions/transport_sockets/tls/ssl_handshaker.h"
+#include "source/extensions/transport_sockets/tls/ssl_socket.h"
 
 #include "test/integration/autonomous_upstream.h"
 #include "test/integration/integration.h"
+#include "test/integration/ssl_utility.h"
 #include "test/integration/utility.h"
 #include "test/test_common/network_utility.h"
+#include "test/test_common/registry.h"
 #include "test/test_common/utility.h"
 
 #include "absl/strings/match.h"
+#include "absl/time/clock.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
@@ -36,6 +41,7 @@
 using testing::StartsWith;
 
 namespace Envoy {
+
 namespace Ssl {
 
 void SslIntegrationTestBase::initialize() {

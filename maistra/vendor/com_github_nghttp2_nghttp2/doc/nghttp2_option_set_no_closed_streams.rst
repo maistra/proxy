@@ -15,6 +15,6 @@ Synopsis
     applications can discard closed stream completely to save memory.
     
     If
-    :macro:`nghttp2_settings_id.NGHTTP2_SETTINGS_NO_RFC7540_PRIORITIES`
+    :enum:`nghttp2_settings_id.NGHTTP2_SETTINGS_NO_RFC7540_PRIORITIES`
     of value of 1 is submitted via `nghttp2_submit_settings()`, any
     closed streams are not retained regardless of this option.

@@ -14,7 +14,7 @@ Synopsis
     to the priority specification *pri_spec*.
     
     The *flags* is currently ignored and should be
-    :macro:`nghttp2_flag.NGHTTP2_FLAG_NONE`.
+    :enum:`nghttp2_flag.NGHTTP2_FLAG_NONE`.
     
     The *pri_spec* is priority specification of this request.  ``NULL``
     is not allowed for this function. To specify the priority, use
@@ -29,15 +29,15 @@ Synopsis
     :macro:`NGHTTP2_MAX_WEIGHT`.
     
     If
-    :macro:`nghttp2_settings_id.NGHTTP2_SETTINGS_NO_RFC7540_PRIORITIES`
+    :enum:`nghttp2_settings_id.NGHTTP2_SETTINGS_NO_RFC7540_PRIORITIES`
     of value of 1 is received by a remote endpoint, this function does
     nothing and returns 0.
     
     This function returns 0 if it succeeds, or one of the following
     negative error codes:
     
-    :macro:`nghttp2_error.NGHTTP2_ERR_NOMEM`
+    :enum:`nghttp2_error.NGHTTP2_ERR_NOMEM`
         Out of memory.
-    :macro:`nghttp2_error.NGHTTP2_ERR_INVALID_ARGUMENT`
+    :enum:`nghttp2_error.NGHTTP2_ERR_INVALID_ARGUMENT`
         The *stream_id* is 0; or the *pri_spec* is NULL; or trying to
         depend on itself.
