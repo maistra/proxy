@@ -1,7 +1,6 @@
 load("@proxy_wasm_cpp_sdk//bazel:defs.bzl", "proxy_wasm_cc_binary")
 load("@rules_rust//rust:defs.bzl", "rust_binary")
 
-
 def _wasm_rust_transition_impl(settings, attr):
     return {
         "//command_line_option:platforms": "@rules_rust//rust/platform:wasm",

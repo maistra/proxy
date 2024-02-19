@@ -1,5 +1,5 @@
 load("//bazel:envoy_build_system.bzl", "envoy_package")
-load("//tools/base:envoy_python.bzl", "envoy_py_namespace")
+load("//tools/python:namespace.bzl", "envoy_py_namespace")
 load("//bazel:envoy_library.bzl", "envoy_cc_library")
 
 licenses(["notice"])  # Apache 2

@@ -11,7 +11,7 @@
 
 #include "bssl_wrapper/bssl_wrapper.h"
 #include "openssl/ssl.h"
-#include "ssl/ssl_locl.h"
+#include "ssl/ssl_local.h"
 
 #define SSL_CLIENT_HELLO  CLIENTHELLO_MSG
 

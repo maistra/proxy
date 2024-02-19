@@ -18,23 +18,14 @@
 /* Define to 1 if you have the std::atomic_* overloads for std::shared_ptr. */
 #undef HAVE_ATOMIC_STD_SHARED_PTR
 
-/* define if the Boost library is available */
-#undef HAVE_BOOST
-
-/* define if the Boost::ASIO library is available */
-#undef HAVE_BOOST_ASIO
-
-/* define if the Boost::System library is available */
-#undef HAVE_BOOST_SYSTEM
-
-/* define if the Boost::Thread library is available */
-#undef HAVE_BOOST_THREAD
-
 /* Define to 1 if you have enum bpf_stats_type in linux/bpf.h. */
 #undef HAVE_BPF_STATS_TYPE
 
 /* Define to 1 if your system has a working `chown' function. */
 #undef HAVE_CHOWN
+
+/* Define to 1 if you have the `clock_gettime' function. */
+#undef HAVE_CLOCK_GETTIME
 
 /* define if the compiler supports basic C++14 syntax */
 #undef HAVE_CXX14
@@ -65,6 +56,9 @@
 /* Define to 1 if you have the `getpwnam' function. */
 #undef HAVE_GETPWNAM
 
+/* Define to 1 if you have `GetTickCount64` function. */
+#undef HAVE_GETTICKCOUNT64
+
 /* Define to 1 if you have the <inttypes.h> header file. */
 #undef HAVE_INTTYPES_H
 
@@ -74,11 +68,14 @@
 /* Define to 1 if you have `libbpf` library. */
 #undef HAVE_LIBBPF
 
+/* Define to 1 if you have `libev` library. */
+#undef HAVE_LIBEV
+
 /* Define to 1 if you have `libngtcp2_crypto_boringssl` library. */
 #undef HAVE_LIBNGTCP2_CRYPTO_BORINGSSL
 
-/* Define to 1 if you have `libngtcp2_crypto_openssl` library. */
-#undef HAVE_LIBNGTCP2_CRYPTO_OPENSSL
+/* Define to 1 if you have `libngtcp2_crypto_quictls` library. */
+#undef HAVE_LIBNGTCP2_CRYPTO_QUICTLS
 
 /* Define to 1 if you have `libsystemd` library. */
 #undef HAVE_LIBSYSTEMD
@@ -116,6 +113,9 @@
 /* Define to 1 if you have the <netinet/in.h> header file. */
 #undef HAVE_NETINET_IN_H
 
+/* Define to 1 if you have the <netinet/ip.h> header file. */
+#undef HAVE_NETINET_IP_H
+
 /* Define to 1 if you have `neverbleed` library. */
 #undef HAVE_NEVERBLEED
 
@@ -124,9 +124,6 @@
 
 /* Define to 1 if you have the <pwd.h> header file. */
 #undef HAVE_PWD_H
-
-/* If available, contains the Python version number currently in use. */
-#undef HAVE_PYTHON
 
 /* Define to 1 if struct sockaddr_in6 has sin6_len member. */
 #undef HAVE_SOCKADDR_IN6_SIN6_LEN
@@ -190,6 +187,9 @@
 
 /* Define to 1 if you have `struct tm.tm_gmtoff` member. */
 #undef HAVE_STRUCT_TM_TM_GMTOFF
+
+/* Define to 1 if you have the <sysinfoapi.h> header file. */
+#undef HAVE_SYSINFOAPI_H
 
 /* Define to 1 if you have the <syslog.h> header file. */
 #undef HAVE_SYSLOG_H

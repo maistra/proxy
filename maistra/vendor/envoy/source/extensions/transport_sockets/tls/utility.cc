@@ -141,6 +141,7 @@ std::string getRFC2253NameFromCertificate(X509& cert, CertName desired_name) {
     name = X509_get_subject_name(&cert);
     break;
   }
+
   // flags=XN_FLAG_RFC2253 is the documented parameter for single-line output in RFC 2253 format.
   // Example from the RFC:
   //   * Single value per Relative Distinguished Name (RDN): CN=Steve Kille,O=Isode Limited,C=GB
@@ -268,7 +269,7 @@ absl::optional<uint32_t> Utility::getDaysUntilExpiration(const X509* cert,
   return absl::nullopt;
 }
 
-absl::string_view Utility::getCertificateExtensionValue(const X509& cert,
+absl::string_view Utility::getCertificateExtensionValue(X509& cert,
                                                         absl::string_view extension_name) {
   bssl::UniquePtr<ASN1_OBJECT> oid(
       OBJ_txt2obj(std::string(extension_name).c_str(), 1 /* don't search names */));

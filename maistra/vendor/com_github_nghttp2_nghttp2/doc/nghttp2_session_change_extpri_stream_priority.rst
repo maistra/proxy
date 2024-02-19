@@ -15,7 +15,7 @@ Synopsis
     server for :rfc:`9218` extensible prioritization scheme.
     
     If *session* is initialized as client, this function returns
-    :macro:`nghttp2_error.NGHTTP2_ERR_INVALID_STATE`.  For client, use
+    :enum:`nghttp2_error.NGHTTP2_ERR_INVALID_STATE`.  For client, use
     `nghttp2_submit_priority_update()` instead.
     
     If :member:`extpri->urgency <nghttp2_extpri.urgency>` is out of
@@ -25,14 +25,14 @@ Synopsis
     client priority signals for this stream.
     
     If
-    :macro:`nghttp2_settings_id.NGHTTP2_SETTINGS_NO_RFC7540_PRIORITIES`
+    :enum:`nghttp2_settings_id.NGHTTP2_SETTINGS_NO_RFC7540_PRIORITIES`
     of value of 1 is not submitted via `nghttp2_submit_settings()`,
     this function does nothing and returns 0.
     
-    :macro:`nghttp2_error.NGHTTP2_ERR_NOMEM`
+    :enum:`nghttp2_error.NGHTTP2_ERR_NOMEM`
         Out of memory.
-    :macro:`nghttp2_error.NGHTTP2_ERR_INVALID_STATE`
+    :enum:`nghttp2_error.NGHTTP2_ERR_INVALID_STATE`
         The *session* is initialized as client.
-    :macro:`nghttp2_error.NGHTTP2_ERR_INVALID_ARGUMENT`
+    :enum:`nghttp2_error.NGHTTP2_ERR_INVALID_ARGUMENT`
         *stream_id* is zero; or a stream denoted by *stream_id* is not
         found.

@@ -13,7 +13,7 @@ Synopsis
     Inflates name/value block stored in *in* with length *inlen*.  This
     function performs decompression.  For each successful emission of
     header name/value pair,
-    :macro:`nghttp2_hd_inflate_flag.NGHTTP2_HD_INFLATE_EMIT` is set in
+    :enum:`nghttp2_hd_inflate_flag.NGHTTP2_HD_INFLATE_EMIT` is set in
     *\*inflate_flags* and name/value pair is assigned to the *nv_out*
     and the function returns.  The caller must not free the members of
     *nv_out*.
@@ -30,7 +30,7 @@ Synopsis
     
     In other words, if *in_final* is nonzero, and this function returns
     *inlen*, you can assert that
-    :macro:`nghttp2_hd_inflate_final.NGHTTP2_HD_INFLATE_FINAL` is set in
+    :enum:`nghttp2_hd_inflate_final.NGHTTP2_HD_INFLATE_FINAL` is set in
     *\*inflate_flags*.
     
     The caller can feed complete compressed header block.  It also can
@@ -41,11 +41,11 @@ Synopsis
     This function returns the number of bytes processed if it succeeds,
     or one of the following negative error codes:
     
-    :macro:`nghttp2_error.NGHTTP2_ERR_NOMEM`
+    :enum:`nghttp2_error.NGHTTP2_ERR_NOMEM`
         Out of memory.
-    :macro:`nghttp2_error.NGHTTP2_ERR_HEADER_COMP`
+    :enum:`nghttp2_error.NGHTTP2_ERR_HEADER_COMP`
         Inflation process has failed.
-    :macro:`nghttp2_error.NGHTTP2_ERR_BUFFER_ERROR`
+    :enum:`nghttp2_error.NGHTTP2_ERR_BUFFER_ERROR`
         The header field name or value is too large.
     
     Example follows::

@@ -110,13 +110,8 @@ target_triplet = @target@
 @ENABLE_FAILMALLOC_TRUE@@HAVE_CUNIT_TRUE@am__append_3 = failmalloc
 subdir = tests
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
-am__aclocal_m4_deps = $(top_srcdir)/m4/ax_boost_asio.m4 \
-	$(top_srcdir)/m4/ax_boost_base.m4 \
-	$(top_srcdir)/m4/ax_boost_system.m4 \
-	$(top_srcdir)/m4/ax_boost_thread.m4 \
-	$(top_srcdir)/m4/ax_check_compile_flag.m4 \
+am__aclocal_m4_deps = $(top_srcdir)/m4/ax_check_compile_flag.m4 \
 	$(top_srcdir)/m4/ax_cxx_compile_stdcxx.m4 \
-	$(top_srcdir)/m4/ax_python_devel.m4 \
 	$(top_srcdir)/m4/libtool.m4 $(top_srcdir)/m4/ltoptions.m4 \
 	$(top_srcdir)/m4/ltsugar.m4 $(top_srcdir)/m4/ltversion.m4 \
 	$(top_srcdir)/m4/lt~obsolete.m4 $(top_srcdir)/configure.ac
@@ -156,12 +151,12 @@ am__main_SOURCES_DIST = nghttp2_pq_test.h nghttp2_map_test.h \
 	nghttp2_frame_test.h nghttp2_stream_test.h nghttp2_hd_test.h \
 	nghttp2_npn_test.h nghttp2_helper_test.h nghttp2_test_helper.h \
 	nghttp2_buf_test.h nghttp2_http_test.h nghttp2_extpri_test.h \
-	main.c nghttp2_pq_test.c nghttp2_map_test.c \
-	nghttp2_queue_test.c nghttp2_test_helper.c \
+	nghttp2_ratelim_test.h main.c nghttp2_pq_test.c \
+	nghttp2_map_test.c nghttp2_queue_test.c nghttp2_test_helper.c \
 	nghttp2_frame_test.c nghttp2_stream_test.c \
 	nghttp2_session_test.c nghttp2_hd_test.c nghttp2_npn_test.c \
 	nghttp2_helper_test.c nghttp2_buf_test.c nghttp2_http_test.c \
-	nghttp2_extpri_test.c
+	nghttp2_extpri_test.c nghttp2_ratelim_test.c
 am__objects_1 =
 @HAVE_CUNIT_TRUE@am__objects_2 = main.$(OBJEXT) \
 @HAVE_CUNIT_TRUE@	nghttp2_pq_test.$(OBJEXT) \
@@ -176,7 +171,8 @@ am__objects_1 =
 @HAVE_CUNIT_TRUE@	nghttp2_helper_test.$(OBJEXT) \
 @HAVE_CUNIT_TRUE@	nghttp2_buf_test.$(OBJEXT) \
 @HAVE_CUNIT_TRUE@	nghttp2_http_test.$(OBJEXT) \
-@HAVE_CUNIT_TRUE@	nghttp2_extpri_test.$(OBJEXT)
+@HAVE_CUNIT_TRUE@	nghttp2_extpri_test.$(OBJEXT) \
+@HAVE_CUNIT_TRUE@	nghttp2_ratelim_test.$(OBJEXT)
 @HAVE_CUNIT_TRUE@am_main_OBJECTS = $(am__objects_1) $(am__objects_2)
 main_OBJECTS = $(am_main_OBJECTS)
 @ENABLE_STATIC_FALSE@@HAVE_CUNIT_TRUE@main_DEPENDENCIES = ${top_builddir}/lib/.libs/*.o \
@@ -212,6 +208,7 @@ am__depfiles_remade = ./$(DEPDIR)/failmalloc.Po \
 	./$(DEPDIR)/nghttp2_map_test.Po \
 	./$(DEPDIR)/nghttp2_npn_test.Po ./$(DEPDIR)/nghttp2_pq_test.Po \
 	./$(DEPDIR)/nghttp2_queue_test.Po \
+	./$(DEPDIR)/nghttp2_ratelim_test.Po \
 	./$(DEPDIR)/nghttp2_session_test.Po \
 	./$(DEPDIR)/nghttp2_stream_test.Po \
 	./$(DEPDIR)/nghttp2_test_helper.Po
@@ -516,11 +513,6 @@ AUTOCONF = @AUTOCONF@
 AUTOHEADER = @AUTOHEADER@
 AUTOMAKE = @AUTOMAKE@
 AWK = @AWK@
-BOOST_ASIO_LIB = @BOOST_ASIO_LIB@
-BOOST_CPPFLAGS = @BOOST_CPPFLAGS@
-BOOST_LDFLAGS = @BOOST_LDFLAGS@
-BOOST_SYSTEM_LIB = @BOOST_SYSTEM_LIB@
-BOOST_THREAD_LIB = @BOOST_THREAD_LIB@
 BPFCFLAGS = @BPFCFLAGS@
 CC = @CC@
 CCDEPMODE = @CCDEPMODE@
@@ -537,7 +529,6 @@ CXXCPP = @CXXCPP@
 CXXDEPMODE = @CXXDEPMODE@
 CXXFLAGS = @CXXFLAGS@
 CYGPATH_W = @CYGPATH_W@
-CYTHON = @CYTHON@
 DEFS = @DEFS@
 DEPDIR = @DEPDIR@
 DLLTOOL = @DLLTOOL@
@@ -582,8 +573,8 @@ LIBNGHTTP3_LIBS = @LIBNGHTTP3_LIBS@
 LIBNGTCP2_CFLAGS = @LIBNGTCP2_CFLAGS@
 LIBNGTCP2_CRYPTO_BORINGSSL_CFLAGS = @LIBNGTCP2_CRYPTO_BORINGSSL_CFLAGS@
 LIBNGTCP2_CRYPTO_BORINGSSL_LIBS = @LIBNGTCP2_CRYPTO_BORINGSSL_LIBS@
-LIBNGTCP2_CRYPTO_OPENSSL_CFLAGS = @LIBNGTCP2_CRYPTO_OPENSSL_CFLAGS@
-LIBNGTCP2_CRYPTO_OPENSSL_LIBS = @LIBNGTCP2_CRYPTO_OPENSSL_LIBS@
+LIBNGTCP2_CRYPTO_QUICTLS_CFLAGS = @LIBNGTCP2_CRYPTO_QUICTLS_CFLAGS@
+LIBNGTCP2_CRYPTO_QUICTLS_LIBS = @LIBNGTCP2_CRYPTO_QUICTLS_LIBS@
 LIBNGTCP2_LIBS = @LIBNGTCP2_LIBS@
 LIBOBJS = @LIBOBJS@
 LIBS = @LIBS@
@@ -622,15 +613,9 @@ PKG_CONFIG = @PKG_CONFIG@
 PKG_CONFIG_LIBDIR = @PKG_CONFIG_LIBDIR@
 PKG_CONFIG_PATH = @PKG_CONFIG_PATH@
 PYTHON = @PYTHON@
-PYTHON_CPPFLAGS = @PYTHON_CPPFLAGS@
 PYTHON_EXEC_PREFIX = @PYTHON_EXEC_PREFIX@
-PYTHON_EXTRA_LDFLAGS = @PYTHON_EXTRA_LDFLAGS@
-PYTHON_EXTRA_LIBS = @PYTHON_EXTRA_LIBS@
-PYTHON_LIBS = @PYTHON_LIBS@
 PYTHON_PLATFORM = @PYTHON_PLATFORM@
-PYTHON_PLATFORM_SITE_PKG = @PYTHON_PLATFORM_SITE_PKG@
 PYTHON_PREFIX = @PYTHON_PREFIX@
-PYTHON_SITE_PKG = @PYTHON_SITE_PKG@
 PYTHON_VERSION = @PYTHON_VERSION@
 RANLIB = @RANLIB@
 SED = @SED@
@@ -727,7 +712,8 @@ EXTRA_DIST = CMakeLists.txt
 @HAVE_CUNIT_TRUE@	nghttp2_helper_test.c \
 @HAVE_CUNIT_TRUE@	nghttp2_buf_test.c \
 @HAVE_CUNIT_TRUE@	nghttp2_http_test.c \
-@HAVE_CUNIT_TRUE@	nghttp2_extpri_test.c
+@HAVE_CUNIT_TRUE@	nghttp2_extpri_test.c \
+@HAVE_CUNIT_TRUE@	nghttp2_ratelim_test.c
 
 @HAVE_CUNIT_TRUE@HFILES = nghttp2_pq_test.h nghttp2_map_test.h nghttp2_queue_test.h \
 @HAVE_CUNIT_TRUE@	nghttp2_session_test.h \
@@ -736,7 +722,8 @@ EXTRA_DIST = CMakeLists.txt
 @HAVE_CUNIT_TRUE@	nghttp2_test_helper.h \
 @HAVE_CUNIT_TRUE@	nghttp2_buf_test.h \
 @HAVE_CUNIT_TRUE@	nghttp2_http_test.h \
-@HAVE_CUNIT_TRUE@	nghttp2_extpri_test.h
+@HAVE_CUNIT_TRUE@	nghttp2_extpri_test.h \
+@HAVE_CUNIT_TRUE@	nghttp2_ratelim_test.h
 
 @HAVE_CUNIT_TRUE@main_SOURCES = $(HFILES) $(OBJECTS)
 # With static lib disabled and symbol hiding enabled, we have to link object
@@ -830,6 +817,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nghttp2_npn_test.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nghttp2_pq_test.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nghttp2_queue_test.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nghttp2_ratelim_test.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nghttp2_session_test.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nghttp2_stream_test.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nghttp2_test_helper.Po@am__quote@ # am--include-marker
@@ -1256,6 +1244,7 @@ distclean: distclean-recursive
 	-rm -f ./$(DEPDIR)/nghttp2_npn_test.Po
 	-rm -f ./$(DEPDIR)/nghttp2_pq_test.Po
 	-rm -f ./$(DEPDIR)/nghttp2_queue_test.Po
+	-rm -f ./$(DEPDIR)/nghttp2_ratelim_test.Po
 	-rm -f ./$(DEPDIR)/nghttp2_session_test.Po
 	-rm -f ./$(DEPDIR)/nghttp2_stream_test.Po
 	-rm -f ./$(DEPDIR)/nghttp2_test_helper.Po
@@ -1318,6 +1307,7 @@ maintainer-clean: maintainer-clean-recursive
 	-rm -f ./$(DEPDIR)/nghttp2_npn_test.Po
 	-rm -f ./$(DEPDIR)/nghttp2_pq_test.Po
 	-rm -f ./$(DEPDIR)/nghttp2_queue_test.Po
+	-rm -f ./$(DEPDIR)/nghttp2_ratelim_test.Po
 	-rm -f ./$(DEPDIR)/nghttp2_session_test.Po
 	-rm -f ./$(DEPDIR)/nghttp2_stream_test.Po
 	-rm -f ./$(DEPDIR)/nghttp2_test_helper.Po

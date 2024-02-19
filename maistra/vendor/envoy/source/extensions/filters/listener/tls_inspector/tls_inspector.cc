@@ -21,7 +21,6 @@
 #include "absl/strings/str_join.h"
 #include "openssl/md5.h"
 #include "openssl/ssl.h"
-#include "ssl/ssl_locl.h"
 
 
 //#define DISABLE_FINGERPRINTING 1
@@ -146,8 +145,6 @@ Network::FilterStatus Filter::onAccept(Network::ListenerFilterCallbacks& cb) {
 
   return Network::FilterStatus::StopIteration;
 }
-
-
 
 void Filter::onALPN(const unsigned char* data, unsigned int len) {
   CBS wire, list;

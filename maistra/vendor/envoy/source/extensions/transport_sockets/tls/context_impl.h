@@ -1,5 +1,7 @@
 #pragma once
 
+#include <openssl/safestack.h>
+
 #include <array>
 #include <deque>
 #include <functional>
@@ -20,51 +22,44 @@
 #include "source/extensions/transport_sockets/tls/cert_validator/cert_validator.h"
 #include "source/extensions/transport_sockets/tls/context_manager_impl.h"
 #include "source/extensions/transport_sockets/tls/ocsp/ocsp.h"
-#include "source/extensions/transport_sockets/tls/openssl_impl.h"
 #include "source/extensions/transport_sockets/tls/stats.h"
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/types/optional.h"
+
 #include "bssl_wrapper/bssl_wrapper.h"
+#include "source/extensions/transport_sockets/tls/openssl_impl.h"
+
 #include "openssl/ssl.h"
 #include "openssl/x509v3.h"
 
 namespace Envoy {
+
 namespace Extensions {
 namespace TransportSockets {
 namespace Tls {
 
-struct CertContext {
+struct TlsContext {
+  // Each certificate specified for the context has its own SSL_CTX. `SSL_CTXs`
+  // are identical with the exception of certificate material, and can be
+  // safely substituted via SSL_set_SSL_CTX() during the
+  // SSL_CTX_set_select_certificate_cb() callback following ClientHello.
+  bssl::UniquePtr<SSL_CTX> ssl_ctx_;
   bssl::UniquePtr<X509> cert_chain_;
   std::string cert_chain_file_path_;
   Ocsp::OcspResponseWrapperPtr ocsp_response_;
   bool is_ecdsa_{};
   bool is_must_staple_{};
-  std::string getCertChainFileName() const { return cert_chain_file_path_; };
   Ssl::PrivateKeyMethodProviderSharedPtr private_key_method_provider_{};
+
+  std::string getCertChainFileName() const { return cert_chain_file_path_; };
+  bool isCipherEnabled(uint16_t cipher_id, uint16_t client_version);
   Envoy::Ssl::PrivateKeyMethodProviderSharedPtr getPrivateKeyMethodProvider() {
     return private_key_method_provider_;
   }
-};
-
-// Use a single context for certificates instead of one context per certificate as in the BoringSSL
-// case. A single context is required to hold all certificates for OpenSSL, certificate selection is
-// handled by OpenSSL.
-struct TlsContext {
-  bssl::UniquePtr<SSL_CTX> ssl_ctx_;
-  std::vector<CertContext> cert_contexts_;
-  // a map of cert hashes as calculated by X509_digest with EVP_sha1 to cert contexts
-  absl::flat_hash_map<std::string, std::reference_wrapper<CertContext>> cert_context_lookup_;
-
-  void addClientValidationContext(const Envoy::Ssl::CertificateValidationContextConfig& config,
-                                  bool require_client_cert);
-  bool isCipherEnabled(uint16_t cipher_id, uint16_t client_version);
-
-  void loadCertificateChain(const uint32_t cert_index, const std::string& data, const std::string& data_path);
+  void loadCertificateChain(const std::string& data, const std::string& data_path);
   void loadPrivateKey(const std::string& data, const std::string& data_path,
                       const std::string& password);
-  void loadPkcs12(const uint32_t cert_index, const std::string& data, const std::string& data_path,
+  void loadPkcs12(const std::string& data, const std::string& data_path,
                   const std::string& password);
   void checkPrivateKey(const bssl::UniquePtr<EVP_PKEY>& pkey, const std::string& key_path);
 };
@@ -94,13 +89,17 @@ public:
   Envoy::Ssl::CertificateDetailsPtr getCaCertInformation() const override;
   std::vector<Envoy::Ssl::CertificateDetailsPtr> getCertChainInformation() const override;
   absl::optional<uint64_t> secondsUntilFirstOcspResponseExpires() const override;
+
   std::vector<Ssl::PrivateKeyMethodProviderSharedPtr> getPrivateKeyMethodProviders();
 
-  bool verifyCertChain(X509& leaf_cert, STACK_OF(X509) & intermediates, std::string& error_details);
+  // TODO(danzh) remove when deprecate envoy.reloadable_features.tls_async_cert_validation
+  bool verifyCertChain(X509& leaf_cert, STACK_OF(X509)& intermediates, std::string& error_details);
 
   static void keylogCallback(const SSL* ssl, const char* line);
 
 protected:
+  friend class ContextImplPeer;
+
   ContextImpl(Stats::Scope& scope, const Envoy::Ssl::ContextConfig& config,
               TimeSource& time_source);
 
@@ -119,7 +118,13 @@ protected:
   void incCounter(const Stats::StatName name, absl::string_view value,
                   const Stats::StatName fallback) const;
 
-  TlsContext tls_context_;
+  void populateServerNamesMap(TlsContext& ctx, const int pkey_id);
+
+  // This is always non-empty, with the first context used for all new SSL
+  // objects. For server contexts, once we have ClientHello, we
+  // potentially switch to a different CertificateContext based on certificate
+  // selection.
+  std::vector<TlsContext> tls_contexts_;
   CertValidatorPtr cert_validator_;
   Stats::Scope& scope_;
   SslStats stats_;
@@ -155,7 +160,6 @@ public:
 
 private:
   int newSessionKey(SSL_SESSION* session);
-  uint16_t parseSigningAlgorithmsForTest(const std::string& sigalgs);
 
   const std::string server_name_indication_;
   const bool allow_renegotiation_;
@@ -172,16 +176,27 @@ public:
   ServerContextImpl(Stats::Scope& scope, const Envoy::Ssl::ServerContextConfig& config,
                     const std::vector<std::string>& server_names, TimeSource& time_source);
 
+  // Select the TLS certificate context in SSL_CTX_set_select_certificate_cb() callback with
+  // ClientHello details. This is made public for use by custom TLS extensions who want to
+  // manually create and use this as a client hello callback.
+
+  // TODO: use SSL * like the 2.4 version of isOCSPblah method.
+  // TODO: https://github.com/envoyproxy/envoy-openssl/blob/main/bssl-compat/source/SSL_CTX_set_select_certificate_cb.c
+  // TODO: can createssl_select_cert_result_t  in the openssl_impl.h
+  // TODO: Change SSL_CLIENT_HELLO to SSL and use similar code to 2.4 as in SSL_get_tlsext_status_type in bool ServerContextImpl::isClientOcspCapable(SSL* ssl)
+  // TODO: TED SAYS! "it should be possible to get any extension from the SSL pointer used in client hello".
+  enum ssl_select_cert_result_t selectTlsContext(const SSL* ssl);
+
 private:
   // Currently, at most one certificate of a given key type may be specified for each exact
   // server name or wildcard domain name.
-  using PkeyTypesMap = absl::flat_hash_map<int, std::reference_wrapper<CertContext>>;
+  using PkeyTypesMap = absl::flat_hash_map<int, std::reference_wrapper<TlsContext>>;
   // Both exact server names and wildcard domains are part of the same map, in which wildcard
   // domains are prefixed with "." (i.e. ".example.com" for "*.example.com") to differentiate
   // between exact and wildcard entries.
   using ServerNamesMap = absl::flat_hash_map<std::string, PkeyTypesMap>;
 
-  void populateServerNamesMap(CertContext& ctx, const int pkey_id);
+  void populateServerNamesMap(TlsContext& ctx, const int pkey_id);
 
   using SessionContextID = std::array<uint8_t, SSL_MAX_SSL_SESSION_ID_LENGTH>;
 
@@ -189,13 +204,10 @@ private:
                          unsigned int inlen);
   int sessionTicketProcess(SSL* ssl, uint8_t* key_name, uint8_t* iv, EVP_CIPHER_CTX* ctx,
                            HMAC_CTX* hmac_ctx, int encrypt);
-  // returns true if client-side of the SSL connection requested OCSP
-  bool isClientOcspCapable(SSL* ssl);
-  // returns a reference to a CertContext created in ContextImpl ctor
-  // matching cert SHA1 digest
-  const CertContext& certificateContext(X509* cert);
-  OcspStapleAction ocspStapleAction(const CertContext& cert_context, bool client_ocsp_capable);
-  int handleOcspStapling(SSL* ssl, void*);
+  bool isClientEcdsaCapable(const SSL* ssl);
+  bool isClientOcspCapable(const SSL* ssl);
+  OcspStapleAction ocspStapleAction(const TlsContext& ctx, bool client_ocsp_capable);
+  int setupOcspResponse(SSL *ssl);
 
   SessionContextID generateHashForSessionContextId(const std::vector<std::string>& server_names);
 

@@ -13,9 +13,9 @@ Synopsis
     Submits HEADERS frame. The *flags* is bitwise OR of the
     following values:
     
-    * :macro:`nghttp2_flag.NGHTTP2_FLAG_END_STREAM`
+    * :enum:`nghttp2_flag.NGHTTP2_FLAG_END_STREAM`
     
-    If *flags* includes :macro:`nghttp2_flag.NGHTTP2_FLAG_END_STREAM`,
+    If *flags* includes :enum:`nghttp2_flag.NGHTTP2_FLAG_END_STREAM`,
     this frame has END_STREAM flag set.
     
     The library handles the CONTINUATION frame internally and it
@@ -40,7 +40,7 @@ Synopsis
     :macro:`NGHTTP2_MAX_WEIGHT`, it becomes :macro:`NGHTTP2_MAX_WEIGHT`.
     
     If
-    :macro:`nghttp2_settings_id.NGHTTP2_SETTINGS_NO_RFC7540_PRIORITIES`
+    :enum:`nghttp2_settings_id.NGHTTP2_SETTINGS_NO_RFC7540_PRIORITIES`
     of value of 1 is received by a remote endpoint, *pri_spec* is
     ignored, and treated as if ``NULL`` is specified.
     
@@ -53,10 +53,10 @@ Synopsis
     This function creates copies of all name/value pairs in *nva*.  It
     also lower-cases all names in *nva*.  The order of elements in
     *nva* is preserved.  For header fields with
-    :macro:`nghttp2_nv_flag.NGHTTP2_NV_FLAG_NO_COPY_NAME` and
-    :macro:`nghttp2_nv_flag.NGHTTP2_NV_FLAG_NO_COPY_VALUE` are set,
+    :enum:`nghttp2_nv_flag.NGHTTP2_NV_FLAG_NO_COPY_NAME` and
+    :enum:`nghttp2_nv_flag.NGHTTP2_NV_FLAG_NO_COPY_VALUE` are set,
     header field name and value are not copied respectively.  With
-    :macro:`nghttp2_nv_flag.NGHTTP2_NV_FLAG_NO_COPY_NAME`, application
+    :enum:`nghttp2_nv_flag.NGHTTP2_NV_FLAG_NO_COPY_NAME`, application
     is responsible to pass header field name in lowercase.  The
     application should maintain the references to them until
     :type:`nghttp2_on_frame_send_callback` or
@@ -76,19 +76,19 @@ Synopsis
     *stream_id* is -1.  Otherwise, this function returns 0 if it
     succeeds, or one of the following negative error codes:
     
-    :macro:`nghttp2_error.NGHTTP2_ERR_NOMEM`
+    :enum:`nghttp2_error.NGHTTP2_ERR_NOMEM`
         Out of memory.
-    :macro:`nghttp2_error.NGHTTP2_ERR_STREAM_ID_NOT_AVAILABLE`
+    :enum:`nghttp2_error.NGHTTP2_ERR_STREAM_ID_NOT_AVAILABLE`
         No stream ID is available because maximum stream ID was
         reached.
-    :macro:`nghttp2_error.NGHTTP2_ERR_INVALID_ARGUMENT`
+    :enum:`nghttp2_error.NGHTTP2_ERR_INVALID_ARGUMENT`
         The *stream_id* is 0; or trying to depend on itself (stream ID
         equals ``pri_spec->stream_id``).
-    :macro:`nghttp2_error.NGHTTP2_ERR_DATA_EXIST`
+    :enum:`nghttp2_error.NGHTTP2_ERR_DATA_EXIST`
         DATA or HEADERS has been already submitted and not fully
         processed yet.  This happens if stream denoted by *stream_id*
         is in reserved state.
-    :macro:`nghttp2_error.NGHTTP2_ERR_PROTO`
+    :enum:`nghttp2_error.NGHTTP2_ERR_PROTO`
         The *stream_id* is -1, and *session* is server session.
     
     .. warning::

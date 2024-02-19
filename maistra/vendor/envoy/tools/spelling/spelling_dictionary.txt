@@ -954,6 +954,7 @@ netblocks
 netfilter
 netlink
 netmask
+NLB
 NLMSG
 nonblocking
 noncopyable

@@ -34,7 +34,7 @@ Synopsis
     *\*data_ptr* if it succeeds, or one of the following negative error
     codes:
     
-    :macro:`nghttp2_error.NGHTTP2_ERR_NOMEM`
+    :enum:`nghttp2_error.NGHTTP2_ERR_NOMEM`
         Out of memory.
     
     .. note::

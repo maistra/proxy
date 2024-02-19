@@ -27,14 +27,13 @@ namespace Extensions {
 namespace TransportSockets {
 namespace Tls {
 
-
 class SslExtendedSocketInfoImpl : public Envoy::Ssl::SslExtendedSocketInfo {
 public:
   void setCertificateValidationStatus(Envoy::Ssl::ClientValidationStatus validated) override;
   Envoy::Ssl::ClientValidationStatus certificateValidationStatus() const override;
 
 private:
-    Envoy::Ssl::ClientValidationStatus certificate_validation_status_{
+  Envoy::Ssl::ClientValidationStatus certificate_validation_status_{
       Envoy::Ssl::ClientValidationStatus::NotValidated};
 };
 

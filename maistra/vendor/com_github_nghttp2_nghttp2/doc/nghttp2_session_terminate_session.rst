@@ -18,7 +18,7 @@ Synopsis
     previously.
     
     The *error_code* is the error code of this GOAWAY frame.  The
-    pre-defined error code is one of :macro:`nghttp2_error_code`.
+    pre-defined error code is one of :enum:`nghttp2_error_code`.
     
     After the transmission, both `nghttp2_session_want_read()` and
     `nghttp2_session_want_write()` return 0.
@@ -30,5 +30,5 @@ Synopsis
     This function returns 0 if it succeeds, or one of the following
     negative error codes:
     
-    :macro:`nghttp2_error.NGHTTP2_ERR_NOMEM`
+    :enum:`nghttp2_error.NGHTTP2_ERR_NOMEM`
         Out of memory.

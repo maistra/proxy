@@ -113,13 +113,8 @@ host_triplet = @host@
 target_triplet = @target@
 subdir = doc
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
-am__aclocal_m4_deps = $(top_srcdir)/m4/ax_boost_asio.m4 \
-	$(top_srcdir)/m4/ax_boost_base.m4 \
-	$(top_srcdir)/m4/ax_boost_system.m4 \
-	$(top_srcdir)/m4/ax_boost_thread.m4 \
-	$(top_srcdir)/m4/ax_check_compile_flag.m4 \
+am__aclocal_m4_deps = $(top_srcdir)/m4/ax_check_compile_flag.m4 \
 	$(top_srcdir)/m4/ax_cxx_compile_stdcxx.m4 \
-	$(top_srcdir)/m4/ax_python_devel.m4 \
 	$(top_srcdir)/m4/libtool.m4 $(top_srcdir)/m4/ltoptions.m4 \
 	$(top_srcdir)/m4/ltsugar.m4 $(top_srcdir)/m4/ltversion.m4 \
 	$(top_srcdir)/m4/lt~obsolete.m4 $(top_srcdir)/configure.ac
@@ -130,10 +125,8 @@ mkinstalldirs = $(install_sh) -d
 CONFIG_HEADER = $(top_builddir)/config.h
 CONFIG_CLEAN_FILES = conf.py index.rst package_README.rst \
 	tutorial-client.rst tutorial-server.rst tutorial-hpack.rst \
-	nghttpx-howto.rst h2load-howto.rst libnghttp2_asio.rst \
-	python-apiref.rst building-android-binary.rst nghttp2.h.rst \
-	nghttp2ver.h.rst asio_http2.h.rst asio_http2_server.h.rst \
-	asio_http2_client.h.rst contribute.rst
+	nghttpx-howto.rst h2load-howto.rst building-android-binary.rst \
+	nghttp2.h.rst nghttp2ver.h.rst contribute.rst
 CONFIG_CLEAN_VPATH_FILES =
 AM_V_P = $(am__v_P_@AM_V@)
 am__v_P_ = $(am__v_P_@AM_DEFAULT_V@)
@@ -186,15 +179,12 @@ am__installdirs = "$(DESTDIR)$(man1dir)"
 NROFF = nroff
 MANS = $(man_MANS)
 am__tagged_files = $(HEADERS) $(SOURCES) $(TAGS_FILES) $(LISP)
-am__DIST_COMMON = $(srcdir)/Makefile.in $(srcdir)/asio_http2.h.rst.in \
-	$(srcdir)/asio_http2_client.h.rst.in \
-	$(srcdir)/asio_http2_server.h.rst.in \
+am__DIST_COMMON = $(srcdir)/Makefile.in \
 	$(srcdir)/building-android-binary.rst.in $(srcdir)/conf.py.in \
 	$(srcdir)/contribute.rst.in $(srcdir)/h2load-howto.rst.in \
-	$(srcdir)/index.rst.in $(srcdir)/libnghttp2_asio.rst.in \
-	$(srcdir)/nghttp2.h.rst.in $(srcdir)/nghttp2ver.h.rst.in \
-	$(srcdir)/nghttpx-howto.rst.in $(srcdir)/package_README.rst.in \
-	$(srcdir)/python-apiref.rst.in \
+	$(srcdir)/index.rst.in $(srcdir)/nghttp2.h.rst.in \
+	$(srcdir)/nghttp2ver.h.rst.in $(srcdir)/nghttpx-howto.rst.in \
+	$(srcdir)/package_README.rst.in \
 	$(srcdir)/tutorial-client.rst.in \
 	$(srcdir)/tutorial-hpack.rst.in \
 	$(srcdir)/tutorial-server.rst.in
@@ -208,11 +198,6 @@ AUTOCONF = @AUTOCONF@
 AUTOHEADER = @AUTOHEADER@
 AUTOMAKE = @AUTOMAKE@
 AWK = @AWK@
-BOOST_ASIO_LIB = @BOOST_ASIO_LIB@
-BOOST_CPPFLAGS = @BOOST_CPPFLAGS@
-BOOST_LDFLAGS = @BOOST_LDFLAGS@
-BOOST_SYSTEM_LIB = @BOOST_SYSTEM_LIB@
-BOOST_THREAD_LIB = @BOOST_THREAD_LIB@
 BPFCFLAGS = @BPFCFLAGS@
 CC = @CC@
 CCDEPMODE = @CCDEPMODE@
@@ -229,7 +214,6 @@ CXXCPP = @CXXCPP@
 CXXDEPMODE = @CXXDEPMODE@
 CXXFLAGS = @CXXFLAGS@
 CYGPATH_W = @CYGPATH_W@
-CYTHON = @CYTHON@
 DEFS = @DEFS@
 DEPDIR = @DEPDIR@
 DLLTOOL = @DLLTOOL@
@@ -274,8 +258,8 @@ LIBNGHTTP3_LIBS = @LIBNGHTTP3_LIBS@
 LIBNGTCP2_CFLAGS = @LIBNGTCP2_CFLAGS@
 LIBNGTCP2_CRYPTO_BORINGSSL_CFLAGS = @LIBNGTCP2_CRYPTO_BORINGSSL_CFLAGS@
 LIBNGTCP2_CRYPTO_BORINGSSL_LIBS = @LIBNGTCP2_CRYPTO_BORINGSSL_LIBS@
-LIBNGTCP2_CRYPTO_OPENSSL_CFLAGS = @LIBNGTCP2_CRYPTO_OPENSSL_CFLAGS@
-LIBNGTCP2_CRYPTO_OPENSSL_LIBS = @LIBNGTCP2_CRYPTO_OPENSSL_LIBS@
+LIBNGTCP2_CRYPTO_QUICTLS_CFLAGS = @LIBNGTCP2_CRYPTO_QUICTLS_CFLAGS@
+LIBNGTCP2_CRYPTO_QUICTLS_LIBS = @LIBNGTCP2_CRYPTO_QUICTLS_LIBS@
 LIBNGTCP2_LIBS = @LIBNGTCP2_LIBS@
 LIBOBJS = @LIBOBJS@
 LIBS = @LIBS@
@@ -314,15 +298,9 @@ PKG_CONFIG = @PKG_CONFIG@
 PKG_CONFIG_LIBDIR = @PKG_CONFIG_LIBDIR@
 PKG_CONFIG_PATH = @PKG_CONFIG_PATH@
 PYTHON = @PYTHON@
-PYTHON_CPPFLAGS = @PYTHON_CPPFLAGS@
 PYTHON_EXEC_PREFIX = @PYTHON_EXEC_PREFIX@
-PYTHON_EXTRA_LDFLAGS = @PYTHON_EXTRA_LDFLAGS@
-PYTHON_EXTRA_LIBS = @PYTHON_EXTRA_LIBS@
-PYTHON_LIBS = @PYTHON_LIBS@
 PYTHON_PLATFORM = @PYTHON_PLATFORM@
-PYTHON_PLATFORM_SITE_PKG = @PYTHON_PLATFORM_SITE_PKG@
 PYTHON_PREFIX = @PYTHON_PREFIX@
-PYTHON_SITE_PKG = @PYTHON_SITE_PKG@
 PYTHON_VERSION = @PYTHON_VERSION@
 RANLIB = @RANLIB@
 SED = @SED@
@@ -452,6 +430,7 @@ APIDOCS = \
 	nghttp2_option_set_user_recv_extension_type.rst \
 	nghttp2_option_set_max_outbound_ack.rst \
 	nghttp2_option_set_max_settings.rst \
+	nghttp2_option_set_stream_reset_rate_limit.rst \
 	nghttp2_pack_settings_payload.rst \
 	nghttp2_priority_spec_check_default.rst \
 	nghttp2_priority_spec_default_init.rst \
@@ -583,66 +562,12 @@ EXTRA_DIST = \
 	sources/tutorial-hpack.rst \
 	sources/nghttpx-howto.rst \
 	sources/h2load-howto.rst \
-	sources/libnghttp2_asio.rst \
-	sources/python-apiref.rst \
 	sources/building-android-binary.rst \
 	sources/contribute.rst \
 	sources/security.rst \
 	_exts/rubydomain/LICENSE.rubydomain \
 	_exts/rubydomain/__init__.py \
 	_exts/rubydomain/rubydomain.py \
-	_themes/sphinx_rtd_theme/__init__.py \
-	_themes/sphinx_rtd_theme/breadcrumbs.html \
-	_themes/sphinx_rtd_theme/footer.html \
-	_themes/sphinx_rtd_theme/layout.html \
-	_themes/sphinx_rtd_theme/locale/de/LC_MESSAGES/sphinx.mo \
-	_themes/sphinx_rtd_theme/locale/de/LC_MESSAGES/sphinx.po \
-	_themes/sphinx_rtd_theme/locale/en/LC_MESSAGES/sphinx.mo \
-	_themes/sphinx_rtd_theme/locale/en/LC_MESSAGES/sphinx.po \
-	_themes/sphinx_rtd_theme/locale/es/LC_MESSAGES/sphinx.mo \
-	_themes/sphinx_rtd_theme/locale/es/LC_MESSAGES/sphinx.po \
-	_themes/sphinx_rtd_theme/locale/et/LC_MESSAGES/sphinx.mo \
-	_themes/sphinx_rtd_theme/locale/et/LC_MESSAGES/sphinx.po \
-	_themes/sphinx_rtd_theme/locale/fr/LC_MESSAGES/sphinx.mo \
-	_themes/sphinx_rtd_theme/locale/fr/LC_MESSAGES/sphinx.po \
-	_themes/sphinx_rtd_theme/locale/nl/LC_MESSAGES/sphinx.mo \
-	_themes/sphinx_rtd_theme/locale/nl/LC_MESSAGES/sphinx.po \
-	_themes/sphinx_rtd_theme/locale/pt_BR/LC_MESSAGES/sphinx.mo \
-	_themes/sphinx_rtd_theme/locale/pt_BR/LC_MESSAGES/sphinx.po \
-	_themes/sphinx_rtd_theme/locale/ru/LC_MESSAGES/sphinx.mo \
-	_themes/sphinx_rtd_theme/locale/ru/LC_MESSAGES/sphinx.po \
-	_themes/sphinx_rtd_theme/locale/sphinx.pot \
-	_themes/sphinx_rtd_theme/locale/sv/LC_MESSAGES/sphinx.mo \
-	_themes/sphinx_rtd_theme/locale/sv/LC_MESSAGES/sphinx.po \
-	_themes/sphinx_rtd_theme/locale/tr/LC_MESSAGES/sphinx.mo \
-	_themes/sphinx_rtd_theme/locale/tr/LC_MESSAGES/sphinx.po \
-	_themes/sphinx_rtd_theme/locale/zh_CN/LC_MESSAGES/sphinx.mo \
-	_themes/sphinx_rtd_theme/locale/zh_CN/LC_MESSAGES/sphinx.po \
-	_themes/sphinx_rtd_theme/search.html \
-	_themes/sphinx_rtd_theme/searchbox.html \
-	_themes/sphinx_rtd_theme/static/css/badge_only.css \
-	_themes/sphinx_rtd_theme/static/css/fonts/Roboto-Slab-Bold.woff \
-	_themes/sphinx_rtd_theme/static/css/fonts/Roboto-Slab-Bold.woff2 \
-	_themes/sphinx_rtd_theme/static/css/fonts/Roboto-Slab-Regular.woff \
-	_themes/sphinx_rtd_theme/static/css/fonts/Roboto-Slab-Regular.woff2 \
-	_themes/sphinx_rtd_theme/static/css/fonts/fontawesome-webfont.eot \
-	_themes/sphinx_rtd_theme/static/css/fonts/fontawesome-webfont.svg \
-	_themes/sphinx_rtd_theme/static/css/fonts/fontawesome-webfont.ttf \
-	_themes/sphinx_rtd_theme/static/css/fonts/fontawesome-webfont.woff \
-	_themes/sphinx_rtd_theme/static/css/fonts/fontawesome-webfont.woff2 \
-	_themes/sphinx_rtd_theme/static/css/fonts/lato-bold-italic.woff \
-	_themes/sphinx_rtd_theme/static/css/fonts/lato-bold-italic.woff2 \
-	_themes/sphinx_rtd_theme/static/css/fonts/lato-bold.woff \
-	_themes/sphinx_rtd_theme/static/css/fonts/lato-bold.woff2 \
-	_themes/sphinx_rtd_theme/static/css/fonts/lato-normal-italic.woff \
-	_themes/sphinx_rtd_theme/static/css/fonts/lato-normal-italic.woff2 \
-	_themes/sphinx_rtd_theme/static/css/fonts/lato-normal.woff \
-	_themes/sphinx_rtd_theme/static/css/fonts/lato-normal.woff2 \
-	_themes/sphinx_rtd_theme/static/css/theme.css \
-	_themes/sphinx_rtd_theme/static/js/badge_only.js \
-	_themes/sphinx_rtd_theme/static/js/theme.js \
-	_themes/sphinx_rtd_theme/theme.conf \
-	_themes/sphinx_rtd_theme/versions.html \
 	$(man_MANS) \
 	bash_completion/nghttp \
 	bash_completion/nghttpd \
@@ -710,21 +635,11 @@ nghttpx-howto.rst: $(top_builddir)/config.status $(srcdir)/nghttpx-howto.rst.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 h2load-howto.rst: $(top_builddir)/config.status $(srcdir)/h2load-howto.rst.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
-libnghttp2_asio.rst: $(top_builddir)/config.status $(srcdir)/libnghttp2_asio.rst.in
-	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
-python-apiref.rst: $(top_builddir)/config.status $(srcdir)/python-apiref.rst.in
-	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 building-android-binary.rst: $(top_builddir)/config.status $(srcdir)/building-android-binary.rst.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 nghttp2.h.rst: $(top_builddir)/config.status $(srcdir)/nghttp2.h.rst.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 nghttp2ver.h.rst: $(top_builddir)/config.status $(srcdir)/nghttp2ver.h.rst.in
-	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
-asio_http2.h.rst: $(top_builddir)/config.status $(srcdir)/asio_http2.h.rst.in
-	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
-asio_http2_server.h.rst: $(top_builddir)/config.status $(srcdir)/asio_http2_server.h.rst.in
-	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
-asio_http2_client.h.rst: $(top_builddir)/config.status $(srcdir)/asio_http2_client.h.rst.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 contribute.rst: $(top_builddir)/config.status $(srcdir)/contribute.rst.in
 	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@

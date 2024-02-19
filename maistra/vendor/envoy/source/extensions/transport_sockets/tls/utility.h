@@ -22,9 +22,6 @@ namespace Utility {
 Envoy::Ssl::CertificateDetailsPtr certificateDetails(X509* cert, const std::string& path,
                                                      TimeSource& time_source);
 
-Envoy::Ssl::CertificateDetailsPtr certificateDetails(X509* cert, const std::string& path,
-                                                     TimeSource& time_source);
-
 /**
  * Determines whether the given name matches 'pattern' which may optionally begin with a wildcard
  * or contain a wildcard inside the pattern's first label.
@@ -88,7 +85,7 @@ std::string getSubjectFromCertificate(X509& cert);
  * @param extension_name the name of the extension to extract in dotted number format
  * @return absl::string_view the DER-encoded value of the extension field or empty if not present.
  */
-absl::string_view getCertificateExtensionValue(const X509& cert, absl::string_view extension_name);
+absl::string_view getCertificateExtensionValue(X509& cert, absl::string_view extension_name);
 
 /**
  * Returns the days until this certificate is valid.

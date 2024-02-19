@@ -33,7 +33,7 @@ RUN apt-get update && \
     apt-get install -y unzip make binutils autoconf \
       automake autotools-dev libtool pkg-config git \
       curl dpkg-dev libxml2-dev genisoimage libc6-i386 \
-      lib32stdc++6 python3 && \
+      lib32stdc++6 && \
     rm -rf /var/cache/apt/*
 
 # Download NDK
@@ -44,7 +44,7 @@ RUN curl -L -O https://dl.google.com/android/repository/android-ndk-$NDK_VERSION
 # Setup version of libraries
 ENV OPENSSL_VERSION 1.1.1q
 ENV LIBEV_VERSION 4.33
-ENV ZLIB_VERSION 1.2.12
+ENV ZLIB_VERSION 1.2.13
 ENV CARES_VERSION 1.18.1
 ENV NGHTTP2_VERSION master
 
@@ -112,7 +112,6 @@ RUN autoreconf -i && \
     --host=$TARGET \
     --build=`dpkg-architecture -qDEB_BUILD_GNU_TYPE` \
     --without-libxml2 \
-    --disable-python-bindings \
     --disable-examples \
     --disable-threads \
       CPPFLAGS="-fPIE -I$PREFIX/include" \

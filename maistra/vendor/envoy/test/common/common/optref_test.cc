@@ -49,7 +49,7 @@ TEST(OptRefTest, ConstOptRef) {
   EXPECT_EQ(5, optref->size());
   EXPECT_EQ("Hello", optref.ref());
   EXPECT_EQ("Hello", *optref);
-  std::reference_wrapper<std::string> value = optref.value();
+  std::reference_wrapper<const std::string> value = optref.value();
   EXPECT_EQ("Hello", value.get());
   absl::optional<std::string> copy = optref.copy();
   EXPECT_TRUE(copy);
@@ -62,7 +62,7 @@ TEST(OptRefTest, ConstOptRef) {
 
 TEST(OptRefTest, ConstObject) {
   std::string str("Hello");
-  const OptRef<std::string> optref(str);
+  const OptRef<const std::string> optref(str);
   EXPECT_TRUE(optref.has_value());
   EXPECT_NE(optref, absl::nullopt);
   EXPECT_NE(absl::nullopt, optref);
@@ -70,7 +70,7 @@ TEST(OptRefTest, ConstObject) {
   EXPECT_EQ(5, optref->size());
   EXPECT_EQ("Hello", optref.ref());
   EXPECT_EQ("Hello", *optref);
-  std::reference_wrapper<std::string> value = optref.value();
+  std::reference_wrapper<const std::string> value = optref.value();
   EXPECT_EQ("Hello", value.get());
 }
 

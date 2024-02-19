@@ -94,7 +94,7 @@ Macros
     
     Default maximum number of incoming concurrent streams.  Use
     `nghttp2_submit_settings()` with
-    :macro:`nghttp2_settings_id.NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS`
+    :enum:`nghttp2_settings_id.NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS`
     to change the maximum number of incoming concurrent streams.
     
     .. note::

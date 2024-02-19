@@ -30,8 +30,6 @@
 # included in all copies or substantial portions of the Software.
 
 
-
-
 VPATH = @srcdir@
 am__is_gnu_make = { \
   if test -z '$(MAKELEVEL)'; then \
@@ -151,13 +149,8 @@ TESTS = $(am__EXEEXT_3)
 @ENABLE_HPACK_TOOLS_TRUE@am__append_16 = inflatehd deflatehd
 subdir = src
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
-am__aclocal_m4_deps = $(top_srcdir)/m4/ax_boost_asio.m4 \
-	$(top_srcdir)/m4/ax_boost_base.m4 \
-	$(top_srcdir)/m4/ax_boost_system.m4 \
-	$(top_srcdir)/m4/ax_boost_thread.m4 \
-	$(top_srcdir)/m4/ax_check_compile_flag.m4 \
+am__aclocal_m4_deps = $(top_srcdir)/m4/ax_check_compile_flag.m4 \
 	$(top_srcdir)/m4/ax_cxx_compile_stdcxx.m4 \
-	$(top_srcdir)/m4/ax_python_devel.m4 \
 	$(top_srcdir)/m4/libtool.m4 $(top_srcdir)/m4/ltoptions.m4 \
 	$(top_srcdir)/m4/ltsugar.m4 $(top_srcdir)/m4/ltversion.m4 \
 	$(top_srcdir)/m4/lt~obsolete.m4 $(top_srcdir)/configure.ac
@@ -166,46 +159,17 @@ am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 DIST_COMMON = $(srcdir)/Makefile.am $(am__DIST_COMMON)
 mkinstalldirs = $(install_sh) -d
 CONFIG_HEADER = $(top_builddir)/config.h
-CONFIG_CLEAN_FILES = libnghttp2_asio.pc
+CONFIG_CLEAN_FILES =
 CONFIG_CLEAN_VPATH_FILES =
 @ENABLE_APP_TRUE@am__EXEEXT_1 = nghttp$(EXEEXT) nghttpd$(EXEEXT) \
 @ENABLE_APP_TRUE@	nghttpx$(EXEEXT) h2load$(EXEEXT)
 @ENABLE_HPACK_TOOLS_TRUE@am__EXEEXT_2 = inflatehd$(EXEEXT) \
 @ENABLE_HPACK_TOOLS_TRUE@	deflatehd$(EXEEXT)
-am__installdirs = "$(DESTDIR)$(bindir)" "$(DESTDIR)$(libdir)" \
-	"$(DESTDIR)$(pkgconfigdir)"
+am__installdirs = "$(DESTDIR)$(bindir)"
 @ENABLE_APP_TRUE@@HAVE_CUNIT_TRUE@am__EXEEXT_3 =  \
 @ENABLE_APP_TRUE@@HAVE_CUNIT_TRUE@	nghttpx-unittest$(EXEEXT)
 PROGRAMS = $(bin_PROGRAMS)
 LIBRARIES = $(noinst_LIBRARIES)
-am__vpath_adj_setup = srcdirstrip=`echo "$(srcdir)" | sed 's|.|.|g'`;
-am__vpath_adj = case $$p in \
-    $(srcdir)/*) f=`echo "$$p" | sed "s|^$$srcdirstrip/||"`;; \
-    *) f=$$p;; \
-  esac;
-am__strip_dir = f=`echo $$p | sed -e 's|^.*/||'`;
-am__install_max = 40
-am__nobase_strip_setup = \
-  srcdirstrip=`echo "$(srcdir)" | sed 's/[].[^$$\\*|]/\\\\&/g'`
-am__nobase_strip = \
-  for p in $$list; do echo "$$p"; done | sed -e "s|$$srcdirstrip/||"
-am__nobase_list = $(am__nobase_strip_setup); \
-  for p in $$list; do echo "$$p $$p"; done | \
-  sed "s| $$srcdirstrip/| |;"' / .*\//!s/ .*/ ./; s,\( .*\)/[^/]*$$,\1,' | \
-  $(AWK) 'BEGIN { files["."] = "" } { files[$$2] = files[$$2] " " $$1; \
-    if (++n[$$2] == $(am__install_max)) \
-      { print $$2, files[$$2]; n[$$2] = 0; files[$$2] = "" } } \
-    END { for (dir in files) print dir, files[dir] }'
-am__base_list = \
-  sed '$$!N;$$!N;$$!N;$$!N;$$!N;$$!N;$$!N;s/\n/ /g' | \
-  sed '$$!N;$$!N;$$!N;$$!N;s/\n/ /g'
-am__uninstall_files_from_dir = { \
-  test -z "$$files" \
-    || { test ! -d "$$dir" && test ! -f "$$dir" && test ! -r "$$dir"; } \
-    || { echo " ( cd '$$dir' && rm -f" $$files ")"; \
-         $(am__cd) "$$dir" && rm -f $$files; }; \
-  }
-LTLIBRARIES = $(lib_LTLIBRARIES)
 ARFLAGS = cru
 AM_V_AR = $(am__v_AR_@AM_V@)
 am__v_AR_ = $(am__v_AR_@AM_DEFAULT_V@)
@@ -215,8 +179,8 @@ libnghttpx_a_AR = $(AR) $(ARFLAGS)
 libnghttpx_a_LIBADD =
 am__libnghttpx_a_SOURCES_DIST = util.cc util.h http2.cc http2.h \
 	timegm.c timegm.h base64.h app_helper.cc app_helper.h tls.cc \
-	tls.h shrpx_config.cc shrpx_config.h shrpx_error.h \
-	shrpx_accept_handler.cc shrpx_accept_handler.h \
+	tls.h ssl_compat.h shrpx_config.cc shrpx_config.h \
+	shrpx_error.h shrpx_accept_handler.cc shrpx_accept_handler.h \
 	shrpx_connection_handler.cc shrpx_connection_handler.h \
 	shrpx_client_handler.cc shrpx_client_handler.h \
 	shrpx_upstream.h shrpx_http2_upstream.cc \
@@ -316,76 +280,6 @@ am__libnghttpx_a_SOURCES_DIST = util.cc util.h http2.cc http2.h \
 @ENABLE_APP_TRUE@	$(am__objects_1) $(am__objects_2)
 @ENABLE_APP_TRUE@am_libnghttpx_a_OBJECTS = $(am__objects_3)
 libnghttpx_a_OBJECTS = $(am_libnghttpx_a_OBJECTS)
-am__DEPENDENCIES_1 =
-@ENABLE_ASIO_LIB_TRUE@libnghttp2_asio_la_DEPENDENCIES =  \
-@ENABLE_ASIO_LIB_TRUE@	$(top_builddir)/lib/libnghttp2.la \
-@ENABLE_ASIO_LIB_TRUE@	$(top_builddir)/third-party/liburl-parser.la \
-@ENABLE_ASIO_LIB_TRUE@	$(top_builddir)/third-party/libllhttp.la \
-@ENABLE_ASIO_LIB_TRUE@	$(am__DEPENDENCIES_1) \
-@ENABLE_ASIO_LIB_TRUE@	$(am__DEPENDENCIES_1) \
-@ENABLE_ASIO_LIB_TRUE@	$(am__DEPENDENCIES_1) \
-@ENABLE_ASIO_LIB_TRUE@	$(am__DEPENDENCIES_1)
-am__libnghttp2_asio_la_SOURCES_DIST = util.cc util.h http2.cc http2.h \
-	tls.cc tls.h ssl_compat.h timegm.c timegm.h asio_common.cc \
-	asio_common.h asio_io_service_pool.cc asio_io_service_pool.h \
-	asio_server_http2.cc asio_server_http2_impl.cc \
-	asio_server_http2_impl.h asio_server.cc asio_server.h \
-	asio_server_http2_handler.cc asio_server_http2_handler.h \
-	asio_server_connection.h asio_server_request.cc \
-	asio_server_request_impl.cc asio_server_request_impl.h \
-	asio_server_response.cc asio_server_response_impl.cc \
-	asio_server_response_impl.h asio_server_stream.cc \
-	asio_server_stream.h asio_server_serve_mux.cc \
-	asio_server_serve_mux.h asio_server_request_handler.cc \
-	asio_server_request_handler.h asio_server_tls_context.cc \
-	asio_server_tls_context.h asio_client_session.cc \
-	asio_client_session_impl.cc asio_client_session_impl.h \
-	asio_client_session_tcp_impl.cc asio_client_session_tcp_impl.h \
-	asio_client_session_tls_impl.cc asio_client_session_tls_impl.h \
-	asio_client_response.cc asio_client_response_impl.cc \
-	asio_client_response_impl.h asio_client_request.cc \
-	asio_client_request_impl.cc asio_client_request_impl.h \
-	asio_client_stream.cc asio_client_stream.h \
-	asio_client_tls_context.cc asio_client_tls_context.h
-@ENABLE_ASIO_LIB_TRUE@am_libnghttp2_asio_la_OBJECTS =  \
-@ENABLE_ASIO_LIB_TRUE@	libnghttp2_asio_la-util.lo \
-@ENABLE_ASIO_LIB_TRUE@	libnghttp2_asio_la-http2.lo \
-@ENABLE_ASIO_LIB_TRUE@	libnghttp2_asio_la-tls.lo \
-@ENABLE_ASIO_LIB_TRUE@	libnghttp2_asio_la-timegm.lo \
-@ENABLE_ASIO_LIB_TRUE@	libnghttp2_asio_la-asio_common.lo \
-@ENABLE_ASIO_LIB_TRUE@	libnghttp2_asio_la-asio_io_service_pool.lo \
-@ENABLE_ASIO_LIB_TRUE@	libnghttp2_asio_la-asio_server_http2.lo \
-@ENABLE_ASIO_LIB_TRUE@	libnghttp2_asio_la-asio_server_http2_impl.lo \
-@ENABLE_ASIO_LIB_TRUE@	libnghttp2_asio_la-asio_server.lo \
-@ENABLE_ASIO_LIB_TRUE@	libnghttp2_asio_la-asio_server_http2_handler.lo \
-@ENABLE_ASIO_LIB_TRUE@	libnghttp2_asio_la-asio_server_request.lo \
-@ENABLE_ASIO_LIB_TRUE@	libnghttp2_asio_la-asio_server_request_impl.lo \
-@ENABLE_ASIO_LIB_TRUE@	libnghttp2_asio_la-asio_server_response.lo \
-@ENABLE_ASIO_LIB_TRUE@	libnghttp2_asio_la-asio_server_response_impl.lo \
-@ENABLE_ASIO_LIB_TRUE@	libnghttp2_asio_la-asio_server_stream.lo \
-@ENABLE_ASIO_LIB_TRUE@	libnghttp2_asio_la-asio_server_serve_mux.lo \
-@ENABLE_ASIO_LIB_TRUE@	libnghttp2_asio_la-asio_server_request_handler.lo \
-@ENABLE_ASIO_LIB_TRUE@	libnghttp2_asio_la-asio_server_tls_context.lo \
-@ENABLE_ASIO_LIB_TRUE@	libnghttp2_asio_la-asio_client_session.lo \
-@ENABLE_ASIO_LIB_TRUE@	libnghttp2_asio_la-asio_client_session_impl.lo \
-@ENABLE_ASIO_LIB_TRUE@	libnghttp2_asio_la-asio_client_session_tcp_impl.lo \
-@ENABLE_ASIO_LIB_TRUE@	libnghttp2_asio_la-asio_client_session_tls_impl.lo \
-@ENABLE_ASIO_LIB_TRUE@	libnghttp2_asio_la-asio_client_response.lo \
-@ENABLE_ASIO_LIB_TRUE@	libnghttp2_asio_la-asio_client_response_impl.lo \
-@ENABLE_ASIO_LIB_TRUE@	libnghttp2_asio_la-asio_client_request.lo \
-@ENABLE_ASIO_LIB_TRUE@	libnghttp2_asio_la-asio_client_request_impl.lo \
-@ENABLE_ASIO_LIB_TRUE@	libnghttp2_asio_la-asio_client_stream.lo \
-@ENABLE_ASIO_LIB_TRUE@	libnghttp2_asio_la-asio_client_tls_context.lo
-libnghttp2_asio_la_OBJECTS = $(am_libnghttp2_asio_la_OBJECTS)
-AM_V_lt = $(am__v_lt_@AM_V@)
-am__v_lt_ = $(am__v_lt_@AM_DEFAULT_V@)
-am__v_lt_0 = --silent
-am__v_lt_1 = 
-libnghttp2_asio_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
-	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
-	$(AM_CXXFLAGS) $(CXXFLAGS) $(libnghttp2_asio_la_LDFLAGS) \
-	$(LDFLAGS) -o $@
-@ENABLE_ASIO_LIB_TRUE@am_libnghttp2_asio_la_rpath = -rpath $(libdir)
 am__deflatehd_SOURCES_DIST = deflatehd.cc comp_helper.c comp_helper.h \
 	util.cc util.h timegm.c timegm.h
 @ENABLE_HPACK_TOOLS_TRUE@am__objects_4 = comp_helper.$(OBJEXT) \
@@ -397,12 +291,17 @@ deflatehd_LDADD = $(LDADD)
 deflatehd_DEPENDENCIES = $(top_builddir)/lib/libnghttp2.la \
 	$(top_builddir)/third-party/liburl-parser.la \
 	$(top_builddir)/third-party/libllhttp.la
+AM_V_lt = $(am__v_lt_@AM_V@)
+am__v_lt_ = $(am__v_lt_@AM_DEFAULT_V@)
+am__v_lt_0 = --silent
+am__v_lt_1 = 
 am__h2load_SOURCES_DIST = util.cc util.h http2.cc http2.h h2load.cc \
-	h2load.h timegm.c timegm.h tls.cc tls.h h2load_session.h \
-	h2load_http2_session.cc h2load_http2_session.h \
-	h2load_http1_session.cc h2load_http1_session.h \
-	h2load_http3_session.cc h2load_http3_session.h h2load_quic.cc \
-	h2load_quic.h quic.cc quic.h
+	h2load.h timegm.c timegm.h tls.cc tls.h ssl_compat.h \
+	h2load_session.h h2load_http2_session.cc \
+	h2load_http2_session.h h2load_http1_session.cc \
+	h2load_http1_session.h h2load_http3_session.cc \
+	h2load_http3_session.h h2load_quic.cc h2load_quic.h quic.cc \
+	quic.h
 @ENABLE_APP_TRUE@@ENABLE_HTTP3_TRUE@am__objects_5 = h2load_http3_session.$(OBJEXT) \
 @ENABLE_APP_TRUE@@ENABLE_HTTP3_TRUE@	h2load_quic.$(OBJEXT) \
 @ENABLE_APP_TRUE@@ENABLE_HTTP3_TRUE@	quic.$(OBJEXT)
@@ -428,7 +327,7 @@ inflatehd_DEPENDENCIES = $(top_builddir)/lib/libnghttp2.la \
 am__nghttp_SOURCES_DIST = util.cc http2.cc timegm.c app_helper.cc \
 	nghttp2_gzip.c util.h http2.h timegm.h app_helper.h \
 	nghttp2_config.h nghttp2_gzip.h network.h nghttp.cc nghttp.h \
-	HtmlParser.cc HtmlParser.h tls.cc tls.h
+	HtmlParser.cc HtmlParser.h tls.cc tls.h ssl_compat.h
 @ENABLE_APP_TRUE@am__objects_6 = util.$(OBJEXT) http2.$(OBJEXT) \
 @ENABLE_APP_TRUE@	timegm.$(OBJEXT) app_helper.$(OBJEXT) \
 @ENABLE_APP_TRUE@	nghttp2_gzip.$(OBJEXT)
@@ -447,7 +346,7 @@ nghttp_DEPENDENCIES = $(top_builddir)/lib/libnghttp2.la \
 am__nghttpd_SOURCES_DIST = util.cc http2.cc timegm.c app_helper.cc \
 	nghttp2_gzip.c util.h http2.h timegm.h app_helper.h \
 	nghttp2_config.h nghttp2_gzip.h network.h nghttpd.cc tls.cc \
-	tls.h HttpServer.cc HttpServer.h
+	tls.h ssl_compat.h HttpServer.cc HttpServer.h
 @ENABLE_APP_TRUE@am_nghttpd_OBJECTS = $(am__objects_6) \
 @ENABLE_APP_TRUE@	$(am__objects_7) nghttpd.$(OBJEXT) \
 @ENABLE_APP_TRUE@	tls.$(OBJEXT) HttpServer.$(OBJEXT)
@@ -459,11 +358,12 @@ nghttpd_DEPENDENCIES = $(top_builddir)/lib/libnghttp2.la \
 am__nghttpx_SOURCES_DIST = shrpx.cc shrpx.h
 @ENABLE_APP_TRUE@am_nghttpx_OBJECTS = nghttpx-shrpx.$(OBJEXT)
 nghttpx_OBJECTS = $(am_nghttpx_OBJECTS)
-am__DEPENDENCIES_2 = $(top_builddir)/lib/libnghttp2.la \
+am__DEPENDENCIES_1 = $(top_builddir)/lib/libnghttp2.la \
 	$(top_builddir)/third-party/liburl-parser.la \
 	$(top_builddir)/third-party/libllhttp.la
+am__DEPENDENCIES_2 =
 @ENABLE_APP_TRUE@nghttpx_DEPENDENCIES = libnghttpx.a \
-@ENABLE_APP_TRUE@	$(am__DEPENDENCIES_2) $(am__DEPENDENCIES_1) \
+@ENABLE_APP_TRUE@	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_2) \
 @ENABLE_APP_TRUE@	$(am__append_9)
 am__nghttpx_unittest_SOURCES_DIST = shrpx-unittest.cc \
 	shrpx_tls_test.cc shrpx_tls_test.h shrpx_downstream_test.cc \
@@ -493,8 +393,8 @@ am__nghttpx_unittest_SOURCES_DIST = shrpx-unittest.cc \
 nghttpx_unittest_OBJECTS = $(am_nghttpx_unittest_OBJECTS)
 @ENABLE_APP_TRUE@@HAVE_CUNIT_TRUE@nghttpx_unittest_DEPENDENCIES =  \
 @ENABLE_APP_TRUE@@HAVE_CUNIT_TRUE@	libnghttpx.a \
-@ENABLE_APP_TRUE@@HAVE_CUNIT_TRUE@	$(am__DEPENDENCIES_2) \
 @ENABLE_APP_TRUE@@HAVE_CUNIT_TRUE@	$(am__DEPENDENCIES_1) \
+@ENABLE_APP_TRUE@@HAVE_CUNIT_TRUE@	$(am__DEPENDENCIES_2) \
 @ENABLE_APP_TRUE@@HAVE_CUNIT_TRUE@	$(am__append_14)
 AM_V_P = $(am__v_P_@AM_V@)
 am__v_P_ = $(am__v_P_@AM_DEFAULT_V@)
@@ -518,34 +418,6 @@ am__depfiles_remade = ./$(DEPDIR)/HtmlParser.Po \
 	./$(DEPDIR)/h2load_http2_session.Po \
 	./$(DEPDIR)/h2load_http3_session.Po ./$(DEPDIR)/h2load_quic.Po \
 	./$(DEPDIR)/http2.Po ./$(DEPDIR)/inflatehd.Po \
-	./$(DEPDIR)/libnghttp2_asio_la-asio_client_request.Plo \
-	./$(DEPDIR)/libnghttp2_asio_la-asio_client_request_impl.Plo \
-	./$(DEPDIR)/libnghttp2_asio_la-asio_client_response.Plo \
-	./$(DEPDIR)/libnghttp2_asio_la-asio_client_response_impl.Plo \
-	./$(DEPDIR)/libnghttp2_asio_la-asio_client_session.Plo \
-	./$(DEPDIR)/libnghttp2_asio_la-asio_client_session_impl.Plo \
-	./$(DEPDIR)/libnghttp2_asio_la-asio_client_session_tcp_impl.Plo \
-	./$(DEPDIR)/libnghttp2_asio_la-asio_client_session_tls_impl.Plo \
-	./$(DEPDIR)/libnghttp2_asio_la-asio_client_stream.Plo \
-	./$(DEPDIR)/libnghttp2_asio_la-asio_client_tls_context.Plo \
-	./$(DEPDIR)/libnghttp2_asio_la-asio_common.Plo \
-	./$(DEPDIR)/libnghttp2_asio_la-asio_io_service_pool.Plo \
-	./$(DEPDIR)/libnghttp2_asio_la-asio_server.Plo \
-	./$(DEPDIR)/libnghttp2_asio_la-asio_server_http2.Plo \
-	./$(DEPDIR)/libnghttp2_asio_la-asio_server_http2_handler.Plo \
-	./$(DEPDIR)/libnghttp2_asio_la-asio_server_http2_impl.Plo \
-	./$(DEPDIR)/libnghttp2_asio_la-asio_server_request.Plo \
-	./$(DEPDIR)/libnghttp2_asio_la-asio_server_request_handler.Plo \
-	./$(DEPDIR)/libnghttp2_asio_la-asio_server_request_impl.Plo \
-	./$(DEPDIR)/libnghttp2_asio_la-asio_server_response.Plo \
-	./$(DEPDIR)/libnghttp2_asio_la-asio_server_response_impl.Plo \
-	./$(DEPDIR)/libnghttp2_asio_la-asio_server_serve_mux.Plo \
-	./$(DEPDIR)/libnghttp2_asio_la-asio_server_stream.Plo \
-	./$(DEPDIR)/libnghttp2_asio_la-asio_server_tls_context.Plo \
-	./$(DEPDIR)/libnghttp2_asio_la-http2.Plo \
-	./$(DEPDIR)/libnghttp2_asio_la-timegm.Plo \
-	./$(DEPDIR)/libnghttp2_asio_la-tls.Plo \
-	./$(DEPDIR)/libnghttp2_asio_la-util.Plo \
 	./$(DEPDIR)/libnghttpx_a-app_helper.Po \
 	./$(DEPDIR)/libnghttpx_a-http2.Po \
 	./$(DEPDIR)/libnghttpx_a-http3.Po \
@@ -653,12 +525,11 @@ AM_V_CXXLD = $(am__v_CXXLD_@AM_V@)
 am__v_CXXLD_ = $(am__v_CXXLD_@AM_DEFAULT_V@)
 am__v_CXXLD_0 = @echo "  CXXLD   " $@;
 am__v_CXXLD_1 = 
-SOURCES = $(libnghttpx_a_SOURCES) $(libnghttp2_asio_la_SOURCES) \
-	$(deflatehd_SOURCES) $(h2load_SOURCES) $(inflatehd_SOURCES) \
-	$(nghttp_SOURCES) $(nghttpd_SOURCES) $(nghttpx_SOURCES) \
+SOURCES = $(libnghttpx_a_SOURCES) $(deflatehd_SOURCES) \
+	$(h2load_SOURCES) $(inflatehd_SOURCES) $(nghttp_SOURCES) \
+	$(nghttpd_SOURCES) $(nghttpx_SOURCES) \
 	$(nghttpx_unittest_SOURCES)
 DIST_SOURCES = $(am__libnghttpx_a_SOURCES_DIST) \
-	$(am__libnghttp2_asio_la_SOURCES_DIST) \
 	$(am__deflatehd_SOURCES_DIST) $(am__h2load_SOURCES_DIST) \
 	$(am__inflatehd_SOURCES_DIST) $(am__nghttp_SOURCES_DIST) \
 	$(am__nghttpd_SOURCES_DIST) $(am__nghttpx_SOURCES_DIST) \
@@ -676,7 +547,6 @@ am__can_run_installinfo = \
     n|no|NO) false;; \
     *) (install-info --version) >/dev/null 2>&1;; \
   esac
-DATA = $(pkgconfig_DATA)
 RECURSIVE_CLEAN_TARGETS = mostlyclean-recursive clean-recursive	\
   distclean-recursive maintainer-clean-recursive
 am__recursive_targets = \
@@ -724,6 +594,33 @@ am__tty_colors = { \
     std='[m'; \
   fi; \
 }
+am__vpath_adj_setup = srcdirstrip=`echo "$(srcdir)" | sed 's|.|.|g'`;
+am__vpath_adj = case $$p in \
+    $(srcdir)/*) f=`echo "$$p" | sed "s|^$$srcdirstrip/||"`;; \
+    *) f=$$p;; \
+  esac;
+am__strip_dir = f=`echo $$p | sed -e 's|^.*/||'`;
+am__install_max = 40
+am__nobase_strip_setup = \
+  srcdirstrip=`echo "$(srcdir)" | sed 's/[].[^$$\\*|]/\\\\&/g'`
+am__nobase_strip = \
+  for p in $$list; do echo "$$p"; done | sed -e "s|$$srcdirstrip/||"
+am__nobase_list = $(am__nobase_strip_setup); \
+  for p in $$list; do echo "$$p $$p"; done | \
+  sed "s| $$srcdirstrip/| |;"' / .*\//!s/ .*/ ./; s,\( .*\)/[^/]*$$,\1,' | \
+  $(AWK) 'BEGIN { files["."] = "" } { files[$$2] = files[$$2] " " $$1; \
+    if (++n[$$2] == $(am__install_max)) \
+      { print $$2, files[$$2]; n[$$2] = 0; files[$$2] = "" } } \
+    END { for (dir in files) print dir, files[dir] }'
+am__base_list = \
+  sed '$$!N;$$!N;$$!N;$$!N;$$!N;$$!N;$$!N;s/\n/ /g' | \
+  sed '$$!N;$$!N;$$!N;$$!N;s/\n/ /g'
+am__uninstall_files_from_dir = { \
+  test -z "$$files" \
+    || { test ! -d "$$dir" && test ! -f "$$dir" && test ! -r "$$dir"; } \
+    || { echo " ( cd '$$dir' && rm -f" $$files ")"; \
+         $(am__cd) "$$dir" && rm -f $$files; }; \
+  }
 am__recheck_rx = ^[ 	]*:recheck:[ 	]*
 am__global_test_result_rx = ^[ 	]*:global-test-result:[ 	]*
 am__copy_in_global_log_rx = ^[ 	]*:copy-in-global-log:[ 	]*
@@ -880,8 +777,7 @@ TEST_LOG_DRIVER = $(SHELL) $(top_srcdir)/test-driver
 TEST_LOG_COMPILE = $(TEST_LOG_COMPILER) $(AM_TEST_LOG_FLAGS) \
 	$(TEST_LOG_FLAGS)
 DIST_SUBDIRS = $(SUBDIRS)
-am__DIST_COMMON = $(srcdir)/Makefile.in \
-	$(srcdir)/libnghttp2_asio.pc.in $(top_srcdir)/depcomp \
+am__DIST_COMMON = $(srcdir)/Makefile.in $(top_srcdir)/depcomp \
 	$(top_srcdir)/test-driver
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
 am__relativize = \
@@ -918,11 +814,6 @@ AUTOCONF = @AUTOCONF@
 AUTOHEADER = @AUTOHEADER@
 AUTOMAKE = @AUTOMAKE@
 AWK = @AWK@
-BOOST_ASIO_LIB = @BOOST_ASIO_LIB@
-BOOST_CPPFLAGS = @BOOST_CPPFLAGS@
-BOOST_LDFLAGS = @BOOST_LDFLAGS@
-BOOST_SYSTEM_LIB = @BOOST_SYSTEM_LIB@
-BOOST_THREAD_LIB = @BOOST_THREAD_LIB@
 BPFCFLAGS = @BPFCFLAGS@
 CC = @CC@
 CCDEPMODE = @CCDEPMODE@
@@ -939,7 +830,6 @@ CXXCPP = @CXXCPP@
 CXXDEPMODE = @CXXDEPMODE@
 CXXFLAGS = @CXXFLAGS@
 CYGPATH_W = @CYGPATH_W@
-CYTHON = @CYTHON@
 DEFS = @DEFS@
 DEPDIR = @DEPDIR@
 DLLTOOL = @DLLTOOL@
@@ -984,8 +874,8 @@ LIBNGHTTP3_LIBS = @LIBNGHTTP3_LIBS@
 LIBNGTCP2_CFLAGS = @LIBNGTCP2_CFLAGS@
 LIBNGTCP2_CRYPTO_BORINGSSL_CFLAGS = @LIBNGTCP2_CRYPTO_BORINGSSL_CFLAGS@
 LIBNGTCP2_CRYPTO_BORINGSSL_LIBS = @LIBNGTCP2_CRYPTO_BORINGSSL_LIBS@
-LIBNGTCP2_CRYPTO_OPENSSL_CFLAGS = @LIBNGTCP2_CRYPTO_OPENSSL_CFLAGS@
-LIBNGTCP2_CRYPTO_OPENSSL_LIBS = @LIBNGTCP2_CRYPTO_OPENSSL_LIBS@
+LIBNGTCP2_CRYPTO_QUICTLS_CFLAGS = @LIBNGTCP2_CRYPTO_QUICTLS_CFLAGS@
+LIBNGTCP2_CRYPTO_QUICTLS_LIBS = @LIBNGTCP2_CRYPTO_QUICTLS_LIBS@
 LIBNGTCP2_LIBS = @LIBNGTCP2_LIBS@
 LIBOBJS = @LIBOBJS@
 LIBS = @LIBS@
@@ -1024,15 +914,9 @@ PKG_CONFIG = @PKG_CONFIG@
 PKG_CONFIG_LIBDIR = @PKG_CONFIG_LIBDIR@
 PKG_CONFIG_PATH = @PKG_CONFIG_PATH@
 PYTHON = @PYTHON@
-PYTHON_CPPFLAGS = @PYTHON_CPPFLAGS@
 PYTHON_EXEC_PREFIX = @PYTHON_EXEC_PREFIX@
-PYTHON_EXTRA_LDFLAGS = @PYTHON_EXTRA_LDFLAGS@
-PYTHON_EXTRA_LIBS = @PYTHON_EXTRA_LIBS@
-PYTHON_LIBS = @PYTHON_LIBS@
 PYTHON_PLATFORM = @PYTHON_PLATFORM@
-PYTHON_PLATFORM_SITE_PKG = @PYTHON_PLATFORM_SITE_PKG@
 PYTHON_PREFIX = @PYTHON_PREFIX@
-PYTHON_SITE_PKG = @PYTHON_SITE_PKG@
 PYTHON_VERSION = @PYTHON_VERSION@
 RANLIB = @RANLIB@
 SED = @SED@
@@ -1117,7 +1001,7 @@ top_srcdir = @top_srcdir@
 # LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-SUBDIRS = includes
+SUBDIRS = testdata
 EXTRA_DIST = \
 	CMakeLists.txt \
 	test.example.com.pem \
@@ -1131,14 +1015,13 @@ AM_CPPFLAGS = \
 	-I$(top_srcdir)/lib/includes \
 	-I$(top_builddir)/lib/includes \
 	-I$(top_srcdir)/lib \
-	-I$(top_srcdir)/src/includes \
 	-I$(top_srcdir)/third-party \
 	-I$(top_srcdir)/third-party/llhttp/include \
 	@JEMALLOC_CFLAGS@ \
 	@LIBXML2_CFLAGS@ \
 	@LIBEV_CFLAGS@ \
 	@LIBNGHTTP3_CFLAGS@ \
-	@LIBNGTCP2_CRYPTO_OPENSSL_CFLAGS@ \
+	@LIBNGTCP2_CRYPTO_QUICTLS_CFLAGS@ \
 	@LIBNGTCP2_CRYPTO_BORINGSSL_CFLAGS@ \
 	@LIBNGTCP2_CFLAGS@ \
 	@OPENSSL_CFLAGS@ \
@@ -1157,7 +1040,7 @@ LDADD = $(top_builddir)/lib/libnghttp2.la \
 	@LIBXML2_LIBS@ \
 	@LIBEV_LIBS@ \
 	@LIBNGHTTP3_LIBS@ \
-	@LIBNGTCP2_CRYPTO_OPENSSL_LIBS@ \
+	@LIBNGTCP2_CRYPTO_QUICTLS_LIBS@ \
 	@LIBNGTCP2_CRYPTO_BORINGSSL_LIBS@ \
 	@LIBNGTCP2_LIBS@ \
 	@OPENSSL_LIBS@ \
@@ -1179,23 +1062,23 @@ LDADD = $(top_builddir)/lib/libnghttp2.la \
 @ENABLE_APP_TRUE@HTML_PARSER_HFILES = HtmlParser.h
 @ENABLE_APP_TRUE@nghttp_SOURCES = ${HELPER_OBJECTS} ${HELPER_HFILES} nghttp.cc nghttp.h \
 @ENABLE_APP_TRUE@	${HTML_PARSER_OBJECTS} ${HTML_PARSER_HFILES} \
-@ENABLE_APP_TRUE@	tls.cc tls.h
+@ENABLE_APP_TRUE@	tls.cc tls.h ssl_compat.h
 
 @ENABLE_APP_TRUE@nghttpd_SOURCES = ${HELPER_OBJECTS} ${HELPER_HFILES} nghttpd.cc \
-@ENABLE_APP_TRUE@	tls.cc tls.h \
+@ENABLE_APP_TRUE@	tls.cc tls.h ssl_compat.h \
 @ENABLE_APP_TRUE@	HttpServer.cc HttpServer.h
 
 @ENABLE_APP_TRUE@h2load_SOURCES = util.cc util.h http2.cc http2.h \
 @ENABLE_APP_TRUE@	h2load.cc h2load.h timegm.c timegm.h tls.cc \
-@ENABLE_APP_TRUE@	tls.h h2load_session.h \
+@ENABLE_APP_TRUE@	tls.h ssl_compat.h h2load_session.h \
 @ENABLE_APP_TRUE@	h2load_http2_session.cc \
 @ENABLE_APP_TRUE@	h2load_http2_session.h \
 @ENABLE_APP_TRUE@	h2load_http1_session.cc \
 @ENABLE_APP_TRUE@	h2load_http1_session.h $(am__append_3)
 @ENABLE_APP_TRUE@NGHTTPX_SRCS = util.cc util.h http2.cc http2.h \
 @ENABLE_APP_TRUE@	timegm.c timegm.h base64.h app_helper.cc \
-@ENABLE_APP_TRUE@	app_helper.h tls.cc tls.h shrpx_config.cc \
-@ENABLE_APP_TRUE@	shrpx_config.h shrpx_error.h \
+@ENABLE_APP_TRUE@	app_helper.h tls.cc tls.h ssl_compat.h \
+@ENABLE_APP_TRUE@	shrpx_config.cc shrpx_config.h shrpx_error.h \
 @ENABLE_APP_TRUE@	shrpx_accept_handler.cc \
 @ENABLE_APP_TRUE@	shrpx_accept_handler.h \
 @ENABLE_APP_TRUE@	shrpx_connection_handler.cc \
@@ -1292,53 +1175,6 @@ LDADD = $(top_builddir)/lib/libnghttp2.la \
 
 @ENABLE_HPACK_TOOLS_TRUE@inflatehd_SOURCES = inflatehd.cc $(HPACK_TOOLS_COMMON_SRCS)
 @ENABLE_HPACK_TOOLS_TRUE@deflatehd_SOURCES = deflatehd.cc $(HPACK_TOOLS_COMMON_SRCS)
-@ENABLE_ASIO_LIB_TRUE@pkgconfigdir = $(libdir)/pkgconfig
-@ENABLE_ASIO_LIB_TRUE@pkgconfig_DATA = libnghttp2_asio.pc
-@ENABLE_ASIO_LIB_TRUE@DISTCLEANFILES = $(pkgconfig_DATA)
-@ENABLE_ASIO_LIB_TRUE@lib_LTLIBRARIES = libnghttp2_asio.la
-@ENABLE_ASIO_LIB_TRUE@libnghttp2_asio_la_SOURCES = \
-@ENABLE_ASIO_LIB_TRUE@	util.cc util.h http2.cc http2.h \
-@ENABLE_ASIO_LIB_TRUE@	tls.cc tls.h \
-@ENABLE_ASIO_LIB_TRUE@	ssl_compat.h \
-@ENABLE_ASIO_LIB_TRUE@	timegm.c timegm.h \
-@ENABLE_ASIO_LIB_TRUE@	asio_common.cc asio_common.h \
-@ENABLE_ASIO_LIB_TRUE@	asio_io_service_pool.cc asio_io_service_pool.h \
-@ENABLE_ASIO_LIB_TRUE@	asio_server_http2.cc \
-@ENABLE_ASIO_LIB_TRUE@	asio_server_http2_impl.cc asio_server_http2_impl.h \
-@ENABLE_ASIO_LIB_TRUE@	asio_server.cc asio_server.h \
-@ENABLE_ASIO_LIB_TRUE@	asio_server_http2_handler.cc asio_server_http2_handler.h \
-@ENABLE_ASIO_LIB_TRUE@	asio_server_connection.h \
-@ENABLE_ASIO_LIB_TRUE@	asio_server_request.cc \
-@ENABLE_ASIO_LIB_TRUE@	asio_server_request_impl.cc asio_server_request_impl.h \
-@ENABLE_ASIO_LIB_TRUE@	asio_server_response.cc \
-@ENABLE_ASIO_LIB_TRUE@	asio_server_response_impl.cc asio_server_response_impl.h \
-@ENABLE_ASIO_LIB_TRUE@	asio_server_stream.cc asio_server_stream.h \
-@ENABLE_ASIO_LIB_TRUE@	asio_server_serve_mux.cc asio_server_serve_mux.h \
-@ENABLE_ASIO_LIB_TRUE@	asio_server_request_handler.cc asio_server_request_handler.h \
-@ENABLE_ASIO_LIB_TRUE@	asio_server_tls_context.cc asio_server_tls_context.h \
-@ENABLE_ASIO_LIB_TRUE@	asio_client_session.cc \
-@ENABLE_ASIO_LIB_TRUE@	asio_client_session_impl.cc asio_client_session_impl.h \
-@ENABLE_ASIO_LIB_TRUE@	asio_client_session_tcp_impl.cc asio_client_session_tcp_impl.h \
-@ENABLE_ASIO_LIB_TRUE@	asio_client_session_tls_impl.cc asio_client_session_tls_impl.h \
-@ENABLE_ASIO_LIB_TRUE@	asio_client_response.cc \
-@ENABLE_ASIO_LIB_TRUE@	asio_client_response_impl.cc asio_client_response_impl.h \
-@ENABLE_ASIO_LIB_TRUE@	asio_client_request.cc \
-@ENABLE_ASIO_LIB_TRUE@	asio_client_request_impl.cc asio_client_request_impl.h \
-@ENABLE_ASIO_LIB_TRUE@	asio_client_stream.cc asio_client_stream.h \
-@ENABLE_ASIO_LIB_TRUE@	asio_client_tls_context.cc asio_client_tls_context.h
-
-@ENABLE_ASIO_LIB_TRUE@libnghttp2_asio_la_CPPFLAGS = ${AM_CPPFLAGS} ${BOOST_CPPFLAGS}
-@ENABLE_ASIO_LIB_TRUE@libnghttp2_asio_la_LDFLAGS = $(AM_LDFLAGS) -no-undefined -version-info 1:0:0
-@ENABLE_ASIO_LIB_TRUE@libnghttp2_asio_la_LIBADD = \
-@ENABLE_ASIO_LIB_TRUE@	$(top_builddir)/lib/libnghttp2.la \
-@ENABLE_ASIO_LIB_TRUE@	$(top_builddir)/third-party/liburl-parser.la \
-@ENABLE_ASIO_LIB_TRUE@	$(top_builddir)/third-party/libllhttp.la \
-@ENABLE_ASIO_LIB_TRUE@	@OPENSSL_LIBS@ \
-@ENABLE_ASIO_LIB_TRUE@	${BOOST_LDFLAGS} \
-@ENABLE_ASIO_LIB_TRUE@	${BOOST_ASIO_LIB} \
-@ENABLE_ASIO_LIB_TRUE@	${BOOST_THREAD_LIB} \
-@ENABLE_ASIO_LIB_TRUE@	${BOOST_SYSTEM_LIB}
-
 all: all-recursive
 
 .SUFFIXES:
@@ -1372,8 +1208,6 @@ $(top_srcdir)/configure:  $(am__configure_deps)
 $(ACLOCAL_M4):  $(am__aclocal_m4_deps)
 	cd $(top_builddir) && $(MAKE) $(AM_MAKEFLAGS) am--refresh
 $(am__aclocal_m4_deps):
-libnghttp2_asio.pc: $(top_builddir)/config.status $(srcdir)/libnghttp2_asio.pc.in
-	cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@
 install-binPROGRAMS: $(bin_PROGRAMS)
 	@$(NORMAL_INSTALL)
 	@list='$(bin_PROGRAMS)'; test -n "$(bindir)" || list=; \
@@ -1436,48 +1270,10 @@ clean-checkPROGRAMS:
 clean-noinstLIBRARIES:
 	-test -z "$(noinst_LIBRARIES)" || rm -f $(noinst_LIBRARIES)
 
-install-libLTLIBRARIES: $(lib_LTLIBRARIES)
-	@$(NORMAL_INSTALL)
-	@list='$(lib_LTLIBRARIES)'; test -n "$(libdir)" || list=; \
-	list2=; for p in $$list; do \
-	  if test -f $$p; then \
-	    list2="$$list2 $$p"; \
-	  else :; fi; \
-	done; \
-	test -z "$$list2" || { \
-	  echo " $(MKDIR_P) '$(DESTDIR)$(libdir)'"; \
-	  $(MKDIR_P) "$(DESTDIR)$(libdir)" || exit 1; \
-	  echo " $(LIBTOOL) $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=install $(INSTALL) $(INSTALL_STRIP_FLAG) $$list2 '$(DESTDIR)$(libdir)'"; \
-	  $(LIBTOOL) $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=install $(INSTALL) $(INSTALL_STRIP_FLAG) $$list2 "$(DESTDIR)$(libdir)"; \
-	}
-
-uninstall-libLTLIBRARIES:
-	@$(NORMAL_UNINSTALL)
-	@list='$(lib_LTLIBRARIES)'; test -n "$(libdir)" || list=; \
-	for p in $$list; do \
-	  $(am__strip_dir) \
-	  echo " $(LIBTOOL) $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=uninstall rm -f '$(DESTDIR)$(libdir)/$$f'"; \
-	  $(LIBTOOL) $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=uninstall rm -f "$(DESTDIR)$(libdir)/$$f"; \
-	done
-
-clean-libLTLIBRARIES:
-	-test -z "$(lib_LTLIBRARIES)" || rm -f $(lib_LTLIBRARIES)
-	@list='$(lib_LTLIBRARIES)'; \
-	locs=`for p in $$list; do echo $$p; done | \
-	      sed 's|^[^/]*$$|.|; s|/[^/]*$$||; s|$$|/so_locations|' | \
-	      sort -u`; \
-	test -z "$$locs" || { \
-	  echo rm -f $${locs}; \
-	  rm -f $${locs}; \
-	}
-
 libnghttpx.a: $(libnghttpx_a_OBJECTS) $(libnghttpx_a_DEPENDENCIES) $(EXTRA_libnghttpx_a_DEPENDENCIES) 
 	$(AM_V_at)-rm -f libnghttpx.a
 	$(AM_V_AR)$(libnghttpx_a_AR) libnghttpx.a $(libnghttpx_a_OBJECTS) $(libnghttpx_a_LIBADD)
 	$(AM_V_at)$(RANLIB) libnghttpx.a
-
-libnghttp2_asio.la: $(libnghttp2_asio_la_OBJECTS) $(libnghttp2_asio_la_DEPENDENCIES) $(EXTRA_libnghttp2_asio_la_DEPENDENCIES) 
-	$(AM_V_CXXLD)$(libnghttp2_asio_la_LINK) $(am_libnghttp2_asio_la_rpath) $(libnghttp2_asio_la_OBJECTS) $(libnghttp2_asio_la_LIBADD) $(LIBS)
 
 deflatehd$(EXEEXT): $(deflatehd_OBJECTS) $(deflatehd_DEPENDENCIES) $(EXTRA_deflatehd_DEPENDENCIES) 
 	@rm -f deflatehd$(EXEEXT)
@@ -1525,34 +1321,6 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/h2load_quic.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/http2.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/inflatehd.Po@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libnghttp2_asio_la-asio_client_request.Plo@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libnghttp2_asio_la-asio_client_request_impl.Plo@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libnghttp2_asio_la-asio_client_response.Plo@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libnghttp2_asio_la-asio_client_response_impl.Plo@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libnghttp2_asio_la-asio_client_session.Plo@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libnghttp2_asio_la-asio_client_session_impl.Plo@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libnghttp2_asio_la-asio_client_session_tcp_impl.Plo@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libnghttp2_asio_la-asio_client_session_tls_impl.Plo@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libnghttp2_asio_la-asio_client_stream.Plo@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libnghttp2_asio_la-asio_client_tls_context.Plo@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libnghttp2_asio_la-asio_common.Plo@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libnghttp2_asio_la-asio_io_service_pool.Plo@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libnghttp2_asio_la-asio_server.Plo@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libnghttp2_asio_la-asio_server_http2.Plo@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libnghttp2_asio_la-asio_server_http2_handler.Plo@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libnghttp2_asio_la-asio_server_http2_impl.Plo@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libnghttp2_asio_la-asio_server_request.Plo@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libnghttp2_asio_la-asio_server_request_handler.Plo@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libnghttp2_asio_la-asio_server_request_impl.Plo@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libnghttp2_asio_la-asio_server_response.Plo@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libnghttp2_asio_la-asio_server_response_impl.Plo@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libnghttp2_asio_la-asio_server_serve_mux.Plo@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libnghttp2_asio_la-asio_server_stream.Plo@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libnghttp2_asio_la-asio_server_tls_context.Plo@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libnghttp2_asio_la-http2.Plo@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libnghttp2_asio_la-timegm.Plo@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libnghttp2_asio_la-tls.Plo@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libnghttp2_asio_la-util.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libnghttpx_a-app_helper.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libnghttpx_a-http2.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libnghttpx_a-http3.Po@am__quote@ # am--include-marker
@@ -1686,13 +1454,6 @@ libnghttpx_a-xsi_strerror.obj: xsi_strerror.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='xsi_strerror.c' object='libnghttpx_a-xsi_strerror.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttpx_a_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o libnghttpx_a-xsi_strerror.obj `if test -f 'xsi_strerror.c'; then $(CYGPATH_W) 'xsi_strerror.c'; else $(CYGPATH_W) '$(srcdir)/xsi_strerror.c'; fi`
-
-libnghttp2_asio_la-timegm.lo: timegm.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT libnghttp2_asio_la-timegm.lo -MD -MP -MF $(DEPDIR)/libnghttp2_asio_la-timegm.Tpo -c -o libnghttp2_asio_la-timegm.lo `test -f 'timegm.c' || echo '$(srcdir)/'`timegm.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libnghttp2_asio_la-timegm.Tpo $(DEPDIR)/libnghttp2_asio_la-timegm.Plo
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='timegm.c' object='libnghttp2_asio_la-timegm.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o libnghttp2_asio_la-timegm.lo `test -f 'timegm.c' || echo '$(srcdir)/'`timegm.c
 
 nghttpx_unittest-nghttp2_gzip_test.o: nghttp2_gzip_test.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(nghttpx_unittest_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT nghttpx_unittest-nghttp2_gzip_test.o -MD -MP -MF $(DEPDIR)/nghttpx_unittest-nghttp2_gzip_test.Tpo -c -o nghttpx_unittest-nghttp2_gzip_test.o `test -f 'nghttp2_gzip_test.c' || echo '$(srcdir)/'`nghttp2_gzip_test.c
@@ -2446,195 +2207,6 @@ libnghttpx_a-quic.obj: quic.cc
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttpx_a_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libnghttpx_a-quic.obj `if test -f 'quic.cc'; then $(CYGPATH_W) 'quic.cc'; else $(CYGPATH_W) '$(srcdir)/quic.cc'; fi`
 
-libnghttp2_asio_la-util.lo: util.cc
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT libnghttp2_asio_la-util.lo -MD -MP -MF $(DEPDIR)/libnghttp2_asio_la-util.Tpo -c -o libnghttp2_asio_la-util.lo `test -f 'util.cc' || echo '$(srcdir)/'`util.cc
-@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libnghttp2_asio_la-util.Tpo $(DEPDIR)/libnghttp2_asio_la-util.Plo
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='util.cc' object='libnghttp2_asio_la-util.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libnghttp2_asio_la-util.lo `test -f 'util.cc' || echo '$(srcdir)/'`util.cc
-
-libnghttp2_asio_la-http2.lo: http2.cc
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT libnghttp2_asio_la-http2.lo -MD -MP -MF $(DEPDIR)/libnghttp2_asio_la-http2.Tpo -c -o libnghttp2_asio_la-http2.lo `test -f 'http2.cc' || echo '$(srcdir)/'`http2.cc
-@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libnghttp2_asio_la-http2.Tpo $(DEPDIR)/libnghttp2_asio_la-http2.Plo
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='http2.cc' object='libnghttp2_asio_la-http2.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libnghttp2_asio_la-http2.lo `test -f 'http2.cc' || echo '$(srcdir)/'`http2.cc
-
-libnghttp2_asio_la-tls.lo: tls.cc
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT libnghttp2_asio_la-tls.lo -MD -MP -MF $(DEPDIR)/libnghttp2_asio_la-tls.Tpo -c -o libnghttp2_asio_la-tls.lo `test -f 'tls.cc' || echo '$(srcdir)/'`tls.cc
-@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libnghttp2_asio_la-tls.Tpo $(DEPDIR)/libnghttp2_asio_la-tls.Plo
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='tls.cc' object='libnghttp2_asio_la-tls.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libnghttp2_asio_la-tls.lo `test -f 'tls.cc' || echo '$(srcdir)/'`tls.cc
-
-libnghttp2_asio_la-asio_common.lo: asio_common.cc
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT libnghttp2_asio_la-asio_common.lo -MD -MP -MF $(DEPDIR)/libnghttp2_asio_la-asio_common.Tpo -c -o libnghttp2_asio_la-asio_common.lo `test -f 'asio_common.cc' || echo '$(srcdir)/'`asio_common.cc
-@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libnghttp2_asio_la-asio_common.Tpo $(DEPDIR)/libnghttp2_asio_la-asio_common.Plo
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='asio_common.cc' object='libnghttp2_asio_la-asio_common.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libnghttp2_asio_la-asio_common.lo `test -f 'asio_common.cc' || echo '$(srcdir)/'`asio_common.cc
-
-libnghttp2_asio_la-asio_io_service_pool.lo: asio_io_service_pool.cc
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT libnghttp2_asio_la-asio_io_service_pool.lo -MD -MP -MF $(DEPDIR)/libnghttp2_asio_la-asio_io_service_pool.Tpo -c -o libnghttp2_asio_la-asio_io_service_pool.lo `test -f 'asio_io_service_pool.cc' || echo '$(srcdir)/'`asio_io_service_pool.cc
-@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libnghttp2_asio_la-asio_io_service_pool.Tpo $(DEPDIR)/libnghttp2_asio_la-asio_io_service_pool.Plo
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='asio_io_service_pool.cc' object='libnghttp2_asio_la-asio_io_service_pool.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libnghttp2_asio_la-asio_io_service_pool.lo `test -f 'asio_io_service_pool.cc' || echo '$(srcdir)/'`asio_io_service_pool.cc
-
-libnghttp2_asio_la-asio_server_http2.lo: asio_server_http2.cc
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT libnghttp2_asio_la-asio_server_http2.lo -MD -MP -MF $(DEPDIR)/libnghttp2_asio_la-asio_server_http2.Tpo -c -o libnghttp2_asio_la-asio_server_http2.lo `test -f 'asio_server_http2.cc' || echo '$(srcdir)/'`asio_server_http2.cc
-@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libnghttp2_asio_la-asio_server_http2.Tpo $(DEPDIR)/libnghttp2_asio_la-asio_server_http2.Plo
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='asio_server_http2.cc' object='libnghttp2_asio_la-asio_server_http2.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libnghttp2_asio_la-asio_server_http2.lo `test -f 'asio_server_http2.cc' || echo '$(srcdir)/'`asio_server_http2.cc
-
-libnghttp2_asio_la-asio_server_http2_impl.lo: asio_server_http2_impl.cc
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT libnghttp2_asio_la-asio_server_http2_impl.lo -MD -MP -MF $(DEPDIR)/libnghttp2_asio_la-asio_server_http2_impl.Tpo -c -o libnghttp2_asio_la-asio_server_http2_impl.lo `test -f 'asio_server_http2_impl.cc' || echo '$(srcdir)/'`asio_server_http2_impl.cc
-@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libnghttp2_asio_la-asio_server_http2_impl.Tpo $(DEPDIR)/libnghttp2_asio_la-asio_server_http2_impl.Plo
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='asio_server_http2_impl.cc' object='libnghttp2_asio_la-asio_server_http2_impl.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libnghttp2_asio_la-asio_server_http2_impl.lo `test -f 'asio_server_http2_impl.cc' || echo '$(srcdir)/'`asio_server_http2_impl.cc
-
-libnghttp2_asio_la-asio_server.lo: asio_server.cc
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT libnghttp2_asio_la-asio_server.lo -MD -MP -MF $(DEPDIR)/libnghttp2_asio_la-asio_server.Tpo -c -o libnghttp2_asio_la-asio_server.lo `test -f 'asio_server.cc' || echo '$(srcdir)/'`asio_server.cc
-@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libnghttp2_asio_la-asio_server.Tpo $(DEPDIR)/libnghttp2_asio_la-asio_server.Plo
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='asio_server.cc' object='libnghttp2_asio_la-asio_server.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libnghttp2_asio_la-asio_server.lo `test -f 'asio_server.cc' || echo '$(srcdir)/'`asio_server.cc
-
-libnghttp2_asio_la-asio_server_http2_handler.lo: asio_server_http2_handler.cc
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT libnghttp2_asio_la-asio_server_http2_handler.lo -MD -MP -MF $(DEPDIR)/libnghttp2_asio_la-asio_server_http2_handler.Tpo -c -o libnghttp2_asio_la-asio_server_http2_handler.lo `test -f 'asio_server_http2_handler.cc' || echo '$(srcdir)/'`asio_server_http2_handler.cc
-@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libnghttp2_asio_la-asio_server_http2_handler.Tpo $(DEPDIR)/libnghttp2_asio_la-asio_server_http2_handler.Plo
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='asio_server_http2_handler.cc' object='libnghttp2_asio_la-asio_server_http2_handler.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libnghttp2_asio_la-asio_server_http2_handler.lo `test -f 'asio_server_http2_handler.cc' || echo '$(srcdir)/'`asio_server_http2_handler.cc
-
-libnghttp2_asio_la-asio_server_request.lo: asio_server_request.cc
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT libnghttp2_asio_la-asio_server_request.lo -MD -MP -MF $(DEPDIR)/libnghttp2_asio_la-asio_server_request.Tpo -c -o libnghttp2_asio_la-asio_server_request.lo `test -f 'asio_server_request.cc' || echo '$(srcdir)/'`asio_server_request.cc
-@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libnghttp2_asio_la-asio_server_request.Tpo $(DEPDIR)/libnghttp2_asio_la-asio_server_request.Plo
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='asio_server_request.cc' object='libnghttp2_asio_la-asio_server_request.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libnghttp2_asio_la-asio_server_request.lo `test -f 'asio_server_request.cc' || echo '$(srcdir)/'`asio_server_request.cc
-
-libnghttp2_asio_la-asio_server_request_impl.lo: asio_server_request_impl.cc
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT libnghttp2_asio_la-asio_server_request_impl.lo -MD -MP -MF $(DEPDIR)/libnghttp2_asio_la-asio_server_request_impl.Tpo -c -o libnghttp2_asio_la-asio_server_request_impl.lo `test -f 'asio_server_request_impl.cc' || echo '$(srcdir)/'`asio_server_request_impl.cc
-@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libnghttp2_asio_la-asio_server_request_impl.Tpo $(DEPDIR)/libnghttp2_asio_la-asio_server_request_impl.Plo
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='asio_server_request_impl.cc' object='libnghttp2_asio_la-asio_server_request_impl.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libnghttp2_asio_la-asio_server_request_impl.lo `test -f 'asio_server_request_impl.cc' || echo '$(srcdir)/'`asio_server_request_impl.cc
-
-libnghttp2_asio_la-asio_server_response.lo: asio_server_response.cc
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT libnghttp2_asio_la-asio_server_response.lo -MD -MP -MF $(DEPDIR)/libnghttp2_asio_la-asio_server_response.Tpo -c -o libnghttp2_asio_la-asio_server_response.lo `test -f 'asio_server_response.cc' || echo '$(srcdir)/'`asio_server_response.cc
-@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libnghttp2_asio_la-asio_server_response.Tpo $(DEPDIR)/libnghttp2_asio_la-asio_server_response.Plo
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='asio_server_response.cc' object='libnghttp2_asio_la-asio_server_response.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libnghttp2_asio_la-asio_server_response.lo `test -f 'asio_server_response.cc' || echo '$(srcdir)/'`asio_server_response.cc
-
-libnghttp2_asio_la-asio_server_response_impl.lo: asio_server_response_impl.cc
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT libnghttp2_asio_la-asio_server_response_impl.lo -MD -MP -MF $(DEPDIR)/libnghttp2_asio_la-asio_server_response_impl.Tpo -c -o libnghttp2_asio_la-asio_server_response_impl.lo `test -f 'asio_server_response_impl.cc' || echo '$(srcdir)/'`asio_server_response_impl.cc
-@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libnghttp2_asio_la-asio_server_response_impl.Tpo $(DEPDIR)/libnghttp2_asio_la-asio_server_response_impl.Plo
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='asio_server_response_impl.cc' object='libnghttp2_asio_la-asio_server_response_impl.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libnghttp2_asio_la-asio_server_response_impl.lo `test -f 'asio_server_response_impl.cc' || echo '$(srcdir)/'`asio_server_response_impl.cc
-
-libnghttp2_asio_la-asio_server_stream.lo: asio_server_stream.cc
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT libnghttp2_asio_la-asio_server_stream.lo -MD -MP -MF $(DEPDIR)/libnghttp2_asio_la-asio_server_stream.Tpo -c -o libnghttp2_asio_la-asio_server_stream.lo `test -f 'asio_server_stream.cc' || echo '$(srcdir)/'`asio_server_stream.cc
-@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libnghttp2_asio_la-asio_server_stream.Tpo $(DEPDIR)/libnghttp2_asio_la-asio_server_stream.Plo
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='asio_server_stream.cc' object='libnghttp2_asio_la-asio_server_stream.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libnghttp2_asio_la-asio_server_stream.lo `test -f 'asio_server_stream.cc' || echo '$(srcdir)/'`asio_server_stream.cc
-
-libnghttp2_asio_la-asio_server_serve_mux.lo: asio_server_serve_mux.cc
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT libnghttp2_asio_la-asio_server_serve_mux.lo -MD -MP -MF $(DEPDIR)/libnghttp2_asio_la-asio_server_serve_mux.Tpo -c -o libnghttp2_asio_la-asio_server_serve_mux.lo `test -f 'asio_server_serve_mux.cc' || echo '$(srcdir)/'`asio_server_serve_mux.cc
-@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libnghttp2_asio_la-asio_server_serve_mux.Tpo $(DEPDIR)/libnghttp2_asio_la-asio_server_serve_mux.Plo
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='asio_server_serve_mux.cc' object='libnghttp2_asio_la-asio_server_serve_mux.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libnghttp2_asio_la-asio_server_serve_mux.lo `test -f 'asio_server_serve_mux.cc' || echo '$(srcdir)/'`asio_server_serve_mux.cc
-
-libnghttp2_asio_la-asio_server_request_handler.lo: asio_server_request_handler.cc
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT libnghttp2_asio_la-asio_server_request_handler.lo -MD -MP -MF $(DEPDIR)/libnghttp2_asio_la-asio_server_request_handler.Tpo -c -o libnghttp2_asio_la-asio_server_request_handler.lo `test -f 'asio_server_request_handler.cc' || echo '$(srcdir)/'`asio_server_request_handler.cc
-@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libnghttp2_asio_la-asio_server_request_handler.Tpo $(DEPDIR)/libnghttp2_asio_la-asio_server_request_handler.Plo
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='asio_server_request_handler.cc' object='libnghttp2_asio_la-asio_server_request_handler.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libnghttp2_asio_la-asio_server_request_handler.lo `test -f 'asio_server_request_handler.cc' || echo '$(srcdir)/'`asio_server_request_handler.cc
-
-libnghttp2_asio_la-asio_server_tls_context.lo: asio_server_tls_context.cc
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT libnghttp2_asio_la-asio_server_tls_context.lo -MD -MP -MF $(DEPDIR)/libnghttp2_asio_la-asio_server_tls_context.Tpo -c -o libnghttp2_asio_la-asio_server_tls_context.lo `test -f 'asio_server_tls_context.cc' || echo '$(srcdir)/'`asio_server_tls_context.cc
-@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libnghttp2_asio_la-asio_server_tls_context.Tpo $(DEPDIR)/libnghttp2_asio_la-asio_server_tls_context.Plo
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='asio_server_tls_context.cc' object='libnghttp2_asio_la-asio_server_tls_context.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libnghttp2_asio_la-asio_server_tls_context.lo `test -f 'asio_server_tls_context.cc' || echo '$(srcdir)/'`asio_server_tls_context.cc
-
-libnghttp2_asio_la-asio_client_session.lo: asio_client_session.cc
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT libnghttp2_asio_la-asio_client_session.lo -MD -MP -MF $(DEPDIR)/libnghttp2_asio_la-asio_client_session.Tpo -c -o libnghttp2_asio_la-asio_client_session.lo `test -f 'asio_client_session.cc' || echo '$(srcdir)/'`asio_client_session.cc
-@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libnghttp2_asio_la-asio_client_session.Tpo $(DEPDIR)/libnghttp2_asio_la-asio_client_session.Plo
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='asio_client_session.cc' object='libnghttp2_asio_la-asio_client_session.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libnghttp2_asio_la-asio_client_session.lo `test -f 'asio_client_session.cc' || echo '$(srcdir)/'`asio_client_session.cc
-
-libnghttp2_asio_la-asio_client_session_impl.lo: asio_client_session_impl.cc
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT libnghttp2_asio_la-asio_client_session_impl.lo -MD -MP -MF $(DEPDIR)/libnghttp2_asio_la-asio_client_session_impl.Tpo -c -o libnghttp2_asio_la-asio_client_session_impl.lo `test -f 'asio_client_session_impl.cc' || echo '$(srcdir)/'`asio_client_session_impl.cc
-@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libnghttp2_asio_la-asio_client_session_impl.Tpo $(DEPDIR)/libnghttp2_asio_la-asio_client_session_impl.Plo
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='asio_client_session_impl.cc' object='libnghttp2_asio_la-asio_client_session_impl.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libnghttp2_asio_la-asio_client_session_impl.lo `test -f 'asio_client_session_impl.cc' || echo '$(srcdir)/'`asio_client_session_impl.cc
-
-libnghttp2_asio_la-asio_client_session_tcp_impl.lo: asio_client_session_tcp_impl.cc
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT libnghttp2_asio_la-asio_client_session_tcp_impl.lo -MD -MP -MF $(DEPDIR)/libnghttp2_asio_la-asio_client_session_tcp_impl.Tpo -c -o libnghttp2_asio_la-asio_client_session_tcp_impl.lo `test -f 'asio_client_session_tcp_impl.cc' || echo '$(srcdir)/'`asio_client_session_tcp_impl.cc
-@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libnghttp2_asio_la-asio_client_session_tcp_impl.Tpo $(DEPDIR)/libnghttp2_asio_la-asio_client_session_tcp_impl.Plo
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='asio_client_session_tcp_impl.cc' object='libnghttp2_asio_la-asio_client_session_tcp_impl.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libnghttp2_asio_la-asio_client_session_tcp_impl.lo `test -f 'asio_client_session_tcp_impl.cc' || echo '$(srcdir)/'`asio_client_session_tcp_impl.cc
-
-libnghttp2_asio_la-asio_client_session_tls_impl.lo: asio_client_session_tls_impl.cc
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT libnghttp2_asio_la-asio_client_session_tls_impl.lo -MD -MP -MF $(DEPDIR)/libnghttp2_asio_la-asio_client_session_tls_impl.Tpo -c -o libnghttp2_asio_la-asio_client_session_tls_impl.lo `test -f 'asio_client_session_tls_impl.cc' || echo '$(srcdir)/'`asio_client_session_tls_impl.cc
-@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libnghttp2_asio_la-asio_client_session_tls_impl.Tpo $(DEPDIR)/libnghttp2_asio_la-asio_client_session_tls_impl.Plo
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='asio_client_session_tls_impl.cc' object='libnghttp2_asio_la-asio_client_session_tls_impl.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libnghttp2_asio_la-asio_client_session_tls_impl.lo `test -f 'asio_client_session_tls_impl.cc' || echo '$(srcdir)/'`asio_client_session_tls_impl.cc
-
-libnghttp2_asio_la-asio_client_response.lo: asio_client_response.cc
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT libnghttp2_asio_la-asio_client_response.lo -MD -MP -MF $(DEPDIR)/libnghttp2_asio_la-asio_client_response.Tpo -c -o libnghttp2_asio_la-asio_client_response.lo `test -f 'asio_client_response.cc' || echo '$(srcdir)/'`asio_client_response.cc
-@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libnghttp2_asio_la-asio_client_response.Tpo $(DEPDIR)/libnghttp2_asio_la-asio_client_response.Plo
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='asio_client_response.cc' object='libnghttp2_asio_la-asio_client_response.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libnghttp2_asio_la-asio_client_response.lo `test -f 'asio_client_response.cc' || echo '$(srcdir)/'`asio_client_response.cc
-
-libnghttp2_asio_la-asio_client_response_impl.lo: asio_client_response_impl.cc
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT libnghttp2_asio_la-asio_client_response_impl.lo -MD -MP -MF $(DEPDIR)/libnghttp2_asio_la-asio_client_response_impl.Tpo -c -o libnghttp2_asio_la-asio_client_response_impl.lo `test -f 'asio_client_response_impl.cc' || echo '$(srcdir)/'`asio_client_response_impl.cc
-@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libnghttp2_asio_la-asio_client_response_impl.Tpo $(DEPDIR)/libnghttp2_asio_la-asio_client_response_impl.Plo
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='asio_client_response_impl.cc' object='libnghttp2_asio_la-asio_client_response_impl.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libnghttp2_asio_la-asio_client_response_impl.lo `test -f 'asio_client_response_impl.cc' || echo '$(srcdir)/'`asio_client_response_impl.cc
-
-libnghttp2_asio_la-asio_client_request.lo: asio_client_request.cc
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT libnghttp2_asio_la-asio_client_request.lo -MD -MP -MF $(DEPDIR)/libnghttp2_asio_la-asio_client_request.Tpo -c -o libnghttp2_asio_la-asio_client_request.lo `test -f 'asio_client_request.cc' || echo '$(srcdir)/'`asio_client_request.cc
-@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libnghttp2_asio_la-asio_client_request.Tpo $(DEPDIR)/libnghttp2_asio_la-asio_client_request.Plo
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='asio_client_request.cc' object='libnghttp2_asio_la-asio_client_request.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libnghttp2_asio_la-asio_client_request.lo `test -f 'asio_client_request.cc' || echo '$(srcdir)/'`asio_client_request.cc
-
-libnghttp2_asio_la-asio_client_request_impl.lo: asio_client_request_impl.cc
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT libnghttp2_asio_la-asio_client_request_impl.lo -MD -MP -MF $(DEPDIR)/libnghttp2_asio_la-asio_client_request_impl.Tpo -c -o libnghttp2_asio_la-asio_client_request_impl.lo `test -f 'asio_client_request_impl.cc' || echo '$(srcdir)/'`asio_client_request_impl.cc
-@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libnghttp2_asio_la-asio_client_request_impl.Tpo $(DEPDIR)/libnghttp2_asio_la-asio_client_request_impl.Plo
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='asio_client_request_impl.cc' object='libnghttp2_asio_la-asio_client_request_impl.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libnghttp2_asio_la-asio_client_request_impl.lo `test -f 'asio_client_request_impl.cc' || echo '$(srcdir)/'`asio_client_request_impl.cc
-
-libnghttp2_asio_la-asio_client_stream.lo: asio_client_stream.cc
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT libnghttp2_asio_la-asio_client_stream.lo -MD -MP -MF $(DEPDIR)/libnghttp2_asio_la-asio_client_stream.Tpo -c -o libnghttp2_asio_la-asio_client_stream.lo `test -f 'asio_client_stream.cc' || echo '$(srcdir)/'`asio_client_stream.cc
-@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libnghttp2_asio_la-asio_client_stream.Tpo $(DEPDIR)/libnghttp2_asio_la-asio_client_stream.Plo
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='asio_client_stream.cc' object='libnghttp2_asio_la-asio_client_stream.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libnghttp2_asio_la-asio_client_stream.lo `test -f 'asio_client_stream.cc' || echo '$(srcdir)/'`asio_client_stream.cc
-
-libnghttp2_asio_la-asio_client_tls_context.lo: asio_client_tls_context.cc
-@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT libnghttp2_asio_la-asio_client_tls_context.lo -MD -MP -MF $(DEPDIR)/libnghttp2_asio_la-asio_client_tls_context.Tpo -c -o libnghttp2_asio_la-asio_client_tls_context.lo `test -f 'asio_client_tls_context.cc' || echo '$(srcdir)/'`asio_client_tls_context.cc
-@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libnghttp2_asio_la-asio_client_tls_context.Tpo $(DEPDIR)/libnghttp2_asio_la-asio_client_tls_context.Plo
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='asio_client_tls_context.cc' object='libnghttp2_asio_la-asio_client_tls_context.lo' libtool=yes @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libnghttp2_asio_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o libnghttp2_asio_la-asio_client_tls_context.lo `test -f 'asio_client_tls_context.cc' || echo '$(srcdir)/'`asio_client_tls_context.cc
-
 nghttpx-shrpx.o: shrpx.cc
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(nghttpx_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT nghttpx-shrpx.o -MD -MP -MF $(DEPDIR)/nghttpx-shrpx.Tpo -c -o nghttpx-shrpx.o `test -f 'shrpx.cc' || echo '$(srcdir)/'`shrpx.cc
 @am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/nghttpx-shrpx.Tpo $(DEPDIR)/nghttpx-shrpx.Po
@@ -2836,27 +2408,6 @@ mostlyclean-libtool:
 
 clean-libtool:
 	-rm -rf .libs _libs
-install-pkgconfigDATA: $(pkgconfig_DATA)
-	@$(NORMAL_INSTALL)
-	@list='$(pkgconfig_DATA)'; test -n "$(pkgconfigdir)" || list=; \
-	if test -n "$$list"; then \
-	  echo " $(MKDIR_P) '$(DESTDIR)$(pkgconfigdir)'"; \
-	  $(MKDIR_P) "$(DESTDIR)$(pkgconfigdir)" || exit 1; \
-	fi; \
-	for p in $$list; do \
-	  if test -f "$$p"; then d=; else d="$(srcdir)/"; fi; \
-	  echo "$$d$$p"; \
-	done | $(am__base_list) | \
-	while read files; do \
-	  echo " $(INSTALL_DATA) $$files '$(DESTDIR)$(pkgconfigdir)'"; \
-	  $(INSTALL_DATA) $$files "$(DESTDIR)$(pkgconfigdir)" || exit $$?; \
-	done
-
-uninstall-pkgconfigDATA:
-	@$(NORMAL_UNINSTALL)
-	@list='$(pkgconfig_DATA)'; test -n "$(pkgconfigdir)" || list=; \
-	files=`for p in $$list; do echo $$p; done | sed -e 's|^.*/||'`; \
-	dir='$(DESTDIR)$(pkgconfigdir)'; $(am__uninstall_files_from_dir)
 
 # This directory's subdirectories are mostly independent; you can cd
 # into them and run 'make' without going through this Makefile.
@@ -3181,14 +2732,10 @@ check-am: all-am
 	$(MAKE) $(AM_MAKEFLAGS) $(check_PROGRAMS)
 	$(MAKE) $(AM_MAKEFLAGS) check-TESTS
 check: check-recursive
-all-am: Makefile $(PROGRAMS) $(LIBRARIES) $(LTLIBRARIES) $(DATA)
-install-binPROGRAMS: install-libLTLIBRARIES
-
-install-checkPROGRAMS: install-libLTLIBRARIES
-
+all-am: Makefile $(PROGRAMS) $(LIBRARIES)
 installdirs: installdirs-recursive
 installdirs-am:
-	for dir in "$(DESTDIR)$(bindir)" "$(DESTDIR)$(libdir)" "$(DESTDIR)$(pkgconfigdir)"; do \
+	for dir in "$(DESTDIR)$(bindir)"; do \
 	  test -z "$$dir" || $(MKDIR_P) "$$dir"; \
 	done
 install: install-recursive
@@ -3220,7 +2767,6 @@ clean-generic:
 distclean-generic:
 	-test -z "$(CONFIG_CLEAN_FILES)" || rm -f $(CONFIG_CLEAN_FILES)
 	-test . = "$(srcdir)" || test -z "$(CONFIG_CLEAN_VPATH_FILES)" || rm -f $(CONFIG_CLEAN_VPATH_FILES)
-	-test -z "$(DISTCLEANFILES)" || rm -f $(DISTCLEANFILES)
 
 maintainer-clean-generic:
 	@echo "This command is intended for maintainers to use"
@@ -3228,8 +2774,7 @@ maintainer-clean-generic:
 clean: clean-recursive
 
 clean-am: clean-binPROGRAMS clean-checkPROGRAMS clean-generic \
-	clean-libLTLIBRARIES clean-libtool clean-noinstLIBRARIES \
-	mostlyclean-am
+	clean-libtool clean-noinstLIBRARIES mostlyclean-am
 
 distclean: distclean-recursive
 		-rm -f ./$(DEPDIR)/HtmlParser.Po
@@ -3244,34 +2789,6 @@ distclean: distclean-recursive
 	-rm -f ./$(DEPDIR)/h2load_quic.Po
 	-rm -f ./$(DEPDIR)/http2.Po
 	-rm -f ./$(DEPDIR)/inflatehd.Po
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_client_request.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_client_request_impl.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_client_response.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_client_response_impl.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_client_session.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_client_session_impl.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_client_session_tcp_impl.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_client_session_tls_impl.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_client_stream.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_client_tls_context.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_common.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_io_service_pool.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_server.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_server_http2.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_server_http2_handler.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_server_http2_impl.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_server_request.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_server_request_handler.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_server_request_impl.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_server_response.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_server_response_impl.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_server_serve_mux.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_server_stream.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_server_tls_context.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-http2.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-timegm.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-tls.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-util.Plo
 	-rm -f ./$(DEPDIR)/libnghttpx_a-app_helper.Po
 	-rm -f ./$(DEPDIR)/libnghttpx_a-http2.Po
 	-rm -f ./$(DEPDIR)/libnghttpx_a-http3.Po
@@ -3363,13 +2880,13 @@ info: info-recursive
 
 info-am:
 
-install-data-am: install-pkgconfigDATA
+install-data-am:
 
 install-dvi: install-dvi-recursive
 
 install-dvi-am:
 
-install-exec-am: install-binPROGRAMS install-libLTLIBRARIES
+install-exec-am: install-binPROGRAMS
 
 install-html: install-html-recursive
 
@@ -3404,34 +2921,6 @@ maintainer-clean: maintainer-clean-recursive
 	-rm -f ./$(DEPDIR)/h2load_quic.Po
 	-rm -f ./$(DEPDIR)/http2.Po
 	-rm -f ./$(DEPDIR)/inflatehd.Po
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_client_request.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_client_request_impl.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_client_response.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_client_response_impl.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_client_session.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_client_session_impl.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_client_session_tcp_impl.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_client_session_tls_impl.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_client_stream.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_client_tls_context.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_common.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_io_service_pool.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_server.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_server_http2.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_server_http2_handler.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_server_http2_impl.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_server_request.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_server_request_handler.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_server_request_impl.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_server_response.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_server_response_impl.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_server_serve_mux.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_server_stream.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-asio_server_tls_context.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-http2.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-timegm.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-tls.Plo
-	-rm -f ./$(DEPDIR)/libnghttp2_asio_la-util.Plo
 	-rm -f ./$(DEPDIR)/libnghttpx_a-app_helper.Po
 	-rm -f ./$(DEPDIR)/libnghttpx_a-http2.Po
 	-rm -f ./$(DEPDIR)/libnghttpx_a-http3.Po
@@ -3523,29 +3012,26 @@ ps: ps-recursive
 
 ps-am:
 
-uninstall-am: uninstall-binPROGRAMS uninstall-libLTLIBRARIES \
-	uninstall-pkgconfigDATA
+uninstall-am: uninstall-binPROGRAMS
 
 .MAKE: $(am__recursive_targets) check-am install-am install-strip
 
 .PHONY: $(am__recursive_targets) CTAGS GTAGS TAGS all all-am \
 	am--depfiles check check-TESTS check-am clean \
 	clean-binPROGRAMS clean-checkPROGRAMS clean-generic \
-	clean-libLTLIBRARIES clean-libtool clean-noinstLIBRARIES \
-	cscopelist-am ctags ctags-am distclean distclean-compile \
-	distclean-generic distclean-libtool distclean-tags distdir dvi \
-	dvi-am html html-am info info-am install install-am \
-	install-binPROGRAMS install-data install-data-am install-dvi \
-	install-dvi-am install-exec install-exec-am install-html \
-	install-html-am install-info install-info-am \
-	install-libLTLIBRARIES install-man install-pdf install-pdf-am \
-	install-pkgconfigDATA install-ps install-ps-am install-strip \
+	clean-libtool clean-noinstLIBRARIES cscopelist-am ctags \
+	ctags-am distclean distclean-compile distclean-generic \
+	distclean-libtool distclean-tags distdir dvi dvi-am html \
+	html-am info info-am install install-am install-binPROGRAMS \
+	install-data install-data-am install-dvi install-dvi-am \
+	install-exec install-exec-am install-html install-html-am \
+	install-info install-info-am install-man install-pdf \
+	install-pdf-am install-ps install-ps-am install-strip \
 	installcheck installcheck-am installdirs installdirs-am \
 	maintainer-clean maintainer-clean-generic mostlyclean \
 	mostlyclean-compile mostlyclean-generic mostlyclean-libtool \
 	pdf pdf-am ps ps-am recheck tags tags-am uninstall \
-	uninstall-am uninstall-binPROGRAMS uninstall-libLTLIBRARIES \
-	uninstall-pkgconfigDATA
+	uninstall-am uninstall-binPROGRAMS
 
 .PRECIOUS: Makefile
 

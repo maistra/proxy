@@ -25,6 +25,7 @@
 #include "test/config/integration/certs/clientcert_hash.h"
 #include "test/config/utility.h"
 #include "test/integration/http_integration.h"
+#include "test/integration/ssl_utility.h"
 #include "test/test_common/registry.h"
 #include "test/test_common/test_runtime.h"
 #include "test/test_common/utility.h"
@@ -37,6 +38,9 @@
 #include "quiche/quic/test_tools/quic_test_utils.h"
 
 namespace Envoy {
+
+using Extensions::TransportSockets::Tls::ContextImplPeer;
+
 namespace Quic {
 
 class CodecClientCallbacksForTest : public Http::CodecClientCallbacks {

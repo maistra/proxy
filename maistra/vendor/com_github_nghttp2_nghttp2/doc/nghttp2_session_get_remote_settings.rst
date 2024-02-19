@@ -12,4 +12,4 @@ Synopsis
     
     Returns the value of SETTINGS *id* notified by a remote endpoint.
     The *id* must be one of values defined in
-    :macro:`nghttp2_settings_id`.
+    :enum:`nghttp2_settings_id`.

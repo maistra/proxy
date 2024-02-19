@@ -13,6 +13,7 @@ fi
 export ARCH
 
 COMMON_FLAGS="\
+    --config=libc++ \
     --config=${ARCH} \
     --define crypto=system \
 "

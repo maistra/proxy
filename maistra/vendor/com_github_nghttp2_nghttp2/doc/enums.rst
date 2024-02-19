@@ -178,7 +178,7 @@ Enums
     .. enum:: NGHTTP2_ERR_FATAL
 
         (``-900``) 
-        The errors < :macro:`nghttp2_error.NGHTTP2_ERR_FATAL` mean that
+        The errors < :enum:`nghttp2_error.NGHTTP2_ERR_FATAL` mean that
         the library is under unexpected condition and processing was
         terminated (e.g., out of memory).  If application receives this
         error code, it must stop using that :type:`nghttp2_session`

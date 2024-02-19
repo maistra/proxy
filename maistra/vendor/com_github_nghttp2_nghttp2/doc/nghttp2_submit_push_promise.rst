@@ -27,10 +27,10 @@ Synopsis
     This function creates copies of all name/value pairs in *nva*.  It
     also lower-cases all names in *nva*.  The order of elements in
     *nva* is preserved.  For header fields with
-    :macro:`nghttp2_nv_flag.NGHTTP2_NV_FLAG_NO_COPY_NAME` and
-    :macro:`nghttp2_nv_flag.NGHTTP2_NV_FLAG_NO_COPY_VALUE` are set,
+    :enum:`nghttp2_nv_flag.NGHTTP2_NV_FLAG_NO_COPY_NAME` and
+    :enum:`nghttp2_nv_flag.NGHTTP2_NV_FLAG_NO_COPY_VALUE` are set,
     header field name and value are not copied respectively.  With
-    :macro:`nghttp2_nv_flag.NGHTTP2_NV_FLAG_NO_COPY_NAME`, application
+    :enum:`nghttp2_nv_flag.NGHTTP2_NV_FLAG_NO_COPY_NAME`, application
     is responsible to pass header field name in lowercase.  The
     application should maintain the references to them until
     :type:`nghttp2_on_frame_send_callback` or
@@ -51,18 +51,18 @@ Synopsis
     This function returns assigned promised stream ID if it succeeds,
     or one of the following negative error codes:
     
-    :macro:`nghttp2_error.NGHTTP2_ERR_NOMEM`
+    :enum:`nghttp2_error.NGHTTP2_ERR_NOMEM`
         Out of memory.
-    :macro:`nghttp2_error.NGHTTP2_ERR_PROTO`
+    :enum:`nghttp2_error.NGHTTP2_ERR_PROTO`
         This function was invoked when *session* is initialized as
         client.
-    :macro:`nghttp2_error.NGHTTP2_ERR_STREAM_ID_NOT_AVAILABLE`
+    :enum:`nghttp2_error.NGHTTP2_ERR_STREAM_ID_NOT_AVAILABLE`
         No stream ID is available because maximum stream ID was
         reached.
-    :macro:`nghttp2_error.NGHTTP2_ERR_INVALID_ARGUMENT`
+    :enum:`nghttp2_error.NGHTTP2_ERR_INVALID_ARGUMENT`
         The *stream_id* is 0; The *stream_id* does not designate stream
         that peer initiated.
-    :macro:`nghttp2_error.NGHTTP2_ERR_STREAM_CLOSED`
+    :enum:`nghttp2_error.NGHTTP2_ERR_STREAM_CLOSED`
         The stream was already closed; or the *stream_id* is invalid.
     
     .. warning::
