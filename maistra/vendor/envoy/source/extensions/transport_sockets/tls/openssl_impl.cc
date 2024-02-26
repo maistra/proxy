@@ -129,7 +129,7 @@ uint16_t SSL_CIPHER_get_min_version(const SSL_CIPHER *cipher) {
     }
 
     const EVP_MD *digest = SSL_CIPHER_get_handshake_digest(cipher);
-    if (EVP_MD_type(digest) != NID_md5_sha1) {
+    if ((digest == nullptr) || (EVP_MD_type(digest) != NID_md5_sha1)) {
         return TLS1_2_VERSION;
     }
 
