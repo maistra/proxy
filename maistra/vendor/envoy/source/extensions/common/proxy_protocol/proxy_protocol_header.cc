@@ -44,6 +44,14 @@ void generateV1Header(const Network::Address::Ip& source_address,
 void generateV2Header(const std::string& src_addr, const std::string& dst_addr, uint32_t src_port,
                       uint32_t dst_port, Network::Address::IpVersion ip_version,
                       Buffer::Instance& out) {
+  if (src_addr.empty()) {
+    IS_ENVOY_BUG("Missing or incorrect source IP in src address");
+    return ;
+  }
+  if (dst_addr.empty()) {
+    IS_ENVOY_BUG("Missing or incorrect dest IP in dst address");
+    return ;
+  }
   out.add(PROXY_PROTO_V2_SIGNATURE, PROXY_PROTO_V2_SIGNATURE_LEN);
 
   const uint8_t version_and_command = PROXY_PROTO_V2_VERSION << 4 | PROXY_PROTO_V2_ONBEHALF_OF;
