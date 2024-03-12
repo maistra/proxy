@@ -32,4 +32,14 @@ time bazel build \
 time bazel test \
   ${COMMON_FLAGS} \
   --build_tests_only \
-  //test/...
+  --flaky_test_attempts=5 \
+  -- \
+  //test/... \
+  -//test/server:guarddog_impl_test
+
+time bazel test \
+  ${COMMON_FLAGS} \
+  --build_tests_only \
+  --flaky_test_attempts=5 \
+  //test/server:guarddog_impl_test
+

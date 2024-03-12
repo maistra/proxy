@@ -21,6 +21,7 @@
 #include "source/common/common/utility.h"
 #include "source/common/network/address_impl.h"
 #include "source/common/network/utility.h"
+#include "source/common/protobuf/utility.h"
 #include "source/extensions/common/proxy_protocol/proxy_protocol_header.h"
 
 using Envoy::Extensions::Common::ProxyProtocol::PROXY_PROTO_V1_SIGNATURE;
@@ -203,10 +204,17 @@ bool Filter::parseV2Header(char* buf) {
         la4.sin_family = AF_INET;
         la4.sin_port = v4->dst_port;
         la4.sin_addr.s_addr = v4->dst_addr;
-        proxy_protocol_header_.emplace(
+        try {
+          // TODO(ggreenway): make this work without requiring operating system support for an
+          // address family.
+          proxy_protocol_header_.emplace(
             WireHeader{hdr_addr_len - PROXY_PROTO_V2_ADDR_LEN_INET, Network::Address::IpVersion::v4,
                        std::make_shared<Network::Address::Ipv4Instance>(&ra4),
                        std::make_shared<Network::Address::Ipv4Instance>(&la4)});
+                       } catch (const EnvoyException& e) {
+          ENVOY_LOG(debug, "Proxy protocol failure: {}", e.what());
+          return false;
+        }
         return true;
       } else if (((proto_family & 0xf0) >> 4) == PROXY_PROTO_V2_AF_INET6) {
         PACKED_STRUCT(struct pp_ipv6_addr {
@@ -228,10 +236,17 @@ bool Filter::parseV2Header(char* buf) {
         la6.sin6_port = v6->dst_port;
         safeMemcpy(&(la6.sin6_addr.s6_addr), &(v6->dst_addr));
 
-        proxy_protocol_header_.emplace(WireHeader{
+        try {
+          proxy_protocol_header_.emplace(WireHeader{
             hdr_addr_len - PROXY_PROTO_V2_ADDR_LEN_INET6, Network::Address::IpVersion::v6,
             std::make_shared<Network::Address::Ipv6Instance>(ra6),
             std::make_shared<Network::Address::Ipv6Instance>(la6)});
+            } catch (const EnvoyException& e) {
+          // TODO(ggreenway): make this work without requiring operating system support for an
+          // address family.
+          ENVOY_LOG(debug, "Proxy protocol failure: {}", e.what());
+          return false;
+        }
         return true;
       }
     }
@@ -366,11 +381,13 @@ bool Filter::parseTlvs(const std::vector<uint8_t>& tlvs) {
     }
 
     // Only save to dynamic metadata if this type of TLV is needed.
+    absl::string_view tlv_value(reinterpret_cast<char const*>(&tlvs[idx]), tlv_value_length);
     auto key_value_pair = config_->isTlvTypeNeeded(tlv_type);
     if (nullptr != key_value_pair) {
       ProtobufWkt::Value metadata_value;
-      metadata_value.set_string_value(reinterpret_cast<char const*>(tlvs.data() + idx),
-                                      tlv_value_length);
+      // Sanitize any non utf8 characters.
+      auto sanitised_tlv_value = MessageUtil::sanitizeUtf8String(tlv_value);
+      metadata_value.set_string_value(sanitised_tlv_value.data(), sanitised_tlv_value.size());
 
       std::string metadata_key = key_value_pair->metadata_namespace().empty()
                                      ? "envoy.filters.listener.proxy_protocol"

@@ -199,9 +199,20 @@ std::string Ipv4Instance::sockaddrToString(const sockaddr_in& addr) {
   return std::string(start, str + BufferSize - start);
 }
 
+namespace {
+bool force_ipv4_unsupported_for_test = false;
+}
+
+Cleanup Ipv4Instance::forceProtocolUnsupportedForTest(bool new_val) {
+  bool old_val = force_ipv4_unsupported_for_test;
+  force_ipv4_unsupported_for_test = new_val;
+  return Cleanup([old_val]() { force_ipv4_unsupported_for_test = old_val; });
+}
+
+
 absl::Status Ipv4Instance::validateProtocolSupported() {
   static const bool supported = SocketInterfaceSingleton::get().ipFamilySupported(AF_INET);
-  if (supported) {
+  if (supported && !force_ipv4_unsupported_for_test) {
     return absl::OkStatus();
   }
   return absl::FailedPreconditionError("IPv4 addresses are not supported on this machine");
@@ -255,6 +266,17 @@ Ipv6Instance::Ipv6Instance(const sockaddr_in6& address, bool v6only,
   initHelper(address, v6only);
 }
 
+namespace {
+bool force_ipv6_unsupported_for_test = false;
+}
+
+Cleanup Ipv6Instance::forceProtocolUnsupportedForTest(bool new_val) {
+  bool old_val = force_ipv6_unsupported_for_test;
+  force_ipv6_unsupported_for_test = new_val;
+  return Cleanup([old_val]() { force_ipv6_unsupported_for_test = old_val; });
+}
+
+
 Ipv6Instance::Ipv6Instance(const std::string& address, const SocketInterface* sock_interface)
     : Ipv6Instance(address, 0, sockInterfaceOrDefault(sock_interface)) {}
 
@@ -297,7 +319,7 @@ Ipv6Instance::Ipv6Instance(absl::Status& status, const sockaddr_in6& address, bo
 
 absl::Status Ipv6Instance::validateProtocolSupported() {
   static const bool supported = SocketInterfaceSingleton::get().ipFamilySupported(AF_INET6);
-  if (supported) {
+  if (supported && !force_ipv6_unsupported_for_test) {
     return absl::OkStatus();
   }
   return absl::FailedPreconditionError("IPv6 addresses are not supported on this machine");

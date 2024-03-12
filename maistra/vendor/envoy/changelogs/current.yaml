@@ -1,11 +1,9 @@
 date: Pending
 
 behavior_changes:
-<<<<<<< HEAD
 - area: tls-inspector
   change: |
     the listener filter tls inspector's stats ``connection_closed`` and ``read_error`` are removed. The new stats are introduced for listener, ``downstream_peek_remote_close`` and ``read_error`` :ref:`listener stats <config_listener_stats>`.
-=======
 # *Changes that are expected to cause an incompatibility if applicable; deployment changes are likely required*
 - area: http
   change: |
@@ -16,9 +14,6 @@ behavior_changes:
     resets is applied. The connection is disconnected if more than 50% of resets are premature.
     Setting the runtime key ``envoy.restart_features.send_goaway_for_premature_rst_streams`` to ``false`` completely disables
     this check.
-<<<<<<< HEAD
->>>>>>> 01b62a78e9 (Close HTTP connections that prematurely reset streams)
-=======
 - area: http
   change: |
     Add runtime flag ``http.max_requests_per_io_cycle`` for setting the limit on the number of HTTP requests processed
@@ -26,7 +21,6 @@ behavior_changes:
     mitigates CPU starvation by connections that simultaneously send high number of requests by allowing requests from other
     connections to make progress. This runtime value can be set to 1 in the presence of abusive HTTP/2 or HTTP/3 connections.
     By default this limit is disabled.
->>>>>>> b8f05c054c (Limit on the number of HTTP requests processed from a connection in an I/O cycle)
 
 minor_behavior_changes:
 - area: thrift
@@ -213,7 +207,21 @@ new_features:
 - area: dubbo_proxy
   change: |
     added :ref:`metadata_match <envoy_v3_api_field_extensions.filters.network.dubbo_proxy.v3.RouteAction.metadata_match>` support to the dubbo proxy.
-
+- area: proxy_protocol
+  change: |
+    Fix crash due to uncaught exception when the operating system does not support an address type (such as IPv6) that is
+    received in a proxy protocol header. Connections will instead be dropped/reset.
+- area: http
+  change: |
+    Fixed crash when HTTP request idle and per try timeouts occurs within backoff interval.
+- area: proxy protocol
+  change: |
+    fixed a crash when Envoy is configured for PROXY protocol on both a listener and cluster, and the listener receives
+    a PROXY protocol header with address type LOCAL (typically used for health checks).
+- area: proxy_protocol
+  change: |
+    Fixed a bug where TLVs with non utf8 characters were inserted as protobuf values into filter metadata circumventing
+    ext_authz checks when ``failure_mode_allow`` is set to ``true``.
 deprecated:
 - area: dubbo_proxy
   change: |

@@ -892,6 +892,7 @@ negative
 netblock
 netblocks
 netfilter
+NLB
 nonblocking
 noncopyable
 nonresponsive
