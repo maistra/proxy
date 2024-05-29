@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+#
+# Copyright 2018 The Bazel Authors. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+set -euo pipefail
+
+# This test script is used as the executable output of a `swift_test` rule when
+# building macOS targets (unless the "swift.bundled_tests" feature is disabled)
+# because the test binary is an `MH_BUNDLE` that needs to be loaded dynamically
+# and runtime reflection is used to locate the test methods.
+
+tmp_dir=$(mktemp -d)
+trap 'rm -rf "$tmp_dir"' EXIT
+readonly profraw="$tmp_dir/coverage.profraw"
+
+# Foo.xctest/Contents/MacOS/Foo -> Foo.xctest
+executable_path="%executable%"
+bundle_path="$(dirname "$(dirname "$(dirname "$executable_path")")")"
+
+sanitizer_dyld_env=""
+if output=$(otool -L "$executable_path" | grep @rpath/libclang_rt | xargs | cut -d " " -f 1); then
+  rpath=$(otool -l "$executable_path" | grep -A2 LC_RPATH | grep "^\s*path" | grep usr/lib/clang | head -1 | cut -d " " -f 11)
+  if [[ -z "$rpath" ]]; then
+    echo "Sanitizer libraries are required but rpath could not be inferred, please file an issue" >&2
+    exit 1
+  fi
+
+  for lib in $output; do
+    if [[ -n "$sanitizer_dyld_env" ]]; then
+      sanitizer_dyld_env="$sanitizer_dyld_env:"
+    fi
+    sanitizer_dyld_env="${sanitizer_dyld_env}$rpath/${lib#@rpath/}"
+  done
+fi
+
+if [[ -n "${DYLD_INSERT_LIBRARIES:-}" ]]; then
+  if [[ -n "$sanitizer_dyld_env" ]]; then
+    sanitizer_dyld_env="$sanitizer_dyld_env:"
+  fi
+  sanitizer_dyld_env="$sanitizer_dyld_env$DYLD_INSERT_LIBRARIES"
+fi
+
+exit_status=0
+xctest=$(xcrun -f xctest)
+test_filter=${TESTBRIDGE_TEST_ONLY:-All}
+DYLD_INSERT_LIBRARIES=$sanitizer_dyld_env LLVM_PROFILE_FILE="$profraw" $xctest -XCTest "$test_filter" "$bundle_path" || exit_status=$?
+
+if [[ "$exit_status" -ne 0 ]]; then
+  exit "$exit_status"
+fi
+
+if [[ "${COVERAGE:-}" -ne 1 ]]; then
+  # Normal tests run without coverage
+  exit 0
+fi
+
+readonly profdata="$tmp_dir/coverage.profdata"
+xcrun llvm-profdata merge "$profraw" --output "$profdata"
+
+readonly error_file="$tmp_dir/llvm-cov-error.txt"
+llvm_cov_status=0
+xcrun llvm-cov \
+  export \
+  -format lcov \
+  -instr-profile "$profdata" \
+  -ignore-filename-regex='.*external/.+' \
+  -path-equivalence="$ROOT",. \
+  "%executable%" \
+  @"$COVERAGE_MANIFEST" \
+  > "$COVERAGE_OUTPUT_FILE" \
+  2> "$error_file" \
+  || llvm_cov_status=$?
+
+# Error ourselves if lcov outputs warnings, such as if we misconfigure
+# something and the file path of one of the covered files doesn't exist
+if [[ -s "$error_file" || "$llvm_cov_status" -ne 0 ]]; then
+  echo "error: while exporting coverage report" >&2
+  cat "$error_file" >&2
+  exit 1
+fi

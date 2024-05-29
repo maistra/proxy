@@ -1,0 +1,2 @@
+# DO NOT EDIT: automatically generated WORKSPACE file for pip_repository rule
+workspace(name = "base_pip3")

@@ -1,0 +1,19 @@
+load("@aspect_bazel_lib//lib:copy_directory.bzl", "copy_directory")
+
+[
+    copy_directory(
+        name = "%s" % d,
+        src = "dir_%s" % d,
+        out = "%s" % d,
+        visibility = ["//visibility:public"],
+    )
+    for d in [
+        "test_a",
+        "test_b",
+    ]
+]
+
+exports_files([
+    "test_c",
+    "test_d",
+])

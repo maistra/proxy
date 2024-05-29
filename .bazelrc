@@ -49,6 +49,8 @@ build:debug -c dbg
 build --cxxopt -Wformat
 build --cxxopt -Wformat-security
 
+build --linkopt=-lstdc++fs
+
 # Link pthread for flatbuffers
 build --host_linkopt=-pthread
 

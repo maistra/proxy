@@ -1,0 +1,8 @@
+
+filegroup(
+    name = "libdlb",
+    srcs = glob([
+        "dlb/libdlb/**",
+    ]),
+    visibility = ["@envoy//contrib/dlb/source:__pkg__"],
+)

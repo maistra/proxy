@@ -1,0 +1,11 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "common",
+    srcs = [
+        "copy.go",
+        "file.go",
+    ],
+    importpath = "github.com/aspect-build/bazel-lib/tools/common",
+    visibility = ["//visibility:public"],
+)

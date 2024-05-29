@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+
+# Copyright 2017 The Bazel Authors. All rights reserved.
+
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+
+#    http://www.apache.org/licenses/LICENSE-2.0
+
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+@@GENERATED_MESSAGE@@
+
+set -euo pipefail
+
+RUNNER_LABEL=@@RUNNER_LABEL@@
+GAZELLE_SHORT_PATH=@@GAZELLE_SHORT_PATH@@
+GAZELLE_LABEL=@@GAZELLE_LABEL@@
+ARGS=@@ARGS@@
+GOTOOL=@@GOTOOL@@
+REPO_CONFIG_SHORT_PATH=@@REPO_CONFIG_SHORT_PATH@@
+
+@@ENV@@
+
+# find_runfile prints the location of a runfile in the source workspace,
+# either by reading the symbolic link or reading the runfiles manifest.
+function find_runfile {
+  local runfile=$1
+  if [ -f "$runfile" ]; then
+    readlink "$runfile"
+    return
+  fi
+  runfile=${runfile#external/}
+  if grep -q "^$runfile" "$0.runfiles_manifest"; then
+    grep "^$runfile" "$0.runfiles_manifest" | head -n 1 | cut -d' ' -f2
+    return
+  fi
+  # printing nothing indicates failure
+}
+
+# set_goroot attempts to set GOROOT to the SDK used by rules_go. gazelle
+# invokes tools inside the Go SDK for dependency management. It's good to
+# use the SDK used by the workspace in case the Go SDK is not installed
+# on the host system or is a different version.
+function set_goroot {
+  local gotool=$(find_runfile "$GOTOOL")
+  if [ -z "$gotool" ]; then
+    echo "$0: warning: could not locate GOROOT used by rules_go" >&2
+    return
+  fi
+  export GOROOT=$(cd "$(dirname "$gotool")/.."; pwd)
+  if type cygpath >/dev/null 2>&1; then
+    # On Windows, convert the path to something usable outside of bash.
+    GOROOT=$(cygpath -w "$GOROOT")
+  fi
+}
+
+# If arguments were provided on the command line, either replace or augment
+# the generated args.
+case "${1-}" in
+  "fix" | "update" | "help" | "update-repos")
+    ARGS=("$@")
+    ;;
+  *)
+    ARGS+=("$@")
+    ;;
+esac
+
+# Invoke Gazelle.
+# Note that we don't change directories first; if we did, Gazelle wouldn't be
+# able to find runfiles, and some extensions rely on that. Gazelle can use
+# BUILD_WORKSPACE_DIRECTORY to interpret relative paths on the command line.
+set_goroot
+gazelle_short_path=$(find_runfile "$GAZELLE_SHORT_PATH")
+if [ -z "$gazelle_short_path" ]; then
+  echo "error: could not locate gazelle binary" >&2
+  exit 1
+fi
+if [ -z "${BUILD_WORKSPACE_DIRECTORY-}" ]; then
+  echo "error: BUILD_WORKSPACE_DIRECTORY not set" >&2
+  exit 1
+fi
+
+# Determine if we are running the fix/update command
+if [[ ${#ARGS[@]} -gt 0 ]]; then
+  case "${ARGS[0]}" in
+    "fix" | "update")
+      is_fix_or_update="true"
+      ;;
+    *)
+      is_fix_or_update="false"
+      ;;
+  esac
+fi
+
+# When running with Bzlmod, there is no WORKSPACE file for Gazelle to read
+# the definitions of go_repository rules from. Instead, we pass the path to
+# the repo config file as a flag.
+if [[ "${is_fix_or_update:-}" == "true"  ]] && [[ -n $REPO_CONFIG_SHORT_PATH ]]; then
+  ARGS=("${ARGS[0]}" "-repo_config" "$(find_runfile "$REPO_CONFIG_SHORT_PATH")" "${ARGS[@]:1}")
+fi
+
+"$gazelle_short_path" "${ARGS[@]}"

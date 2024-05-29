@@ -1,0 +1,2 @@
+# DO NOT EDIT: automatically generated WORKSPACE file for go_multiple_toolchains rule
+workspace(name = "go_linux_amd64_toolchains")

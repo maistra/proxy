@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# —————————————————————————————————————————————————————————————————————————————————————
+# NOTE: These setup scripts rely on an open source BASH framework BashMatic.
+#       https://github.com/kigster/bashmatic
+#
+# The framework is pretty light-weight, and is installed in your $HOME/.bashmatic folder.
+# You can safely remove that folder after the setup if you wish, although re-running the 
+# setup will re-install it.
+# —————————————————————————————————————————————————————————————————————————————————————
+
+set -e
+# shellcheck disable=SC1091
+source "bin/deps"
+
+declare -a BREW_DEPS
+BREW_DEPS=(xz ydiff bash-completion)
+
+#——————————————————————————————  OS-X SPECIFIC INSTALLERS —————————————————————————
+
+__setup.brew-validate() {
+  # Homebrew is required to install Bazel
+  if ! brew help >/dev/null; then
+    echo "brew is not installed, please install from https://brew.sh"
+  else
+    info: "Homebrew is already installed."
+  fi
+}
+
+function __setup.brew-deps() {
+  brew.install.packages "${BREW_DEPS[@]}"
+}
+
+function __setup.is-bazelisk-installed() {
+  [[ -n "$(command -v bazelisk)" ]] 
+}
+
+function __setup.is-bazel-installed() {
+  [[ -n "$(command -v bazel)" ]] 
+}
+
+#——————————————————————————————  PUBLIC INTERFACE —————————————————————————
+
+setup.brew() {
+  __setup.brew-validate
+  __setup.brew-deps
+}
+
+setup.xcode-tools() {
+  # xcode command line tools are required, specifically gcc
+  # if xcode already exists, this command will error, otherwise prompt the user
+  if [[ -n $(xcode-select --install 2>&1) ]]; then
+    info: "xcode-select tools are already installed."
+  fi
+
+  info "Next command requires sudo privileges to accept XCode License"
+  run.set-next show-output-on
+  run "sudo xcodebuild -license accept"
+}
+
+setup.bazel() {
+  brew.package.is-installed bazelisk && 
+    brew.uninstall.package bazelisk && 
+      run "brew unlink bazel"
+    
+  if __setup.is-bazelisk-installed && __setup.is-bazel-installed ; then
+    info: "Bazel & bazelisk are already installed."
+  else
+    brew.install.packages bazel bazelisk
+    run "brew link bazel || true"
+  fi
+
+  
+}
+
+setup.darwin() {
+  setup.xcode-tools
+  setup.brew
+  setup.bazel
+}

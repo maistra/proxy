@@ -1,0 +1,76 @@
+"tests for copy_files"
+
+load("//lib:copy_file.bzl", "copy_file")
+load("//lib:copy_to_directory.bzl", "copy_to_directory")
+load("//lib:diff_test.bzl", "diff_test")
+load("//lib:directory_path.bzl", "make_directory_path")
+
+genrule(
+    name = "a_orig",
+    outs = ["a"],
+    cmd = "echo 'foo' > $@",
+)
+
+genrule(
+    name = "a2_orig",
+    outs = ["a2"],
+    cmd = "echo 'bar' > $@",
+)
+
+copy_to_directory(
+    name = "a_dir",
+    srcs = [
+        ":a2_orig",
+        ":a_orig",
+    ],
+)
+
+copy_file(
+    name = "a_copy_from_dir",
+    src = make_directory_path("a_dir_a", ":a_dir", "a"),
+    out = "a_copy",
+)
+
+diff_test(
+    name = "copy_from_dir_test",
+    file1 = ":a",
+    file2 = ":a_copy_from_dir",
+)
+
+# Case: can copy the same file to different outputs
+copy_file(
+    name = "copy_same_file_a",
+    src = "file1",
+    out = "file1_copy_a",
+)
+
+copy_file(
+    name = "copy_same_file_b",
+    src = "file1",
+    out = "file1_copy_b",
+)
+
+diff_test(
+    name = "copy_same_file_a_test",
+    file1 = ":file1",
+    file2 = ":file1_copy_a",
+)
+
+diff_test(
+    name = "copy_same_file_b_test",
+    file1 = ":file1",
+    file2 = ":file1_copy_b",
+)
+
+# Case: can copy a hidden file
+copy_file(
+    name = "copy_hidden_file2",
+    src = ".file2",
+    out = "file2_copy",
+)
+
+diff_test(
+    name = "copy_hidden_file_b_test",
+    file1 = ":.file2",
+    file2 = ":copy_hidden_file2",
+)

@@ -1,0 +1,62 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("//lib:copy_directory.bzl", "copy_directory")
+load("//lib:copy_to_bin.bzl", "copy_to_bin")
+load("//lib:diff_test.bzl", "diff_test")
+load(":lib.bzl", "lib")
+load(":pkg.bzl", "pkg")
+
+copy_to_bin(
+    name = "copy_1",
+    srcs = ["1"],
+)
+
+copy_directory(
+    name = "tree_artifact",
+    src = "ds",
+    out = "dsc",
+)
+
+lib(
+    name = "lib",
+    srcs = [
+        "copy_1",
+    ],
+    # intentionally dup on "1" to make sure it is gracefully handled
+    others = [
+        "1",
+        # also pass in a copy_to_bin copy of "1" to spice things up;
+        # this case is handled in the fix in https://github.com/aspect-build/bazel-lib/pull/205
+        "copy_1",
+        "2",
+        "d",
+    ],
+)
+
+# pkg should copy DefaultInfo files and OtherInfo files
+pkg(
+    name = "pkg",
+    srcs = [
+        ":lib",
+        # pass in a tree artifact to ensure that that is handled correctly and
+        # that symlinks to tree artifacts are handled correctly (see pkg.bzl
+        # implementation which creates symlinks to each file in ctx.files.srcs)
+        ":tree_artifact",
+    ],
+    out = "pkg",
+    use_declare_symlink = select({
+        "//lib/tests:experimental_allow_unresolved_symlinks": True,
+        "//conditions:default": False,
+    }),
+)
+
+diff_test(
+    name = "test",
+    file1 = ":pkg",
+    file2 = ":expected_pkg",
+)
+
+bzl_library(
+    name = "other_info",
+    srcs = ["other_info.bzl"],
+    visibility = ["//visibility:public"],
+)

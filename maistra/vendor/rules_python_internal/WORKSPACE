@@ -1,0 +1,2 @@
+# DO NOT EDIT: automatically generated WORKSPACE file for internal_config_repo rule
+workspace(name = "rules_python_internal")

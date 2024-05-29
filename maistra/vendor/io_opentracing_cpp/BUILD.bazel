@@ -1,0 +1,14 @@
+cc_library(
+    name = "opentracing",
+    srcs = glob(["src/**/*.cpp"], exclude=["src/dynamic_load_unsupported.cpp", "src/dynamic_load_windows.cpp"]),
+    hdrs = glob(["include/opentracing/**/*.h"]),
+    strip_include_prefix = "include",
+    visibility = ["//visibility:public"],
+    deps = [
+      "//3rd_party:expected",
+      "//3rd_party:variant",
+    ],
+    linkopts = [
+      "-ldl",
+    ],
+)

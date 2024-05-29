@@ -1,0 +1,19 @@
+load("@io_bazel_rules_go//go/private:go_toolchain.bzl", "declare_bazel_toolchains")
+package(default_visibility = ["//visibility:public"])
+
+_MAJOR_VERSION = "1"
+_MINOR_VERSION = "20"
+_PATCH_VERSION = "0"
+_PRERELEASE_SUFFIX = ""
+
+declare_bazel_toolchains(
+    prefix = "",
+    go_toolchain_repo = "@go_linux_arm64",
+    host_goarch = "arm64",
+    host_goos = "linux",
+    major = _MAJOR_VERSION,
+    minor = _MINOR_VERSION,
+    patch = _PATCH_VERSION,
+    prerelease = _PRERELEASE_SUFFIX,
+    sdk_type = "remote",
+)

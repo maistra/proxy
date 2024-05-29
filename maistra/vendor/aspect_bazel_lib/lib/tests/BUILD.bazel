@@ -1,0 +1,75 @@
+"tests for libs"
+
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
+load("//lib:expand_make_vars.bzl", "expand_template")
+load("//lib:testing.bzl", "assert_contains")
+load(":base64_tests.bzl", "base64_test_suite")
+load(":expand_make_vars_test.bzl", "expand_make_vars_test_suite")
+load(":glob_match_test.bzl", "glob_match_test_suite")
+load(":lists_test.bzl", "lists_test_suite")
+load(":paths_test.bzl", "paths_test_suite")
+load(":strings_tests.bzl", "strings_test_suite")
+load(":utils_test.bzl", "utils_test_suite")
+
+config_setting(
+    name = "experimental_allow_unresolved_symlinks",
+    values = {"experimental_allow_unresolved_symlinks": "true"},
+    visibility = ["//visibility:public"],
+)
+
+expand_make_vars_test_suite()
+
+paths_test_suite()
+
+utils_test_suite()
+
+glob_match_test_suite()
+
+base64_test_suite()
+
+strings_test_suite()
+
+lists_test_suite()
+
+write_file(
+    name = "gen_template",
+    out = "template.txt",
+    content = [
+        "#!/usr/bin/env bash",
+        "set -o errexit -o nounset -o pipefail",
+        """[ "{thing}" == "stuff" ]""",
+        """[ "%path%" == "{BINDIR}/lib/tests/template.txt" ]""",
+    ],
+)
+
+expand_template(
+    name = "expand_template",
+    out = "expand_template_test.sh",
+    data = [":gen_template"],
+    is_executable = True,
+    substitutions = {
+        "{thing}": "stuff",
+        "%path%": "$(execpath :gen_template)",
+        "{BINDIR}": "$(BINDIR)",
+    },
+    template = "template.txt",
+)
+
+sh_test(
+    name = "expand_template_test",
+    timeout = "short",
+    srcs = ["expand_template"],
+)
+
+assert_contains(
+    name = "expand_template_contains",
+    actual = "expand_template_test.sh",
+    expected = "stuff",
+)
+
+bzl_library(
+    name = "generate_outputs",
+    srcs = ["generate_outputs.bzl"],
+    visibility = ["//visibility:public"],
+)

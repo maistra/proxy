@@ -1,0 +1,198 @@
+---
+tasks:
+  ubuntu2004:
+    platform: ubuntu2004
+    build_targets:
+      - "//..."
+    test_targets:
+      - "//..."
+  rbe_ubuntu1604:
+    platform: rbe_ubuntu1604
+    build_targets:
+      - "//..."
+    test_targets:
+      - "//..."
+  macos:
+    platform: macos
+    build_targets:
+      - "//..."
+    test_targets:
+      - "//..."
+  windows:
+    platform: windows
+    build_targets:
+      - "//..."
+    test_targets:
+      - "//..."
+      # TODO: https://github.com/bazelbuild/rules_foreign_cc/issues/495
+      - "-//test:shell_method_symlink_contents_to_dir_test"
+      - "-//test:shell_script_inner_fun_test"
+  ubuntu1804_examples_standalone:
+    name: Examples (spawn_strategy=standalone)
+    platform: ubuntu1804
+    working_directory: examples
+    linux_targets: &linux_targets_standalone
+      - "//..."
+      - "//:third_party_examples_linux_tests"
+    build_targets: *linux_targets_standalone
+    build_flags:
+      - "-c"
+      - "dbg"
+      - "--spawn_strategy=standalone"
+      - "-k"
+    test_targets: *linux_targets_standalone
+    test_flags:
+      - "-c"
+      - "dbg"
+      - "--spawn_strategy=standalone"
+  ubuntu2004_examples:
+    name: Examples
+    platform: ubuntu2004
+    working_directory: examples
+    linux_targets: &linux_targets
+      - "//..."
+      - "//:third_party_examples_linux_tests"
+    build_targets: *linux_targets
+    test_targets: *linux_targets
+  rbe_ubuntu1604_examples:
+    name: Examples
+    platform: rbe_ubuntu1604
+    working_directory: examples
+    rbe_targets: &rbe_targets
+      - "//..."
+      - "//:third_party_examples_linux_rbe_tests"
+      # Gives error: zipalign: error while loading shared libraries: /usr/local/lib/libc++.so: file too short
+      - "-//cmake_android/..."
+    build_targets: *rbe_targets
+    test_targets: *rbe_targets
+  macos_examples_standalone:
+    name: Examples (spawn_strategy=standalone)
+    platform: macos
+    working_directory: examples
+    macos_targets: &macos_targets_standalone
+      - "//..."
+      - "//:third_party_examples_macos_tests"
+    build_targets: *macos_targets_standalone
+    build_flags:
+      - "-c"
+      - "dbg"
+      - "--spawn_strategy=standalone"
+      - "-k"
+    test_targets: *macos_targets_standalone
+    test_flags:
+      - "-c"
+      - "dbg"
+      - "--spawn_strategy=standalone"
+  macos_examples:
+    name: Examples
+    platform: macos
+    working_directory: examples
+    macos_targets: &macos_targets
+      - "//..."
+      - "//:third_party_examples_macos_tests"
+    build_targets: *macos_targets
+    test_targets: *macos_targets
+  windows_examples:
+    name: Examples
+    platform: windows
+    working_directory: examples
+    windows_targets: &windows_targets
+      - "//..."
+      - "//:third_party_examples_windows_tests"
+      # TODO: Support all targets on windows
+      - "-//cmake_android/..."
+      # TODO: Fix `error C2118: negative subscript`
+      - "-//cmake_defines/..."
+      # TODO: Fix linker error
+      - "-//cmake_synthetic/..."
+      # TODO: Fix `error LNK2019: unresolved external symbol hello_func`
+      - "-//cmake_hello_world_lib/shared/..."
+      # TODO: Fix `CreateProcess failed: The system cannot find the file specified.`
+      - "-//ninja_simple/..."
+      # TODO: The use of Visual Studio generator targets are broken. These should
+      # be re-enabled pending a resolution to
+      # https://github.com/bazelbuild/continuous-integration/issues/1204
+      - "-//cmake_hello_world_lib/static:libhello"
+      - "-//cmake_hello_world_lib/static:libhello_example"
+      - "-//cmake_hello_world_lib/static:test_hello"
+      - "-//cmake_with_data/..."
+    build_targets: *windows_targets
+    test_targets: *windows_targets
+    test_flags:
+      - "--enable_runfiles"
+  rbe_ubuntu1604_flags:
+    name: Flags
+    platform: rbe_ubuntu1604
+    working_directory: test/standard_cxx_flags_test
+    test_targets:
+      - "//:flags_test"
+  ubuntu2004_flags:
+    name: Flags
+    platform: ubuntu2004
+    working_directory: test/standard_cxx_flags_test
+    test_targets:
+      - "//:flags_test"
+  macos_flags:
+    name: Flags
+    platform: macos
+    working_directory: test/standard_cxx_flags_test
+    test_targets:
+      - "//:flags_test"
+  windows_flags:
+    name: Flags
+    platform: windows
+    working_directory: test/standard_cxx_flags_test
+    test_targets:
+      - "//:flags_test"
+  rbe_ubuntu1604_detect_root:
+    name: Detect root
+    platform: rbe_ubuntu1604
+    working_directory: test/detect_root_test
+    test_targets:
+      - "//:tests"
+  ubuntu2004_detect_root:
+    name: Detect root
+    platform: ubuntu2004
+    working_directory: test/detect_root_test
+    test_targets:
+      - "//:tests"
+  macos_detect_root:
+    name: Detect root
+    platform: macos
+    working_directory: test/detect_root_test
+    test_targets:
+      - "//:tests"
+  windows_detect_root:
+    name: Detect root
+    platform: windows
+    working_directory: test/detect_root_test
+    test_targets:
+      - "//:tests"
+  docs_linux:
+    name: Docs
+    platform: ubuntu2004
+    working_directory: docs
+    build_targets:
+      - //...
+  min_supported_version:
+    name: "Minimum Supported Version"
+    bazel: "4.0.0"
+    platform: ubuntu1804
+    build_targets:
+      - "//..."
+    test_targets:
+      - "//..."
+  min_supported_version_examples:
+    name: "Minimum Supported Version Examples"
+    bazel: "4.0.0"
+    platform: ubuntu1804
+    working_directory: examples
+    min_supported_targets: &min_supported_targets
+      - "//..."
+    build_targets: *min_supported_targets
+    test_targets: *min_supported_targets
+
+buildifier:
+  version: "4.2.5" 
+  # keep this argument in sync with .pre-commit-config.yaml
+  warnings: "all"

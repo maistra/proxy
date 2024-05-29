@@ -1,0 +1,2 @@
+# DO NOT EDIT: automatically generated WORKSPACE file for toolchain_aliases rule
+workspace(name = "python3_11")

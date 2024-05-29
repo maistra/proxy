@@ -1,0 +1,15 @@
+load("@rules_ruby//ruby:defs.bzl", "ruby_library")
+
+package(default_visibility = ["//visibility:public"])
+
+ruby_library(
+    name = "j",
+    srcs = ["j.rb"],
+    includes = ["baz"],
+    deps = [":k"],
+)
+
+ruby_library(
+    name = "k",
+    srcs = ["k.rb"],
+)

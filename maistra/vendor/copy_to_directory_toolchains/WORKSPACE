@@ -1,0 +1,2 @@
+# DO NOT EDIT: automatically generated WORKSPACE file for source_toolchains_repo rule
+workspace(name = "copy_to_directory_toolchains")

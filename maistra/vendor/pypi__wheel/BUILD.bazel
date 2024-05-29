@@ -1,0 +1,23 @@
+package(default_visibility = ["//visibility:public"])
+
+load("@rules_python//python:defs.bzl", "py_library")
+
+py_library(
+    name = "lib",
+    srcs = glob(["**/*.py"]),
+    data = glob(["**/*"], exclude=[
+        # These entries include those put into user-installed dependencies by
+        # data_exclude in /python/pip_install/tools/bazel.py
+        # to avoid non-determinism following pip install's behavior.
+        "**/*.py",
+        "**/*.pyc",
+        "**/*.pyc.*",  # During pyc creation, temp files named *.pyc.NNN are created
+        "**/* *",
+        "**/*.dist-info/RECORD",
+        "BUILD",
+        "WORKSPACE",
+    ]),
+    # This makes this directory a top-level in the python import
+    # search path for anything that depends on this.
+    imports = ["."],
+)

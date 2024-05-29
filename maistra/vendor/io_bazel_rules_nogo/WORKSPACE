@@ -1,0 +1,2 @@
+# DO NOT EDIT: automatically generated WORKSPACE file for go_register_nogo rule
+workspace(name = "io_bazel_rules_nogo")

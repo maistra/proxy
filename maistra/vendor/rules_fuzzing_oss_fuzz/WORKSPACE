@@ -1,0 +1,2 @@
+# DO NOT EDIT: automatically generated WORKSPACE file for oss_fuzz_repository rule
+workspace(name = "rules_fuzzing_oss_fuzz")

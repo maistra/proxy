@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# vim: ft=bash
+# When run, shows current runtime environment, locations of Ruby, Bazel,
+# python, etc.
+#
+# Safe to run, does not modify anything.
+
+# —————————————————————————————————————————————————————————————————————————————————————
+# NOTE: These setup scripts rely on an open source BASH framework BashMatic.
+#       https://github.com/kigster/bashmatic
+#
+# The framework is pretty light-weight, and is installed in your $HOME/.bashmatic folder.
+# You can safely remove that folder after the setup if you wish, although re-running the
+# setup will re-install it.
+# —————————————————————————————————————————————————————————————————————————————————————
+
+set -e
+[[ -x bin/deps ]] && source "bin/deps"
+
+# prints first argument as the key, right arligned, the second left aligned.
+function setup.table-rows() {
+  local value="$2"
+  #$value="$(printf "%s" "${value}" | head -1 | tr -C -d '[:digit:][:punct:]' | sed 's/([0-9]+.[0-9]+.[0+9]+)//g;s/[()]/-/g')"
+  value="$(printf "%s" "${value}" | head -1 | cut -b -40)"
+  printf "${bldylw}%10.10s : ${bldblu}%40.40s  |  ${txtpur}%s\n${clr}" "$1" "${value}" "$3"
+
+}
+
+function setup.print-versions() {
+  local bazelisk_version="$(/bin/ls -ls "$(command -v bazel)" | grep bazelisk | awk 'BEGIN{FS="/"}{print $8}')"
+
+  set +e
+  h2 "Your Current Runtime Environment:"
+  echo
+  setup.table-rows 'RULES_RUBY' "$(cat .rules_version)" "Last updated on $(file.last-modified-date CHANGELOG.md)"
+  hr
+  setup.table-rows 'BAZEL' "$(bazel --version)" "$(command -v bazel)"
+  setup.table-rows 'BAZELISK' "${bazelisk_version}"
+  setup.table-rows 'BASH' "$(bash --version 2>/dev/null | tr -d ',')" "$(command -v bash)"
+  setup.table-rows 'CC' "$(cc --version 2>/dev/null)" "$(cc --version | grep clang)"
+  setup.table-rows 'GO' "$(go version 2>/dev/null)" "$(command -v go)"
+  hr
+  setup.table-rows 'RUBY' "$(ruby --version | sed -E 's/p[0-9]+.*$//g' 2>&1)" "$(command -v ruby)"
+  setup.table-rows 'RBENV' "$(rbenv --version 2>/dev/null)" "$(command -v rbenv)"
+  setup.table-rows 'RUBIES' "List of installed Ruby Versions" "$(rbenv versions 2>/dev/null | sed 's/ (.*//g; s/[ \*]//g' | sed 's/$/, /g' | tr -d '\n')"
+  hr
+  setup.table-rows 'PYTHON' "$(python --version 2>&1)" "$(command -v python) -> $(readlink "$(command -v python)")"
+  setup.table-rows 'PYTHON2' "$(python2 --version 2>&1)" "$(command -v python2)"
+  setup.table-rows 'PYTHON3' "$(python3 --version 2>&1)" "$(command -v python3)"
+  hr
+  set -e
+
+  echo
+}
+
+setup.print-versions
+
+exit 0

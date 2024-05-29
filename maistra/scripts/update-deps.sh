@@ -85,22 +85,45 @@ function copy_files() {
     fi
   done 
 
+  # OSSM-1931: Install acorn module in maistra/vendor
+  #npm install acorn@8.8.0
+  # npm always installs "acorn" in $WORKDIR/node_modules
+  # move it in the vendor directory
+  #mv node_modules/acorn maistra/vendor/acorn
+  #/bin/rm -rf node_modules
+
+  chmod -R +w "${VENDOR_DIR}"
   find "${VENDOR_DIR}" -name .git -type d -print0 | xargs -0 -r rm -rf
   find "${VENDOR_DIR}" -name .gitignore -type f -delete
   find "${VENDOR_DIR}" -name __pycache__ -type d -print0 | xargs -0 -r rm -rf
   find "${VENDOR_DIR}" -name '*.pyc' -delete
 }
 
+
 function run_bazel() {
+  BAZEL_CACHE_FLAGS=""
+  if [[ -n ${BAZEL_REMOTE_CACHE} ]]; then
+    BAZEL_CACHE_FLAGS="--remote_cache=${BAZEL_REMOTE_CACHE}"
+    if [[ -n ${BAZEL_EXPERIMENTAL_REMOTE_DOWNLOADER} ]]; then
+      BAZEL_CACHE_FLAGS+=" --experimental_remote_downloader=${BAZEL_EXPERIMENTAL_REMOTE_DOWNLOADER}"
+    fi
+  elif [[ -n ${BAZEL_DISK_CACHE} ]]; then
+    BAZEL_CACHE_FLAGS+="--disk_cache=${BAZEL_DISK_CACHE}"
+  fi
+
+  # Fetch emsdk and net_zlib dependencies
+  bazel --output_base="${OUTPUT_BASE}" fetch @emsdk//:BUILD @net_zlib//:README
+
   # Workaround to force fetch of rules_license
   bazel --output_base="${OUTPUT_BASE}" fetch @remote_java_tools//java_tools/zlib:zlib || true
+
 
   # Workaround to force fetch of protoc for arm
   bazel --output_base="${OUTPUT_BASE}" fetch @com_google_protobuf_protoc_linux_aarch_64//:protoc
 
   # Fetch all the rest and check everything using "build --nobuild "option
-  for config in s390x ppc x86_64 aarch64; do
-    bazel --output_base="${OUTPUT_BASE}" build --nobuild --config="${config}" //...
+  for config in x86_64    aarch64; do # TODO (luajit package missing): s390x ppc
+    bazel  --output_base="${OUTPUT_BASE}" build --nobuild --config="${config}" //...
   done
 }
 

@@ -29,12 +29,13 @@ function init() {
 
 function get_envoy_sha() {
   local branch
-  branch="${BRANCH:-$(git symbolic-ref --quiet --short HEAD)}"
+  branch="release/v1.28"  
+  # TODO: envoy-openssl and proxy should have the same branch
+  # "${BRANCH:-$(git symbolic-ref --quiet --short HEAD)}"
 
   pushd "${WORKDIR}" >/dev/null
-  git clone --depth=1 -b "${branch}" https://github.com/maistra/envoy.git
-
-  pushd envoy >/dev/null
+  git clone --depth=1 -b "${branch}" https://github.com/envoyproxy/envoy-openssl.git
+  pushd envoy-openssl >/dev/null
   SHA=$(git rev-parse HEAD)
   popd >/dev/null
 
@@ -43,7 +44,7 @@ function get_envoy_sha() {
 
 function get_envoy_sha_256() {
   pushd "${WORKDIR}" >/dev/null
-  curl -sfLO "https://github.com/maistra/envoy/archive/${SHA}.tar.gz"
+  curl -sfLO "https://github.com/envoyproxy/envoy-openssl/archive/${SHA}.tar.gz"
   SHA256=$(sha256sum "${SHA}.tar.gz" | awk '{print $1}')
   popd >/dev/null
 }

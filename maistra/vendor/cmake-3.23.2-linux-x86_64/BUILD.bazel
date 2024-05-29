@@ -1,0 +1,24 @@
+load("@rules_foreign_cc//toolchains/native_tools:native_tools_toolchain.bzl", "native_tool_toolchain")
+
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "cmake_data",
+    srcs = glob(
+        [
+            "**",
+        ],
+        exclude = [
+            "WORKSPACE",
+            "WORKSPACE.bazel",
+            "BUILD",
+            "BUILD.bazel",
+        ],
+    ),
+)
+
+native_tool_toolchain(
+    name = "cmake_tool",
+    path = "bin/cmake",
+    target = ":cmake_data",
+)

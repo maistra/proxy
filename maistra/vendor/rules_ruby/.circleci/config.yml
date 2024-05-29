@@ -1,0 +1,108 @@
+version: 2.1
+
+jobs:
+  rubocop: &bazel_defaults
+    working_directory: /home/circleci/repo
+    resource_class: medium
+    docker:
+      - image: bazelruby/ruby-3.0.2
+    environment:
+      PATH: "/usr/local/bin:/usr/bin:/sbin:/opt/bin:/home/circleci/repo/bin:/bin:/sbin:/usr/sbin"
+      BUNDLE_PATH: /home/circleci/.bundle_cache
+      BAZEL_OPTS: "--host_jvm_args=-Xmx500m --host_jvm_args=-Xms500m"
+      BAZEL_BUILD_OPTS: "--curses=no --verbose_failures --jobs 10"
+      BAZEL_TEST_OPTS: "--verbose_failures --test_output=streamed --test_verbose_timeout_warnings "
+
+    steps:
+      - checkout
+
+      - run:
+          name: "Install ~/.bazelrc and run setup"
+          command: |
+            /usr/bin/env bash bin/setup
+
+      - run:
+          name: Install Bundler
+          command: |
+            gem install bundler:2.2.28 --no-doc
+            bundle install --jobs=4 --retry=3 --path ${BUNDLE_PATH}
+
+      - run:
+          name: "Rubocop Style Check"
+          command: bundle exec rubocop -E -P
+
+  bazel_build_workspace:
+    <<: *bazel_defaults
+    steps:
+      - checkout
+
+      - run:
+          name: "Install ~/.bazelrc and run setup"
+          command: |
+            /usr/bin/env bash bin/setup
+
+      - run:
+          name: "Bazel Build & Test Workspace"
+          command: |
+            /usr/bin/env bash bin/test-suite workspace
+
+  bazel_example_script:
+    <<: *bazel_defaults
+
+    steps:
+      - checkout
+
+      - run:
+          name: "Install ~/.bazelrc and run setup"
+          command: |
+            /usr/bin/env bash bin/setup
+
+      - run:
+          name: "Bazel Build & Test Example"
+          command: |
+            /usr/bin/env bash bin/test-suite simple-script
+
+  bazel_example_gem:
+    <<: *bazel_defaults
+
+    steps:
+      - checkout
+
+      - run:
+          name: "Install ~/.bazelrc and run setup"
+          command: |
+            /usr/bin/env bash bin/setup
+
+      - run:
+          name: "Bazel Build & Test Example"
+          command: |
+            /usr/bin/env bash bin/test-suite example-gem
+
+  buildifier:
+    <<: *bazel_defaults
+
+    steps:
+      - checkout
+
+      - run:
+          name: "Install ~/.bazelrc and run setup"
+          command: |
+            /usr/bin/env bash bin/setup
+
+      - run:
+          name: "Bazel Buildifier Build"
+          command: |
+            bazel ${BAZEL_OPTS} build ${BAZEL_BUILD_OPTS} :buildifier-check
+
+      - run:
+          name: "Bazel Buildifier Run"
+          command: |
+            bazel ${BAZEL_OPTS} run   ${BAZEL_BUILD_OPTS} :buildifier-check
+
+workflows:
+  rules_ruby:
+    jobs:
+      - bazel_build_workspace
+      - bazel_example_gem
+      - bazel_example_script
+      - buildifier

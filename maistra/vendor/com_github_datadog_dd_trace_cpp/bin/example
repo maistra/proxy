@@ -1,0 +1,41 @@
+#!/bin/sh
+
+set -e
+
+if [ "$1" = '--verbose' ]; then
+    verbosity_flags='VERBOSE=1'
+    shift
+else
+    verbosity_flags=''
+fi
+
+if [ "$1" = '--build-only' ]; then
+    build_only=1
+else
+    build_only=0
+fi
+
+cd "$(dirname "$0")"/..
+
+mkdir -p .build
+cd .build
+cmake .. -DBUILD_EXAMPLE=1
+# shellcheck disable=SC2086
+make -j "$(nproc)" $verbosity_flags
+
+if [ "$build_only" -eq 1 ]; then
+    exit
+fi
+
+trap 'docker compose --project-directory ../example down' INT
+
+echo 'Running example...'
+if [ "$DD_API_KEY" = '' ]; then
+    >&2 echo "The DD_API_KEY environment variable must be set to a Datadog API key."
+    exit 1
+fi
+docker compose --project-directory ../example up --detach --remove-orphans
+# docker compose --project-directory ../example logs --follow &
+./example/example "$@"
+docker compose --project-directory ../example down
+# wait

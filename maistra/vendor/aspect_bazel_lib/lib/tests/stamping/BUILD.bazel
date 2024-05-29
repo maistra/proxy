@@ -1,0 +1,42 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("//lib:run_binary.bzl", "run_binary")
+load(":stamp_aware_rule.bzl", "my_stamp_aware_rule")
+
+my_stamp_aware_rule(
+    name = "test_stamped",
+    out = "always",
+    stamp = 1,
+)
+
+my_stamp_aware_rule(
+    name = "test_unstamped",
+    out = "never",
+    stamp = 0,
+)
+
+my_stamp_aware_rule(
+    name = "test_default",
+    out = "default",
+)
+
+sh_binary(
+    name = "stamper",
+    srcs = ["stamper.sh"],
+)
+
+# Build this with --stamp enabled to see your username in the resulting output file
+run_binary(
+    name = "run_stamper",
+    outs = ["stamped"],
+    args = ["$(location stamped)"],
+    # Include status files as inputs when --stamp is set.
+    stamp = -1,
+    tool = "stamper",
+)
+
+bzl_library(
+    name = "stamp_aware_rule",
+    srcs = ["stamp_aware_rule.bzl"],
+    visibility = ["//visibility:public"],
+    deps = ["//lib:stamping"],
+)

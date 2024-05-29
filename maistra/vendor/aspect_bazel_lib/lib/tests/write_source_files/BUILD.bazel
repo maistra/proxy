@@ -1,0 +1,206 @@
+load("//lib:copy_to_directory.bzl", "copy_to_directory")
+load("//lib:directory_path.bzl", "directory_path")
+load("//lib:output_files.bzl", "output_files")
+load("//lib:testing.bzl", "assert_outputs")
+load("//lib:write_source_files.bzl", "write_source_files")
+load("//lib/private:write_source_file.bzl", "write_source_file")
+load("//lib/tests:generate_outputs.bzl", "generate_outputs")
+load("//lib/tests/write_source_files:write_source_file_test.bzl", "write_source_file_test")
+
+genrule(
+    name = "a-desired",
+    outs = ["a-desired.js"],
+    cmd = "echo 'console.log(\"a*\");' > $@",
+)
+
+generate_outputs(
+    name = "b_c-desired",
+    output_contents = [
+        """console.log(\"b*\");
+""",
+        "not used!",
+    ],
+    output_files = [
+        "b-desired.js",
+        "c-desired.js",
+    ],
+)
+
+assert_outputs(
+    name = "test_assert_outputs",
+    actual = "b_c-desired",
+    expected = [
+        "lib/tests/write_source_files/b-desired.js",
+        "lib/tests/write_source_files/c-desired.js",
+    ],
+)
+
+output_files(
+    name = "b-desired",
+    paths = ["%s/b-desired.js" % package_name()],
+    target = ":b_c-desired",
+)
+
+genrule(
+    name = "e-contained",
+    outs = ["e-contained.js"],
+    cmd = "echo 'console.log(\"e*\");' > $@",
+)
+
+copy_to_directory(
+    name = "e_dir-desired",
+    srcs = [":e-contained"],
+)
+
+copy_to_directory(
+    name = "es_dir-desired",
+    srcs = [":e-contained"],
+    replace_prefixes = {
+        "e-contained.js": "subdir/e-contained.js",
+    },
+)
+
+genrule(
+    name = "f-contained",
+    outs = ["f-contained.js"],
+    cmd = "echo 'console.log(\"f*\");' > $@",
+)
+
+copy_to_directory(
+    name = "e_f_dir-desired",
+    srcs = [
+        ":e-contained",
+        ":f-contained",
+    ],
+)
+
+directory_path(
+    name = "f-desired",
+    directory = ":e_f_dir-desired",
+    path = "f-contained.js",
+)
+
+generate_outputs(
+    name = "g_h-desired",
+    output_contents = [
+        """console.log(\"g*\");
+""",
+        "not used!",
+    ],
+    output_files = [
+        "g-desired.js",
+        "h-desired.js",
+    ],
+    output_group = "gh_output_group",
+)
+
+output_files(
+    name = "g-desired",
+    output_group = "gh_output_group",
+    paths = ["%s/g-desired.js" % package_name()],
+    target = ":g_h-desired",
+)
+
+write_source_file_test(
+    name = "a_test",
+    in_file = ":a-desired",
+    out_file = "a.js",
+)
+
+write_source_file_test(
+    name = "b_test",
+    in_file = ":b-desired",
+    out_file = "b.js",
+)
+
+write_source_file(
+    name = "e_dir_test",
+    in_file = ":e_dir-desired",
+    out_file = "e_dir",
+)
+
+write_source_file(
+    name = "es_dir_test",
+    in_file = ":es_dir-desired",
+    out_file = "es_dir",
+)
+
+write_source_file_test(
+    name = "f_test",
+    in_file = ":f-desired",
+    out_file = "f.js",
+)
+
+write_source_file_test(
+    name = "g_test",
+    in_file = ":g-desired",
+    out_file = "g.js",
+)
+
+write_source_files(
+    name = "macro_smoke_test",
+    additional_update_targets = [
+        "//lib/tests/write_source_files/subdir:macro_smoke_test",
+    ],
+    files = {
+        "a2.js": ":a-desired",
+        "b2.js": ":b-desired",
+        "e2_dir": ":e_dir-desired",
+        "es2_dir": ":es_dir-desired",
+        "f2.js": ":f-desired",
+        "g2.js": ":g-desired",
+    },
+)
+
+genrule(
+    name = "dist",
+    outs = ["dist.js"],
+    cmd = "echo 'dist' > $@",
+)
+
+# See e2e/write_source_files
+write_source_files(
+    name = "write_dist",
+    diff_test = False,
+    files = {"dist.js": ":dist"},
+)
+
+# See e2e/write_source_files
+write_source_files(
+    name = "write_dist_executable",
+    diff_test = False,
+    executable = True,
+    files = {"dist_executable.js": ":dist"},
+)
+
+# Write nested subdirectories to source
+# See e2e/write_source_files_subdir_multiple_runs
+write_source_files(
+    name = "write_subdir",
+    diff_test = False,
+    files = {"subdir_test": ":subdir_test_input"},
+)
+
+# Write nested subdirectories to source
+# See e2e/write_source_files_subdir_multiple_runs
+write_source_files(
+    name = "write_subdir_executable",
+    diff_test = False,
+    executable = True,
+    files = {"subdir_executable_test": ":subdir_test_input"},
+)
+
+# Write symlinks to source
+# See e2e/write_source_files_symlinks
+write_source_files(
+    name = "write_symlinks",
+    diff_test = False,
+    files = {"symlink_test": ":symlinks_input"},
+)
+
+write_source_files(
+    name = "write_from_external_repo",
+    files = {
+        "skylib_LICENSE": "@bazel_skylib//:LICENSE",
+    },
+)

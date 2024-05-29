@@ -1,0 +1,14 @@
+exports_files(
+    [
+        "diff_test_tmpl.sh",
+        "diff_test_tmpl.bat",
+        "parse_status_file.jq",
+        "parse_status_file.yq",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+exports_files(
+    glob(["*.bzl"]),
+    visibility = ["//lib/private/docs:__pkg__"],
+)

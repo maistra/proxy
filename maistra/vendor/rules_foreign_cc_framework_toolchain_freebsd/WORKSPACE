@@ -1,0 +1,2 @@
+# DO NOT EDIT: automatically generated WORKSPACE file for framework_toolchain_repository rule
+workspace(name = "rules_foreign_cc_framework_toolchain_freebsd")

@@ -1,0 +1,92 @@
+load("@aspect_bazel_lib//lib:diff_test.bzl", "diff_test")
+load("@aspect_bazel_lib//lib:expand_make_vars.bzl", "expand_template")
+load("@aspect_bazel_lib//lib:testing.bzl", "assert_contains")
+
+expand_template(
+    name = "a_tmpl_stamp",
+    out = "a_stamp",
+    data = ["a.tmpl"],
+    stamp = 1,
+    stamp_substitutions = {
+        "{{VERSION}}": "v{{BUILD_SCM_VERSION}}",
+    },
+    substitutions = {
+        "{{TMPL_PATH}}": "$(rootpath a.tmpl)",
+        "{{VERSION}}": "v0.0.0",
+        "{{WORKSPACE}}": "$(WORKSPACE)",
+    },
+    template = "a.tmpl",
+)
+
+diff_test(
+    name = "a_stamp_test",
+    file1 = ":a_stamp",
+    file2 = select({
+        "@aspect_bazel_lib//lib:bzlmod": "a_stamp_expected_bzlmod",
+        "//conditions:default": "a_stamp_expected",
+    }),
+)
+
+expand_template(
+    name = "a_tmpl",
+    out = "a",
+    data = ["a.tmpl"],
+    stamp = 0,
+    stamp_substitutions = {
+        "{{VERSION}}": "v{{BUILD_SCM_VERSION}}",
+    },
+    substitutions = {
+        "{{TMPL_PATH}}": "$(rootpath a.tmpl)",
+        "{{VERSION}}": "v0.0.0",
+        "{{WORKSPACE}}": "$(WORKSPACE)",
+    },
+    template = "a.tmpl",
+)
+
+diff_test(
+    name = "a_test",
+    file1 = ":a",
+    file2 = select({
+        "@aspect_bazel_lib//lib:bzlmod": "a_expected_bzlmod",
+        "//conditions:default": "a_expected",
+    }),
+)
+
+# This test requires that DefaultInfo be returned with the proper outputs.
+assert_contains(
+    name = "default_info_test",
+    actual = ":a_tmpl_stamp",
+    expected = "WORKSPACE:",
+)
+
+expand_template(
+    name = "inline_template",
+    out = "inline.txt",
+    substitutions = {"line2": "line3"},
+    template = [
+        "line1",
+        "line2",
+    ],
+)
+
+assert_contains(
+    name = "inline_template_test",
+    actual = ":inline.txt",
+    expected = "line3",
+)
+
+# When `out` is not specified, the output file is the same name as the template
+# and does not have a predefined label. This allows for creating an output
+# file of the same name and location as the template that is then referenced
+# by the `expand_template` target name instead of the output file name
+expand_template(
+    name = "index_html_out",
+    substitutions = {"index.ts": "index.js"},
+    template = "index.html",
+)
+
+assert_contains(
+    name = "index_html_out_test",
+    actual = ":index_html_out",
+    expected = "index.js",
+)

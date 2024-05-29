@@ -1,0 +1,2 @@
+# DO NOT EDIT: automatically generated WORKSPACE file for switched_rules rule
+workspace(name = "com_google_googleapis_imports")

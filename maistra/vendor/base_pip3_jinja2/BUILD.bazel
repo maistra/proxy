@@ -1,0 +1,40 @@
+load("@rules_python//python:defs.bzl", "py_library", "py_binary")
+load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
+
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "dist_info",
+    srcs = glob(["site-packages/*.dist-info/**"], allow_empty = True),
+)
+
+filegroup(
+    name = "data",
+    srcs = glob(["data/**"], allow_empty = True),
+)
+
+filegroup(
+    name = "whl",
+    srcs = glob(["*.whl"], allow_empty = True),
+    data = ["@base_pip3_markupsafe//:whl"],
+)
+
+py_library(
+    name = "pkg",
+    srcs = glob(
+        ["site-packages/**/*.py"],
+        exclude=[],
+        # Empty sources are allowed to support wheels that don't have any
+        # pure-Python code, e.g. pymssql, which is written in Cython.
+        allow_empty = True,
+    ),
+    data = [] + glob(
+        ["site-packages/**/*"],
+        exclude=["**/* *", "**/*.py", "**/*.pyc", "**/*.pyc.*", "**/*.dist-info/RECORD"],
+    ),
+    # This makes this directory a top-level in the python import
+    # search path for anything that depends on this.
+    imports = ["site-packages"],
+    deps = ["@base_pip3_markupsafe//:pkg"],
+    tags = ["pypi_name=jinja2", "pypi_version=3.1.4"],
+)

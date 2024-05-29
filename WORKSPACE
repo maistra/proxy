@@ -25,22 +25,18 @@ load(
 
 istioapi_dependencies()
 
-bind(
-    name = "boringssl_crypto",
-    actual = "//external:ssl",
-)
 
 # 1. Determine SHA256 `wget https://github.com/envoyproxy/envoy/archive/$COMMIT.tar.gz && sha256sum $COMMIT.tar.gz`
 # 2. Update .bazelversion, envoy.bazelrc and .bazelrc if needed.
 #
 # Commit date: 2024-05-16
-ENVOY_SHA = "6fe457b970361746e72aa83876cb73ea3eaab6d8"
+ENVOY_SHA = "8eeab1ee77f2c4cb31434c04d683773a6beea01d"
 
-ENVOY_SHA256 = "7435b1e9370a7b28db82b9ca7131dfab1a12300625ffa03e61a95943d8441d43"
+ENVOY_SHA256 = "3a741caf504942d49fe4bdb406d972415f431409775df6b8e590db911d360926"
 
 ENVOY_ORG = "envoyproxy"
 
-ENVOY_REPO = "envoy"
+ENVOY_REPO = "envoy-openssl"
 
 # To override with local envoy, just pass `--override_repository=envoy=/PATH/TO/ENVOY` to Bazel or
 # persist the option in `user.bazelrc`.
@@ -63,10 +59,14 @@ envoy_api_binding()
 
 load("@envoy//bazel:api_repositories.bzl", "envoy_api_dependencies")
 
+# local_repository(
+#     name = "bssl-compat",
+#     path = "/work/envoy/bssl-compat",
+# )
+
 envoy_api_dependencies()
 
-load("@envoy//bazel:repositories.bzl", "envoy_dependencies")
-
+load("@envoy//bazel:repositories.bzl", "envoy_dependencies", "BUILD_ALL_CONTENT")
 envoy_dependencies()
 
 load("@envoy//bazel:repositories_extra.bzl", "envoy_dependencies_extra")

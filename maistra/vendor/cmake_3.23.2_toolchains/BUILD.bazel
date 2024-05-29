@@ -1,0 +1,37 @@
+load("@rules_foreign_cc//toolchains/native_tools:native_tools_toolchain.bzl", "native_tool_toolchain")
+
+toolchain(
+    name = "cmake-3.23.2-linux-aarch64_toolchain",
+    exec_compatible_with = ["@platforms//cpu:aarch64", "@platforms//os:linux"],
+    toolchain = "@cmake-3.23.2-linux-aarch64//:cmake_tool",
+    toolchain_type = "@rules_foreign_cc//toolchains:cmake_toolchain",
+)
+
+toolchain(
+    name = "cmake-3.23.2-linux-x86_64_toolchain",
+    exec_compatible_with = ["@platforms//cpu:x86_64", "@platforms//os:linux"],
+    toolchain = "@cmake-3.23.2-linux-x86_64//:cmake_tool",
+    toolchain_type = "@rules_foreign_cc//toolchains:cmake_toolchain",
+)
+
+toolchain(
+    name = "cmake-3.23.2-macos-universal_toolchain",
+    exec_compatible_with = ["@platforms//os:macos"],
+    toolchain = "@cmake-3.23.2-macos-universal//:cmake_tool",
+    toolchain_type = "@rules_foreign_cc//toolchains:cmake_toolchain",
+)
+
+toolchain(
+    name = "cmake-3.23.2-windows-i386_toolchain",
+    exec_compatible_with = ["@platforms//cpu:x86_32", "@platforms//os:windows"],
+    toolchain = "@cmake-3.23.2-windows-i386//:cmake_tool",
+    toolchain_type = "@rules_foreign_cc//toolchains:cmake_toolchain",
+)
+
+toolchain(
+    name = "cmake-3.23.2-windows-x86_64_toolchain",
+    exec_compatible_with = ["@platforms//cpu:x86_64", "@platforms//os:windows"],
+    toolchain = "@cmake-3.23.2-windows-x86_64//:cmake_tool",
+    toolchain_type = "@rules_foreign_cc//toolchains:cmake_toolchain",
+)
+

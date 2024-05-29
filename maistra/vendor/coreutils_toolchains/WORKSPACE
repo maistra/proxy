@@ -1,0 +1,2 @@
+# DO NOT EDIT: automatically generated WORKSPACE file for coreutils_toolchains_repo rule
+workspace(name = "coreutils_toolchains")

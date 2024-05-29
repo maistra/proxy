@@ -1,0 +1,1 @@
+workspace(name = "opencensus_proto")
