@@ -19,6 +19,13 @@ local_path_override(
 )
 
 bazel_dep(name = "gazelle", version = "0.26.0")
+archive_override(
+    module_name = "gazelle",
+    strip_prefix = "bazel-gazelle-9fe0a3ff751647789690293dcbb3c87ea33b7566",
+    urls = [
+        "https://github.com/bazelbuild/bazel-gazelle/archive/9fe0a3ff751647789690293dcbb3c87ea33b7566.zip",
+    ],
+)
 bazel_dep(name = "protobuf", version = "3.19.6")
 
 go_sdk = use_extension("@my_rules_go//go:extensions.bzl", "go_sdk")
@@ -29,6 +36,9 @@ go_sdk.host(version = "3.0.0")
 
 # Bring the default SDK into scope to verify that it exists.
 use_repo(go_sdk, "go_default_sdk")
+
+# Bring the selected host compatible SDK into scope to verify that it exists.
+use_repo(go_sdk, "go_host_compatible_sdk_label")
 
 go_deps = use_extension("@gazelle//:extensions.bzl", "go_deps")
 go_deps.module(

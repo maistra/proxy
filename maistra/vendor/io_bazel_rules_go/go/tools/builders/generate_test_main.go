@@ -103,6 +103,7 @@ import (
 	"reflect"
 {{end}}
 	"strconv"
+	"strings"
 	"testing"
 	"testing/internal/testdeps"
 
@@ -146,6 +147,11 @@ func testsInShard() []testing.InternalTest {
 	if err != nil || totalShards <= 1 {
 		return allTests
 	}
+	file, err := os.Create(os.Getenv("TEST_SHARD_STATUS_FILE"))
+	if err != nil {
+		log.Fatalf("Failed to touch TEST_SHARD_STATUS_FILE: %v", err)
+	}
+	_ = file.Close()
 	shardIndex, err := strconv.Atoi(os.Getenv("TEST_SHARD_INDEX"))
 	if err != nil || shardIndex < 0 {
 		return allTests
@@ -185,7 +191,23 @@ func main() {
   {{end}}
 
 	if filter := os.Getenv("TESTBRIDGE_TEST_ONLY"); filter != "" {
-		flag.Lookup("test.run").Value.Set(filter)
+		filters := strings.Split(filter, ",")
+		var runTests []string
+		var skipTests []string
+
+		for _, f := range filters {
+			if strings.HasPrefix(f, "-") {
+				skipTests = append(skipTests, f[1:])
+			} else {
+				runTests = append(runTests, f)
+			}
+		}
+		if len(runTests) > 0 {
+			flag.Lookup("test.run").Value.Set(strings.Join(runTests, "|"))
+		}
+		if len(skipTests) > 0 {
+			flag.Lookup("test.skip").Value.Set(strings.Join(skipTests, "|"))
+		}
 	}
 
 	if failfast := os.Getenv("TESTBRIDGE_TEST_RUNNER_FAIL_FAST"); failfast != "" {

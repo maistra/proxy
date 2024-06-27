@@ -1,8 +1,3 @@
-load("//go:def.bzl", "GoArchive", "GoLibrary", "GoSource")
-load("//proto:compiler.bzl", "GoProtoCompiler")
-
-_go_proto_library_suffix = "go_proto"
-
 # NOTE: since protobuf 3.14, the WKTs no longer use these paths. They're only
 # used by gogo below. Not clear if that actually works or if we should
 # continue supporting gogo.
@@ -32,8 +27,18 @@ GOGO_WELL_KNOWN_TYPE_REMAPS = [
 
 # NOTE: only used by gogo.
 WELL_KNOWN_TYPE_RULES = {
-    wkt: Label("//proto/wkt:{}_{}".format(wkt, _go_proto_library_suffix))
-    for wkt in WELL_KNOWN_TYPE_PACKAGES.keys()
+    "any": "@com_github_golang_protobuf//ptypes/any",
+    "api": "@org_golang_google_genproto//protobuf/api",
+    "compiler_plugin": "@com_github_golang_protobuf//protoc-gen-go/plugin",
+    "descriptor": "@com_github_golang_protobuf//protoc-gen-go/descriptor",
+    "duration": "@com_github_golang_protobuf//ptypes/duration",
+    "empty": "@com_github_golang_protobuf//ptypes/empty",
+    "field_mask": "@org_golang_google_genproto//protobuf/field_mask",
+    "source_context": "@org_golang_google_genproto//protobuf/source_context",
+    "struct": "@com_github_golang_protobuf//ptypes/struct",
+    "timestamp": "@com_github_golang_protobuf//ptypes/timestamp",
+    "type": "@org_golang_google_genproto//protobuf/ptype",
+    "wrappers": "@com_github_golang_protobuf//ptypes/wrappers",
 }
 
 PROTO_RUNTIME_DEPS = [
@@ -65,32 +70,3 @@ WELL_KNOWN_TYPES_APIV2 = [
     "@org_golang_google_protobuf//types/known/wrapperspb",
     "@org_golang_google_protobuf//types/pluginpb",
 ]
-
-# buildifier: disable=unused-variable
-def _go_proto_wrapper_compile(go, compiler, protos, imports, importpath):
-    return []
-
-def _go_proto_wrapper_impl(ctx):
-    return [
-        ctx.attr.library[GoLibrary],
-        ctx.attr.library[GoSource],
-        GoProtoCompiler(
-            deps = ctx.attr._deps,
-            compile = _go_proto_wrapper_compile,
-            valid_archive = True,
-        ),
-    ]
-
-go_proto_wrapper = rule(
-    implementation = _go_proto_wrapper_impl,
-    attrs = {
-        "library": attr.label(
-            mandatory = True,
-            providers = [GoLibrary, GoSource],
-        ),
-        "_deps": attr.label_list(
-            default = PROTO_RUNTIME_DEPS,
-            providers = [GoLibrary, GoSource, GoArchive],
-        ),
-    },
-)

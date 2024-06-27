@@ -116,20 +116,43 @@ func outputBasePath(cloneBase, p string) string {
 	return filepath.Join("__BAZEL_OUTPUT_BASE__", dir)
 }
 
-//  absoluteSourcesPaths replace cloneBase of the absolution
-//  paths with the label for all source files in a package
+// absoluteSourcesPaths replace cloneBase of the absolution
+// paths with the label for all source files in a package
 func absoluteSourcesPaths(cloneBase, pkgDir string, srcs []string) []string {
 	ret := make([]string, 0, len(srcs))
 	pkgDir = outputBasePath(cloneBase, pkgDir)
 	for _, src := range srcs {
-		ret = append(ret, filepath.Join(pkgDir, src))
+		absPath := src
+
+		// Generated files will already have an absolute path. These come from
+		// the compiler's cache.
+		if !filepath.IsAbs(src) {
+			absPath = filepath.Join(pkgDir, src)
+		}
+
+		ret = append(ret, absPath)
 	}
 	return ret
 }
 
-func flatPackageForStd(cloneBase string, pkg *goListPackage) *flatPackage {
-	// Don't use generated files from the stdlib
+// filterGoFiles keeps only files either ending in .go or those without an
+// extension (which are from the cache). This is a work around for
+// https://golang.org/issue/28749: cmd/go puts assembly, C, and C++ files in
+// CompiledGoFiles.
+func filterGoFiles(srcs []string, pathReplaceFn func(p string) string) []string {
+	ret := make([]string, 0, len(srcs))
+	for _, f := range srcs {
+		if ext := filepath.Ext(f); ext == ".go" || ext == "" {
+			ret = append(ret, pathReplaceFn(f))
+		}
+	}
+
+	return ret
+}
+
+func flatPackageForStd(cloneBase string, pkg *goListPackage, pathReplaceFn func(p string) string) *flatPackage {
 	goFiles := absoluteSourcesPaths(cloneBase, pkg.Dir, pkg.GoFiles)
+	compiledGoFiles := absoluteSourcesPaths(cloneBase, pkg.Dir, pkg.CompiledGoFiles)
 
 	newPkg := &flatPackage{
 		ID:              stdlibPackageID(pkg.ImportPath),
@@ -139,13 +162,29 @@ func flatPackageForStd(cloneBase string, pkg *goListPackage) *flatPackage {
 		Imports:         map[string]string{},
 		Standard:        pkg.Standard,
 		GoFiles:         goFiles,
-		CompiledGoFiles: goFiles,
+		CompiledGoFiles: filterGoFiles(compiledGoFiles, pathReplaceFn),
 	}
-	for _, imp := range pkg.Imports {
-		newPkg.Imports[imp] = stdlibPackageID(imp)
+
+	// imports
+	//
+	// Imports contains the IDs of all imported packages.
+	// ImportsMap records (path, ID) only where they differ.
+	ids := make(map[string]struct{})
+	for _, id := range pkg.Imports {
+		ids[id] = struct{}{}
 	}
-	// We don't support CGo for now
-	delete(newPkg.Imports, "C")
+
+	for path, id := range pkg.ImportMap {
+		newPkg.Imports[path] = stdlibPackageID(id)
+		delete(ids, id)
+	}
+
+	for id := range ids {
+		if id != "C" {
+			newPkg.Imports[id] = stdlibPackageID(id)
+		}
+	}
+
 	return newPkg
 }
 
@@ -155,6 +194,7 @@ func stdliblist(args []string) error {
 	flags := flag.NewFlagSet("stdliblist", flag.ExitOnError)
 	goenv := envFlags(flags)
 	out := flags.String("out", "", "Path to output go list json")
+	cachePath := flags.String("cache", "", "Path to use for GOCACHE")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -200,20 +240,31 @@ func stdliblist(args []string) error {
 	}
 	os.Setenv("PATH", strings.Join(absPaths, string(os.PathListSeparator)))
 	os.Setenv("GOROOT", newGoRoot)
+
+	cgoEnabled := os.Getenv("CGO_ENABLED") == "1"
 	// Make sure we have an absolute path to the C compiler.
 	// TODO(#1357): also take absolute paths of includes and other paths in flags.
-	os.Setenv("CC", quotePathIfNeeded(abs(os.Getenv("CC"))))
+	ccEnv, ok := os.LookupEnv("CC")
+	if cgoEnabled && !ok {
+		return fmt.Errorf("CC must be set")
+	}
+	os.Setenv("CC", quotePathIfNeeded(abs(ccEnv)))
 
-	cachePath := abs(*out + ".gocache")
-	defer os.RemoveAll(cachePath)
-	os.Setenv("GOCACHE", cachePath)
-	os.Setenv("GOMODCACHE", cachePath)
-	os.Setenv("GOPATH", cachePath)
+	// We want to keep the cache around so that the processed files can be used by other tools.
+	absCachePath := abs(*cachePath)
+	os.Setenv("GOCACHE", absCachePath)
+	os.Setenv("GOMODCACHE", absCachePath)
+	os.Setenv("GOPATH", absCachePath)
 
 	listArgs := goenv.goCmd("list")
 	if len(build.Default.BuildTags) > 0 {
 		listArgs = append(listArgs, "-tags", strings.Join(build.Default.BuildTags, ","))
 	}
+
+	if cgoEnabled {
+		listArgs = append(listArgs, "-compiled=true")
+	}
+
 	listArgs = append(listArgs, "-json", "builtin", "std", "runtime/cgo")
 
 	jsonFile, err := os.Create(*out)
@@ -226,14 +277,22 @@ func stdliblist(args []string) error {
 	if err := goenv.runCommandToFile(jsonData, os.Stderr, listArgs); err != nil {
 		return err
 	}
+
 	encoder := json.NewEncoder(jsonFile)
 	decoder := json.NewDecoder(jsonData)
+	pathReplaceFn := func (s string) string {
+		if strings.HasPrefix(s, absCachePath) {
+			return strings.Replace(s, absCachePath, filepath.Join("__BAZEL_EXECROOT__", *cachePath), 1)
+		}
+
+		return s
+	}
 	for decoder.More() {
 		var pkg *goListPackage
 		if err := decoder.Decode(&pkg); err != nil {
 			return err
 		}
-		if err := encoder.Encode(flatPackageForStd(cloneBase, pkg)); err != nil {
+		if err := encoder.Encode(flatPackageForStd(cloneBase, pkg, pathReplaceFn)); err != nil {
 			return err
 		}
 	}
