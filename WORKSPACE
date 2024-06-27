@@ -30,9 +30,9 @@ istioapi_dependencies()
 # 2. Update .bazelversion, envoy.bazelrc and .bazelrc if needed.
 #
 # Commit date: 2024-05-16
-ENVOY_SHA = "8eeab1ee77f2c4cb31434c04d683773a6beea01d"
+ENVOY_SHA = "f9b3cb3f575dfb3b2e531b7767474804ad464791"
 
-ENVOY_SHA256 = "3a741caf504942d49fe4bdb406d972415f431409775df6b8e590db911d360926"
+ENVOY_SHA256 = "dee667bdb7233d600b836cbdda6fc6606d34f71e4df93b88222ca959539840b7"
 
 ENVOY_ORG = "envoyproxy"
 

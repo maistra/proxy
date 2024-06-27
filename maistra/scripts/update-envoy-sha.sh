@@ -13,10 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set -x
-set -e
-set -u
-set -o pipefail
+set -xeuo pipefail
 
 function cleanup() {
   rm -rf "${WORKDIR}"
@@ -31,13 +28,7 @@ function get_envoy_sha() {
   local branch
   branch="${BRANCH:-release/v1.28}"
 
-  pushd "${WORKDIR}" >/dev/null
-  git clone --depth=1 -b "${branch}" https://github.com/envoyproxy/envoy-openssl.git
-  pushd envoy-openssl >/dev/null
-  SHA=$(git rev-parse HEAD)
-  popd >/dev/null
-
-  popd >/dev/null
+  SHA=$(git ls-remote https://github.com/envoyproxy/envoy-openssl.git "refs/heads/${branch}" | cut -f 1)
 }
 
 function get_envoy_sha_256() {

@@ -13,8 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set -e
-set -o pipefail
+set -eo pipefail
 
 export CC=clang CXX=clang++
 
@@ -28,6 +27,9 @@ function init(){
   rm -rf "${OUTPUT_BASE}" &&  mkdir -p "${OUTPUT_BASE}"
   rm -rf "${VENDOR_DIR}" &&  mkdir -p "${VENDOR_DIR}"
   : > "${BAZELRC}"
+
+  # Remove symlinks to previous builds to avoid issues
+  rm -f bazel-*
 
 
   IGNORE_LIST=(
@@ -95,27 +97,20 @@ function copy_files() {
 
 
 function run_bazel() {
-  BAZEL_CACHE_FLAGS=""
-  if [[ -n ${BAZEL_REMOTE_CACHE} ]]; then
-    BAZEL_CACHE_FLAGS="--remote_cache=${BAZEL_REMOTE_CACHE}"
-    if [[ -n ${BAZEL_EXPERIMENTAL_REMOTE_DOWNLOADER} ]]; then
-      BAZEL_CACHE_FLAGS+=" --experimental_remote_downloader=${BAZEL_EXPERIMENTAL_REMOTE_DOWNLOADER}"
-    fi
-  elif [[ -n ${BAZEL_DISK_CACHE} ]]; then
-    BAZEL_CACHE_FLAGS+="--disk_cache=${BAZEL_DISK_CACHE}"
-  fi
-
   # Workaround to force fetch of rules_license
   bazel --output_base="${OUTPUT_BASE}" fetch @remote_java_tools//java_tools/zlib:zlib || true
-
 
   # Workaround to force fetch of protoc for arm
   bazel --output_base="${OUTPUT_BASE}" fetch @com_google_protobuf_protoc_linux_aarch_64//:protoc
 
   # Fetch all the rest and check everything using "build --nobuild "option
-  for config in x86_64    aarch64; do # TODO (luajit package missing): s390x ppc
-    bazel  --output_base="${OUTPUT_BASE}" build --nobuild --config="${config}" //...
+  for config in x86_64 aarch64; do # TODO (luajit package missing): s390x ppc
+    bazel --output_base="${OUTPUT_BASE}" build --nobuild --config="${config}" //...
   done
+}
+
+function apply_patches() {
+  sed -i 's|GO_VERSION = .*|GO_VERSION = "host"|' "${VENDOR_DIR}/envoy/bazel/dependency_imports.bzl"
 }
 
 function main() {
@@ -123,6 +118,7 @@ function main() {
   init
   run_bazel
   copy_files
+  apply_patches
 
   echo
   echo "Done. Inspect the result with git status"
