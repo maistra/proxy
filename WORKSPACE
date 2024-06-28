@@ -59,14 +59,10 @@ envoy_api_binding()
 
 load("@envoy//bazel:api_repositories.bzl", "envoy_api_dependencies")
 
-# local_repository(
-#     name = "bssl-compat",
-#     path = "/work/envoy/bssl-compat",
-# )
-
 envoy_api_dependencies()
 
-load("@envoy//bazel:repositories.bzl", "envoy_dependencies", "BUILD_ALL_CONTENT")
+load("@envoy//bazel:repositories.bzl", "envoy_dependencies")
+
 envoy_dependencies()
 
 load("@envoy//bazel:repositories_extra.bzl", "envoy_dependencies_extra")
