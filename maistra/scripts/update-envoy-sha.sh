@@ -47,7 +47,7 @@ function main() {
   get_envoy_sha
   get_envoy_sha_256
 
-  sed -i "s|^# Commit time: .*|# Commit time: ${today}|" WORKSPACE
+  sed -i "s|^# Commit date: .*|# Commit date: ${today}|" WORKSPACE
   sed -i "s|^ENVOY_SHA = .*|ENVOY_SHA = \"${SHA}\"|" WORKSPACE
   sed -i "s|^ENVOY_SHA256 = .*|ENVOY_SHA256 = \"${SHA256}\"|" WORKSPACE
 }
