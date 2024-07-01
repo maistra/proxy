@@ -45,6 +45,14 @@ http_archive(
     sha256 = ENVOY_SHA256,
     strip_prefix = ENVOY_REPO + "-" + ENVOY_SHA,
     url = "https://github.com/" + ENVOY_ORG + "/" + ENVOY_REPO + "/archive/" + ENVOY_SHA + ".tar.gz",
+    patch_args = ["-p1"],
+    patches = [
+        "@io_istio_proxy//maistra/patches:remove-llvm.patch",
+        "@io_istio_proxy//maistra/patches:use-go-from-host.patch",
+        # FIXME: Remove when https://github.com/envoyproxy/envoy/pull/35004 is merged and synced into envoy-openssl
+        "@io_istio_proxy//maistra/patches:0001-bp-1.28-Only-download-go-sdk-when-not-using-host-sdk.patch",
+        "@io_istio_proxy//maistra/patches:use-cmake-from-host.patch",
+        ],
 )
 
 load("@envoy//bazel:api_binding.bzl", "envoy_api_binding")

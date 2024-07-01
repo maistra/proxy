@@ -95,7 +95,6 @@ function copy_files() {
   find "${VENDOR_DIR}" -name '*.pyc' -delete
 }
 
-
 function run_bazel() {
   # Workaround to force fetch of rules_license
   bazel --output_base="${OUTPUT_BASE}" fetch @remote_java_tools//java_tools/zlib:zlib || true
@@ -109,16 +108,11 @@ function run_bazel() {
   done
 }
 
-function apply_patches() {
-  sed -i 's|GO_VERSION = .*|GO_VERSION = "host"|' "${VENDOR_DIR}/envoy/bazel/dependency_imports.bzl"
-}
-
 function main() {
   validate
   init
   run_bazel
   copy_files
-  apply_patches
 
   echo
   echo "Done. Inspect the result with git status"
