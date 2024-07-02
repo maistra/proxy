@@ -29,10 +29,10 @@ istioapi_dependencies()
 # 1. Determine SHA256 `wget https://github.com/envoyproxy/envoy/archive/$COMMIT.tar.gz && sha256sum $COMMIT.tar.gz`
 # 2. Update .bazelversion, envoy.bazelrc and .bazelrc if needed.
 #
-# Commit date: 07/01/24
-ENVOY_SHA = "17ea349582216d9a66aa729d1479c75cc81c704d"
+# Commit date: 07/02/24
+ENVOY_SHA = "c50060950ed086c37e593c4f1c80d23c8f226677"
 
-ENVOY_SHA256 = "14f0a1d6f0c9c6b1b698946b3e9e0956a59c26c6ba8ba8052a51528e5cc8f0d5"
+ENVOY_SHA256 = "66c88f4fff7f6aa3c87e1aa3d3eb04a4afde34db908e9c7447023c7500c268ca"
 
 ENVOY_ORG = "envoyproxy"
 

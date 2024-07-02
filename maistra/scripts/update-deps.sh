@@ -104,7 +104,7 @@ function run_bazel() {
   bazel --output_base="${OUTPUT_BASE}" fetch @com_google_protobuf_protoc_linux_aarch_64//:protoc
 
   # Fetch all the rest and check everything using "build --nobuild "option
-  for config in x86_64 aarch64; do # TODO (luajit package missing): s390x ppc
+  for config in x86_64 aarch64 s390x ppc; do
     bazel --output_base="${OUTPUT_BASE}" build --nobuild --config="${config}" //...
   done
 }

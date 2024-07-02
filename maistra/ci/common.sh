@@ -44,7 +44,7 @@ function bazel_build() {
   bazel build \
     ${COMMON_FLAGS} \
     "${@}" \
-  2>&1 | grep -v -E "${OUTPUT_TO_IGNORE}"
+  2>&1 | grep --line-buffered -v -E "${OUTPUT_TO_IGNORE}"
 }
 
 function bazel_test() {
@@ -52,7 +52,7 @@ function bazel_test() {
     ${COMMON_FLAGS} \
     --build_tests_only \
     "${@}" \
-  2>&1 | grep -v -E "${OUTPUT_TO_IGNORE}"
+  2>&1 | grep --line-buffered -v -E "${OUTPUT_TO_IGNORE}"
 }
 
 # Fix path to the vendor deps
