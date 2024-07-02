@@ -349,7 +349,6 @@ def envoy_dependencies(skip_targets = []):
     _rust_deps()
     _kafka_deps()
 
-    _org_llvm_llvm()
     _com_github_wamr()
     _com_github_wavm_wavm()
     _com_github_wasmtime()
@@ -1264,18 +1263,6 @@ def _com_github_gperftools_gperftools():
     native.bind(
         name = "gperftools",
         actual = "@envoy//bazel/foreign_cc:gperftools",
-    )
-
-def _org_llvm_llvm():
-    external_http_archive(
-        name = "org_llvm_llvm",
-        build_file_content = BUILD_ALL_CONTENT,
-        patch_args = ["-p1"],
-        patches = ["@envoy//bazel/foreign_cc:llvm.patch"],
-    )
-    native.bind(
-        name = "llvm",
-        actual = "@envoy//bazel/foreign_cc:llvm",
     )
 
 def _com_github_wamr():

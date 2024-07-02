@@ -24,10 +24,11 @@ JQ_VERSION = "1.6"
 YQ_VERSION = "4.24.4"
 
 def envoy_dependency_imports(go_version = GO_VERSION, jq_version = JQ_VERSION, yq_version = YQ_VERSION):
-    rules_foreign_cc_dependencies()
+    rules_foreign_cc_dependencies(register_default_tools = False, register_built_tools = False)
     go_rules_dependencies()
     go_register_toolchains(go_version)
-    envoy_download_go_sdks(go_version)
+    if go_version != "host":
+        envoy_download_go_sdks(go_version)
     gazelle_dependencies(go_sdk = "go_sdk")
     apple_rules_dependencies()
     pip_dependencies()
