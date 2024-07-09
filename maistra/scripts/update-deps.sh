@@ -102,6 +102,10 @@ function run_bazel() {
   # Workaround to force fetch of protoc for arm
   bazel --output_base="${OUTPUT_BASE}" fetch @com_google_protobuf_protoc_linux_aarch_64//:protoc
 
+  # Work around to force fetch cpython runtime for s390x & ppc64le
+  bazel --output_base="${OUTPUT_BASE}" fetch @python3_11_s390x-unknown-linux-gnu//:python_runtimes
+  bazel --output_base="${OUTPUT_BASE}" fetch @python3_11_ppc64le-unknown-linux-gnu//:python_runtimes
+
   # Fetch all the rest and check everything using "build --nobuild "option
   for config in x86_64 aarch64 s390x ppc; do
     bazel --output_base="${OUTPUT_BASE}" build --nobuild --config="${config}" //...
