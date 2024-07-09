@@ -105,6 +105,8 @@ build --override_repository=pypi__tomli=/work/maistra/vendor/pypi__tomli
 build --override_repository=pypi__wheel=/work/maistra/vendor/pypi__wheel
 build --override_repository=pypi__zipp=/work/maistra/vendor/pypi__zipp
 build --override_repository=python3_11=/work/maistra/vendor/python3_11
+build --override_repository=python3_11_ppc64le-unknown-linux-gnu=/work/maistra/vendor/python3_11_ppc64le-unknown-linux-gnu
+build --override_repository=python3_11_s390x-unknown-linux-gnu=/work/maistra/vendor/python3_11_s390x-unknown-linux-gnu
 build --override_repository=python3_11_toolchains=/work/maistra/vendor/python3_11_toolchains
 build --override_repository=python3_11_x86_64-unknown-linux-gnu=/work/maistra/vendor/python3_11_x86_64-unknown-linux-gnu
 build --override_repository=remote_java_tools=/work/maistra/vendor/remote_java_tools
