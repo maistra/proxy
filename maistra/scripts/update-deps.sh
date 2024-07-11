@@ -48,6 +48,9 @@ function init(){
         "rules_foreign_cc_framework_toolchain_macos_commands"
         "rules_foreign_cc_framework_toolchain_windows_commands"
         "emscripten"
+        "python3_11_x86_64"
+        "python3_11_ppc"
+        "python3_11_s390x"
   )
 }
 
@@ -108,11 +111,27 @@ function run_bazel() {
   done
 }
 
+function patch_python() {
+  local dir repo_name
+
+  for arch in x86_64 s390x ppc64le; do
+    repo_name="python3_11_${arch}-unknown-linux-gnu"
+    dir="${VENDOR_DIR}/${repo_name}"
+
+    mkdir -p "${dir}"
+    cp "${ROOT_DIR}/maistra/scripts/BUILD.bazel.python" "${dir}/BUILD.bazel"
+
+    echo "build --override_repository=${repo_name}=/work/maistra/vendor/${repo_name}" >> "${BAZELRC}"
+    echo "workspace(name = \"${repo_name}\")" > "${dir}/WORKSPACE"
+  done
+}
+
 function main() {
   validate
   init
   run_bazel
   copy_files
+  patch_python
 
   echo
   echo "Done. Inspect the result with git status"
