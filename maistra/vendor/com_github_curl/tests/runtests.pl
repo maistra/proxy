@@ -23,6 +23,8 @@
 #
 ###########################################################################
 
+# For documentation, run `man ./runtests.1` and see README.md.
+
 # Experimental hooks are available to run tests remotely on machines that
 # are able to run curl but are unable to run the test harness.
 # The following sections need to be modified:
@@ -58,6 +60,7 @@ use strict;
 # Promote all warnings to fatal
 use warnings FATAL => 'all';
 use 5.006;
+use POSIX qw(strftime);
 
 # These should be the only variables that might be needed to get edited:
 
@@ -446,6 +449,13 @@ sub compare {
 }
 
 #######################################################################
+# Numeric-sort words in a string
+sub numsortwords {
+    my ($string)=@_;
+    return join(' ', sort { $a <=> $b } split(' ', $string));
+}
+
+#######################################################################
 # Parse and store the protocols in curl's Protocols: line
 sub parseprotocols {
     my ($line)=@_;
@@ -490,6 +500,10 @@ sub checksystemfeatures {
     $versretval = runclient($versioncmd);
     $versnoexec = $!;
 
+    my $current_time = int(time());
+    $ENV{'SOURCE_DATE_EPOCH'} = $current_time;
+    $DATE = strftime "%Y-%m-%d", gmtime($current_time);
+
     open(my $versout, "<", "$curlverout");
     @version = <$versout>;
     close($versout);
@@ -510,6 +524,8 @@ sub checksystemfeatures {
         if($_ =~ /^curl ([^ ]*)/) {
             $curl = $_;
             $CURLVERSION = $1;
+            $CURLVERNUM = $CURLVERSION;
+            $CURLVERNUM =~ s/^([0-9.]+)(.*)/$1/; # leading dots and numbers
             $curl =~ s/^(.*)(libcurl.*)/$1/g || die "Failure determining curl binary version";
 
             $libcurl = $2;
@@ -604,19 +620,19 @@ sub checksystemfeatures {
             # built with memory tracking support (--enable-curldebug); may be disabled later
             $feature{"TrackMemory"} = $feat =~ /TrackMemory/i;
             # curl was built with --enable-debug
-            $feature{"debug"} = $feat =~ /debug/i;
+            $feature{"Debug"} = $feat =~ /Debug/i;
             # ssl enabled
             $feature{"SSL"} = $feat =~ /SSL/i;
             # multiple ssl backends available.
             $feature{"MultiSSL"} = $feat =~ /MultiSSL/i;
             # large file support
-            $feature{"large_file"} = $feat =~ /Largefile/i;
+            $feature{"Largefile"} = $feat =~ /Largefile/i;
             # IDN support
-            $feature{"idn"} = $feat =~ /IDN/i;
+            $feature{"IDN"} = $feat =~ /IDN/i;
             # IPv6 support
-            $feature{"ipv6"} = $feat =~ /IPv6/i;
+            $feature{"IPv6"} = $feat =~ /IPv6/i;
             # Unix sockets support
-            $feature{"unix-sockets"} = $feat =~ /UnixSockets/i;
+            $feature{"UnixSockets"} = $feat =~ /UnixSockets/i;
             # libz compression
             $feature{"libz"} = $feat =~ /libz/i;
             # Brotli compression
@@ -635,8 +651,6 @@ sub checksystemfeatures {
             $feature{"Kerberos"} = $feat =~ /Kerberos/i;
             # SPNEGO enabled
             $feature{"SPNEGO"} = $feat =~ /SPNEGO/i;
-            # CharConv enabled
-            $feature{"CharConv"} = $feat =~ /CharConv/i;
             # TLS-SRP enabled
             $feature{"TLS-SRP"} = $feat =~ /TLS-SRP/i;
             # PSL enabled
@@ -663,8 +677,8 @@ sub checksystemfeatures {
                 push @protocols, 'http/3';
             }
             # https proxy support
-            $feature{"https-proxy"} = $feat =~ /HTTPS-proxy/;
-            if($feature{"https-proxy"}) {
+            $feature{"HTTPS-proxy"} = $feat =~ /HTTPS-proxy/;
+            if($feature{"HTTPS-proxy"}) {
                 # 'https-proxy' is used as "server" so consider it a protocol
                 push @protocols, 'https-proxy';
             }
@@ -730,9 +744,9 @@ sub checksystemfeatures {
     }
 
     # allow this feature only if debug mode is disabled
-    $feature{"ld_preload"} = $feature{"ld_preload"} && !$feature{"debug"};
+    $feature{"ld_preload"} = $feature{"ld_preload"} && !$feature{"Debug"};
 
-    if($feature{"ipv6"}) {
+    if($feature{"IPv6"}) {
         # client has IPv6 support
 
         # check if the HTTP server has it!
@@ -752,7 +766,7 @@ sub checksystemfeatures {
         }
     }
 
-    if($feature{"unix-sockets"}) {
+    if($feature{"UnixSockets"}) {
         # client has Unix sockets support, check whether the HTTP server has it
         my $cmd = "server/sws".exe_ext('SRV')." --version";
         my @sws = `$cmd`;
@@ -770,7 +784,7 @@ sub checksystemfeatures {
     }
     close($manh);
 
-    $feature{"unittest"} = $feature{"debug"};
+    $feature{"unittest"} = $feature{"Debug"};
     $feature{"nghttpx"} = !!$ENV{'NGHTTPX'};
     $feature{"nghttpx-h3"} = !!$nghttpx_h3;
 
@@ -794,6 +808,7 @@ sub checksystemfeatures {
     $feature{"headers-api"} = 1;
     $feature{"xattr"} = 1;
     $feature{"large-time"} = 1;
+    $feature{"sha512-256"} = 1;
 
     # make each protocol an enabled "feature"
     for my $p (@protocols) {
@@ -1233,6 +1248,8 @@ sub singletest_check {
             # text mode when running on windows: fix line endings
             s/\r\n/\n/g for @validstdout;
             s/\n/\r\n/g for @validstdout;
+            s/\r\n/\n/g for @actual;
+            s/\n/\r\n/g for @actual;
         }
 
         if($hash{'nonewline'}) {
@@ -1297,6 +1314,10 @@ sub singletest_check {
             # Yes, we must cut off the final newline from the final line
             # of the protocol data
             chomp($validstderr[-1]);
+        }
+
+        if($hash{'crlf'}) {
+            subnewlines(0, \$_) for @validstderr;
         }
 
         $res = compare($runnerid, $testnum, $testname, "stderr", \@actual, \@validstderr);
@@ -1441,6 +1462,9 @@ sub singletest_check {
             # cut off the final newline from the final line of the upload data
             chomp($upload[-1]);
         }
+        for my $line (@upload) {
+            subbase64(\$line);
+        }
 
         # verify uploaded data
         my @out = loadarray("$logdir/upload.$testnum");
@@ -1503,7 +1527,7 @@ sub singletest_check {
 
     }
     else {
-        $ok .= "-"; # protocol not checked
+        $ok .= "-"; # proxy not checked
     }
 
     my $outputok;
@@ -1959,6 +1983,8 @@ sub runtimestats {
 
     return if(not $timestats);
 
+    logmsg "::group::Run Time Stats\n";
+
     logmsg "\nTest suite total running time breakdown per task...\n\n";
 
     my @timesrvr;
@@ -2085,6 +2111,8 @@ sub runtimestats {
     }
 
     logmsg "\n";
+
+    logmsg "::endgroup::\n";
 }
 
 #######################################################################
@@ -2212,6 +2240,10 @@ while(@ARGV) {
     elsif ($ARGV[0] eq "-g") {
         # run this test with gdb
         $gdbthis=1;
+    }
+    elsif ($ARGV[0] eq "-gl") {
+        # run this test with lldb
+        $gdbthis=2;
     }
     elsif ($ARGV[0] eq "-gw") {
         # run this test with windowed gdb
@@ -3011,15 +3043,40 @@ if(%skipped && !$short) {
     }
 }
 
+sub testnumdetails {
+    my ($desc, $numlist) = @_;
+    foreach my $testnum (split(' ', $numlist)) {
+        if(!loadtest("${TESTDIR}/test${testnum}")) {
+            my @info_keywords = getpart("info", "keywords");
+            my $testname = (getpart("client", "name"))[0];
+            chomp $testname;
+            logmsg "$desc $testnum: '$testname'";
+            my $first = 1;
+            for my $k (@info_keywords) {
+                chomp $k;
+                my $sep = ($first == 1) ? " " : ", ";
+                logmsg "$sep$k";
+                $first = 0;
+            }
+            logmsg "\n";
+        }
+    }
+}
+
 if($total) {
     if($failedign) {
-        logmsg "IGNORED: failed tests: $failedign\n";
+        my $failedignsorted = numsortwords($failedign);
+        testnumdetails("FAIL-IGNORED", $failedignsorted);
+        logmsg "IGNORED: failed tests: $failedignsorted\n";
     }
     logmsg sprintf("TESTDONE: $ok tests out of $total reported OK: %d%%\n",
                    $ok/$total*100);
 
     if($failed && ($ok != $total)) {
-        logmsg "\nTESTFAIL: These test cases failed: $failed\n\n";
+        my $failedsorted = numsortwords($failed);
+        logmsg "\n";
+        testnumdetails("FAIL", $failedsorted);
+        logmsg "\nTESTFAIL: These test cases failed: $failedsorted\n\n";
     }
 }
 else {

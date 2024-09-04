@@ -29,10 +29,10 @@ istioapi_dependencies()
 # 1. Determine SHA256 `wget https://github.com/envoyproxy/envoy/archive/$COMMIT.tar.gz && sha256sum $COMMIT.tar.gz`
 # 2. Update .bazelversion, envoy.bazelrc and .bazelrc if needed.
 #
-# Commit date: 07/25/24
-ENVOY_SHA = "b6d98a4ef06d1d4d30f226f173b20c51015b1076"
+# Commit date: 09/03/24
+ENVOY_SHA = "36a50d2ba771f8d31b4d4b5605be8134c7579bdd"
 
-ENVOY_SHA256 = "e56cec8f59b57aecdce230324075ab7a2c12cf392336d6fc5ac46b0c8a7366fd"
+ENVOY_SHA256 = "615be04738a69c46d0acaddbe3efb0e8be6bce7c92fbb5c101443f26260cb228"
 
 ENVOY_ORG = "envoyproxy"
 
@@ -49,8 +49,6 @@ http_archive(
     patches = [
         "@io_istio_proxy//maistra/patches:remove-llvm.patch",
         "@io_istio_proxy//maistra/patches:use-go-from-host.patch",
-        # FIXME: Remove when https://github.com/envoyproxy/envoy/pull/35004 is merged and synced into envoy-openssl
-        "@io_istio_proxy//maistra/patches:0001-bp-1.28-Only-download-go-sdk-when-not-using-host-sdk.patch",
         "@io_istio_proxy//maistra/patches:use-cmake-from-host.patch",
         ],
 )

@@ -33,13 +33,13 @@ static size_t writecb(char *data, size_t n, size_t l, void *userp)
   (void)userp;
   return n*l;
 }
-int test(char *URL)
+CURLcode test(char *URL)
 {
   CURL *curl;
   CURLcode res = CURLE_OK;
   struct curl_header *h;
   int count = 0;
-  int origins;
+  unsigned int origins;
 
   global_init(CURL_GLOBAL_DEFAULT);
 
@@ -88,5 +88,5 @@ int test(char *URL)
 test_cleanup:
   curl_easy_cleanup(curl);
   curl_global_cleanup();
-  return (int)res;
+  return res;
 }

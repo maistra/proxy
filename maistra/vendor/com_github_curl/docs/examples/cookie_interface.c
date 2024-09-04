@@ -29,7 +29,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <errno.h>
 #include <time.h>
 
 #include <curl/curl.h>
@@ -91,7 +90,7 @@ main(void)
 
     printf("-----------------------------------------------\n"
            "Setting a cookie \"PREF\" via cookie interface:\n");
-#ifdef WIN32
+#ifdef _WIN32
 #define snprintf _snprintf
 #endif
     /* Netscape format cookie */
@@ -107,10 +106,9 @@ main(void)
     }
 
     /* HTTP-header style cookie. If you use the Set-Cookie format and do not
-    specify a domain then the cookie is sent for any domain and will not be
-    modified, likely not what you intended. Starting in 7.43.0 any-domain
-    cookies will not be exported either. For more information refer to the
-    CURLOPT_COOKIELIST documentation.
+       specify a domain then the cookie is sent for any domain and is not
+       modified, likely not what you intended. For more information refer to
+       the CURLOPT_COOKIELIST documentation.
     */
     snprintf(nline, sizeof(nline),
       "Set-Cookie: OLD_PREF=3d141414bf4209321; "

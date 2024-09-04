@@ -138,7 +138,7 @@ const char *serverlogfile = DEFAULT_LOGFILE;
 
 static bool verbose = FALSE;
 static bool bind_only = FALSE;
-#ifdef ENABLE_IPV6
+#ifdef USE_IPV6
 static bool use_ipv6 = FALSE;
 #endif
 static const char *ipv_inuse = "IPv4";
@@ -152,7 +152,7 @@ enum sockmode {
   ACTIVE_DISCONNECT  /* as a client, disconnected from server */
 };
 
-#ifdef WIN32
+#if defined(_WIN32) && !defined(CURL_WINDOWS_APP)
 /*
  * read-wrapper to support reading from stdin on Windows.
  */
@@ -179,7 +179,7 @@ static ssize_t read_wincon(int fd, void *buf, size_t count)
     return rcount;
   }
 
-  errno = GetLastError();
+  errno = (int)GetLastError();
   return -1;
 }
 #undef  read
@@ -214,7 +214,7 @@ static ssize_t write_wincon(int fd, const void *buf, size_t count)
     return wcount;
   }
 
-  errno = GetLastError();
+  errno = (int)GetLastError();
   return -1;
 }
 #undef  write
@@ -420,7 +420,7 @@ static bool read_data_block(unsigned char *buffer, ssize_t maxlen,
 }
 
 
-#ifdef USE_WINSOCK
+#if defined(USE_WINSOCK) && !defined(CURL_WINDOWS_APP)
 /*
  * WinSock select() does not support standard file descriptors,
  * it can only check SOCKETs. The following function is an attempt
@@ -483,7 +483,7 @@ static unsigned int WINAPI select_ws_wait_thread(void *lpParameter)
         size.LowPart = GetFileSize(handle, &length);
         if((size.LowPart != INVALID_FILE_SIZE) ||
             (GetLastError() == NO_ERROR)) {
-          size.HighPart = length;
+          size.HighPart = (LONG)length;
           /* get the current position within the file */
           pos.QuadPart = 0;
           pos.LowPart = SetFilePointer(handle, 0, &pos.HighPart, FILE_CURRENT);
@@ -551,14 +551,14 @@ static unsigned int WINAPI select_ws_wait_thread(void *lpParameter)
             continue;
           }
           else {
-            logmsg("[select_ws_wait_thread] PeekNamedPipe len: %d", length);
+            logmsg("[select_ws_wait_thread] PeekNamedPipe len: %lu", length);
           }
         }
         else {
           /* if the pipe has NOT been closed, sleep and continue waiting */
           ret = GetLastError();
           if(ret != ERROR_BROKEN_PIPE) {
-            logmsg("[select_ws_wait_thread] PeekNamedPipe error: %d", ret);
+            logmsg("[select_ws_wait_thread] PeekNamedPipe error: %lu", ret);
             SleepEx(0, FALSE);
             continue;
           }
@@ -893,7 +893,7 @@ static int select_ws(int nfds, fd_set *readfds, fd_set *writefds,
 
 
 /* Perform the disconnect handshake with sockfilt
- * This involves waiting for the disconnect acknowledgmeent after the DISC
+ * This involves waiting for the disconnect acknowledgment after the DISC
  * command, while throwing away anything else that might come in before
  * that.
  */
@@ -921,10 +921,9 @@ static bool disc_handshake(void)
       }
       else if(!memcmp("DATA", buffer, 4)) {
         /* We must read more data to stay in sync */
+        logmsg("Throwing away data bytes");
         if(!read_data_block(buffer, sizeof(buffer), &buffer_len))
           return FALSE;
-
-        logmsg("Throwing again %zd data bytes", buffer_len);
 
       }
       else if(!memcmp("QUIT", buffer, 4)) {
@@ -1159,8 +1158,8 @@ static bool juggle(curl_socket_t *sockfdp,
       curl_socket_t newfd = accept(sockfd, NULL, NULL);
       if(CURL_SOCKET_BAD == newfd) {
         error = SOCKERRNO;
-        logmsg("accept(%d, NULL, NULL) failed with error: (%d) %s",
-               sockfd, error, sstrerror(error));
+        logmsg("accept(%" CURL_FORMAT_SOCKET_T ", NULL, NULL) "
+               "failed with error: (%d) %s", sockfd, error, sstrerror(error));
       }
       else {
         logmsg("====> Client connect");
@@ -1255,7 +1254,7 @@ static curl_socket_t sockdaemon(curl_socket_t sock,
   /* When the specified listener port is zero, it is actually a
      request to let the system choose a non-zero available port. */
 
-#ifdef ENABLE_IPV6
+#ifdef USE_IPV6
   if(!use_ipv6) {
 #endif
     memset(&listener.sa4, 0, sizeof(listener.sa4));
@@ -1263,7 +1262,7 @@ static curl_socket_t sockdaemon(curl_socket_t sock,
     listener.sa4.sin_addr.s_addr = INADDR_ANY;
     listener.sa4.sin_port = htons(*listenport);
     rc = bind(sock, &listener.sa, sizeof(listener.sa4));
-#ifdef ENABLE_IPV6
+#ifdef USE_IPV6
   }
   else {
     memset(&listener.sa6, 0, sizeof(listener.sa6));
@@ -1272,7 +1271,7 @@ static curl_socket_t sockdaemon(curl_socket_t sock,
     listener.sa6.sin6_port = htons(*listenport);
     rc = bind(sock, &listener.sa, sizeof(listener.sa6));
   }
-#endif /* ENABLE_IPV6 */
+#endif /* USE_IPV6 */
   if(rc) {
     error = SOCKERRNO;
     logmsg("Error binding socket on port %hu: (%d) %s",
@@ -1286,11 +1285,11 @@ static curl_socket_t sockdaemon(curl_socket_t sock,
        port we actually got and update the listener port value with it. */
     curl_socklen_t la_size;
     srvr_sockaddr_union_t localaddr;
-#ifdef ENABLE_IPV6
+#ifdef USE_IPV6
     if(!use_ipv6)
 #endif
       la_size = sizeof(localaddr.sa4);
-#ifdef ENABLE_IPV6
+#ifdef USE_IPV6
     else
       la_size = sizeof(localaddr.sa6);
 #endif
@@ -1306,7 +1305,7 @@ static curl_socket_t sockdaemon(curl_socket_t sock,
     case AF_INET:
       *listenport = ntohs(localaddr.sa4.sin_port);
       break;
-#ifdef ENABLE_IPV6
+#ifdef USE_IPV6
     case AF_INET6:
       *listenport = ntohs(localaddr.sa6.sin6_port);
       break;
@@ -1335,7 +1334,7 @@ static curl_socket_t sockdaemon(curl_socket_t sock,
   rc = listen(sock, 5);
   if(0 != rc) {
     error = SOCKERRNO;
-    logmsg("listen(%d, 5) failed with error: (%d) %s",
+    logmsg("listen(%" CURL_FORMAT_SOCKET_T ", 5) failed with error: (%d) %s",
            sock, error, sstrerror(error));
     sclose(sock);
     return CURL_SOCKET_BAD;
@@ -1364,7 +1363,7 @@ int main(int argc, char *argv[])
   while(argc>arg) {
     if(!strcmp("--version", argv[arg])) {
       printf("sockfilt IPv4%s\n",
-#ifdef ENABLE_IPV6
+#ifdef USE_IPV6
              "/IPv6"
 #else
              ""
@@ -1392,7 +1391,7 @@ int main(int argc, char *argv[])
         serverlogfile = argv[arg++];
     }
     else if(!strcmp("--ipv6", argv[arg])) {
-#ifdef ENABLE_IPV6
+#ifdef USE_IPV6
       ipv_inuse = "IPv6";
       use_ipv6 = TRUE;
 #endif
@@ -1400,7 +1399,7 @@ int main(int argc, char *argv[])
     }
     else if(!strcmp("--ipv4", argv[arg])) {
       /* for completeness, we support this option as well */
-#ifdef ENABLE_IPV6
+#ifdef USE_IPV6
       ipv_inuse = "IPv4";
       use_ipv6 = FALSE;
 #endif
@@ -1461,7 +1460,7 @@ int main(int argc, char *argv[])
     }
   }
 
-#ifdef WIN32
+#ifdef _WIN32
   win32_init();
   atexit(win32_cleanup);
 
@@ -1472,11 +1471,11 @@ int main(int argc, char *argv[])
 
   install_signal_handlers(false);
 
-#ifdef ENABLE_IPV6
+#ifdef USE_IPV6
   if(!use_ipv6)
 #endif
     sock = socket(AF_INET, SOCK_STREAM, 0);
-#ifdef ENABLE_IPV6
+#ifdef USE_IPV6
   else
     sock = socket(AF_INET6, SOCK_STREAM, 0);
 #endif
@@ -1491,7 +1490,7 @@ int main(int argc, char *argv[])
   if(connectport) {
     /* Active mode, we should connect to the given port number */
     mode = ACTIVE;
-#ifdef ENABLE_IPV6
+#ifdef USE_IPV6
     if(!use_ipv6) {
 #endif
       memset(&me.sa4, 0, sizeof(me.sa4));
@@ -1503,7 +1502,7 @@ int main(int argc, char *argv[])
       Curl_inet_pton(AF_INET, addr, &me.sa4.sin_addr);
 
       rc = connect(sock, &me.sa, sizeof(me.sa4));
-#ifdef ENABLE_IPV6
+#ifdef USE_IPV6
     }
     else {
       memset(&me.sa6, 0, sizeof(me.sa6));
@@ -1515,7 +1514,7 @@ int main(int argc, char *argv[])
 
       rc = connect(sock, &me.sa, sizeof(me.sa6));
     }
-#endif /* ENABLE_IPV6 */
+#endif /* USE_IPV6 */
     if(rc) {
       error = SOCKERRNO;
       logmsg("Error connecting to port %hu: (%d) %s",

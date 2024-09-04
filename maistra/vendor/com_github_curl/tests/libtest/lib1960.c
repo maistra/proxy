@@ -25,12 +25,6 @@
 
 #ifdef HAVE_INET_PTON
 
-#ifdef WIN32
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#include <windows.h>
-#endif
-
 #ifdef HAVE_NETINET_IN_H
 #include <netinet/in.h>
 #endif
@@ -74,7 +68,7 @@ static int sockopt_cb(void *clientp,
 }
 
 /* Expected args: URL IP PORT */
-int test(char *URL)
+CURLcode test(char *URL)
 {
   CURL *curl = NULL;
   CURLcode res = TEST_ERR_MAJOR_BAD;
@@ -84,7 +78,7 @@ int test(char *URL)
   unsigned short port;
 
   if(!strcmp("check", URL))
-    return 0; /* no output makes it not skipped */
+    return CURLE_OK; /* no output makes it not skipped */
 
   port = (unsigned short)atoi(libtest_arg3);
 
@@ -146,10 +140,10 @@ test_cleanup:
   return res;
 }
 #else
-int test(char *URL)
+CURLcode test(char *URL)
 {
   (void)URL;
   printf("lacks inet_pton\n");
-  return 0;
+  return CURLE_OK;
 }
 #endif

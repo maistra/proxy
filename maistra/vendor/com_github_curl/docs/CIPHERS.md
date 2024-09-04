@@ -1,3 +1,9 @@
+<!--
+Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al.
+
+SPDX-License-Identifier: curl
+-->
+
 # Ciphers
 
 With curl's options
@@ -19,7 +25,7 @@ libcurl was built to use. This is an attempt to list known cipher names.
 
 ## OpenSSL
 
-(based on [OpenSSL docs](https://www.openssl.org/docs/manmaster/man1/openssl-ciphers.html))
+(based on [OpenSSL docs](https://docs.openssl.org/master/man1/openssl-ciphers/))
 
 When specifying multiple cipher names, separate them with colon (`:`).
 
@@ -165,7 +171,7 @@ When specifying multiple cipher names, separate them with colon (`:`).
 `TLS_AES_128_CCM_8_SHA256`
 `TLS_AES_128_CCM_SHA256`
 
-## WolfSSL
+## wolfSSL
 
 `RC4-SHA`,
 `RC4-MD5`,
@@ -290,9 +296,9 @@ next section.
 
 There is also the case that the selected algorithm is not supported by the
 protocol or does not match the ciphers offered by the server during the SSL
-negotiation. In this case curl will return error
+negotiation. In this case curl returns error
 `CURLE_SSL_CONNECT_ERROR (35) SEC_E_ALGORITHM_MISMATCH`
-and the request will fail.
+and the request fails.
 
 `CALG_MD2`,
 `CALG_MD4`,
@@ -353,7 +359,7 @@ are running an outdated OS you might still be supporting weak ciphers.
 You can set TLS 1.3 ciphers for Schannel by using `CURLOPT_TLS13_CIPHERS` or
 `--tls13-ciphers` with the names below.
 
-If TLS 1.3 cipher suites are set then libcurl will add or restrict Schannel TLS
+If TLS 1.3 cipher suites are set then libcurl adds or restricts Schannel TLS
 1.3 algorithms automatically. Essentially, libcurl is emulating support for
 individual TLS 1.3 cipher suites since Schannel does not support it directly.
 
@@ -363,10 +369,10 @@ individual TLS 1.3 cipher suites since Schannel does not support it directly.
 `TLS_AES_128_CCM_8_SHA256`
 `TLS_AES_128_CCM_SHA256`
 
-Note if you set TLS 1.3 ciphers without also setting the minimum TLS version to
-1.3 then it's possible Schannel may negotiate an earlier TLS version and cipher
-suite if your libcurl and OS settings allow it. You can set the minimum TLS
-version by using `CURLOPT_SSLVERSION` or `--tlsv1.3`.
+Note if you set TLS 1.3 ciphers without also setting the minimum TLS version
+to 1.3 then it is possible Schannel may negotiate an earlier TLS version and
+cipher suite if your libcurl and OS settings allow it. You can set the minimum
+TLS version by using `CURLOPT_SSLVERSION` or `--tlsv1.3`.
 
 ## BearSSL
 

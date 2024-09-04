@@ -93,10 +93,8 @@
   } while(0)
 
 
-extern int unitfail;
-
 #define UNITTEST_START                          \
-  int test(char *arg)                           \
+  CURLcode test(char *arg)                      \
   {                                             \
     (void)arg;                                  \
     if(unit_setup()) {                          \
@@ -109,5 +107,5 @@ extern int unitfail;
 unit_test_abort:                                \
     unit_stop();                                \
   }                                             \
-  return unitfail;                              \
+  return (CURLcode)unitfail;                    \
   }

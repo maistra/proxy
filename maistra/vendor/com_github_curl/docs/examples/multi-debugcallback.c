@@ -29,10 +29,6 @@
 #include <stdio.h>
 #include <string.h>
 
-/* somewhat unix-specific */
-#include <sys/time.h>
-#include <unistd.h>
-
 /* curl stuff */
 #include <curl/curl.h>
 
@@ -100,10 +96,7 @@ int my_trace(CURL *handle, curl_infotype type,
   switch(type) {
   case CURLINFO_TEXT:
     fprintf(stderr, "== Info: %s", data);
-    /* FALLTHROUGH */
-  default: /* in case a new one is introduced to shock us */
     return 0;
-
   case CURLINFO_HEADER_OUT:
     text = "=> Send header";
     break;
@@ -116,6 +109,8 @@ int my_trace(CURL *handle, curl_infotype type,
   case CURLINFO_DATA_IN:
     text = "<= Recv data";
     break;
+  default: /* in case a new one is introduced to shock us */
+    return 0;
   }
 
   dump(text, stderr, data, size, TRUE);
@@ -134,7 +129,7 @@ int main(void)
 
   http_handle = curl_easy_init();
 
-  /* set the options (I left out a few, you will get the point anyway) */
+  /* set the options (I left out a few, you get the point anyway) */
   curl_easy_setopt(http_handle, CURLOPT_URL, "https://www.example.com/");
 
   curl_easy_setopt(http_handle, CURLOPT_DEBUGFUNCTION, my_trace);

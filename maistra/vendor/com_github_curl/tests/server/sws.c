@@ -70,7 +70,7 @@
 
 static enum {
   socket_domain_inet = AF_INET
-#ifdef ENABLE_IPV6
+#ifdef USE_IPV6
   , socket_domain_inet6 = AF_INET6
 #endif
 #ifdef USE_UNIX_SOCKETS
@@ -229,7 +229,7 @@ static bool socket_domain_is_ip(void)
 {
   switch(socket_domain) {
   case AF_INET:
-#ifdef ENABLE_IPV6
+#ifdef USE_IPV6
   case AF_INET6:
 #endif
     return true;
@@ -374,7 +374,7 @@ static int ProcessRequest(struct httprequest *req)
 
   req->callcount++;
 
-  logmsg("Process %d bytes request%s", req->offset,
+  logmsg("Process %zu bytes request%s", req->offset,
          req->callcount > 1?" [CONTINUED]":"");
 
   /* try to figure out the request characteristics as soon as possible, but
@@ -557,14 +557,14 @@ static int ProcessRequest(struct httprequest *req)
     logmsg("request not complete yet");
     return 0; /* not complete yet */
   }
-  logmsg("- request found to be complete (%d)", req->testno);
+  logmsg("- request found to be complete (%ld)", req->testno);
 
   if(req->testno == DOCNUMBER_NOTHING) {
     /* check for a Testno: header with the test case number */
     char *testno = strstr(line, "\nTestno: ");
     if(testno) {
       req->testno = strtol(&testno[9], NULL, 10);
-      logmsg("Found test number %d in Testno: header!", req->testno);
+      logmsg("Found test number %ld in Testno: header!", req->testno);
     }
     else {
       logmsg("No Testno: header");
@@ -702,8 +702,8 @@ static int ProcessRequest(struct httprequest *req)
     /* Negotiate iterations */
     static long prev_testno = -1;
     static long prev_partno = -1;
-    logmsg("Negotiate: prev_testno: %d, prev_partno: %d",
-            prev_testno, prev_partno);
+    logmsg("Negotiate: prev_testno: %ld, prev_partno: %ld",
+           prev_testno, prev_partno);
     if(req->testno != prev_testno) {
       prev_testno = req->testno;
       prev_partno = req->partno;
@@ -1198,8 +1198,8 @@ retry:
       int intervals = msecs_left / MAX_SLEEP_TIME_MS;
       if(msecs_left%MAX_SLEEP_TIME_MS)
         intervals++;
-      logmsg("Pausing %d milliseconds after writing %d bytes",
-         msecs_left, written);
+      logmsg("Pausing %d milliseconds after writing %zd bytes",
+             msecs_left, written);
       while((intervals > 0) && !got_exit_signal) {
         int sleep_time = msecs_left > MAX_SLEEP_TIME_MS ?
           MAX_SLEEP_TIME_MS : msecs_left;
@@ -1290,7 +1290,7 @@ static curl_socket_t connect_to(const char *ipaddr, unsigned short port)
   const char *op_br = "";
   const char *cl_br = "";
 
-#ifdef ENABLE_IPV6
+#ifdef USE_IPV6
   if(socket_domain == AF_INET6) {
     op_br = "[";
     cl_br = "]";
@@ -1335,7 +1335,7 @@ static curl_socket_t connect_to(const char *ipaddr, unsigned short port)
 
     rc = connect(serverfd, &serveraddr.sa, sizeof(serveraddr.sa4));
     break;
-#ifdef ENABLE_IPV6
+#ifdef USE_IPV6
   case AF_INET6:
     memset(&serveraddr.sa6, 0, sizeof(serveraddr.sa6));
     serveraddr.sa6.sin6_family = AF_INET6;
@@ -1348,7 +1348,7 @@ static curl_socket_t connect_to(const char *ipaddr, unsigned short port)
 
     rc = connect(serverfd, &serveraddr.sa, sizeof(serveraddr.sa6));
     break;
-#endif /* ENABLE_IPV6 */
+#endif /* USE_IPV6 */
 #ifdef USE_UNIX_SOCKETS
   case AF_UNIX:
     logmsg("Proxying through Unix socket is not (yet?) supported.");
@@ -1976,7 +1976,7 @@ int main(int argc, char *argv[])
   while(argc>arg) {
     if(!strcmp("--version", argv[arg])) {
       puts("sws IPv4"
-#ifdef ENABLE_IPV6
+#ifdef USE_IPV6
              "/IPv6"
 #endif
 #ifdef USE_UNIX_SOCKETS
@@ -2023,7 +2023,7 @@ int main(int argc, char *argv[])
       arg++;
     }
     else if(!strcmp("--ipv6", argv[arg])) {
-#ifdef ENABLE_IPV6
+#ifdef USE_IPV6
       socket_type = "IPv6";
       socket_domain = AF_INET6;
       location_str = port_str;
@@ -2119,7 +2119,7 @@ int main(int argc, char *argv[])
             logdir, SERVERLOGS_LOCKDIR, protocol_type,
             is_proxy ? "-proxy" : "", socket_type);
 
-#ifdef WIN32
+#ifdef _WIN32
   win32_init();
   atexit(win32_cleanup);
 #endif
@@ -2164,7 +2164,7 @@ int main(int argc, char *argv[])
     me.sa4.sin_port = htons(port);
     rc = bind(sock, &me.sa, sizeof(me.sa4));
     break;
-#ifdef ENABLE_IPV6
+#ifdef USE_IPV6
   case AF_INET6:
     memset(&me.sa6, 0, sizeof(me.sa6));
     me.sa6.sin6_family = AF_INET6;
@@ -2172,7 +2172,7 @@ int main(int argc, char *argv[])
     me.sa6.sin6_port = htons(port);
     rc = bind(sock, &me.sa, sizeof(me.sa6));
     break;
-#endif /* ENABLE_IPV6 */
+#endif /* USE_IPV6 */
 #ifdef USE_UNIX_SOCKETS
   case AF_UNIX:
     rc = bind_unix_socket(sock, unix_socket, &me.sau);
@@ -2196,11 +2196,11 @@ int main(int argc, char *argv[])
        port we actually got and update the listener port value with it. */
     curl_socklen_t la_size;
     srvr_sockaddr_union_t localaddr;
-#ifdef ENABLE_IPV6
+#ifdef USE_IPV6
     if(socket_domain != AF_INET6)
 #endif
       la_size = sizeof(localaddr.sa4);
-#ifdef ENABLE_IPV6
+#ifdef USE_IPV6
     else
       la_size = sizeof(localaddr.sa6);
 #endif
@@ -2216,7 +2216,7 @@ int main(int argc, char *argv[])
     case AF_INET:
       port = ntohs(localaddr.sa4.sin_port);
       break;
-#ifdef ENABLE_IPV6
+#ifdef USE_IPV6
     case AF_INET6:
       port = ntohs(localaddr.sa6.sin6_port);
       break;
@@ -2334,7 +2334,8 @@ int main(int argc, char *argv[])
       curl_socket_t msgsock;
       do {
         msgsock = accept_connection(sock);
-        logmsg("accept_connection %d returned %d", sock, msgsock);
+        logmsg("accept_connection %" CURL_FORMAT_SOCKET_T
+               " returned %" CURL_FORMAT_SOCKET_T, sock, msgsock);
         if(CURL_SOCKET_BAD == msgsock)
           goto sws_cleanup;
         if(req->delay)

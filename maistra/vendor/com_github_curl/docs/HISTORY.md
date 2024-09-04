@@ -1,3 +1,9 @@
+<!--
+Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al.
+
+SPDX-License-Identifier: curl
+-->
+
 How curl Became Like This
 =========================
 
@@ -280,7 +286,7 @@ August:
 
 February: added support for the axTLS backend
 
-April: added the cyassl backend (later renamed to WolfSSL)
+April: added the cyassl backend (later renamed to wolfSSL)
 
 2012
 ----
@@ -327,7 +333,7 @@ April: added the cyassl backend (later renamed to WolfSSL)
 
  January: the curl tool defaults to HTTP/2 for HTTPS URLs
 
- December: curl 7.52.0 introduced support for HTTPS-proxy!
+ December: curl 7.52.0 introduced support for HTTPS-proxy
 
  First TLS 1.3 support
 
