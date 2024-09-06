@@ -24,8 +24,5 @@ go_test(
     name = "sftpfs_test",
     srcs = ["sftp_test.go"],
     embed = [":sftpfs"],
-    deps = [
-        "@com_github_pkg_sftp//:go_default_library",
-        "@org_golang_x_crypto//ssh:go_default_library",
-    ],
+    deps = ["@com_github_pkg_sftp//:go_default_library"],
 )

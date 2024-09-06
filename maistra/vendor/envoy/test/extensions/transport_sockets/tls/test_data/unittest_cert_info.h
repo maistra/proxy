@@ -1,8 +1,8 @@
 // NOLINT(namespace-envoy)
 constexpr char TEST_UNITTEST_CERT_256_HASH[] =
-    "cc62a7c2e052b5e771631cdd02593fe935ee6111d34a409f98151a2e893a3fc3";
-constexpr char TEST_UNITTEST_CERT_1_HASH[] = "f14af93cbb609b7441bd959a3eb62ecf79fc8710";
-constexpr char TEST_UNITTEST_CERT_SPKI[] = "1vq9PX9Hm8ubJlG5XbU+qixpgF7AUqptvt9YW4quukw=";
-constexpr char TEST_UNITTEST_CERT_SERIAL[] = "62a7294a20f0ed4cd15793fd671fb9f7430960fb";
-constexpr char TEST_UNITTEST_CERT_NOT_BEFORE[] = "Aug 22 07:51:34 2022 GMT";
-constexpr char TEST_UNITTEST_CERT_NOT_AFTER[] = "Aug 21 07:51:34 2024 GMT";
+    "e8bcfde5bf4ecf4bb8cb514bf7e3fccb03e29c808d6c966fe7e33297232571b1";
+constexpr char TEST_UNITTEST_CERT_1_HASH[] = "5e537961574a8faa6f3b4a8d48b3fb6c3e341ec5";
+constexpr char TEST_UNITTEST_CERT_SPKI[] = "ckuS/CiHDKajQ2yTcMceCj6/US3XBQPCe+lmYP50Lu0=";
+constexpr char TEST_UNITTEST_CERT_SERIAL[] = "73e4a14aecb77f297690909a90643ad3e0991b9d";
+constexpr char TEST_UNITTEST_CERT_NOT_BEFORE[] = "Sep  4 10:58:03 2024 GMT";
+constexpr char TEST_UNITTEST_CERT_NOT_AFTER[] = "Sep  4 10:58:03 2026 GMT";
