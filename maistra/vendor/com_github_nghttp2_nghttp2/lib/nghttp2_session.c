@@ -496,6 +496,7 @@ static int session_new(nghttp2_session **session_ptr,
   (*session_ptr)->max_send_header_block_length = NGHTTP2_MAX_HEADERSLEN;
   (*session_ptr)->max_outbound_ack = NGHTTP2_DEFAULT_MAX_OBQ_FLOOD_ITEM;
   (*session_ptr)->max_settings = NGHTTP2_DEFAULT_MAX_SETTINGS;
+  (*session_ptr)->max_continuations = NGHTTP2_DEFAULT_MAX_CONTINUATIONS;
 
   if (option) {
     if ((option->opt_set_mask & NGHTTP2_OPT_NO_AUTO_WINDOW_UPDATE) &&
@@ -583,6 +584,10 @@ static int session_new(nghttp2_session **session_ptr,
       nghttp2_ratelim_init(&(*session_ptr)->stream_reset_ratelim,
                            option->stream_reset_burst,
                            option->stream_reset_rate);
+    }
+
+    if (option->opt_set_mask & NGHTTP2_OPT_MAX_CONTINUATIONS) {
+      (*session_ptr)->max_continuations = option->max_continuations;
     }
   }
 
@@ -3302,7 +3307,7 @@ static ssize_t nghttp2_session_mem_send_internal(nghttp2_session *session,
         }
 
         if (rv == NGHTTP2_ERR_HEADER_COMP) {
-          /* If header compression error occurred, should terminiate
+          /* If header compression error occurred, should terminate
              connection. */
           rv = nghttp2_session_terminate_session(session,
                                                  NGHTTP2_INTERNAL_ERROR);
@@ -6778,6 +6783,8 @@ ssize_t nghttp2_session_mem_recv(nghttp2_session *session, const uint8_t *in,
           }
         }
         session_inbound_frame_reset(session);
+
+        session->num_continuations = 0;
       }
       break;
     }
@@ -6898,6 +6905,10 @@ ssize_t nghttp2_session_mem_recv(nghttp2_session *session, const uint8_t *in,
         fprintf(stderr, "recv: [IB_IGN_CONTINUATION]\n");
       }
 #endif /* DEBUGBUILD */
+
+      if (++session->num_continuations > session->max_continuations) {
+        return NGHTTP2_ERR_TOO_MANY_CONTINUATIONS;
+      }
 
       readlen = inbound_frame_buf_read(iframe, in, last);
       in += readlen;
@@ -8365,4 +8376,31 @@ int nghttp2_session_change_extpri_stream_priority(
 
   return session_update_stream_priority(session, stream,
                                         nghttp2_extpri_to_uint8(&extpri));
+}
+
+int nghttp2_session_get_extpri_stream_priority(nghttp2_session *session,
+                                               nghttp2_extpri *extpri,
+                                               int32_t stream_id) {
+  nghttp2_stream *stream;
+
+  if (!session->server) {
+    return NGHTTP2_ERR_INVALID_STATE;
+  }
+
+  if (session->pending_no_rfc7540_priorities != 1) {
+    return 0;
+  }
+
+  if (stream_id == 0) {
+    return NGHTTP2_ERR_INVALID_ARGUMENT;
+  }
+
+  stream = nghttp2_session_get_stream_raw(session, stream_id);
+  if (!stream) {
+    return NGHTTP2_ERR_INVALID_ARGUMENT;
+  }
+
+  nghttp2_extpri_from_uint8(extpri, stream->extpri);
+
+  return 0;
 }

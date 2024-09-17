@@ -30,6 +30,10 @@
 /* define if the compiler supports basic C++14 syntax */
 #undef HAVE_CXX14
 
+/* Define to 1 if you have the declaration of `CLOCK_MONOTONIC', and to 0 if
+   you don't. */
+#undef HAVE_DECL_CLOCK_MONOTONIC
+
 /* Define to 1 if you have the declaration of `initgroups', and to 0 if you
    don't. */
 #undef HAVE_DECL_INITGROUPS
@@ -188,9 +192,6 @@
 /* Define to 1 if you have `struct tm.tm_gmtoff` member. */
 #undef HAVE_STRUCT_TM_TM_GMTOFF
 
-/* Define to 1 if you have the <sysinfoapi.h> header file. */
-#undef HAVE_SYSINFOAPI_H
-
 /* Define to 1 if you have the <syslog.h> header file. */
 #undef HAVE_SYSLOG_H
 
@@ -212,9 +213,6 @@
 /* Define to 1 if you have the `timegm' function. */
 #undef HAVE_TIMEGM
 
-/* Define to 1 if you have the <time.h> header file. */
-#undef HAVE_TIME_H
-
 /* Define to 1 if you have the <unistd.h> header file. */
 #undef HAVE_UNISTD_H
 
@@ -226,6 +224,9 @@
 
 /* Define to 1 if you have the <wchar.h> header file. */
 #undef HAVE_WCHAR_H
+
+/* Define to 1 if you have the <windows.h> header file. */
+#undef HAVE_WINDOWS_H
 
 /* Define to 1 if `fork' works. */
 #undef HAVE_WORKING_FORK
@@ -268,12 +269,6 @@
 
 /* Define to the version of this package. */
 #undef PACKAGE_VERSION
-
-/* The size of `int *', as computed by sizeof. */
-#undef SIZEOF_INT_P
-
-/* The size of `time_t', as computed by sizeof. */
-#undef SIZEOF_TIME_T
 
 /* Define to 1 if all of the C90 standard headers exist (not just the ones
    required in a freestanding environment). This macro is provided for

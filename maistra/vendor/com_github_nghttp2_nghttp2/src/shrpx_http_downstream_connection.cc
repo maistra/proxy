@@ -596,13 +596,13 @@ int HttpDownstreamConnection::push_request_headers() {
   auto upstream = downstream_->get_upstream();
   auto handler = upstream->get_client_handler();
 
-#if OPENSSL_1_1_1_API
+#if defined(NGHTTP2_GENUINE_OPENSSL) || defined(NGHTTP2_OPENSSL_IS_BORINGSSL)
   auto conn = handler->get_connection();
 
   if (conn->tls.ssl && !SSL_is_init_finished(conn->tls.ssl)) {
     buf->append("Early-Data: 1\r\n");
   }
-#endif // OPENSSL_1_1_1_API
+#endif // NGHTTP2_GENUINE_OPENSSL || NGHTTP2_OPENSSL_IS_BORINGSSL
 
   auto fwd =
       fwdconf.strip_incoming ? nullptr : req.fs.header(http2::HD_FORWARDED);
@@ -929,6 +929,11 @@ int htp_hdrs_completecb(llhttp_t *htp) {
 
   for (auto &kv : resp.fs.headers()) {
     kv.value = util::rstrip(balloc, kv.value);
+
+    if (kv.token == http2::HD_TRANSFER_ENCODING &&
+        !http2::check_transfer_encoding(kv.value)) {
+      return -1;
+    }
   }
 
   auto config = get_config();
@@ -1004,6 +1009,16 @@ int htp_hdrs_completecb(llhttp_t *htp) {
   resp.connection_close = !llhttp_should_keep_alive(htp);
   downstream->set_response_state(DownstreamState::HEADER_COMPLETE);
   downstream->inspect_http1_response();
+
+  if (htp->flags & F_CHUNKED) {
+    downstream->set_chunked_response(true);
+  }
+
+  auto transfer_encoding = resp.fs.header(http2::HD_TRANSFER_ENCODING);
+  if (transfer_encoding && !downstream->get_chunked_response()) {
+    resp.connection_close = true;
+  }
+
   if (downstream->get_upgraded()) {
     // content-length must be ignored for upgraded connection.
     resp.fs.content_length = -1;

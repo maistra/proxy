@@ -399,7 +399,7 @@ void Worker::replace_downstream_config(
         }
       }
 
-      dst->shared_addr = shared_addr;
+      dst->shared_addr = std::move(shared_addr);
 
       addr_groups_indexer.emplace(std::move(dkey), i);
     } else {
@@ -507,7 +507,7 @@ void Worker::process_events() {
     }
 
     if (LOG_ENABLED(INFO)) {
-      WLOG(INFO, this) << "CLIENT_HANDLER:" << client_handler << " created ";
+      WLOG(INFO, this) << "CLIENT_HANDLER:" << client_handler << " created";
     }
 
     break;
@@ -602,9 +602,7 @@ void Worker::set_ticket_keys(std::shared_ptr<TicketKeys> ticket_keys) {
 
 WorkerStat *Worker::get_worker_stat() { return &worker_stat_; }
 
-struct ev_loop *Worker::get_loop() const {
-  return loop_;
-}
+struct ev_loop *Worker::get_loop() const { return loop_; }
 
 SSL_CTX *Worker::get_sv_ssl_ctx() const { return sv_ssl_ctx_; }
 

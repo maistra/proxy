@@ -697,16 +697,10 @@ int HttpClient::initiate_connection() {
       const auto &host_string =
           config.host_override.empty() ? host : config.host_override;
 
-#if LIBRESSL_2_7_API ||                                                        \
-    (!LIBRESSL_IN_USE && OPENSSL_VERSION_NUMBER >= 0x10002000L) ||             \
-    defined(OPENSSL_IS_BORINGSSL)
       auto param = SSL_get0_param(ssl);
       X509_VERIFY_PARAM_set_hostflags(param, 0);
       X509_VERIFY_PARAM_set1_host(param, host_string.c_str(),
                                   host_string.size());
-#endif // LIBRESSL_2_7_API || (!LIBRESSL_IN_USE &&
-       // OPENSSL_VERSION_NUMBER >= 0x10002000L) ||
-       // defined(OPENSSL_IS_BORINGSSL)
       SSL_set_verify(ssl, SSL_VERIFY_PEER, verify_cb);
 
       if (!util::numeric_host(host_string.c_str())) {
@@ -999,7 +993,7 @@ int HttpClient::on_upgrade_connect() {
   auto headers = Headers{{"host", hostport},
                          {"connection", "Upgrade, HTTP2-Settings"},
                          {"upgrade", NGHTTP2_CLEARTEXT_PROTO_VERSION_ID},
-                         {"http2-settings", token68},
+                         {"http2-settings", std::move(token68)},
                          {"accept", "*/*"},
                          {"user-agent", "nghttp2/" NGHTTP2_VERSION}};
   auto initial_headerslen = headers.size();
@@ -1121,28 +1115,19 @@ int HttpClient::connection_made() {
   }
 
   if (ssl) {
-    // Check NPN or ALPN result
+    // Check ALPN result
     const unsigned char *next_proto = nullptr;
     unsigned int next_proto_len;
-#ifndef OPENSSL_NO_NEXTPROTONEG
-    SSL_get0_next_proto_negotiated(ssl, &next_proto, &next_proto_len);
-#endif // !OPENSSL_NO_NEXTPROTONEG
-    for (int i = 0; i < 2; ++i) {
-      if (next_proto) {
-        auto proto = StringRef{next_proto, next_proto_len};
-        if (config.verbose) {
-          std::cout << "The negotiated protocol: " << proto << std::endl;
-        }
-        if (!util::check_h2_is_selected(proto)) {
-          next_proto = nullptr;
-        }
-        break;
+
+    SSL_get0_alpn_selected(ssl, &next_proto, &next_proto_len);
+    if (next_proto) {
+      auto proto = StringRef{next_proto, next_proto_len};
+      if (config.verbose) {
+        std::cout << "The negotiated protocol: " << proto << std::endl;
       }
-#if OPENSSL_VERSION_NUMBER >= 0x10002000L
-      SSL_get0_alpn_selected(ssl, &next_proto, &next_proto_len);
-#else  // OPENSSL_VERSION_NUMBER < 0x10002000L
-      break;
-#endif // OPENSSL_VERSION_NUMBER < 0x10002000L
+      if (!util::check_h2_is_selected(proto)) {
+        next_proto = nullptr;
+      }
     }
     if (!next_proto) {
       print_protocol_nego_error();
@@ -2252,32 +2237,6 @@ id  responseEnd requestStart  process code size request path)"
 }
 } // namespace
 
-#ifndef OPENSSL_NO_NEXTPROTONEG
-namespace {
-int client_select_next_proto_cb(SSL *ssl, unsigned char **out,
-                                unsigned char *outlen, const unsigned char *in,
-                                unsigned int inlen, void *arg) {
-  if (config.verbose) {
-    print_timer();
-    std::cout << "[NPN] server offers:" << std::endl;
-  }
-  for (unsigned int i = 0; i < inlen; i += in[i] + 1) {
-    if (config.verbose) {
-      std::cout << "          * ";
-      std::cout.write(reinterpret_cast<const char *>(&in[i + 1]), in[i]);
-      std::cout << std::endl;
-    }
-  }
-  if (!util::select_h2(const_cast<const unsigned char **>(out), outlen, in,
-                       inlen)) {
-    print_protocol_nego_error();
-    return SSL_TLSEXT_ERR_NOACK;
-  }
-  return SSL_TLSEXT_ERR_OK;
-}
-} // namespace
-#endif // !OPENSSL_NO_NEXTPROTONEG
-
 namespace {
 int communicate(
     const std::string &scheme, const std::string &host, uint16_t port,
@@ -2348,16 +2307,10 @@ int communicate(
         goto fin;
       }
     }
-#ifndef OPENSSL_NO_NEXTPROTONEG
-    SSL_CTX_set_next_proto_select_cb(ssl_ctx, client_select_next_proto_cb,
-                                     nullptr);
-#endif // !OPENSSL_NO_NEXTPROTONEG
 
-#if OPENSSL_VERSION_NUMBER >= 0x10002000L
     auto proto_list = util::get_default_alpn();
 
     SSL_CTX_set_alpn_protos(ssl_ctx, proto_list.data(), proto_list.size());
-#endif // OPENSSL_VERSION_NUMBER >= 0x10002000L
   }
   {
     HttpClient client{callbacks, loop, ssl_ctx};
@@ -2795,8 +2748,6 @@ Options:
 } // namespace
 
 int main(int argc, char **argv) {
-  tls::libssl_init();
-
   bool color = false;
   while (1) {
     static int flag = 0;

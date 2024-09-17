@@ -1911,7 +1911,7 @@ bool conf_exists(const char *path) {
 } // namespace
 
 namespace {
-constexpr auto DEFAULT_NPN_LIST =
+constexpr auto DEFAULT_ALPN_LIST =
     StringRef::from_lit("h2,h2-16,h2-14,http/1.1");
 } // namespace
 
@@ -1992,11 +1992,7 @@ void fill_default_config(Config *config) {
   tlsconf.max_proto_version =
       tls::proto_version_from_string(DEFAULT_TLS_MAX_PROTO_VERSION);
   tlsconf.max_early_data = 16_k;
-#if OPENSSL_1_1_API || defined(OPENSSL_IS_BORINGSSL)
   tlsconf.ecdh_curves = StringRef::from_lit("X25519:P-256:P-384:P-521");
-#else  // !OPENSSL_1_1_API && !defined(OPENSSL_IS_BORINGSSL)
-  tlsconf.ecdh_curves = StringRef::from_lit("P-256:P-384:P-521");
-#endif // !OPENSSL_1_1_API && !defined(OPENSSL_IS_BORINGSSL)
 
   auto &httpconf = config->http;
   httpconf.server_name = StringRef::from_lit("nghttpx");
@@ -2802,15 +2798,14 @@ SSL/TLS:
               Path to file that contains  DH parameters in PEM format.
               Without  this   option,  DHE   cipher  suites   are  not
               available.
-  --npn-list=<LIST>
+  --alpn-list=<LIST>
               Comma delimited list of  ALPN protocol identifier sorted
               in the  order of preference.  That  means most desirable
-              protocol comes  first.  This  is used  in both  ALPN and
-              NPN.  The parameter must be  delimited by a single comma
-              only  and any  white spaces  are  treated as  a part  of
-              protocol string.
+              protocol comes  first.  The parameter must  be delimited
+              by a single comma only  and any white spaces are treated
+              as a part of protocol string.
               Default: )"
-      << DEFAULT_NPN_LIST
+      << DEFAULT_ALPN_LIST
       << R"(
   --verify-client
               Require and verify client certificate.
@@ -3522,15 +3517,12 @@ HTTP/3 and QUIC:
               NEW_TOKEN frame in the previous connection.
   --frontend-quic-congestion-controller=<CC>
               Specify a congestion controller algorithm for a frontend
-              QUIC connection.  <CC> should  be one of "cubic", "bbr",
-              and "bbrv2".
+              QUIC  connection.   <CC>  should be  either  "cubic"  or
+              "bbr".
               Default: )"
       << (config->quic.upstream.congestion_controller == NGTCP2_CC_ALGO_CUBIC
               ? "cubic"
-              : (config->quic.upstream.congestion_controller ==
-                         NGTCP2_CC_ALGO_BBR
-                     ? "bbr"
-                     : "bbrv2"))
+              : "bbr")
       << R"(
   --frontend-quic-secret-file=<PATH>
               Path to file that contains secure random data to be used
@@ -3757,8 +3749,8 @@ int process_options(Config *config,
 
   auto &tlsconf = config->tls;
 
-  if (tlsconf.npn_list.empty()) {
-    tlsconf.npn_list = util::split_str(DEFAULT_NPN_LIST, ',');
+  if (tlsconf.alpn_list.empty()) {
+    tlsconf.alpn_list = util::split_str(DEFAULT_ALPN_LIST, ',');
   }
 
   if (!tlsconf.tls_proto_list.empty()) {
@@ -3773,7 +3765,7 @@ int process_options(Config *config,
     return -1;
   }
 
-  if (tls::set_alpn_prefs(tlsconf.alpn_prefs, tlsconf.npn_list) != 0) {
+  if (tls::set_alpn_prefs(tlsconf.alpn_prefs, tlsconf.alpn_list) != 0) {
     return -1;
   }
 
@@ -4062,15 +4054,9 @@ int main(int argc, char **argv) {
   int rv;
   std::array<char, STRERROR_BUFSIZE> errbuf;
 
-  nghttp2::tls::libssl_init();
-
 #ifdef HAVE_LIBBPF
   libbpf_set_strict_mode(LIBBPF_STRICT_ALL);
 #endif // HAVE_LIBBPF
-
-#ifndef NOTHREADS
-  nghttp2::tls::LibsslGlobalLock lock;
-#endif // NOTHREADS
 
   Log::set_severity_level(NOTICE);
   create_config();
@@ -4390,6 +4376,7 @@ int main(int argc, char **argv) {
          190},
         {SHRPX_OPT_REQUIRE_HTTP_SCHEME.c_str(), no_argument, &flag, 191},
         {SHRPX_OPT_TLS_KTLS.c_str(), no_argument, &flag, 192},
+        {SHRPX_OPT_ALPN_LIST.c_str(), required_argument, &flag, 193},
         {nullptr, 0, nullptr, 0}};
 
     int option_index = 0;
@@ -5302,6 +5289,10 @@ int main(int argc, char **argv) {
       case 192:
         // --tls-ktls
         cmdcfgs.emplace_back(SHRPX_OPT_TLS_KTLS, StringRef::from_lit("yes"));
+        break;
+      case 193:
+        // --alpn-list
+        cmdcfgs.emplace_back(SHRPX_OPT_ALPN_LIST, StringRef{optarg});
         break;
       default:
         break;

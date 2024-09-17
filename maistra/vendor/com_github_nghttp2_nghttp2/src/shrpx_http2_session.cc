@@ -1672,14 +1672,7 @@ int Http2Session::connection_made() {
     const unsigned char *next_proto = nullptr;
     unsigned int next_proto_len = 0;
 
-#ifndef OPENSSL_NO_NEXTPROTONEG
-    SSL_get0_next_proto_negotiated(conn_.tls.ssl, &next_proto, &next_proto_len);
-#endif // !OPENSSL_NO_NEXTPROTONEG
-#if OPENSSL_VERSION_NUMBER >= 0x10002000L
-    if (!next_proto) {
-      SSL_get0_alpn_selected(conn_.tls.ssl, &next_proto, &next_proto_len);
-    }
-#endif // OPENSSL_VERSION_NUMBER >= 0x10002000L
+    SSL_get0_alpn_selected(conn_.tls.ssl, &next_proto, &next_proto_len);
 
     if (!next_proto) {
       downstream_failure(addr_, raddr_);
@@ -1834,9 +1827,7 @@ void Http2Session::signal_write() {
   }
 }
 
-struct ev_loop *Http2Session::get_loop() const {
-  return conn_.loop;
-}
+struct ev_loop *Http2Session::get_loop() const { return conn_.loop; }
 
 ev_io *Http2Session::get_wev() { return &conn_.wev; }
 

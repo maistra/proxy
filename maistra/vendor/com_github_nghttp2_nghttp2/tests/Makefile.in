@@ -149,14 +149,15 @@ failmalloc_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) \
 am__main_SOURCES_DIST = nghttp2_pq_test.h nghttp2_map_test.h \
 	nghttp2_queue_test.h nghttp2_session_test.h \
 	nghttp2_frame_test.h nghttp2_stream_test.h nghttp2_hd_test.h \
-	nghttp2_npn_test.h nghttp2_helper_test.h nghttp2_test_helper.h \
-	nghttp2_buf_test.h nghttp2_http_test.h nghttp2_extpri_test.h \
-	nghttp2_ratelim_test.h main.c nghttp2_pq_test.c \
-	nghttp2_map_test.c nghttp2_queue_test.c nghttp2_test_helper.c \
-	nghttp2_frame_test.c nghttp2_stream_test.c \
-	nghttp2_session_test.c nghttp2_hd_test.c nghttp2_npn_test.c \
-	nghttp2_helper_test.c nghttp2_buf_test.c nghttp2_http_test.c \
-	nghttp2_extpri_test.c nghttp2_ratelim_test.c
+	nghttp2_alpn_test.h nghttp2_helper_test.h \
+	nghttp2_test_helper.h nghttp2_buf_test.h nghttp2_http_test.h \
+	nghttp2_extpri_test.h nghttp2_ratelim_test.h main.c \
+	nghttp2_pq_test.c nghttp2_map_test.c nghttp2_queue_test.c \
+	nghttp2_test_helper.c nghttp2_frame_test.c \
+	nghttp2_stream_test.c nghttp2_session_test.c nghttp2_hd_test.c \
+	nghttp2_alpn_test.c nghttp2_helper_test.c nghttp2_buf_test.c \
+	nghttp2_http_test.c nghttp2_extpri_test.c \
+	nghttp2_ratelim_test.c
 am__objects_1 =
 @HAVE_CUNIT_TRUE@am__objects_2 = main.$(OBJEXT) \
 @HAVE_CUNIT_TRUE@	nghttp2_pq_test.$(OBJEXT) \
@@ -167,7 +168,7 @@ am__objects_1 =
 @HAVE_CUNIT_TRUE@	nghttp2_stream_test.$(OBJEXT) \
 @HAVE_CUNIT_TRUE@	nghttp2_session_test.$(OBJEXT) \
 @HAVE_CUNIT_TRUE@	nghttp2_hd_test.$(OBJEXT) \
-@HAVE_CUNIT_TRUE@	nghttp2_npn_test.$(OBJEXT) \
+@HAVE_CUNIT_TRUE@	nghttp2_alpn_test.$(OBJEXT) \
 @HAVE_CUNIT_TRUE@	nghttp2_helper_test.$(OBJEXT) \
 @HAVE_CUNIT_TRUE@	nghttp2_buf_test.$(OBJEXT) \
 @HAVE_CUNIT_TRUE@	nghttp2_http_test.$(OBJEXT) \
@@ -199,14 +200,14 @@ depcomp = $(SHELL) $(top_srcdir)/depcomp
 am__maybe_remake_depfiles = depfiles
 am__depfiles_remade = ./$(DEPDIR)/failmalloc.Po \
 	./$(DEPDIR)/failmalloc_test.Po ./$(DEPDIR)/main.Po \
-	./$(DEPDIR)/malloc_wrapper.Po ./$(DEPDIR)/nghttp2_buf_test.Po \
+	./$(DEPDIR)/malloc_wrapper.Po ./$(DEPDIR)/nghttp2_alpn_test.Po \
+	./$(DEPDIR)/nghttp2_buf_test.Po \
 	./$(DEPDIR)/nghttp2_extpri_test.Po \
 	./$(DEPDIR)/nghttp2_frame_test.Po \
 	./$(DEPDIR)/nghttp2_hd_test.Po \
 	./$(DEPDIR)/nghttp2_helper_test.Po \
 	./$(DEPDIR)/nghttp2_http_test.Po \
-	./$(DEPDIR)/nghttp2_map_test.Po \
-	./$(DEPDIR)/nghttp2_npn_test.Po ./$(DEPDIR)/nghttp2_pq_test.Po \
+	./$(DEPDIR)/nghttp2_map_test.Po ./$(DEPDIR)/nghttp2_pq_test.Po \
 	./$(DEPDIR)/nghttp2_queue_test.Po \
 	./$(DEPDIR)/nghttp2_ratelim_test.Po \
 	./$(DEPDIR)/nghttp2_session_test.Po \
@@ -708,7 +709,7 @@ EXTRA_DIST = CMakeLists.txt
 @HAVE_CUNIT_TRUE@	nghttp2_stream_test.c \
 @HAVE_CUNIT_TRUE@	nghttp2_session_test.c \
 @HAVE_CUNIT_TRUE@	nghttp2_hd_test.c \
-@HAVE_CUNIT_TRUE@	nghttp2_npn_test.c \
+@HAVE_CUNIT_TRUE@	nghttp2_alpn_test.c \
 @HAVE_CUNIT_TRUE@	nghttp2_helper_test.c \
 @HAVE_CUNIT_TRUE@	nghttp2_buf_test.c \
 @HAVE_CUNIT_TRUE@	nghttp2_http_test.c \
@@ -718,7 +719,7 @@ EXTRA_DIST = CMakeLists.txt
 @HAVE_CUNIT_TRUE@HFILES = nghttp2_pq_test.h nghttp2_map_test.h nghttp2_queue_test.h \
 @HAVE_CUNIT_TRUE@	nghttp2_session_test.h \
 @HAVE_CUNIT_TRUE@	nghttp2_frame_test.h nghttp2_stream_test.h nghttp2_hd_test.h \
-@HAVE_CUNIT_TRUE@	nghttp2_npn_test.h nghttp2_helper_test.h \
+@HAVE_CUNIT_TRUE@	nghttp2_alpn_test.h nghttp2_helper_test.h \
 @HAVE_CUNIT_TRUE@	nghttp2_test_helper.h \
 @HAVE_CUNIT_TRUE@	nghttp2_buf_test.h \
 @HAVE_CUNIT_TRUE@	nghttp2_http_test.h \
@@ -744,6 +745,7 @@ EXTRA_DIST = CMakeLists.txt
 @HAVE_CUNIT_TRUE@	-I${top_srcdir}/lib/includes \
 @HAVE_CUNIT_TRUE@	-I${top_builddir}/lib/includes \
 @HAVE_CUNIT_TRUE@	-DBUILDING_NGHTTP2 \
+@HAVE_CUNIT_TRUE@	-DNGHTTP2_STATICLIB \
 @HAVE_CUNIT_TRUE@	@CUNIT_CFLAGS@ @DEFS@
 
 all: all-recursive
@@ -807,6 +809,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/failmalloc_test.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/main.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/malloc_wrapper.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nghttp2_alpn_test.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nghttp2_buf_test.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nghttp2_extpri_test.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nghttp2_frame_test.Po@am__quote@ # am--include-marker
@@ -814,7 +817,6 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nghttp2_helper_test.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nghttp2_http_test.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nghttp2_map_test.Po@am__quote@ # am--include-marker
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nghttp2_npn_test.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nghttp2_pq_test.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nghttp2_queue_test.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nghttp2_ratelim_test.Po@am__quote@ # am--include-marker
@@ -1234,6 +1236,7 @@ distclean: distclean-recursive
 	-rm -f ./$(DEPDIR)/failmalloc_test.Po
 	-rm -f ./$(DEPDIR)/main.Po
 	-rm -f ./$(DEPDIR)/malloc_wrapper.Po
+	-rm -f ./$(DEPDIR)/nghttp2_alpn_test.Po
 	-rm -f ./$(DEPDIR)/nghttp2_buf_test.Po
 	-rm -f ./$(DEPDIR)/nghttp2_extpri_test.Po
 	-rm -f ./$(DEPDIR)/nghttp2_frame_test.Po
@@ -1241,7 +1244,6 @@ distclean: distclean-recursive
 	-rm -f ./$(DEPDIR)/nghttp2_helper_test.Po
 	-rm -f ./$(DEPDIR)/nghttp2_http_test.Po
 	-rm -f ./$(DEPDIR)/nghttp2_map_test.Po
-	-rm -f ./$(DEPDIR)/nghttp2_npn_test.Po
 	-rm -f ./$(DEPDIR)/nghttp2_pq_test.Po
 	-rm -f ./$(DEPDIR)/nghttp2_queue_test.Po
 	-rm -f ./$(DEPDIR)/nghttp2_ratelim_test.Po
@@ -1297,6 +1299,7 @@ maintainer-clean: maintainer-clean-recursive
 	-rm -f ./$(DEPDIR)/failmalloc_test.Po
 	-rm -f ./$(DEPDIR)/main.Po
 	-rm -f ./$(DEPDIR)/malloc_wrapper.Po
+	-rm -f ./$(DEPDIR)/nghttp2_alpn_test.Po
 	-rm -f ./$(DEPDIR)/nghttp2_buf_test.Po
 	-rm -f ./$(DEPDIR)/nghttp2_extpri_test.Po
 	-rm -f ./$(DEPDIR)/nghttp2_frame_test.Po
@@ -1304,7 +1307,6 @@ maintainer-clean: maintainer-clean-recursive
 	-rm -f ./$(DEPDIR)/nghttp2_helper_test.Po
 	-rm -f ./$(DEPDIR)/nghttp2_http_test.Po
 	-rm -f ./$(DEPDIR)/nghttp2_map_test.Po
-	-rm -f ./$(DEPDIR)/nghttp2_npn_test.Po
 	-rm -f ./$(DEPDIR)/nghttp2_pq_test.Po
 	-rm -f ./$(DEPDIR)/nghttp2_queue_test.Po
 	-rm -f ./$(DEPDIR)/nghttp2_ratelim_test.Po
@@ -1348,9 +1350,6 @@ uninstall-am:
 
 .PRECIOUS: Makefile
 
-
-# EXTRA_DIST = end_to_end.py
-# TESTS += end_to_end.py
 
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.

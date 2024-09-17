@@ -46,6 +46,7 @@
 #endif // HAVE_MRUBY
 #include "http3.h"
 #include "util.h"
+#include "ssl_compat.h"
 
 namespace shrpx {
 
@@ -653,7 +654,7 @@ int Http3Upstream::init(const UpstreamAddr *faddr, const Address &remote_addr,
   params.max_idle_timeout = static_cast<ngtcp2_tstamp>(
       quicconf.upstream.timeout.idle * NGTCP2_SECONDS);
 
-#ifdef OPENSSL_IS_BORINGSSL
+#ifdef NGHTTP2_OPENSSL_IS_BORINGSSL
   if (quicconf.upstream.early_data) {
     ngtcp2_transport_params early_data_params;
 
@@ -689,7 +690,7 @@ int Http3Upstream::init(const UpstreamAddr *faddr, const Address &remote_addr,
       return -1;
     }
   }
-#endif // OPENSSL_IS_BORINGSSL
+#endif // NGHTTP2_OPENSSL_IS_BORINGSSL
 
   if (odcid) {
     params.original_dcid = *odcid;
@@ -1407,6 +1408,23 @@ int Http3Upstream::on_downstream_header_complete(Downstream *downstream) {
 
   if (LOG_ENABLED(INFO)) {
     log_response_headers(downstream, nva);
+  }
+
+  auto priority = resp.fs.header(http2::HD_PRIORITY);
+  if (priority) {
+    nghttp3_pri pri;
+
+    if (nghttp3_conn_get_stream_priority(httpconn_, &pri,
+                                         downstream->get_stream_id()) == 0 &&
+        nghttp3_pri_parse_priority(&pri, priority->value.byte(),
+                                   priority->value.size()) == 0) {
+      rv = nghttp3_conn_set_server_stream_priority(
+          httpconn_, downstream->get_stream_id(), &pri);
+      if (rv != 0) {
+        ULOG(ERROR, this) << "nghttp3_conn_set_server_stream_priority: "
+                          << nghttp3_strerror(rv);
+      }
+    }
   }
 
   nghttp3_data_reader data_read;

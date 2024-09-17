@@ -728,14 +728,13 @@ SSL/TLS
     Without  this   option,  DHE   cipher  suites   are  not
     available.
 
-.. option:: --npn-list=<LIST>
+.. option:: --alpn-list=<LIST>
 
     Comma delimited list of  ALPN protocol identifier sorted
     in the  order of preference.  That  means most desirable
-    protocol comes  first.  This  is used  in both  ALPN and
-    NPN.  The parameter must be  delimited by a single comma
-    only  and any  white spaces  are  treated as  a part  of
-    protocol string.
+    protocol comes  first.  The parameter must  be delimited
+    by a single comma only  and any white spaces are treated
+    as a part of protocol string.
 
     Default: ``h2,h2-16,h2-14,http/1.1``
 
@@ -1675,8 +1674,8 @@ HTTP/3 and QUIC
 .. option:: --frontend-quic-congestion-controller=<CC>
 
     Specify a congestion controller algorithm for a frontend
-    QUIC connection.  <CC> should  be one of "cubic", "bbr",
-    and "bbrv2".
+    QUIC  connection.   <CC>  should be  either  "cubic"  or
+    "bbr".
 
     Default: ``cubic``
 

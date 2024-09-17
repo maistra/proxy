@@ -38,7 +38,7 @@ OBJECTS = main.c nghttp2_pq_test.c nghttp2_map_test.c nghttp2_queue_test.c \
 	nghttp2_stream_test.c \
 	nghttp2_session_test.c \
 	nghttp2_hd_test.c \
-	nghttp2_npn_test.c \
+	nghttp2_alpn_test.c \
 	nghttp2_helper_test.c \
 	nghttp2_buf_test.c \
 	nghttp2_http_test.c \
@@ -48,7 +48,7 @@ OBJECTS = main.c nghttp2_pq_test.c nghttp2_map_test.c nghttp2_queue_test.c \
 HFILES = nghttp2_pq_test.h nghttp2_map_test.h nghttp2_queue_test.h \
 	nghttp2_session_test.h \
 	nghttp2_frame_test.h nghttp2_stream_test.h nghttp2_hd_test.h \
-	nghttp2_npn_test.h nghttp2_helper_test.h \
+	nghttp2_alpn_test.h nghttp2_helper_test.h \
 	nghttp2_test_helper.h \
 	nghttp2_buf_test.h \
 	nghttp2_http_test.h \
@@ -81,6 +81,7 @@ AM_CFLAGS = $(WARNCFLAGS) \
 	-I${top_srcdir}/lib/includes \
 	-I${top_builddir}/lib/includes \
 	-DBUILDING_NGHTTP2 \
+	-DNGHTTP2_STATICLIB \
 	@CUNIT_CFLAGS@ @DEFS@
 
 TESTS = main
@@ -88,12 +89,5 @@ TESTS = main
 if ENABLE_FAILMALLOC
 TESTS += failmalloc
 endif # ENABLE_FAILMALLOC
-
-if ENABLE_APP
-
-# EXTRA_DIST = end_to_end.py
-# TESTS += end_to_end.py
-
-endif # ENABLE_APP
 
 endif # HAVE_CUNIT

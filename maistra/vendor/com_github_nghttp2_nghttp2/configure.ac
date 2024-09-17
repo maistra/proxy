@@ -25,7 +25,7 @@ dnl Do not change user variables!
 dnl https://www.gnu.org/software/automake/manual/html_node/Flag-Variables-Ordering.html
 
 AC_PREREQ(2.61)
-AC_INIT([nghttp2], [1.57.0], [t-tujikawa@users.sourceforge.net])
+AC_INIT([nghttp2], [1.59.0], [t-tujikawa@users.sourceforge.net])
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_HEADERS([config.h])
@@ -44,9 +44,9 @@ m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 
 dnl See versioning rule:
 dnl  https://www.gnu.org/software/libtool/manual/html_node/Updating-version-info.html
-AC_SUBST(LT_CURRENT, 39)
+AC_SUBST(LT_CURRENT, 40)
 AC_SUBST(LT_REVISION, 0)
-AC_SUBST(LT_AGE, 25)
+AC_SUBST(LT_AGE, 26)
 
 major=`echo $PACKAGE_VERSION |cut -d. -f1 | sed -e "s/[^0-9]//g"`
 minor=`echo $PACKAGE_VERSION |cut -d. -f2 | sed -e "s/[^0-9]//g"`
@@ -233,7 +233,7 @@ fi
 save_CXXFLAGS="$CXXFLAGS"
 CXXFLAGS=
 
-AX_CXX_COMPILE_STDCXX([14], [noext], [optional])
+AX_CXX_COMPILE_STDCXX([14], [], [optional])
 
 CXX1XCXXFLAGS="$CXXFLAGS"
 CXXFLAGS="$save_CXXFLAGS"
@@ -447,7 +447,7 @@ fi
 # openssl (for src)
 have_openssl=no
 if test "x${request_openssl}" != "xno"; then
-  PKG_CHECK_MODULES([OPENSSL], [openssl >= 1.0.1],
+  PKG_CHECK_MODULES([OPENSSL], [openssl >= 1.1.1],
                     [have_openssl=yes], [have_openssl=no])
   if test "x${have_openssl}" = "xno"; then
     AC_MSG_NOTICE($OPENSSL_PKG_ERRORS)
@@ -457,17 +457,17 @@ if test "x${request_openssl}" != "xno"; then
     CFLAGS="$OPENSSL_CFLAGS $CFLAGS"
     LIBS="$OPENSSL_LIBS $LIBS"
 
-    # quictls/openssl has SSL_is_quic.
-    have_ssl_is_quic=no
-    AC_MSG_CHECKING([for SSL_is_quic])
+    # quictls/openssl has SSL_provide_quic_data.  boringssl also has
+    # it.  We will deal with it later.
+    have_ssl_provide_quic_data=no
+    AC_MSG_CHECKING([for SSL_provide_quic_data])
     AC_LINK_IFELSE([AC_LANG_PROGRAM([[
       #include <openssl/ssl.h>
     ]], [[
-      SSL *ssl = NULL;
-      SSL_is_quic(ssl);
+      SSL_provide_quic_data(NULL, 0, NULL, 0);
     ]])],
-    [AC_MSG_RESULT([yes]); have_ssl_is_quic=yes],
-    [AC_MSG_RESULT([no]); have_ssl_is_quic=no])
+    [AC_MSG_RESULT([yes]); have_ssl_provide_quic_data=yes],
+    [AC_MSG_RESULT([no]); have_ssl_provide_quic_data=no])
 
     # boringssl has SSL_set_quic_early_data_context.
     AC_MSG_CHECKING([for SSL_set_quic_early_data_context])
@@ -508,7 +508,7 @@ fi
 # ngtcp2 (for src)
 have_libngtcp2=no
 if test "x${request_libngtcp2}" != "xno"; then
-  PKG_CHECK_MODULES([LIBNGTCP2], [libngtcp2 >= 0.19.0], [have_libngtcp2=yes],
+  PKG_CHECK_MODULES([LIBNGTCP2], [libngtcp2 >= 1.0.0], [have_libngtcp2=yes],
                     [have_libngtcp2=no])
   if test "x${have_libngtcp2}" = "xno"; then
     AC_MSG_NOTICE($LIBNGTCP2_PKG_ERRORS)
@@ -522,10 +522,11 @@ fi
 
 # ngtcp2_crypto_quictls (for src)
 have_libngtcp2_crypto_quictls=no
-if test "x${have_ssl_is_quic}" = "xyes" &&
+if test "x${have_ssl_provide_quic_data}" = "xyes" &&
+   test "x${have_boringssl_quic}" != "xyes" &&
    test "x${request_libngtcp2}" != "xno"; then
   PKG_CHECK_MODULES([LIBNGTCP2_CRYPTO_QUICTLS],
-                    [libngtcp2_crypto_quictls >= 0.19.0],
+                    [libngtcp2_crypto_quictls >= 1.0.0],
                     [have_libngtcp2_crypto_quictls=yes],
                     [have_libngtcp2_crypto_quictls=no])
   if test "x${have_libngtcp2_crypto_quictls}" = "xno"; then
@@ -536,7 +537,8 @@ if test "x${have_ssl_is_quic}" = "xyes" &&
   fi
 fi
 
-if test "x${have_ssl_is_quic}" = "xyes" &&
+if test "x${have_ssl_provide_quic_data}" = "xyes" &&
+   test "x${have_boringssl_quic}" != "xyes" &&
    test "x${request_libngtcp2}" = "xyes" &&
    test "x${have_libngtcp2_crypto_quictls}" != "xyes"; then
   AC_MSG_ERROR([libngtcp2_crypto_quictls was requested (--with-libngtcp2) but not found])
@@ -567,7 +569,7 @@ fi
 # nghttp3 (for src)
 have_libnghttp3=no
 if test "x${request_libnghttp3}" != "xno"; then
-  PKG_CHECK_MODULES([LIBNGHTTP3], [libnghttp3 >= 0.15.0], [have_libnghttp3=yes],
+  PKG_CHECK_MODULES([LIBNGHTTP3], [libnghttp3 >= 1.1.0], [have_libnghttp3=yes],
                     [have_libnghttp3=no])
   if test "x${have_libnghttp3}" = "xno"; then
     AC_MSG_NOTICE($LIBNGHTTP3_PKG_ERRORS)
@@ -752,8 +754,6 @@ AM_CONDITIONAL([ENABLE_APP], [ test "x${enable_app}" = "xyes" ])
 # Check HTTP/3 support
 enable_http3=no
 if test "x${request_http3}" != "xno" &&
-   (test "x${have_ssl_is_quic}" = "xyes" ||
-    test "x${have_boringssl_quic}" = "xyes") &&
    test "x${have_libngtcp2}" = "xyes" &&
    (test "x${have_libngtcp2_crypto_quictls}" = "xyes" ||
     test "x${have_libngtcp2_crypto_boringssl}" = "xyes") &&
@@ -855,10 +855,9 @@ AC_CHECK_HEADERS([ \
   string.h \
   sys/socket.h \
   sys/time.h \
-  sysinfoapi.h \
   syslog.h \
-  time.h \
   unistd.h \
+  windows.h \
 ])
 
 # Checks for typedefs, structures, and compiler characteristics.
@@ -908,12 +907,6 @@ if test "x$have_struct_tm_tm_gmtoff" = "xyes"; then
             [Define to 1 if you have `struct tm.tm_gmtoff` member.])
 fi
 
-# Check size of pointer to decide we need 8 bytes alignment
-# adjustment.
-AC_CHECK_SIZEOF([int *])
-
-AC_CHECK_SIZEOF([time_t])
-
 # Checks for library functions.
 
 # Don't check malloc, since it does not play nicely with C++ stdlib
@@ -959,7 +952,7 @@ AC_CHECK_FUNC([timerfd_create],
 AC_MSG_CHECKING([checking for GetTickCount64])
 AC_LINK_IFELSE([AC_LANG_PROGRAM(
 [[
-#include <sysinfoapi.h>
+#include <windows.h>
 ]],
 [[
 GetTickCount64();
@@ -983,6 +976,10 @@ AC_CHECK_DECLS([initgroups], [], [], [[
   # include <unistd.h>
   #endif
   #include <grp.h>
+]])
+
+AC_CHECK_DECLS([CLOCK_MONOTONIC], [], [], [[
+#include <time.h>
 ]])
 
 save_CFLAGS=$CFLAGS

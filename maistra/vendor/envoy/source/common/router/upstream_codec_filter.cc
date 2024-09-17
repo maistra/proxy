@@ -83,6 +83,8 @@ Http::FilterHeadersStatus UpstreamCodecFilter::decodeHeaders(Http::RequestHeader
   }
   if (callbacks_->upstreamCallbacks()->pausedForConnect()) {
     return Http::FilterHeadersStatus::StopAllIterationAndWatermark;
+  } else if (callbacks_->upstreamCallbacks()->pausedForWebsocketUpgrade()) {
+    return Http::FilterHeadersStatus::StopAllIterationAndWatermark;
   }
   return Http::FilterHeadersStatus::Continue;
 }
@@ -149,6 +151,26 @@ void UpstreamCodecFilter::CodecBridge::decodeHeaders(Http::ResponseHeaderMapPtr&
       Http::Utility::getResponseStatus(*headers) == 200) {
     filter_.callbacks_->upstreamCallbacks()->setPausedForConnect(false);
     filter_.callbacks_->continueDecoding();
+  }
+
+  if (filter_.callbacks_->upstreamCallbacks()->pausedForWebsocketUpgrade()) {
+    const uint64_t status = Http::Utility::getResponseStatus(*headers);
+    if (status == static_cast<uint64_t>(Http::Code::SwitchingProtocols)) {
+      // handshake is finished and continue the data processing.
+      ENVOY_STREAM_LOG(trace, "successful upgrade handshake received from upstream",
+                       *filter_.callbacks_);
+      filter_.callbacks_->upstreamCallbacks()->setPausedForWebsocketUpgrade(false);
+      filter_.callbacks_->continueDecoding();
+    } else {
+      // Other status, e.g., 426 or 200, indicate a failed handshake, Envoy as a proxy will proxy
+      // back the response header code to downstream and then close the request, since WebSocket
+      // just needs headers for handshake per RFC-6455. Note: HTTP/2 200 will be normalized to
+      // 101 before this point in codec.
+      filter_.callbacks_->sendLocalReply(
+          static_cast<Envoy::Http::Code>(status), "", nullptr, std::nullopt,
+          StreamInfo::ResponseCodeDetails::get().WebsocketHandshakeUnsuccessful);
+      return;
+    }
   }
 
   maybeEndDecode(end_stream);

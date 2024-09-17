@@ -71,6 +71,7 @@
 #include "http2.h"
 #include "util.h"
 #include "template.h"
+#include "ssl_compat.h"
 
 #ifndef O_BINARY
 #  define O_BINARY (0)
@@ -86,7 +87,6 @@ bool recorded(const std::chrono::steady_clock::time_point &t) {
 }
 } // namespace
 
-#if OPENSSL_1_1_1_API
 namespace {
 std::ofstream keylog_file;
 void keylog_callback(const SSL *ssl, const char *line) {
@@ -95,7 +95,6 @@ void keylog_callback(const SSL *ssl, const char *line) {
   keylog_file.flush();
 }
 } // namespace
-#endif // OPENSSL_1_1_1_API
 
 Config::Config()
     : ciphers(tls::DEFAULT_CIPHER_LIST),
@@ -156,8 +155,8 @@ bool Config::has_base_uri() const { return (!this->base_uri.empty()); }
 bool Config::rps_enabled() const { return this->rps > 0.0; }
 bool Config::is_quic() const {
 #ifdef ENABLE_HTTP3
-  return !npn_list.empty() &&
-         (npn_list[0] == NGHTTP3_ALPN_H3 || npn_list[0] == "\x5h3-29");
+  return !alpn_list.empty() &&
+         (alpn_list[0] == NGHTTP3_ALPN_H3 || alpn_list[0] == "\x5h3-29");
 #else  // !ENABLE_HTTP3
   return false;
 #endif // !ENABLE_HTTP3
@@ -834,8 +833,6 @@ void Client::process_request_failure() {
 
 namespace {
 void print_server_tmp_key(SSL *ssl) {
-// libressl does not have SSL_get_server_tmp_key
-#if OPENSSL_VERSION_NUMBER >= 0x10002000L && defined(SSL_get_server_tmp_key)
   EVP_PKEY *key;
 
   if (!SSL_get_server_tmp_key(ssl, &key)) {
@@ -855,7 +852,7 @@ void print_server_tmp_key(SSL *ssl) {
     std::cout << "DH " << EVP_PKEY_bits(key) << " bits" << std::endl;
     break;
   case EVP_PKEY_EC: {
-#  if OPENSSL_3_0_0_API
+#if OPENSSL_3_0_0_API
     std::array<char, 64> curve_name;
     const char *cname;
     if (!EVP_PKEY_get_utf8_string_param(key, "group", curve_name.data(),
@@ -864,7 +861,7 @@ void print_server_tmp_key(SSL *ssl) {
     } else {
       cname = curve_name.data();
     }
-#  else  // !OPENSSL_3_0_0_API
+#else  // !OPENSSL_3_0_0_API
     auto ec = EVP_PKEY_get1_EC_KEY(key);
     auto ec_del = defer(EC_KEY_free, ec);
     auto nid = EC_GROUP_get_curve_name(EC_KEY_get0_group(ec));
@@ -872,7 +869,7 @@ void print_server_tmp_key(SSL *ssl) {
     if (!cname) {
       cname = OBJ_nid2sn(nid);
     }
-#  endif // !OPENSSL_3_0_0_API
+#endif // !OPENSSL_3_0_0_API
 
     std::cout << "ECDH " << cname << " " << EVP_PKEY_bits(key) << " bits"
               << std::endl;
@@ -883,7 +880,6 @@ void print_server_tmp_key(SSL *ssl) {
               << std::endl;
     break;
   }
-#endif // OPENSSL_VERSION_NUMBER >= 0x10002000L
 }
 } // namespace
 
@@ -949,6 +945,10 @@ void Client::on_header(int32_t stream_id, const uint8_t *name, size_t namelen,
       } else {
         break;
       }
+    }
+
+    if (status < 200) {
+      return;
     }
 
     stream.req_stat.status = status;
@@ -1099,14 +1099,7 @@ int Client::connection_made() {
     const unsigned char *next_proto = nullptr;
     unsigned int next_proto_len;
 
-#ifndef OPENSSL_NO_NEXTPROTONEG
-    SSL_get0_next_proto_negotiated(ssl, &next_proto, &next_proto_len);
-#endif // !OPENSSL_NO_NEXTPROTONEG
-#if OPENSSL_VERSION_NUMBER >= 0x10002000L
-    if (next_proto == nullptr) {
-      SSL_get0_alpn_selected(ssl, &next_proto, &next_proto_len);
-    }
-#endif // OPENSSL_VERSION_NUMBER >= 0x10002000L
+    SSL_get0_alpn_selected(ssl, &next_proto, &next_proto_len);
 
     if (next_proto) {
       auto proto = StringRef{next_proto, next_proto_len};
@@ -1134,11 +1127,10 @@ int Client::connection_made() {
       std::cout << "No protocol negotiated. Fallback behaviour may be activated"
                 << std::endl;
 
-      for (const auto &proto : config.npn_list) {
+      for (const auto &proto : config.alpn_list) {
         if (util::streq(NGHTTP2_H1_1_ALPN, StringRef{proto})) {
-          std::cout
-              << "Server does not support NPN/ALPN. Falling back to HTTP/1.1."
-              << std::endl;
+          std::cout << "Server does not support ALPN. Falling back to HTTP/1.1."
+                    << std::endl;
           session = std::make_unique<Http1Session>(this);
           selected_proto = NGHTTP2_H1_1.str();
           break;
@@ -1154,7 +1146,7 @@ int Client::connection_made() {
       std::cout
           << "No supported protocol was negotiated. Supported protocols were:"
           << std::endl;
-      for (const auto &proto : config.npn_list) {
+      for (const auto &proto : config.alpn_list) {
         std::cout << proto.substr(1) << std::endl;
       }
       disconnect();
@@ -1888,23 +1880,6 @@ std::string get_reqline(const char *uri, const http_parser_url &u) {
 }
 } // namespace
 
-#ifndef OPENSSL_NO_NEXTPROTONEG
-namespace {
-int client_select_next_proto_cb(SSL *ssl, unsigned char **out,
-                                unsigned char *outlen, const unsigned char *in,
-                                unsigned int inlen, void *arg) {
-  if (util::select_protocol(const_cast<const unsigned char **>(out), outlen, in,
-                            inlen, config.npn_list)) {
-    return SSL_TLSEXT_ERR_OK;
-  }
-
-  // OpenSSL will terminate handshake with fatal alert if we return
-  // NOACK.  So there is no way to fallback.
-  return SSL_TLSEXT_ERR_NOACK;
-}
-} // namespace
-#endif // !OPENSSL_NO_NEXTPROTONEG
-
 namespace {
 constexpr char UNIX_PATH_PREFIX[] = "unix:";
 } // namespace
@@ -2081,6 +2056,27 @@ int parse_header_table_size(uint32_t &dst, const char *opt,
 } // namespace
 
 namespace {
+std::string make_http_authority(const Config &config) {
+  std::string host;
+
+  if (util::numeric_host(config.host.c_str(), AF_INET6)) {
+    host += '[';
+    host += config.host;
+    host += ']';
+  } else {
+    host = config.host;
+  }
+
+  if (config.port != config.default_port) {
+    host += ':';
+    host += util::utos(config.port);
+  }
+
+  return host;
+}
+} // namespace
+
+namespace {
 void print_version(std::ostream &out) {
   out << "h2load nghttp2/" NGHTTP2_VERSION << std::endl;
 }
@@ -2095,7 +2091,7 @@ benchmarking tool for HTTP/2 server)"
 } // namespace
 
 namespace {
-constexpr char DEFAULT_NPN_LIST[] = "h2,h2-16,h2-14,http/1.1";
+constexpr char DEFAULT_ALPN_LIST[] = "h2,h2-16,h2-14,http/1.1";
 } // namespace
 
 namespace {
@@ -2255,16 +2251,15 @@ Options:
               instead of TCP.   In this case, scheme  is inferred from
               the first  URI appeared  in the  command line  or inside
               input files as usual.
-  --npn-list=<LIST>
+  --alpn-list=<LIST>
               Comma delimited list of  ALPN protocol identifier sorted
               in the  order of preference.  That  means most desirable
-              protocol comes  first.  This  is used  in both  ALPN and
-              NPN.  The parameter must be  delimited by a single comma
-              only  and any  white spaces  are  treated as  a part  of
-              protocol string.
+              protocol comes  first.  The parameter must  be delimited
+              by a single comma only  and any white spaces are treated
+              as a part of protocol string.
               Default: )"
-      << DEFAULT_NPN_LIST << R"(
-  --h1        Short        hand         for        --npn-list=http/1.1
+      << DEFAULT_ALPN_LIST << R"(
+  --h1        Short        hand        for        --alpn-list=http/1.1
               --no-tls-proto=http/1.1,    which   effectively    force
               http/1.1 for both http and https URI.
   --header-table-size=<SIZE>
@@ -2325,15 +2320,8 @@ Options:
 } // namespace
 
 int main(int argc, char **argv) {
-  tls::libssl_init();
-
-#ifndef NOTHREADS
-  tls::LibsslGlobalLock lock;
-#endif // NOTHREADS
-
   std::string datafile;
   std::string logfile;
-  std::string qlog_base;
   bool nreqs_set_manually = false;
   while (1) {
     static int flag = 0;
@@ -2374,6 +2362,7 @@ int main(int argc, char **argv) {
         {"qlog-file-base", required_argument, &flag, 16},
         {"max-udp-payload-size", required_argument, &flag, 17},
         {"ktls", no_argument, &flag, 18},
+        {"alpn-list", required_argument, &flag, 19},
         {nullptr, 0, nullptr, 0}};
     int option_index = 0;
     auto c = getopt_long(argc, argv,
@@ -2601,10 +2590,6 @@ int main(int argc, char **argv) {
         config.ifile = optarg;
         config.timing_script = true;
         break;
-      case 4:
-        // npn-list option
-        config.npn_list = util::parse_config_str_list(StringRef{optarg});
-        break;
       case 5:
         // rate-period
         config.rate_period = util::parse_duration_with_unit(optarg);
@@ -2615,7 +2600,7 @@ int main(int argc, char **argv) {
         break;
       case 6:
         // --h1
-        config.npn_list =
+        config.alpn_list =
             util::parse_config_str_list(StringRef::from_lit("http/1.1"));
         config.no_tls_proto = Config::PROTO_HTTP1_1;
         break;
@@ -2683,7 +2668,7 @@ int main(int argc, char **argv) {
         break;
       case 16:
         // --qlog-file-base
-        qlog_base = optarg;
+        config.qlog_file_base = optarg;
         break;
       case 17: {
         // --max-udp-payload-size
@@ -2705,6 +2690,15 @@ int main(int argc, char **argv) {
         // --ktls
         config.ktls = true;
         break;
+      case 4:
+        // npn-list option
+        std::cerr << "--npn-list: deprecated.  Use --alpn-list instead."
+                  << std::endl;
+        // fall through
+      case 19:
+        // alpn-list option
+        config.alpn_list = util::parse_config_str_list(StringRef{optarg});
+        break;
       }
       break;
     default:
@@ -2725,13 +2719,13 @@ int main(int argc, char **argv) {
     exit(EXIT_FAILURE);
   }
 
-  if (config.npn_list.empty()) {
-    config.npn_list =
-        util::parse_config_str_list(StringRef::from_lit(DEFAULT_NPN_LIST));
+  if (config.alpn_list.empty()) {
+    config.alpn_list =
+        util::parse_config_str_list(StringRef::from_lit(DEFAULT_ALPN_LIST));
   }
 
   // serialize the APLN tokens
-  for (auto &proto : config.npn_list) {
+  for (auto &proto : config.alpn_list) {
     proto.insert(proto.begin(), static_cast<unsigned char>(proto.size()));
   }
 
@@ -2889,16 +2883,9 @@ int main(int argc, char **argv) {
     }
   }
 
-  if (!qlog_base.empty()) {
-    if (!config.is_quic()) {
-      std::cerr
-          << "Warning: --qlog-file-base: only effective in quic, ignoring."
-          << std::endl;
-    } else {
-#ifdef ENABLE_HTTP3
-      config.qlog_file_base = qlog_base;
-#endif // ENABLE_HTTP3
-    }
+  if (!config.qlog_file_base.empty() && !config.is_quic()) {
+    std::cerr << "Warning: --qlog-file-base: only effective in quic, ignoring."
+              << std::endl;
   }
 
   struct sigaction act {};
@@ -2957,42 +2944,27 @@ int main(int argc, char **argv) {
     exit(EXIT_FAILURE);
   }
 
-#if OPENSSL_1_1_1_API && !defined(OPENSSL_IS_BORINGSSL)
+#if defined(NGHTTP2_GENUINE_OPENSSL) || defined(NGHTTP2_OPENSSL_IS_LIBRESSL)
   if (SSL_CTX_set_ciphersuites(ssl_ctx, config.tls13_ciphers.c_str()) == 0) {
     std::cerr << "SSL_CTX_set_ciphersuites with " << config.tls13_ciphers
               << " failed: " << ERR_error_string(ERR_get_error(), nullptr)
               << std::endl;
     exit(EXIT_FAILURE);
   }
-#endif // OPENSSL_1_1_1_API && !defined(OPENSSL_IS_BORINGSSL)
+#endif // NGHTTP2_GENUINE_OPENSSL || NGHTTP2_OPENSSL_IS_LIBRESSL
 
-#if OPENSSL_1_1_1_API && !defined(OPENSSL_IS_BORINGSSL)
   if (SSL_CTX_set1_groups_list(ssl_ctx, config.groups.c_str()) != 1) {
     std::cerr << "SSL_CTX_set1_groups_list failed" << std::endl;
     exit(EXIT_FAILURE);
   }
-#else  // !(OPENSSL_1_1_1_API && !defined(OPENSSL_IS_BORINGSSL))
-  if (SSL_CTX_set1_curves_list(ssl_ctx, config.groups.c_str()) != 1) {
-    std::cerr << "SSL_CTX_set1_curves_list failed" << std::endl;
-    exit(EXIT_FAILURE);
-  }
-#endif // !(OPENSSL_1_1_1_API && !defined(OPENSSL_IS_BORINGSSL))
 
-#ifndef OPENSSL_NO_NEXTPROTONEG
-  SSL_CTX_set_next_proto_select_cb(ssl_ctx, client_select_next_proto_cb,
-                                   nullptr);
-#endif // !OPENSSL_NO_NEXTPROTONEG
-
-#if OPENSSL_VERSION_NUMBER >= 0x10002000L
   std::vector<unsigned char> proto_list;
-  for (const auto &proto : config.npn_list) {
+  for (const auto &proto : config.alpn_list) {
     std::copy_n(proto.c_str(), proto.size(), std::back_inserter(proto_list));
   }
 
   SSL_CTX_set_alpn_protos(ssl_ctx, proto_list.data(), proto_list.size());
-#endif // OPENSSL_VERSION_NUMBER >= 0x10002000L
 
-#if OPENSSL_1_1_1_API
   auto keylog_filename = getenv("SSLKEYLOGFILE");
   if (keylog_filename) {
     keylog_file.open(keylog_filename, std::ios_base::app);
@@ -3000,17 +2972,11 @@ int main(int argc, char **argv) {
       SSL_CTX_set_keylog_callback(ssl_ctx, keylog_callback);
     }
   }
-#endif // OPENSSL_1_1_1_API
 
   std::string user_agent = "h2load nghttp2/" NGHTTP2_VERSION;
   Headers shared_nva;
   shared_nva.emplace_back(":scheme", config.scheme);
-  if (config.port != config.default_port) {
-    shared_nva.emplace_back(":authority",
-                            config.host + ":" + util::utos(config.port));
-  } else {
-    shared_nva.emplace_back(":authority", config.host);
-  }
+  shared_nva.emplace_back(":authority", make_http_authority(config));
   shared_nva.emplace_back(":method", config.data_fd == -1 ? "GET" : "POST");
   shared_nva.emplace_back("user-agent", user_agent);
 

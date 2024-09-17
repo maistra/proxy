@@ -2,6 +2,7 @@ set(GO_FILES
   nghttpx_http1_test.go
   nghttpx_http2_test.go
   server_tester.go
+  server_tester_http3.go
 )
 
 # XXX unused
@@ -16,12 +17,6 @@ set(EXTRA_DIST
   resp-set-header.rb
   req-return.rb
   resp-return.rb
-)
-
-add_custom_target(itprep
-  COMMAND go get -d -v golang.org/x/net/http2
-  COMMAND go get -d -v github.com/tatsuhiro-t/go-nghttp2
-  COMMAND go get -d -v golang.org/x/net/websocket
 )
 
 # 'go test' requires both config.go and the test files in the same directory.
@@ -40,7 +35,11 @@ if(NOT CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_CURRENT_BINARY_DIR)
   endforeach()
 endif()
 
+if(ENABLE_HTTP3)
+  set(GO_TEST_TAGS quic)
+endif()
+
 add_custom_target(it
-  COMMAND sh setenv go test -v
+  COMMAND sh setenv go test -v --tags=${GO_TEST_TAGS}
   DEPENDS ${GO_BUILD_FILES}
 )

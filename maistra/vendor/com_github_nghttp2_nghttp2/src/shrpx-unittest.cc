@@ -55,8 +55,6 @@ int main(int argc, char *argv[]) {
   CU_pSuite pSuite = nullptr;
   unsigned int num_tests_failed;
 
-  nghttp2::tls::libssl_init();
-
   shrpx::create_config();
 
   // initialize the CUnit test registry
@@ -109,6 +107,8 @@ int main(int argc, char *argv[]) {
                    shrpx::test_http2_construct_push_component) ||
       !CU_add_test(pSuite, "http2_contains_trailers",
                    shrpx::test_http2_contains_trailers) ||
+      !CU_add_test(pSuite, "http2_check_transfer_encoding",
+                   shrpx::test_http2_check_transfer_encoding) ||
       !CU_add_test(pSuite, "downstream_field_store_append_last_header",
                    shrpx::test_downstream_field_store_append_last_header) ||
       !CU_add_test(pSuite, "downstream_field_store_header",

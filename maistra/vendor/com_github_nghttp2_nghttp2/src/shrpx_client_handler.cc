@@ -587,9 +587,7 @@ ClientHandler::~ClientHandler() {
 
 Upstream *ClientHandler::get_upstream() { return upstream_.get(); }
 
-struct ev_loop *ClientHandler::get_loop() const {
-  return conn_.loop;
-}
+struct ev_loop *ClientHandler::get_loop() const { return conn_.loop; }
 
 void ClientHandler::reset_upstream_read_timeout(ev_tstamp t) {
   conn_.rt.repeat = t;
@@ -618,14 +616,7 @@ int ClientHandler::validate_next_proto() {
   // First set callback for catch all cases
   on_read_ = &ClientHandler::upstream_read;
 
-#ifndef OPENSSL_NO_NEXTPROTONEG
-  SSL_get0_next_proto_negotiated(conn_.tls.ssl, &next_proto, &next_proto_len);
-#endif // !OPENSSL_NO_NEXTPROTONEG
-#if OPENSSL_VERSION_NUMBER >= 0x10002000L
-  if (next_proto == nullptr) {
-    SSL_get0_alpn_selected(conn_.tls.ssl, &next_proto, &next_proto_len);
-  }
-#endif // OPENSSL_VERSION_NUMBER >= 0x10002000L
+  SSL_get0_alpn_selected(conn_.tls.ssl, &next_proto, &next_proto_len);
 
   StringRef proto;
 
@@ -643,7 +634,7 @@ int ClientHandler::validate_next_proto() {
     proto = StringRef::from_lit("http/1.1");
   }
 
-  if (!tls::in_proto_list(get_config()->tls.npn_list, proto)) {
+  if (!tls::in_proto_list(get_config()->tls.alpn_list, proto)) {
     if (LOG_ENABLED(INFO)) {
       CLOG(INFO, this) << "The negotiated protocol is not supported: " << proto;
     }

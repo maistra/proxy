@@ -322,6 +322,7 @@ enum {
   HD_KEEP_ALIVE,
   HD_LINK,
   HD_LOCATION,
+  HD_PRIORITY,
   HD_PROXY_CONNECTION,
   HD_SEC_WEBSOCKET_ACCEPT,
   HD_SEC_WEBSOCKET_KEY,
@@ -443,6 +444,11 @@ StringRef make_websocket_accept_token(uint8_t *dest, const StringRef &key);
 // Returns true if HTTP version represents pre-HTTP/1.1 (e.g.,
 // HTTP/0.9 or HTTP/1.0).
 bool legacy_http1(int major, int minor);
+
+// Returns true if transfer-encoding field value |s| conforms RFC
+// strictly.  This function does not allow empty value, BWS, and empty
+// list elements.
+bool check_transfer_encoding(const StringRef &s);
 
 } // namespace http2
 

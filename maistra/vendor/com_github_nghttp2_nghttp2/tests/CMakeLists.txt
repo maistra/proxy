@@ -17,7 +17,7 @@ if(HAVE_CUNIT)
     nghttp2_stream_test.c
     nghttp2_session_test.c
     nghttp2_hd_test.c
-    nghttp2_npn_test.c
+    nghttp2_alpn_test.c
     nghttp2_helper_test.c
     nghttp2_buf_test.c
     nghttp2_http_test.c
@@ -51,10 +51,5 @@ if(HAVE_CUNIT)
     )
     add_test(failmalloc failmalloc)
     add_dependencies(check failmalloc)
-  endif()
-
-  if(ENABLE_APP)
-    # EXTRA_DIST = end_to_end.py
-    # TESTS += end_to_end.py
   endif()
 endif()

@@ -24,9 +24,6 @@
  */
 #include "util.h"
 
-#ifdef HAVE_TIME_H
-#  include <time.h>
-#endif // HAVE_TIME_H
 #include <sys/types.h>
 #ifdef HAVE_SYS_SOCKET_H
 #  include <sys/socket.h>
@@ -59,6 +56,7 @@
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <ctime>
 #include <iostream>
 #include <fstream>
 #include <iomanip>
@@ -105,17 +103,34 @@ int nghttp2_inet_pton(int af, const char *src, void *dst) {
 const char UPPER_XDIGITS[] = "0123456789ABCDEF";
 
 bool in_rfc3986_unreserved_chars(const char c) {
-  static constexpr char unreserved[] = {'-', '.', '_', '~'};
-  return is_alpha(c) || is_digit(c) ||
-         std::find(std::begin(unreserved), std::end(unreserved), c) !=
-             std::end(unreserved);
+  switch (c) {
+  case '-':
+  case '.':
+  case '_':
+  case '~':
+    return true;
+  }
+
+  return is_alpha(c) || is_digit(c);
 }
 
 bool in_rfc3986_sub_delims(const char c) {
-  static constexpr char sub_delims[] = {'!', '$', '&', '\'', '(', ')',
-                                        '*', '+', ',', ';',  '='};
-  return std::find(std::begin(sub_delims), std::end(sub_delims), c) !=
-         std::end(sub_delims);
+  switch (c) {
+  case '!':
+  case '$':
+  case '&':
+  case '\'':
+  case '(':
+  case ')':
+  case '*':
+  case '+':
+  case ',':
+  case ';':
+  case '=':
+    return true;
+  }
+
+  return false;
 }
 
 std::string percent_encode(const unsigned char *target, size_t len) {
@@ -140,16 +155,37 @@ std::string percent_encode(const std::string &target) {
 }
 
 bool in_token(char c) {
-  static constexpr char extra[] = {'!', '#', '$', '%', '&', '\'', '*', '+',
-                                   '-', '.', '^', '_', '`', '|',  '~'};
-  return is_alpha(c) || is_digit(c) ||
-         std::find(std::begin(extra), std::end(extra), c) != std::end(extra);
+  switch (c) {
+  case '!':
+  case '#':
+  case '$':
+  case '%':
+  case '&':
+  case '\'':
+  case '*':
+  case '+':
+  case '-':
+  case '.':
+  case '^':
+  case '_':
+  case '`':
+  case '|':
+  case '~':
+    return true;
+  }
+
+  return is_alpha(c) || is_digit(c);
 }
 
 bool in_attr_char(char c) {
-  static constexpr char bad[] = {'*', '\'', '%'};
-  return util::in_token(c) &&
-         std::find(std::begin(bad), std::end(bad), c) == std::end(bad);
+  switch (c) {
+  case '*':
+  case '\'':
+  case '%':
+    return false;
+  }
+
+  return util::in_token(c);
 }
 
 StringRef percent_encode_token(BlockAllocator &balloc,
@@ -581,7 +617,7 @@ void show_candidates(const char *unkopt, const option *options) {
     if (istarts_with(options[i].name, options[i].name + optnamelen, unkopt,
                      unkopt + unkoptlen)) {
       if (optnamelen == static_cast<size_t>(unkoptlen)) {
-        // Exact match, then we don't show any condidates.
+        // Exact match, then we don't show any candidates.
         return;
       }
       ++prefix_match;
@@ -1492,16 +1528,6 @@ uint32_t hash32(const StringRef &s) {
 
   return h;
 }
-
-#if !OPENSSL_1_1_API
-namespace {
-EVP_MD_CTX *EVP_MD_CTX_new(void) { return EVP_MD_CTX_create(); }
-} // namespace
-
-namespace {
-void EVP_MD_CTX_free(EVP_MD_CTX *ctx) { EVP_MD_CTX_destroy(ctx); }
-} // namespace
-#endif // !OPENSSL_1_1_API
 
 namespace {
 int message_digest(uint8_t *res, const EVP_MD *meth, const StringRef &s) {

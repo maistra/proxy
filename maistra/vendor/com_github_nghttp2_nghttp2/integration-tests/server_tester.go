@@ -22,7 +22,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/quic-go/quic-go/http3"
 	"github.com/tatsuhiro-t/go-nghttp2"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/hpack"
@@ -390,81 +389,6 @@ func (st *serverTester) websocket(rp requestParam) *serverResponse {
 	return res
 }
 
-func (st *serverTester) http3(rp requestParam) (*serverResponse, error) {
-	rt := &http3.RoundTripper{
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true,
-		},
-	}
-
-	defer rt.Close()
-
-	c := &http.Client{
-		Transport: rt,
-	}
-
-	method := "GET"
-	if rp.method != "" {
-		method = rp.method
-	}
-
-	var body io.Reader
-
-	if rp.body != nil {
-		body = bytes.NewBuffer(rp.body)
-	}
-
-	reqURL := st.url
-
-	if rp.path != "" {
-		u, err := url.Parse(st.url)
-		if err != nil {
-			st.t.Fatalf("Error parsing URL from st.url %v: %v", st.url, err)
-		}
-		u.Path = ""
-		u.RawQuery = ""
-		reqURL = u.String() + rp.path
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, method, reqURL, body)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, h := range rp.header {
-		req.Header.Add(h.Name, h.Value)
-	}
-
-	req.Header.Add("Test-Case", rp.name)
-
-	// TODO http3 package does not support trailer at the time of
-	// this writing.
-
-	resp, err := c.Do(req)
-	if err != nil {
-		return nil, err
-	}
-
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	res := &serverResponse{
-		status:    resp.StatusCode,
-		header:    resp.Header,
-		body:      respBody,
-		connClose: resp.Close,
-	}
-
-	return res, nil
-}
-
 func (st *serverTester) http1(rp requestParam) (*serverResponse, error) {
 	method := "GET"
 	if rp.method != "" {
@@ -728,7 +652,7 @@ type serverResponse struct {
 	errCode      http2.ErrCode     // error code received in HTTP/2 RST_STREAM or GOAWAY
 	connErr      bool              // true if HTTP/2 connection error
 	connClose    bool              // Connection: close is included in response header in HTTP/1 test
-	reqHeader    http.Header       // http request header, currently only sotres pushed request header
+	reqHeader    http.Header       // http request header, currently only stores pushed request header
 	pushResponse []*serverResponse // pushed response
 }
 
