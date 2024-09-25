@@ -71,7 +71,8 @@ struct TlsContext {
 class ContextImpl : public virtual Envoy::Ssl::Context,
                     protected Logger::Loggable<Logger::Id::config> {
 public:
-  virtual bssl::UniquePtr<SSL> newSsl(const Network::TransportSocketOptionsConstSharedPtr& options);
+  virtual absl::StatusOr<bssl::UniquePtr<SSL>>
+  newSsl(const Network::TransportSocketOptionsConstSharedPtr& options);
 
   /**
    * Logs successful TLS handshake and updates stats.
@@ -149,7 +150,7 @@ public:
   ClientContextImpl(Stats::Scope& scope, const Envoy::Ssl::ClientContextConfig& config,
                     TimeSource& time_source);
 
-  bssl::UniquePtr<SSL>
+  absl::StatusOr<bssl::UniquePtr<SSL>>
   newSsl(const Network::TransportSocketOptionsConstSharedPtr& options) override;
 
 private:
