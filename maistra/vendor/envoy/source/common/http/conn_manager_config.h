@@ -17,6 +17,7 @@
 #include "source/common/network/utility.h"
 #include "source/common/stats/symbol_table.h"
 #include "source/common/tracing/tracer_config_impl.h"
+#include "source/common/runtime/runtime_features.h"
 
 namespace Envoy {
 namespace Http {
@@ -189,6 +190,10 @@ public:
 class DefaultInternalAddressConfig : public Http::InternalAddressConfig {
 public:
   bool isInternalAddress(const Network::Address::Instance& address) const override {
+    if (Runtime::runtimeFeatureEnabled(
+            "envoy.reloadable_features.explicit_internal_address_config")) {
+      return false;
+    }
     return Network::Utility::isInternalAddress(address);
   }
 };
