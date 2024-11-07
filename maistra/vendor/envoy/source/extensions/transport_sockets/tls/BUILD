@@ -233,4 +233,7 @@ envoy_cc_library(
         "bssl_wrapper_lib",
         "openssl_includes_lib",
     ],
+    deps = [
+        "//source/common/common:minimal_logger_lib",
+    ]
 )

@@ -503,8 +503,18 @@ void testUtil(const TestUtilOptions& options) {
 
       // By default, the session is not created with session resumption. The
       // client should see a session ID but the server should not.
-      EXPECT_EQ(EMPTY_STRING, server_connection->ssl()->sessionId());
-      EXPECT_NE(EMPTY_STRING, client_connection->ssl()->sessionId());
+      // https://docs.openssl.org/1.1.1/man3/SSL_get_session/#notes
+      // In TLSv1.3 the same is true, but sessions are established after the main handshake
+      // has occurred. The server will send the session information to the client at a time of i
+      // its choosing, which may be some while after the initial connection is established (or never).
+      // Calling these functions on the client side in TLSv1.3 before the session has been established
+      // will still return an SSL_SESSION object but that object cannot be used for resuming the session.
+      // https://datatracker.ietf.org/doc/html/rfc8446#section-2.2
+      // legacy session id's as mentioned in this RFC may need further investigation.
+      if ( server_connection->ssl()->tlsVersion() != "TLSv1.3" )
+        EXPECT_EQ(EMPTY_STRING, server_connection->ssl()->sessionId());
+      if ( client_connection->ssl()->tlsVersion() != "TLSv1.3" )
+        EXPECT_NE(EMPTY_STRING, client_connection->ssl()->sessionId());
 
       server_connection->close(Network::ConnectionCloseType::NoFlush);
       client_connection->close(Network::ConnectionCloseType::NoFlush);
@@ -1277,6 +1287,31 @@ TEST_P(SslSocketTest, NoCert) {
                .setExpectNoCertChain());
 }
 
+TEST_P(SslSocketTest, CertWith2and3ProtocolVersion) {
+  const std::string client_ctx_yaml = R"EOF(
+    common_tls_context:
+      tls_params:
+        tls_minimum_protocol_version: TLSv1_2
+        tls_maximum_protocol_version: TLSv1_3
+        cipher_suites:
+        - ECDHE-ECDSA-AES128-GCM-SHA256
+        - ECDHE-RSA-AES128-GCM-SHA256
+        - TLS_AES_128_GCM_SHA256
+  )EOF";
+
+  const std::string server_ctx_yaml = R"EOF(
+  common_tls_context:
+    tls_certificates:
+    - certificate_chain:
+        filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/ca_cert.pem"
+      private_key:
+        filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/ca_key.pem"
+  )EOF";
+
+  TestUtilOptions test_options(client_ctx_yaml, server_ctx_yaml, true, version_);
+  testUtil(test_options);
+}
+
 // Prefer ECDSA certificate when multiple RSA certificates are present and the
 // client is RSA/ECDSA capable. We validate TLSv1.2 only here, since we validate
 // the e2e behavior on TLSv1.2/1.3 in ssl_integration_test.
@@ -1291,7 +1326,7 @@ TEST_P(SslSocketTest, MultiCertPreferEcdsaWithoutSni) {
         - ECDHE-RSA-AES128-GCM-SHA256
       validation_context:
         verify_certificate_hash: )EOF",
-                                                   TEST_SELFSIGNED_ECDSA_P256_CERT_256_HASH);
+    TEST_SELFSIGNED_ECDSA_P256_CERT_256_HASH);
 
   const std::string server_ctx_yaml = R"EOF(
   common_tls_context:
@@ -4627,7 +4662,7 @@ TEST_P(SslSocketTest, ProtocolVersions) {
   // Note: There aren't any valid TLSv1.0 or TLSv1.1 cipher suites enabled by default,
   // so enable them to avoid false positives.
   client_params->add_cipher_suites("ECDHE-RSA-AES128-SHA");
-  server_params->add_cipher_suites("ECDHE-RSA-AES128-SHA");
+  server_params->add_cipher_suites("ECDHE-RSA-AES128-SHA:TLS_AES_128_GCM_SHA256");
   updateFilterChain(tls_context, *filter_chain);
 
   // Connection using defaults (client & server) succeeds, negotiating TLSv1.2.
@@ -5075,7 +5110,7 @@ TEST_P(SslSocketTest, DISABLED_SetSignatureAlgorithms) {
     tls_params:
       signature_algorithms:
       - rsa_pss_rsae_sha256
-      - ecdsa_secp256r1_sha256
+      - ecdsa_secp256r1_sha256	
     tls_certificates:
       certificate_chain:
         filename: "{{ test_rundir }}/test/extensions/transport_sockets/tls/test_data/unittest_cert.pem"

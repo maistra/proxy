@@ -1,11 +1,14 @@
 #include "source/extensions/transport_sockets/tls/openssl_impl.h"
 
+#include <set>
+#include <vector>
 #include <algorithm>
 #include <cstring>
 #include <iostream>
 #include <memory>
 #include <string>
 #include <vector>
+#include <sstream>
 
 #include "openssl/crypto.h"
 #include "openssl/hmac.h"
@@ -13,6 +16,9 @@
 #include "openssl/ssl.h"
 #include "openssl/x509v3.h"
 #include "openssl/err.h"
+#include <openssl/safestack.h>
+
+#include "source/common/common/logger.h"
 
 #include <arpa/inet.h>
 
@@ -81,40 +87,126 @@ absl::string_view SSL_extract_client_hello_sni_host_name(const SSL* ssl) {
     return absl::string_view();
 }
 
+template<typename C>
+std::string string_of_collection(const C &c) {
+  std::ostringstream list;
+
+  for (auto it = c.begin(); it != c.end(); ++it) {
+    list << ((it == c.begin()) ? "" : ":") << *it;
+  }
+
+  return list.str();
+}
+
 int SSL_CTX_set_strict_cipher_list(SSL_CTX *ctx, const char *str) {
-    // OpenSSL's SSL_CTX_set_cipher_list() performs virtually no checking on str.
-    // It only returns 0 (fail) if no cipher could be selected from the list at
-    // all. Otherwise it returns 1 (pass) even if there is only one cipher in the
-    // string that makes sense, and the rest are unsupported or even just rubbish.
-    if (SSL_CTX_set_cipher_list(ctx, str) == 0) {
-        ERR_print_errors_fp(stderr);
-        return 0;
-    }
+  // TLS 1.3 Cipher Suite Names (See RFC 8446 Section B.4)
+  // https://datatracker.ietf.org/doc/html/rfc8446#appendix-B.4
+  static const std::set<std::string> supported_tls1_3 {
+      "TLS_AES_128_GCM_SHA256",
+      "TLS_AES_256_GCM_SHA384",
+      "TLS_CHACHA20_POLY1305_SHA256",
+      "TLS_AES_128_CCM_8_SHA256",
+      "TLS_AES_128_CCM_SHA256",
+  };
 
-    STACK_OF(SSL_CIPHER)* ciphers = reinterpret_cast<STACK_OF(SSL_CIPHER)*>(SSL_CTX_get_ciphers(ctx));
-    char* dup = strdup(str);
-    char* token = strtok(dup, ":+![|]");
-    while (token != NULL) {
-        std::string str1(token);
-        bool found = false;
-        for (int i = 0; i < sk_SSL_CIPHER_num(ciphers); i++) {
-            const SSL_CIPHER* cipher = sk_SSL_CIPHER_value(ciphers, i);
-            std::string str2(SSL_CIPHER_get_name(cipher));
-            if (str1.compare(str2) == 0) {
-                found = true;
-            }
-        }
-
-        if (!found && str1.compare("-ALL") && str1.compare("ALL")) {
-            free(dup);
-            return 0;
-        }
-
-        token = strtok(NULL, ":[]|");
-    }
-
-    free(dup);
+  // if no cipher to apply then fallback to default
+  // the prior implementation of this function return 1 if str was empty
+  if ( str == nullptr ||
+      strlen(str) == 0 )
     return 1;
+
+  std::vector<std::string> tls_set;
+  std::vector<std::string> tls1_3_set;
+
+  std::string dup (str); // Take a modifiable copy for strtok()
+  char* token = strtok(dup.data(), ":+![|]");
+  while (token != nullptr) {
+    if (supported_tls1_3.find(token) != supported_tls1_3.end()) {
+      tls1_3_set.emplace_back(token);
+    }
+    else {
+      tls_set.emplace_back(token);
+    }
+    token = strtok(nullptr, ":[]|");
+  }
+
+  // at this point any specific TLS 1.3 context should be removed from the tls_set
+  // this allows calling the respective OpenSSL API Set calls as the TLS1_3 call is stricter
+  // and can't have any none TLS 1.3 codes.
+  // order here is important set 1.3 then 1.2
+  std::ostringstream error;
+  if (!tls1_3_set.empty()) {
+    std::string s_1_3 = string_of_collection(tls1_3_set);
+    if (SSL_CTX_set_ciphersuites(ctx, s_1_3.c_str()) == 0) { // 1.3
+      char buf[256];
+      unsigned long error_1_3 = ERR_get_error();
+      ERR_error_string_n(error_1_3, buf, sizeof(buf));
+      ENVOY_LOG_MISC(error, "Unable to apply tlsv1.3 cipher {} : {}", s_1_3, buf);
+    }
+  }
+
+  // if the min protocol version is 1.3 then we don't want any 1.2 ciphers
+  if (!tls_set.empty()) {
+    std::string s_other = string_of_collection(tls_set);
+    // this api call is more permissive than SSL_CTX_set_ciphersuites
+    // if there is a bogus cipher it will be ignored.
+    // it is possible that the ctx will reference TLS 1.2 ciphers by default
+    // these are filtered on connection based on the min/max protocol versions.
+    if (SSL_CTX_set_cipher_list(ctx, s_other.c_str()) == 0) {
+      char buf[256];
+      unsigned long error_1_2 = ERR_get_error();
+      ERR_error_string_n(error_1_2, buf, sizeof(buf));
+      ENVOY_LOG_MISC(error, "Unable to apply cipher {} : {}", s_other, buf);
+      error << "Unable to apply cipher " << s_other << " : " << buf << std::endl;
+    }
+  }
+
+  if (!error.str().empty()) {
+    ENVOY_LOG_MISC(error, "Error configuring ciphers: {}", error.str());
+    return 0;
+  }
+
+  // now check for any missing from either set now that context is configured
+  // this is to ensure that any other openssl processing that may have occurred
+  // is accounted for.
+  STACK_OF(SSL_CIPHER)* ciphers = reinterpret_cast<STACK_OF(SSL_CIPHER)*>(SSL_CTX_get_ciphers(ctx));
+  std::set<std::string> ctx_set;
+  for (int i = 0; i < sk_SSL_CIPHER_num(ciphers); i++) {
+    const SSL_CIPHER* cipher = sk_SSL_CIPHER_value(ciphers, i);
+    std::string str2(SSL_CIPHER_get_name(cipher));
+    ctx_set.insert(str2);
+  }
+  ENVOY_LOG_MISC(debug, "SSL_CTX set to {}", string_of_collection(ctx_set));
+
+  bool found = true;
+  if (!tls1_3_set.empty()) {
+    for(const auto &e : tls1_3_set) {
+      ENVOY_LOG_MISC(debug, "checking tls1.3 cipher {}", e);
+      if ( ctx_set.find(e) == ctx_set.end() ) {
+        found = false;
+        break;
+      }
+    }
+  }
+
+  // check the not tls 1.3 case
+  if (!tls_set.empty()) {
+    for (const auto &e: tls_set) {
+      ENVOY_LOG_MISC(debug, "checking cipher {}", e);
+      if (ctx_set.find(e) == ctx_set.end()
+          && e != "ALL"
+          && e != "-ALL") {
+        found = false;
+        break;
+      }
+    }
+  }
+
+  if ( !found ) {
+    return 0;
+  }
+
+  return 1;
 }
 
 /*
