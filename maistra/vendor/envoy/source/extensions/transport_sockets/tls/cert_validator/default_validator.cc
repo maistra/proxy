@@ -248,7 +248,7 @@ int DefaultCertValidator::doSynchronousVerifyCertChain(
       Envoy::Ssl::ClientValidationStatus::NotValidated;
   bool success = verifyCertAndUpdateStatus(&leaf_cert, transport_socket_options, detailed_status,
                                            nullptr, nullptr);
-  if (ssl_extended_info) {
+  if (ssl_extended_info && detailed_status != Envoy::Ssl::ClientValidationStatus::NotValidated) {
     ssl_extended_info->setCertificateValidationStatus(detailed_status);
   }
   if (!success) {
