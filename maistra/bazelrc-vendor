@@ -81,10 +81,7 @@ build --override_repository=opencensus_proto=/work/maistra/vendor/opencensus_pro
 build --override_repository=opentelemetry_proto=/work/maistra/vendor/opentelemetry_proto
 build --override_repository=org_brotli=/work/maistra/vendor/org_brotli
 build --override_repository=org_golang_google_protobuf=/work/maistra/vendor/org_golang_google_protobuf
-build --override_repository=org_golang_x_mod=/work/maistra/vendor/org_golang_x_mod
-build --override_repository=org_golang_x_sys=/work/maistra/vendor/org_golang_x_sys
 build --override_repository=org_golang_x_text=/work/maistra/vendor/org_golang_x_text
-build --override_repository=org_golang_x_tools=/work/maistra/vendor/org_golang_x_tools
 build --override_repository=platforms=/work/maistra/vendor/platforms
 build --override_repository=prometheus_metrics_model=/work/maistra/vendor/prometheus_metrics_model
 build --override_repository=proxy_wasm_cpp_host=/work/maistra/vendor/proxy_wasm_cpp_host
