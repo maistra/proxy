@@ -1,6 +1,8 @@
 #!/bin/bash
 
 export CC=clang CXX=clang++
+export GOROOT=/usr/lib/golang-1.22
+export PATH=${GOROOT}/bin:${PATH}
 
 ARCH=$(uname -p)
 if [ "${ARCH}" = "ppc64le" ]; then
