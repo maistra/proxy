@@ -17,6 +17,8 @@ set -e
 set -o pipefail
 
 export CC=clang CXX=clang++
+export GOROOT=/usr/lib/golang-1.22
+export PATH=${GOROOT}/bin:${PATH}
 
 function init(){
   ROOT_DIR="$(pwd)"

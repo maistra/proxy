@@ -36,10 +36,10 @@ new_local_repository(
 # 2. Update .bazelversion, envoy.bazelrc and .bazelrc if needed.
 #
 
-# Commit date: 2024-02-16
-ENVOY_SHA = "16e3e6ccd7e13a7b24ef06e0ee3ceb42a89f5458"
+# Commit date: 2025-03-27
+ENVOY_SHA = "46552d2ce92f8c8addcc8bee82eb6a23b44f455f"
 
-ENVOY_SHA256 = "4f9e036a42b8463eafc259139df7c1048aed65543dd5516196af7e71779e24ca"
+ENVOY_SHA256 = "4a5f84b24ae4b7f4a8853f781771a1eb5e97edf067882bc5a93249c158294453"
 
 ENVOY_ORG = "maistra"
 
