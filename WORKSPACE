@@ -29,10 +29,10 @@ istioapi_dependencies()
 # 1. Run maistra/scripts/update-envoy-sha.sh to update ENVOY_SHA[256] values
 # 2. Update .bazelversion, envoy.bazelrc and .bazelrc if needed.
 #
-# Commit date: 01/29/26
-ENVOY_SHA = "1063866202ea49be88e146e623736308b033547d"
+# Commit date: 02/25/26
+ENVOY_SHA = "e05cd59fde3dc89a7c57e33f4e613fdd13f44a2a"
 
-ENVOY_SHA256 = "205017fd96504c654ecdfc9b3dbfad5cdd1108569e69630da74233243d0e4735"
+ENVOY_SHA256 = "8d89425750e594c531bec66986d998b3efdc38986a4492d217c1fc2e9070826c"
 
 ENVOY_ORG = "envoyproxy"
 
