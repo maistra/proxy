@@ -4,5 +4,5 @@ The Istio Proxy is a microservice proxy that can be used on the client and serve
 It is based on [Envoy](http://envoyproxy.io) with the addition of several policy and telemetry extensions.
 
 <!--
-Current full version: 2.6.14
+Current full version: 2.6.15
 -->
