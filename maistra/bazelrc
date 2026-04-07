@@ -7,6 +7,10 @@ build --tool_java_runtime_version=local_jdk
 build --verbose_failures
 build --config=clang
 
+# Configure Java to use system CA certificates for SSL verification
+startup --host_jvm_args=-Djavax.net.ssl.trustStore=/etc/pki/ca-trust/extracted/java/cacerts
+startup --host_jvm_args=-Djavax.net.ssl.trustStoreType=JKS
+
 # Test flags
 build --test_env=ENVOY_IP_TEST_VERSIONS=v4only
 build --test_env=HEAPCHECK=minimal
