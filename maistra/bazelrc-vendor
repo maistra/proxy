@@ -67,7 +67,6 @@ build --override_repository=envoy_toolshed=/work/maistra/vendor/envoy_toolshed
 build --override_repository=expand_template_toolchains=/work/maistra/vendor/expand_template_toolchains
 build --override_repository=fuzzing_pip3=/work/maistra/vendor/fuzzing_pip3
 build --override_repository=grpc_httpjson_transcoding=/work/maistra/vendor/grpc_httpjson_transcoding
-build --override_repository=intel_dlb=/work/maistra/vendor/intel_dlb
 build --override_repository=io_bazel_rules_go=/work/maistra/vendor/io_bazel_rules_go
 build --override_repository=io_bazel_rules_nogo=/work/maistra/vendor/io_bazel_rules_nogo
 build --override_repository=io_opencensus_cpp=/work/maistra/vendor/io_opencensus_cpp
